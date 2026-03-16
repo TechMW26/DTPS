@@ -6,9 +6,12 @@ import PaymentLink from '@/lib/db/models/PaymentLink';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import User from '@/lib/db/models/User';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import { PaymentStatus, PaymentType } from '@/types';
+import { PaymentStatus, PaymentType, UserRole } from '@/types';
 import { computeClientStatus } from '@/lib/status/computeClientStatus';
-
+//
+import { SSEManager } from '@/lib/realtime/sse-manager';
+import { clearCacheByTag } from '@/lib/api/utils';
+//
 // Verify Razorpay webhook signature
 function verifyRazorpaySignature(
   body: string,
@@ -161,6 +164,30 @@ async function handlePaymentSuccess(payload: any) {
     } catch (statusError) {
       console.error('Error updating client status after payment:', statusError);
     }
+    //
+
+    // Clear caches and emit SSE for real-time updates
+    clearCacheByTag('payments');
+    clearCacheByTag('subscriptions');
+    clearCacheByTag('client_purchases');
+
+    try {
+      const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
+      const sse = SSEManager.getInstance();
+      const notifyUserIds = new Set<string>([
+        ...admins.map(a => String(a._id)),
+        String(subscription.client),
+        String(subscription.dietitian),
+      ]);
+      sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+        subscriptionId: String(subscription._id),
+        status: 'paid',
+        paidAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Failed to emit payment SSE event (webhook success):', e);
+    }//
+    //
   } catch (error) {
     console.error('Error handling payment success:', error);
   }
@@ -242,14 +269,14 @@ async function handlePaymentLinkCompleted(payload: any) {
       let payerEmail = '';
       let payerPhone = '';
       let razorpayPaymentId = paymentLinkData.id;
-      
+
       if (payload.payment) {
         razorpayPaymentId = payload.payment.entity?.id || paymentLinkData.id;
         paymentMethod = payload.payment.entity?.method || 'razorpay';
         payerEmail = payload.payment.entity?.email || '';
         payerPhone = payload.payment.entity?.contact || '';
       }
-      
+
       // Update PaymentLink status
       paymentLink.status = 'paid';
       paymentLink.paidAt = new Date();
@@ -306,7 +333,30 @@ async function handlePaymentLinkCompleted(payload: any) {
       } catch (paymentError) {
         console.error('Error syncing UnifiedPayment record:', paymentError);
       }
+      //
+      // Clear caches for real-time updates
+      clearCacheByTag('payments');
+      clearCacheByTag('payment_links');
+      clearCacheByTag('client_purchases');
 
+      // Emit SSE event for real-time UI updates
+      try {
+        const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
+        const sse = SSEManager.getInstance();
+        const notifyUserIds = new Set<string>([
+          ...admins.map(a => String(a._id)),
+          String(paymentLink.client),
+          String(paymentLink.dietitian),
+        ]);
+        sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+          paymentLinkId: String(paymentLink._id),
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('Failed to emit payment SSE event (webhook):', e);
+      }
+      ///
       return;
     }
 

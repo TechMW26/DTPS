@@ -3,6 +3,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/db/connection';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
+import User from '@/lib/db/models/User';
+import { UserRole } from '@/types';
+import { SSEManager } from '@/lib/realtime/sse-manager';
+import { clearCacheByTag } from '@/lib/api/utils';
 import crypto from 'crypto';
 
 // POST /api/client/subscriptions/verify - Verify Razorpay payment for subscriptions
@@ -58,6 +62,32 @@ export async function POST(request: NextRequest) {
         { error: 'Payment record not found' },
         { status: 404 }
       );
+    }
+
+    // Clear caches so UI updates immediately
+    clearCacheByTag('payments');
+    clearCacheByTag('client_purchases');
+    clearCacheByTag('subscriptions');
+
+    // Emit SSE event for real-time UI update
+    try {
+      const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
+      const sse = SSEManager.getInstance();
+      const notifyUserIds = new Set<string>([
+        ...admins.map(a => String(a._id)),
+        session.user.id,
+      ]);
+      // Add dietitian if payment has one
+      if (payment.dietitian) {
+        notifyUserIds.add(String(payment.dietitian));
+      }
+      sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+        paymentId: String(payment._id),
+        status: 'paid',
+        paidAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Failed to emit payment SSE event:', e);
     }
 
     return NextResponse.json({

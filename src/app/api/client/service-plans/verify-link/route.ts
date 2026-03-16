@@ -4,7 +4,12 @@ import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/db/connection';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import PaymentLink from '@/lib/db/models/PaymentLink';
-
+///
+import User from '@/lib/db/models/User';
+import { UserRole } from '@/types';
+import { SSEManager } from '@/lib/realtime/sse-manager';
+import { clearCacheByTag } from '@/lib/api/utils';
+///
 // POST /api/client/service-plans/verify-link - Verify payment link and create UnifiedPayment
 export async function POST(request: NextRequest) {
   try {
@@ -40,6 +45,32 @@ export async function POST(request: NextRequest) {
             transactionId: razorpayPaymentId
           }
         );
+        ////
+
+        // Clear caches and emit SSE event
+        clearCacheByTag('payments');
+        clearCacheByTag('payment_links');
+        clearCacheByTag('client_purchases');
+
+        try {
+          const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
+          const sse = SSEManager.getInstance();
+          const notifyUserIds = new Set<string>([
+            ...admins.map(a => String(a._id)),
+            session.user.id,
+          ]);
+          if (existingPayment.dietitian) {
+            notifyUserIds.add(String(existingPayment.dietitian));
+          }
+          sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+            paymentId: String(existingPayment._id),
+            status: 'paid',
+            paidAt: new Date().toISOString(),
+          });
+        } catch (e) {
+          console.warn('Failed to emit payment SSE event:', e);
+        }
+        /////
       }
 
       return NextResponse.json({
@@ -102,7 +133,30 @@ export async function POST(request: NextRequest) {
           daysUsed: 0
         }
       );
+      ///////
+      // Clear caches and emit SSE event
+      clearCacheByTag('payments');
+      clearCacheByTag('payment_links');
+      clearCacheByTag('client_purchases');
 
+      try {
+        const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
+        const sse = SSEManager.getInstance();
+        const notifyUserIds = new Set<string>([
+          ...admins.map(a => String(a._id)),
+          session.user.id,
+          String(paymentLink.dietitian),
+        ]);
+        sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+          paymentId: unifiedPayment ? String(unifiedPayment._id) : '',
+          paymentLinkId: String(paymentLink._id),
+          status: 'paid',
+          paidAt: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('Failed to emit payment SSE event:', e);
+      }
+      ////////
       return NextResponse.json({
         success: true,
         message: 'Payment verified and plan activated',
