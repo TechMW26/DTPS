@@ -12,6 +12,40 @@ import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { SSEManager } from '@/lib/realtime/sse-manager';
 
+// Helper function to sanitize phone number for Razorpay (must be 8-14 chars)
+function sanitizePhoneForRazorpay(phone: string | undefined | null): string | undefined {
+  if (!phone) return undefined;
+
+  // Remove all non-digit characters (spaces, dashes, plus signs, brackets, etc.)
+  let digits = phone.replace(/\D/g, '');
+
+  // Handle empty result
+  if (!digits || digits.length === 0) return undefined;
+
+  // If it starts with country code 91 (India) and total length > 10, remove it
+  if (digits.startsWith('91') && digits.length > 10) {
+    digits = digits.slice(2);
+  }
+
+  // If it starts with 0 (trunk prefix in India), remove it
+  if (digits.startsWith('0') && digits.length > 10) {
+    digits = digits.slice(1);
+  }
+
+  // If still too long, take last 10 digits (standard Indian mobile number)
+  if (digits.length > 14) {
+    digits = digits.slice(-10);
+  }
+
+  // Razorpay requires 8-14 characters
+  if (digits.length >= 8 && digits.length <= 14) {
+    return digits;
+  }
+
+  // If phone is too short or invalid, return undefined (will skip SMS notification)
+  return undefined;
+}
+
 // Initialize Razorpay
 const razorpay = process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
   ? new Razorpay({
@@ -253,10 +287,10 @@ export async function POST(request: NextRequest) {
         customer: {
           name: clientName,
           email: client.email || undefined,
-          contact: client.phone || undefined,
+          contact: sanitizePhoneForRazorpay(client.phone),
         },
         notify: {
-          sms: !!client.phone,
+          sms: !!sanitizePhoneForRazorpay(client.phone),
           email: !!client.email,
         },
         reminder_enable: true,
