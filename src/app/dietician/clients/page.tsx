@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -33,12 +34,29 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ExternalLink, RefreshCw, Search, Users, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { ExternalLink, RefreshCw, Search, Users, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, UserPlus } from 'lucide-react';
 import { validateEmail } from '@/lib/validations/auth';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { getClientId } from '@/lib/utils';
+import { usePermissions } from '@/hooks/usePermissions';
+
+interface Dietitian {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  avatar?: string;
+}
+
+interface HealthCounselor {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  avatar?: string;
+}
 
 interface Client {
   _id: string;
@@ -130,6 +148,92 @@ export default function DieticianClientsPage() {
     gender: '',
     dateOfBirth: '',
   });
+
+  // Permission-based assignment state
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
+  const canAssignDietitians = hasPermission('assign_clients_to_dietitians');
+  const canAssignHealthCounselors = hasPermission('assign_clients_to_health_counselors');
+  const canAssign = canAssignDietitians || canAssignHealthCounselors;
+
+  // Assignment dialog state
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedClientForAssign, setSelectedClientForAssign] = useState<Client | null>(null);
+  const [availableDietitians, setAvailableDietitians] = useState<Dietitian[]>([]);
+  const [availableHealthCounselors, setAvailableHealthCounselors] = useState<HealthCounselor[]>([]);
+  const [selectedDietitianId, setSelectedDietitianId] = useState('');
+  const [selectedHealthCounselorId, setSelectedHealthCounselorId] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [assignMode, setAssignMode] = useState<'add' | 'replace'>('add');
+
+  // Fetch available staff for assignment
+  const fetchAvailableStaff = useCallback(async (clientId: string) => {
+    try {
+      const response = await fetch(`/api/clients/${clientId}/assign`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.dietitians) setAvailableDietitians(data.dietitians);
+        if (data.healthCounselors) setAvailableHealthCounselors(data.healthCounselors);
+      }
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+    }
+  }, []);
+
+  // Open assignment dialog
+  const openAssignDialog = async (client: Client) => {
+    setSelectedClientForAssign(client);
+    setSelectedDietitianId('');
+    setSelectedHealthCounselorId('');
+    setAssignMode('add');
+    setAssignDialogOpen(true);
+    await fetchAvailableStaff(client._id);
+  };
+
+  // Handle assignment
+  const handleAssign = async () => {
+    if (!selectedClientForAssign) return;
+
+    try {
+      setAssigning(true);
+      const payload: any = { mode: assignMode };
+
+      if (selectedDietitianId && canAssignDietitians) {
+        payload.dietitianId = selectedDietitianId;
+      }
+      if (selectedHealthCounselorId && canAssignHealthCounselors) {
+        payload.healthCounselorId = selectedHealthCounselorId;
+      }
+
+      const response = await fetch(`/api/clients/${selectedClientForAssign._id}/assign`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || 'Assignment updated successfully');
+
+        // Update local state
+        if (data.client) {
+          setClients(prev => prev.map(c =>
+            c._id === data.client._id ? { ...c, ...data.client } : c
+          ));
+        }
+
+        setAssignDialogOpen(false);
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to update assignment');
+      }
+    } catch (error) {
+      console.error('Error assigning:', error);
+      toast.error('Failed to update assignment');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   // Only fetch when session is authenticated and user ID is available
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.id) {
@@ -363,12 +467,15 @@ export default function DieticianClientsPage() {
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Last Diet</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Created By</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Joined</TableHead>
+                        {canAssign && (
+                          <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Actions</TableHead>
+                        )}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredClients.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={11} className="text-center py-12 text-gray-500">
+                          <TableCell colSpan={canAssign ? 13 : 12} className="text-center py-12 text-gray-500">
                             No clients found
                           </TableCell>
                         </TableRow>
@@ -489,6 +596,19 @@ export default function DieticianClientsPage() {
                               )}
                             </TableCell>
                             <TableCell className="px-3 text-sm whitespace-nowrap">{formatDate(client.createdAt)}</TableCell>
+                            {canAssign && (
+                              <TableCell className="px-3">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openAssignDialog(client)}
+                                  className="h-7 px-2 text-xs"
+                                >
+                                  <UserPlus className="h-3.5 w-3.5 mr-1" />
+                                  Assign
+                                </Button>
+                              </TableCell>
+                            )}
                           </TableRow>
                         ))
                       )}
@@ -667,6 +787,92 @@ export default function DieticianClientsPage() {
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleCreateClient} disabled={saving}>
               {saving ? 'Creating...' : 'Create Client'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assignment Dialog */}
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Staff</DialogTitle>
+            <DialogDescription>
+              Assign this client to a dietitian or health counselor
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedClientForAssign && (
+            <div className="space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium">
+                  {selectedClientForAssign.firstName} {selectedClientForAssign.lastName}
+                </p>
+                <p className="text-xs text-gray-500">{selectedClientForAssign.email}</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Assignment Mode</label>
+                <Select value={assignMode} onValueChange={(v: 'add' | 'replace') => setAssignMode(v)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="add">Add to existing assignments</SelectItem>
+                    <SelectItem value="replace">Replace current assignments</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {canAssignDietitians && (
+                <div>
+                  <label className="text-sm font-medium">Assign Dietitian</label>
+                  <Select value={selectedDietitianId} onValueChange={setSelectedDietitianId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a dietitian" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {availableDietitians.map(d => (
+                        <SelectItem key={d._id} value={d._id}>
+                          {d.firstName} {d.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {canAssignHealthCounselors && (
+                <div>
+                  <label className="text-sm font-medium">Assign Health Counselor</label>
+                  <Select value={selectedHealthCounselorId} onValueChange={setSelectedHealthCounselorId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a health counselor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {availableHealthCounselors.map(hc => (
+                        <SelectItem key={hc._id} value={hc._id}>
+                          {hc.firstName} {hc.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssign}
+              disabled={assigning || (!selectedDietitianId && !selectedHealthCounselorId)}
+            >
+              {assigning ? 'Assigning...' : 'Assign'}
             </Button>
           </DialogFooter>
         </DialogContent>

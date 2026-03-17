@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -124,6 +124,7 @@ export default function PaymentsSection({
   const [discount, setDiscount] = useState("0");
   const [finalAmount, setFinalAmount] = useState("0");
   const [isEditingFinalAmount, setIsEditingFinalAmount] = useState(false);
+  const skipNextAutoCalcRef = useRef(false);
   const [notes, setNotes] = useState("");
   const [showToClient, setShowToClient] = useState(true);
   const [planCategory, setPlanCategory] = useState("");
@@ -209,6 +210,10 @@ export default function PaymentsSection({
   // Auto-calc final amount when discount changes (only when not editing final amount directly)
   useEffect(() => {
     if (isEditingFinalAmount) return; // Skip if user is editing final amount directly
+    if (skipNextAutoCalcRef.current) {
+      skipNextAutoCalcRef.current = false;
+      return;
+    }
 
     const amt = typeof amount === "number" ? amount : 0;
     const t = typeof tax === "number" ? tax : 0;
@@ -219,8 +224,8 @@ export default function PaymentsSection({
 
     const taxed = amt + (amt * t) / 100;
     const finalVal = Math.max(0, taxed - (amt * effectiveDiscount) / 100);
-    // Round up to nearest integer (e.g., 739.26 → 740, 72.12 → 73)
-    setFinalAmount(String(Math.ceil(finalVal)));
+    const roundedFinal = Math.round(finalVal * 100) / 100;
+    setFinalAmount(String(roundedFinal));
   }, [amount, tax, discount, maxDiscount, isEditingFinalAmount]);
 
   // Handle discount input change — allow free typing, validate on blur
@@ -256,25 +261,36 @@ export default function PaymentsSection({
     const t = typeof tax === "number" ? tax : 0;
     const taxedAmount = amt + (amt * t) / 100;
 
-    // Parse the entered final amount
-    let val = parseFloat(finalAmount) || 0;
-    val = Math.max(0, val); // No negative
+    // Parse the entered final amount - keep exact integer if user typed one
+    const parsedVal = parseFloat(finalAmount) || 0;
+    let val = Math.max(0, parsedVal); // No negative
 
     // Calculate minimum final amount based on max discount
     const minFinalAmount = taxedAmount - (amt * maxDiscount) / 100;
 
+    let wasAdjusted = false;
     if (val < minFinalAmount && amt > 0) {
       toast.error(`Final amount cannot be less than ₹${Math.ceil(minFinalAmount)} (max ${maxDiscount}% discount)`);
-      val = minFinalAmount;
+      val = Math.ceil(minFinalAmount);
+      wasAdjusted = true;
     }
 
     // If final amount is more than taxed amount, set discount to 0
     if (val > taxedAmount) {
       val = taxedAmount;
+      wasAdjusted = true;
     }
 
-    const finalVal = Math.ceil(val);
-    setFinalAmount(String(finalVal));
+    // Keep the user's exact value if it wasn't adjusted for limits
+    const finalVal = wasAdjusted ? val : parsedVal;
+
+    // Set skip flag BEFORE any state changes to prevent useEffect from overwriting
+    skipNextAutoCalcRef.current = true;
+
+    // Only update finalAmount if it was adjusted
+    if (wasAdjusted) {
+      setFinalAmount(String(finalVal));
+    }
 
     // Now calculate the actual discount percentage
     if (amt > 0) {

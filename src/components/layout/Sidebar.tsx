@@ -33,7 +33,8 @@ import {
   Sparkles,
   BookOpen,
   ShoppingBag,
-  Star
+  Star,
+  Shield
 } from 'lucide-react';
 import { UserRole } from '@/types';
 
@@ -414,6 +415,12 @@ export default function Sidebar({ className, isDarkMode = false }: SidebarProps)
             label: 'Health Counselors',
             icon: Users,
             description: 'Manage health counselors'
+          },
+          {
+            href: '/admin/permissions',
+            label: 'Permissions',
+            icon: Shield,
+            description: 'Manage staff permissions'
           },
           {
             href: '/profile',

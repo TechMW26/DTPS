@@ -43,6 +43,9 @@ export { default as ActivityAssignment } from './ActivityAssignment';
 export { default as MessageGroup } from './MessageGroup';
 export { default as GroupMessage } from './GroupMessage';
 
+// Permission management
+export { default as Permission } from './Permission';
+
 // Ecommerce models
 export { default as EcommerceBlog } from './EcommerceBlog';
 export { default as EcommerceOrder } from './EcommerceOrder';

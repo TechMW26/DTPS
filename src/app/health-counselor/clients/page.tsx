@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -33,18 +34,35 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ExternalLink, RefreshCw, Search, Users, Plus } from 'lucide-react';
+import { ExternalLink, RefreshCw, Search, Users, Plus, UserPlus } from 'lucide-react';
 import { validateEmail } from '@/lib/validations/auth';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { getClientId } from '@/lib/utils';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface Tag {
   _id: string;
   name: string;
   color?: string;
   icon?: string;
+}
+
+interface Dietitian {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  avatar?: string;
+}
+
+interface HealthCounselor {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  avatar?: string;
 }
 
 interface Client {
@@ -127,6 +145,91 @@ export default function HealthCounselorClientsPage() {
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
   const [selectedClientForTag, setSelectedClientForTag] = useState<string | null>(null);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
+
+  // Permission-based assignment state
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
+  const canAssignDietitians = hasPermission('assign_clients_to_dietitians');
+  const canAssignHealthCounselors = hasPermission('assign_clients_to_health_counselors');
+  const canAssign = canAssignDietitians || canAssignHealthCounselors;
+
+  // Assignment dialog state
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedClientForAssign, setSelectedClientForAssign] = useState<Client | null>(null);
+  const [availableDietitians, setAvailableDietitians] = useState<Dietitian[]>([]);
+  const [availableHealthCounselors, setAvailableHealthCounselors] = useState<HealthCounselor[]>([]);
+  const [selectedDietitianId, setSelectedDietitianId] = useState('');
+  const [selectedHealthCounselorId, setSelectedHealthCounselorId] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [assignMode, setAssignMode] = useState<'add' | 'replace'>('add');
+
+  // Fetch available staff for assignment
+  const fetchAvailableStaff = useCallback(async (clientId: string) => {
+    try {
+      const response = await fetch(`/api/clients/${clientId}/assign`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.dietitians) setAvailableDietitians(data.dietitians);
+        if (data.healthCounselors) setAvailableHealthCounselors(data.healthCounselors);
+      }
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+    }
+  }, []);
+
+  // Open assignment dialog
+  const openAssignDialog = async (client: Client) => {
+    setSelectedClientForAssign(client);
+    setSelectedDietitianId('');
+    setSelectedHealthCounselorId('');
+    setAssignMode('add');
+    setAssignDialogOpen(true);
+    await fetchAvailableStaff(client._id);
+  };
+
+  // Handle assignment
+  const handleAssign = async () => {
+    if (!selectedClientForAssign) return;
+
+    try {
+      setAssigning(true);
+      const payload: any = { mode: assignMode };
+
+      if (selectedDietitianId && canAssignDietitians) {
+        payload.dietitianId = selectedDietitianId;
+      }
+      if (selectedHealthCounselorId && canAssignHealthCounselors) {
+        payload.healthCounselorId = selectedHealthCounselorId;
+      }
+
+      const response = await fetch(`/api/clients/${selectedClientForAssign._id}/assign`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || 'Assignment updated successfully');
+
+        // Update local state
+        if (data.client) {
+          setClients(prev => prev.map(c =>
+            c._id === data.client._id ? { ...c, ...data.client } : c
+          ));
+        }
+
+        setAssignDialogOpen(false);
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to update assignment');
+      }
+    } catch (error) {
+      console.error('Error assigning:', error);
+      toast.error('Failed to update assignment');
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   // Debounce search
   useEffect(() => {
@@ -443,12 +546,15 @@ export default function HealthCounselorClientsPage() {
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">End</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Last Diet</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Joined</TableHead>
+                        {canAssign && (
+                          <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Actions</TableHead>
+                        )}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {clients.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={13} className="text-center py-12 text-gray-500">
+                          <TableCell colSpan={canAssign ? 14 : 13} className="text-center py-12 text-gray-500">
                             No clients found
                           </TableCell>
                         </TableRow>
@@ -597,6 +703,19 @@ export default function HealthCounselorClientsPage() {
                             <TableCell className="px-3 text-sm whitespace-nowrap">{client.programEnd ? formatDate(client.programEnd) : '-'}</TableCell>
                             <TableCell className="px-3 text-sm whitespace-nowrap">{client.lastDiet || '-'}</TableCell>
                             <TableCell className="px-3 text-sm whitespace-nowrap">{formatDate(client.createdAt)}</TableCell>
+                            {canAssign && (
+                              <TableCell className="px-3">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openAssignDialog(client)}
+                                  className="text-xs"
+                                >
+                                  <UserPlus className="h-3 w-3 mr-1" />
+                                  Assign
+                                </Button>
+                              </TableCell>
+                            )}
                           </TableRow>
                         ))
                       )}
@@ -729,6 +848,140 @@ export default function HealthCounselorClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Assignment Dialog - Permission Based */}
+      {canAssign && (
+        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                Assign Staff to Client
+              </DialogTitle>
+              <DialogDescription>
+                {selectedClientForAssign && (
+                  <>Assign staff to {selectedClientForAssign.firstName} {selectedClientForAssign.lastName}</>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {/* Assignment Mode */}
+              <div>
+                <label className="text-sm font-medium text-gray-700">Assignment Mode</label>
+                <Select value={assignMode} onValueChange={(v: 'add' | 'replace') => setAssignMode(v)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="add">Add to existing</SelectItem>
+                    <SelectItem value="replace">Replace existing</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Dietitian Selection - Only if has permission */}
+              {canAssignDietitians && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Assign Dietitian</label>
+                  <Select value={selectedDietitianId} onValueChange={setSelectedDietitianId}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select a dietitian" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {availableDietitians.map((d) => (
+                        <SelectItem key={d._id} value={d._id}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              {d.avatar && <AvatarImage src={d.avatar} />}
+                              <AvatarFallback className="text-xs">
+                                {d.firstName?.[0]}{d.lastName?.[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span>Dr. {d.firstName} {d.lastName}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {availableDietitians.length === 0 && (
+                    <p className="text-xs text-gray-500 mt-1">No dietitians available</p>
+                  )}
+                </div>
+              )}
+
+              {/* Health Counselor Selection - Only if has permission */}
+              {canAssignHealthCounselors && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Assign Health Counselor</label>
+                  <Select value={selectedHealthCounselorId} onValueChange={setSelectedHealthCounselorId}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select a health counselor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {availableHealthCounselors.map((hc) => (
+                        <SelectItem key={hc._id} value={hc._id}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              {hc.avatar && <AvatarImage src={hc.avatar} />}
+                              <AvatarFallback className="text-xs">
+                                {hc.firstName?.[0]}{hc.lastName?.[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span>{hc.firstName} {hc.lastName}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {availableHealthCounselors.length === 0 && (
+                    <p className="text-xs text-gray-500 mt-1">No health counselors available</p>
+                  )}
+                </div>
+              )}
+
+              {/* Current Assignments Info */}
+              {selectedClientForAssign && (
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-xs font-medium text-gray-600 mb-2">Current Assignments:</p>
+                  <div className="space-y-1 text-xs text-gray-500">
+                    <p>
+                      Dietitian: {
+                        selectedClientForAssign.assignedDietitian?.firstName
+                          ? `Dr. ${selectedClientForAssign.assignedDietitian.firstName} ${selectedClientForAssign.assignedDietitian.lastName}`
+                          : selectedClientForAssign.assignedDietitians?.[0]?.firstName
+                            ? `Dr. ${selectedClientForAssign.assignedDietitians[0].firstName} ${selectedClientForAssign.assignedDietitians[0].lastName}`
+                            : 'Not assigned'
+                      }
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAssign}
+                disabled={assigning || (!selectedDietitianId && !selectedHealthCounselorId)}
+              >
+                {assigning ? (
+                  <>
+                    <LoadingSpinner size="sm" className="mr-2" />
+                    Assigning...
+                  </>
+                ) : (
+                  'Assign'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </DashboardLayout>
   );
 }
