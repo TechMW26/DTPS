@@ -72,6 +72,7 @@ export default function PaymentsSection({
 }) {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
+  const canEmailInvoice = session?.user?.role === 'admin' || session?.user?.role === 'dietitian' || session?.user?.role === 'health_counselor';
 
   const [paymentsState, setPaymentsState] = useState<PaymentItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1062,7 +1063,7 @@ export default function PaymentsSection({
                     View/Print Invoice
                   </button>
 
-                  {isPaid && (
+                  {isPaid && canEmailInvoice && (
                     <button
                       onClick={() => sendInvoiceEmail(payment!)}
                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"

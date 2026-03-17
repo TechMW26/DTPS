@@ -4,11 +4,26 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { sendEmail } from '@/lib/services/email';
+import { UserRole } from '@/types';
 import {
     generatePrintableInvoiceHTML,
     generateEmailInvoiceHTML,
     buildInvoiceDataFromPayment,
 } from '@/lib/services/invoiceTemplate';
+
+function normalizeId(value: any): string | null {
+    if (!value) return null;
+    if (typeof value === 'string') return value;
+    if (typeof value?.toString === 'function') return value.toString();
+    return null;
+}
+
+function normalizeIdArray(value: any): string[] {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((v) => normalizeId(v?._id ?? v))
+        .filter((v): v is string => !!v);
+}
 
 // GET /api/invoices/[paymentId] - Get printable invoice HTML
 export async function GET(
@@ -30,20 +45,42 @@ export async function GET(
         await connectDB();
 
         const payment = await UnifiedPayment.findById(paymentId)
-            .populate('client', 'firstName lastName email phone')
+            .populate('client', 'firstName lastName email phone assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors')
             .lean() as any;
 
         if (!payment) {
             return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
         }
 
-        // Security: Only allow access to own invoices (client), assigned dietitian, or admin
+        // Security: Only allow access to own invoices (client), assigned staff, or admin
         const userId = session.user.id;
-        const role = session.user.role;
-        const clientId = payment.client?._id?.toString() || payment.client?.toString();
-        const dietitianId = payment.dietitian?.toString();
+        const role = session.user.role as UserRole | string;
+        const roleValue = String(role).toLowerCase() as UserRole | string;
+        const clientId = normalizeId(payment.client?._id ?? payment.client);
+        const paymentDietitianId = normalizeId(payment.dietitian);
 
-        if (role !== 'admin' && userId !== clientId && userId !== dietitianId) {
+        const assignedDietitianId = normalizeId(payment.client?.assignedDietitian?._id ?? payment.client?.assignedDietitian);
+        const assignedDietitianIds = normalizeIdArray(payment.client?.assignedDietitians);
+        const assignedHealthCounselorId = normalizeId(payment.client?.assignedHealthCounselor?._id ?? payment.client?.assignedHealthCounselor);
+        const assignedHealthCounselorIds = normalizeIdArray(payment.client?.assignedHealthCounselors);
+
+        const isAdmin = roleValue === UserRole.ADMIN || roleValue === 'admin';
+        const isClient = !!clientId && userId === clientId;
+        const isPaymentDietitian = !!paymentDietitianId && userId === paymentDietitianId;
+
+        const isAssignedDietitian =
+            (!!assignedDietitianId && userId === assignedDietitianId) || assignedDietitianIds.includes(userId);
+        const isAssignedHealthCounselor =
+            (!!assignedHealthCounselorId && userId === assignedHealthCounselorId) || assignedHealthCounselorIds.includes(userId);
+
+        const allowedByRole =
+            isAdmin ||
+            isClient ||
+            isPaymentDietitian ||
+            (roleValue === UserRole.DIETITIAN && isAssignedDietitian) ||
+            (roleValue === UserRole.HEALTH_COUNSELOR && isAssignedHealthCounselor);
+
+        if (!allowedByRole) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
@@ -85,20 +122,37 @@ export async function POST(
         await connectDB();
 
         const payment = await UnifiedPayment.findById(paymentId)
-            .populate('client', 'firstName lastName email phone')
+            .populate('client', 'firstName lastName email phone assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors')
             .lean() as any;
 
         if (!payment) {
             return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
         }
 
-        // Security: only admin or assigned dietitian can send invoices
+        // Security: admin, assigned dietitian, or assigned health counselor can send invoices
         const userId = session.user.id;
-        const role = session.user.role;
-        const dietitianId = payment.dietitian?.toString();
+        const role = session.user.role as UserRole | string;
+        const roleValue = String(role).toLowerCase() as UserRole | string;
+        const paymentDietitianId = normalizeId(payment.dietitian);
+        const assignedDietitianId = normalizeId(payment.client?.assignedDietitian?._id ?? payment.client?.assignedDietitian);
+        const assignedDietitianIds = normalizeIdArray(payment.client?.assignedDietitians);
+        const assignedHealthCounselorId = normalizeId(payment.client?.assignedHealthCounselor?._id ?? payment.client?.assignedHealthCounselor);
+        const assignedHealthCounselorIds = normalizeIdArray(payment.client?.assignedHealthCounselors);
 
-        if (role !== 'admin' && userId !== dietitianId) {
-            return NextResponse.json({ error: 'Only admin or assigned dietitian can send invoices' }, { status: 403 });
+        const isAdmin = roleValue === UserRole.ADMIN || roleValue === 'admin';
+        const isPaymentDietitian = !!paymentDietitianId && userId === paymentDietitianId;
+        const isAssignedDietitian =
+            (!!assignedDietitianId && userId === assignedDietitianId) || assignedDietitianIds.includes(userId);
+        const isAssignedHealthCounselor =
+            (!!assignedHealthCounselorId && userId === assignedHealthCounselorId) || assignedHealthCounselorIds.includes(userId);
+
+        const canSendInvoice =
+            isAdmin ||
+            (roleValue === UserRole.DIETITIAN && (isPaymentDietitian || isAssignedDietitian)) ||
+            (roleValue === UserRole.HEALTH_COUNSELOR && isAssignedHealthCounselor);
+
+        if (!canSendInvoice) {
+            return NextResponse.json({ error: 'Only admin, assigned dietitian, or assigned health counselor can send invoices' }, { status: 403 });
         }
 
         // Get client email

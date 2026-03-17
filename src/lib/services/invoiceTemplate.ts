@@ -98,18 +98,25 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
             box-sizing: border-box;
         }
 
+        @page {
+            size: A4;
+            margin: 15mm;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background-color: #f4f7fa;
-            padding: 32px;
+            padding: 20px;
         }
 
         .container {
-            max-width: 800px;
+            width: 210mm;
+            min-height: 297mm;
+            max-width: 100%;
             margin: 0 auto;
             background-color: #ffffff;
             border-radius: 12px;
-            padding: 40px;
+            padding: 50px 45px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
         }
 
@@ -181,12 +188,14 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
         .divider {
             height: 1px;
             background-color: #e5e7eb;
-            margin: 24px 0;
+            margin: 32px 0;
         }
 
         .client-name-section {
             text-align: right;
-            margin-bottom: 32px;
+            margin-bottom: 40px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #f3f4f6;
         }
 
         .client-name {
@@ -296,10 +305,7 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
         }
 
         .bottom-footer {
-            text-align: center;
-            font-size: 9px;
-            color: #9ca3af;
-            margin-top: 32px;
+            display: none;
         }
 
         .print-btn {
@@ -330,12 +336,15 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
             body {
                 background: #fff;
                 padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
             .container {
                 box-shadow: none;
-                max-width: 100%;
+                width: 100%;
+                min-height: auto;
                 border-radius: 0;
-                padding: 20px;
+                padding: 10mm;
             }
             .print-btn {
                 display: none !important;
@@ -445,11 +454,6 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
         <div class="footer">
             <div>This is a computer-generated invoice and doesn't require a signature.</div>
             <div>Powered by DTPS</div>
-        </div>
-
-        <!-- Bottom Footer -->
-        <div class="bottom-footer">
-            © ${new Date().getFullYear()} ${DTPS_NAME} - ${DTPS_TAGLINE} | ${DTPS_SUPPORT_EMAIL} | ${DTPS_SUPPORT_PHONE}
         </div>
     </div>
 
@@ -604,9 +608,6 @@ export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; 
                   <td style="font-size: 10px; color: #9ca3af; text-align: right;">Powered by DTPS</td>
                 </tr>
               </table>
-              <div style="text-align: center; margin-top: 12px; font-size: 9px; color: #d1d5db;">
-                © ${new Date().getFullYear()} ${DTPS_NAME} - ${DTPS_TAGLINE} | ${DTPS_SUPPORT_EMAIL} | ${DTPS_SUPPORT_PHONE}
-              </div>
             </td>
           </tr>
 

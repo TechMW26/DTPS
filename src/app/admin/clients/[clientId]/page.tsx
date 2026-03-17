@@ -158,7 +158,7 @@ export default function AdminClientDetailPage() {
       setLoading(true);
       const response = await fetch(`/api/admin/clients/${clientId}`);
       if (!response.ok) throw new Error('Failed to fetch client details');
-      
+
       const data = await response.json();
       setClient(data.client);
       setMealPlans(data.mealPlans || []);
@@ -200,7 +200,7 @@ export default function AdminClientDetailPage() {
       });
 
       if (!response.ok) throw new Error('Failed to update client');
-      
+
       const data = await response.json();
       setClient(data.client);
       setIsEditing(false);
@@ -220,7 +220,7 @@ export default function AdminClientDetailPage() {
       });
 
       if (!response.ok) throw new Error('Failed to deactivate client');
-      
+
       toast.success('Client deactivated successfully');
       router.push('/admin/allclients');
     } catch (error) {
@@ -237,7 +237,7 @@ export default function AdminClientDetailPage() {
       });
 
       if (!response.ok) throw new Error('Failed to delete client');
-      
+
       toast.success('Client deleted permanently');
       router.push('/admin/allclients');
     } catch (error) {
@@ -257,7 +257,7 @@ export default function AdminClientDetailPage() {
       );
 
       if (!response.ok) throw new Error('Failed to delete document');
-      
+
       setClient(prev => prev ? {
         ...prev,
         documents: prev.documents?.filter(d => d._id !== documentToDelete._id)
@@ -327,15 +327,15 @@ export default function AdminClientDetailPage() {
                 <Edit2 className="h-4 w-4 mr-2" />
                 Edit
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="text-amber-600 border-amber-600 hover:bg-amber-50"
                 onClick={() => setDeactivateDialogOpen(true)}
               >
                 <UserX className="h-4 w-4 mr-2" />
                 Deactivate
               </Button>
-              <Button 
+              <Button
                 variant="destructive"
                 onClick={() => setDeleteDialogOpen(true)}
               >
@@ -375,14 +375,14 @@ export default function AdminClientDetailPage() {
                 <Label className="text-gray-500">Full Name</Label>
                 {isEditing ? (
                   <div className="flex gap-2">
-                    <Input 
-                      value={editData.firstName || ''} 
-                      onChange={e => setEditData({...editData, firstName: e.target.value})}
+                    <Input
+                      value={editData.firstName || ''}
+                      onChange={e => setEditData({ ...editData, firstName: e.target.value })}
                       placeholder="First Name"
                     />
-                    <Input 
-                      value={editData.lastName || ''} 
-                      onChange={e => setEditData({...editData, lastName: e.target.value})}
+                    <Input
+                      value={editData.lastName || ''}
+                      onChange={e => setEditData({ ...editData, lastName: e.target.value })}
                       placeholder="Last Name"
                     />
                   </div>
@@ -393,9 +393,9 @@ export default function AdminClientDetailPage() {
               <div>
                 <Label className="text-gray-500">Email</Label>
                 {isEditing ? (
-                  <Input 
-                    value={editData.email || ''} 
-                    onChange={e => setEditData({...editData, email: e.target.value})}
+                  <Input
+                    value={editData.email || ''}
+                    onChange={e => setEditData({ ...editData, email: e.target.value })}
                   />
                 ) : (
                   <p className="font-medium">{client.email}</p>
@@ -404,9 +404,9 @@ export default function AdminClientDetailPage() {
               <div>
                 <Label className="text-gray-500">Phone</Label>
                 {isEditing ? (
-                  <Input 
-                    value={editData.phone || ''} 
-                    onChange={e => setEditData({...editData, phone: e.target.value})}
+                  <Input
+                    value={editData.phone || ''}
+                    onChange={e => setEditData({ ...editData, phone: e.target.value })}
                   />
                 ) : (
                   <p className="font-medium">{client.phone || 'Not provided'}</p>
@@ -425,7 +425,7 @@ export default function AdminClientDetailPage() {
               <div>
                 <Label className="text-gray-500">Assigned Dietitian</Label>
                 <p className="font-medium">
-                  {client.assignedDietitian 
+                  {client.assignedDietitian
                     ? `${client.assignedDietitian.firstName} ${client.assignedDietitian.lastName}`
                     : 'Not assigned'}
                 </p>
@@ -433,7 +433,7 @@ export default function AdminClientDetailPage() {
               <div>
                 <Label className="text-gray-500">Health Counselor</Label>
                 <p className="font-medium">
-                  {client.assignedHealthCounselor 
+                  {client.assignedHealthCounselor
                     ? `${client.assignedHealthCounselor.firstName} ${client.assignedHealthCounselor.lastName}`
                     : 'Not assigned'}
                 </p>
@@ -478,10 +478,10 @@ export default function AdminClientDetailPage() {
               <div>
                 <Label className="text-gray-500">Date of Birth</Label>
                 {isEditing ? (
-                  <Input 
+                  <Input
                     type="date"
-                    value={editData.dateOfBirth?.split('T')[0] || ''} 
-                    onChange={e => setEditData({...editData, dateOfBirth: e.target.value})}
+                    value={editData.dateOfBirth?.split('T')[0] || ''}
+                    onChange={e => setEditData({ ...editData, dateOfBirth: e.target.value })}
                   />
                 ) : (
                   <p className="font-medium">
@@ -492,9 +492,9 @@ export default function AdminClientDetailPage() {
               <div>
                 <Label className="text-gray-500">Gender</Label>
                 {isEditing ? (
-                  <Select 
-                    value={editData.gender || ''} 
-                    onValueChange={v => setEditData({...editData, gender: v})}
+                  <Select
+                    value={editData.gender || ''}
+                    onValueChange={v => setEditData({ ...editData, gender: v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select gender" />
@@ -512,9 +512,9 @@ export default function AdminClientDetailPage() {
               <div>
                 <Label className="text-gray-500">Activity Level</Label>
                 {isEditing ? (
-                  <Select 
-                    value={editData.activityLevel || ''} 
-                    onValueChange={v => setEditData({...editData, activityLevel: v})}
+                  <Select
+                    value={editData.activityLevel || ''}
+                    onValueChange={v => setEditData({ ...editData, activityLevel: v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select level" />
@@ -534,9 +534,9 @@ export default function AdminClientDetailPage() {
               <div>
                 <Label className="text-gray-500">Goal</Label>
                 {isEditing ? (
-                  <Select 
-                    value={editData.generalGoal || ''} 
-                    onValueChange={v => setEditData({...editData, generalGoal: v})}
+                  <Select
+                    value={editData.generalGoal || ''}
+                    onValueChange={v => setEditData({ ...editData, generalGoal: v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select goal" />
@@ -578,9 +578,9 @@ export default function AdminClientDetailPage() {
                   <div>
                     <Label className="text-gray-500">Height</Label>
                     {isEditing ? (
-                      <Input 
-                        value={editData.heightCm || ''} 
-                        onChange={e => setEditData({...editData, heightCm: e.target.value})}
+                      <Input
+                        value={editData.heightCm || ''}
+                        onChange={e => setEditData({ ...editData, heightCm: e.target.value })}
                         placeholder="Height in cm"
                       />
                     ) : (
@@ -590,9 +590,9 @@ export default function AdminClientDetailPage() {
                   <div>
                     <Label className="text-gray-500">Weight</Label>
                     {isEditing ? (
-                      <Input 
-                        value={editData.weightKg || ''} 
-                        onChange={e => setEditData({...editData, weightKg: e.target.value})}
+                      <Input
+                        value={editData.weightKg || ''}
+                        onChange={e => setEditData({ ...editData, weightKg: e.target.value })}
                         placeholder="Weight in kg"
                       />
                     ) : (
@@ -602,9 +602,9 @@ export default function AdminClientDetailPage() {
                   <div>
                     <Label className="text-gray-500">Target Weight</Label>
                     {isEditing ? (
-                      <Input 
-                        value={editData.targetWeightKg || ''} 
-                        onChange={e => setEditData({...editData, targetWeightKg: e.target.value})}
+                      <Input
+                        value={editData.targetWeightKg || ''}
+                        onChange={e => setEditData({ ...editData, targetWeightKg: e.target.value })}
                         placeholder="Target weight in kg"
                       />
                     ) : (
@@ -681,8 +681,8 @@ export default function AdminClientDetailPage() {
               {client.documents?.length ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {client.documents.map((doc) => (
-                    <div 
-                      key={doc._id} 
+                    <div
+                      key={doc._id}
                       className="border rounded-lg p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800"
                     >
                       <div className="flex items-center gap-3">
@@ -700,15 +700,15 @@ export default function AdminClientDetailPage() {
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="sm"
                           onClick={() => window.open(doc.filePath, '_blank')}
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="sm"
                           className="text-red-600 hover:text-red-700"
                           onClick={() => setDocumentToDelete(doc)}
@@ -739,8 +739,8 @@ export default function AdminClientDetailPage() {
               {mealPlans.length ? (
                 <div className="space-y-3">
                   {mealPlans.map((plan) => (
-                    <div 
-                      key={plan._id} 
+                    <div
+                      key={plan._id}
                       className="border rounded-lg p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800"
                     >
                       <div>
@@ -783,8 +783,8 @@ export default function AdminClientDetailPage() {
               {payments.length ? (
                 <div className="space-y-3">
                   {payments.map((payment) => (
-                    <div 
-                      key={payment._id} 
+                    <div
+                      key={payment._id}
                       className="border rounded-lg p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800"
                     >
                       <div>
@@ -802,6 +802,19 @@ export default function AdminClientDetailPage() {
                         </Badge>
                         {payment.paymentMethod && (
                           <p className="text-xs text-gray-400 mt-1">{payment.paymentMethod}</p>
+                        )}
+                        {(payment.status === 'completed' || payment.status === 'paid') && (
+                          <div className="mt-2 flex justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(`/api/invoices/${payment._id}`, '_blank')}
+                              className="h-8 text-xs"
+                            >
+                              <Download className="h-3 w-3 mr-1" />
+                              Invoice
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -824,7 +837,7 @@ export default function AdminClientDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Deactivate Client</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to deactivate {client.firstName} {client.lastName}? 
+              Are you sure you want to deactivate {client.firstName} {client.lastName}?
               They will no longer be able to access their account. You can reactivate them later.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -843,7 +856,7 @@ export default function AdminClientDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Client Permanently</AlertDialogTitle>
             <AlertDialogDescription className="text-red-600">
-              This action cannot be undone. This will permanently delete {client.firstName} {client.lastName}'s 
+              This action cannot be undone. This will permanently delete {client.firstName} {client.lastName}'s
               account and all associated data including documents, meal plans, and payment records.
             </AlertDialogDescription>
           </AlertDialogHeader>
