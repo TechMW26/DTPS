@@ -403,8 +403,19 @@ export default function PaymentsSection({
   const generateInvoice = async (payment: PaymentItem) => {
     setOpenRowMenuId(null);
 
-    // Open invoice in new tab for viewing/printing
-    window.open(`/api/payment-links/invoice?id=${payment._id}`, '_blank');
+    // Find UnifiedPayment (clientPurchase) for this PaymentLink
+    const purchase = clientPurchases.find(p =>
+      p.paymentLink?._id === payment._id ||
+      p.paymentLink === payment._id
+    );
+
+    if (purchase?._id) {
+      // Use new UnifiedPayment-based invoice
+      window.open(`/api/invoices/${purchase._id}`, '_blank');
+    } else {
+      // Fallback to old PaymentLink-based invoice
+      window.open(`/api/payment-links/invoice?id=${payment._id}`, '_blank');
+    }
   };
 
   const sendInvoiceEmail = async (payment: PaymentItem) => {
@@ -415,11 +426,27 @@ export default function PaymentsSection({
     }
 
     try {
-      const response = await fetch('/api/payment-links/invoice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentLinkId: payment._id }),
-      });
+      // Find UnifiedPayment (clientPurchase) for this PaymentLink
+      const purchase = clientPurchases.find(p =>
+        p.paymentLink?._id === payment._id ||
+        p.paymentLink === payment._id
+      );
+
+      let response;
+      if (purchase?._id) {
+        // Use new UnifiedPayment-based invoice email
+        response = await fetch(`/api/invoices/${purchase._id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } else {
+        // Fallback to old PaymentLink-based invoice email
+        response = await fetch('/api/payment-links/invoice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentLinkId: payment._id }),
+        });
+      }
 
       const data = await response.json();
 

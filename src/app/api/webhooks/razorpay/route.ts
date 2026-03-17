@@ -11,6 +11,7 @@ import { computeClientStatus } from '@/lib/status/computeClientStatus';
 //
 import { SSEManager } from '@/lib/realtime/sse-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
+import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
 //
 // Verify Razorpay webhook signature
 function verifyRazorpaySignature(
@@ -186,7 +187,17 @@ async function handlePaymentSuccess(payload: any) {
       });
     } catch (e) {
       console.warn('Failed to emit payment SSE event (webhook success):', e);
-    }//
+    }
+
+    // Auto-send invoice email (fire-and-forget)
+    try {
+      const invoicePayment = await UnifiedPayment.findOne({ razorpayOrderId: orderId }).select('_id');
+      if (invoicePayment) {
+        sendInvoiceOnPayment(String(invoicePayment._id)).catch(() => { });
+      }
+    } catch (invErr) {
+      console.warn('[WEBHOOK] Failed to send auto-invoice:', invErr);
+    }
     //
   } catch (error) {
     console.error('Error handling payment success:', error);
@@ -355,6 +366,16 @@ async function handlePaymentLinkCompleted(payload: any) {
         });
       } catch (e) {
         console.warn('Failed to emit payment SSE event (webhook):', e);
+      }
+
+      // Auto-send invoice email (fire-and-forget)
+      try {
+        const invoicePayment = await UnifiedPayment.findOne({ paymentLink: paymentLink._id }).select('_id');
+        if (invoicePayment) {
+          sendInvoiceOnPayment(String(invoicePayment._id)).catch(() => { });
+        }
+      } catch (invErr) {
+        console.warn('[WEBHOOK] Failed to send auto-invoice:', invErr);
       }
       ///
       return;

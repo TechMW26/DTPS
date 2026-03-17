@@ -7,6 +7,7 @@ import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { SSEManager } from '@/lib/realtime/sse-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
+import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
 import crypto from 'crypto';
 
 // POST /api/client/subscriptions/verify - Verify Razorpay payment for subscriptions
@@ -89,6 +90,9 @@ export async function POST(request: NextRequest) {
     } catch (e) {
       console.warn('Failed to emit payment SSE event:', e);
     }
+
+    // Auto-send invoice email (fire-and-forget)
+    sendInvoiceOnPayment(String(payment._id)).catch(() => { });
 
     return NextResponse.json({
       success: true,

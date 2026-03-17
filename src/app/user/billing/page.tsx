@@ -28,11 +28,13 @@ import { useRealtime } from '@/hooks/useRealtime';
 
 interface Invoice {
   id: string;
+  paymentId: string;
   planName: string;
   amount: number;
   status: 'paid' | 'pending' | 'failed';
   date: Date;
   dueDate?: Date;
+  invoiceUrl?: string;
   downloadUrl?: string;
 }
 
@@ -297,6 +299,15 @@ export default function UserBillingPage() {
                         <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{formatCurrency(invoice.amount)}</p>
                         {getStatusBadge(invoice.status)}
                       </div>
+                      {invoice.status === 'paid' && (
+                        <button
+                          onClick={() => window.open(invoice.invoiceUrl || `/api/invoices/${invoice.paymentId}`, '_blank')}
+                          className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-500'}`}
+                          title="View Invoice"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

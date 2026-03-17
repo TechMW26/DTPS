@@ -8,6 +8,7 @@ import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { SSEManager } from '@/lib/realtime/sse-manager';
+import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
 
 // Helper function to create/update UnifiedPayment from PaymentLink
 // Uses syncRazorpayPayment to UPDATE existing or CREATE new (NO DUPLICATES)
@@ -148,7 +149,12 @@ export async function POST(request: NextRequest) {
       } catch (e) {
         console.warn('Failed to emit payment SSE events (verify):', e);
       }
-      
+
+      // Auto-send invoice email (fire-and-forget)
+      if (unifiedPayment) {
+        sendInvoiceOnPayment(String(unifiedPayment._id)).catch(() => { });
+      }
+
     }
 
     const response = NextResponse.json({

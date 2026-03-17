@@ -9,6 +9,7 @@ import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { SSEManager } from '@/lib/realtime/sse-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
+import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
 ///
 // POST /api/client/service-plans/verify-link - Verify payment link and create UnifiedPayment
 export async function POST(request: NextRequest) {
@@ -71,6 +72,9 @@ export async function POST(request: NextRequest) {
           console.warn('Failed to emit payment SSE event:', e);
         }
         /////
+
+        // Auto-send invoice email (fire-and-forget)
+        sendInvoiceOnPayment(String(existingPayment._id)).catch(() => { });
       }
 
       return NextResponse.json({
@@ -157,6 +161,12 @@ export async function POST(request: NextRequest) {
         console.warn('Failed to emit payment SSE event:', e);
       }
       ////////
+
+      // Auto-send invoice email (fire-and-forget)
+      if (unifiedPayment) {
+        sendInvoiceOnPayment(String(unifiedPayment._id)).catch(() => { });
+      }
+
       return NextResponse.json({
         success: true,
         message: 'Payment verified and plan activated',
