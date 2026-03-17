@@ -139,7 +139,7 @@ export default function AppointmentPaymentPage() {
               <div className="flex items-center space-x-2">
                 <User className="h-4 w-4 text-gray-400" />
                 <span className="font-medium">
-                  Dr. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
+                  Dt. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
                 </span>
               </div>
 
@@ -192,7 +192,7 @@ export default function AppointmentPaymentPage() {
             <PaymentForm
               amount={appointmentFee}
               currency="USD"
-              description={`${appointmentTypeFormatted} with Dr. ${appointment.dietitian.firstName} ${appointment.dietitian.lastName}`}
+              description={`${appointmentTypeFormatted} with Dt. ${appointment.dietitian.firstName} ${appointment.dietitian.lastName}`}
               appointmentId={appointment._id}
               dietitianId={appointment.dietitian._id}
               onSuccess={handlePaymentSuccess}

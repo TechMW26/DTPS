@@ -79,9 +79,30 @@ export function MedicalForm({ medicalConditions, allergies, dietaryRestrictions,
 
   // Medical conditions multi-select
   const [selectedMedical, setSelectedMedical] = React.useState<string[]>(() => (medicalConditions ? medicalConditions.split(',').map(s => s.trim()).filter(Boolean) : []));
-  const [otherMedicalCondition, setOtherMedicalCondition] = React.useState('');
+  const [otherMedicalCondition, setOtherMedicalCondition] = React.useState(() => {
+    // Initialize from existing "Other: xxx" value if present
+    if (medicalConditions) {
+      const otherEntry = medicalConditions.split(',').map(s => s.trim()).find(s => s.startsWith('Other: '));
+      if (otherEntry) {
+        return otherEntry.replace('Other: ', '');
+      }
+    }
+    return '';
+  });
   React.useEffect(() => {
-    setSelectedMedical(medicalConditions ? medicalConditions.split(',').map(s => s.trim()).filter(Boolean) : []);
+    const parsed = medicalConditions ? medicalConditions.split(',').map(s => s.trim()).filter(Boolean) : [];
+    setSelectedMedical(parsed);
+    // Also update otherMedicalCondition if "Other: xxx" is present
+    const otherEntry = parsed.find(s => s.startsWith('Other: '));
+    if (otherEntry) {
+      setOtherMedicalCondition(otherEntry.replace('Other: ', ''));
+      // Replace "Other: xxx" with just "Other" in selectedMedical for button state
+      setSelectedMedical(parsed.map(s => s.startsWith('Other: ') ? 'Other' : s));
+    } else if (parsed.includes('Other')) {
+      // Keep otherMedicalCondition empty if just "Other" is selected
+    } else {
+      setOtherMedicalCondition('');
+    }
   }, [medicalConditions]);
   const medicalConditionOptions = [
     'None', 'Diabetes', 'Type 1 Diabetes', 'Type 2 Diabetes', 'Prediabetes', 'Gestational Diabetes',

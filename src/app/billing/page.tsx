@@ -160,7 +160,7 @@ export default function BillingPage() {
               {payment.dietitian && (
                 <div>
                   <span className="text-gray-500">Provider: </span>
-                  <span>Dr. {payment.dietitian.firstName} {payment.dietitian.lastName}</span>
+                  <span>Dt. {payment.dietitian.firstName} {payment.dietitian.lastName}</span>
                 </div>
               )}
               

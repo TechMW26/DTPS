@@ -763,7 +763,7 @@ export default function EditRecipePage() {
             <p className="text-gray-600 mt-1">Update your recipe details</p>
             {recipe && (
               <p className="text-sm text-gray-500 mt-2">
-                Created by Dr. {recipe.createdBy.firstName} {recipe.createdBy.lastName} on {new Date(recipe.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                Created by Dt. {recipe.createdBy.firstName} {recipe.createdBy.lastName} on {new Date(recipe.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
               </p>
             )}
           </div>

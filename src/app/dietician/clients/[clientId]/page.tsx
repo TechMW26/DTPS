@@ -250,6 +250,7 @@ export default function ClientDetailPage() {
   const isAdmin = (session?.user?.role || '').toString().toLowerCase().includes('admin');
   const [client, setClient] = useState<ClientData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savingForm, setSavingForm] = useState(false);
   const [activeSection, setActiveSection] = useState('forms'); // Main section: forms, journal, progress, planning, payments, bookings, documents
   const [activeTab, setActiveTab] = useState('basic-details');
   const [isEditing, setIsEditing] = useState(false);
@@ -1085,6 +1086,7 @@ export default function ClientDetailPage() {
 
   const handleSave = async () => {
     try {
+      setSavingForm(true);
       // 1. Save basic user data (now includes physical measurements)
       const basicUserData = {
         firstName: basicInfo?.firstName,
@@ -1254,6 +1256,8 @@ export default function ClientDetailPage() {
     } catch (error) {
       console.error('Error updating client:', error);
       toast.error('Error updating client');
+    } finally {
+      setSavingForm(false);
     }
   };
 
@@ -2022,7 +2026,7 @@ export default function ClientDetailPage() {
                 handleSave={handleSave}
                 handleSaveRecallEntry={handleSaveRecallEntry}
                 handleDeleteRecallEntry={handleDeleteRecallEntry}
-                loading={loading}
+                loading={savingForm}
                 clientId={params.clientId as string}
                 userRole="dietitian"
               />

@@ -226,7 +226,7 @@ export default function MobileAppointmentDetailPage() {
             </div>
             <div className="flex-1">
               <h2 className="text-xl font-bold text-gray-900">
-                Dr. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
+                Dt. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
               </h2>
               <p className="text-sm text-purple-600 font-medium">Your Dietitian</p>
               <div className="flex items-center gap-1 mt-1">

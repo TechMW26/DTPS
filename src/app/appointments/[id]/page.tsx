@@ -410,7 +410,7 @@ function DesktopAppointmentDetailPage() {
                       </Avatar>
                       <div>
                         <p className="font-medium">
-                          Dr. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
+                          Dt. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
                         </p>
                         <p className="text-sm text-gray-600">Dietitian</p>
                       </div>

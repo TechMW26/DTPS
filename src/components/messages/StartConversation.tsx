@@ -130,7 +130,7 @@ export default function StartConversation({ onSelectUser }: StartConversationPro
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
                 <p className="font-medium text-gray-900 truncate">
-                  {user.role === 'dietitian' ? 'Dr. ' : ''}
+                  {user.role === 'dietitian' ? 'Dt. ' : ''}
                   {user.firstName} {user.lastName}
                   {user.isAssigned && (
                     <Badge className="ml-2 bg-blue-100 text-blue-800">

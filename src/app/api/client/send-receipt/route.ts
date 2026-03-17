@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
           ${payment.dietitian ? `
           <tr>
             <td style="padding: 5px 0; font-size: 14px; opacity: 0.9;">Dietitian</td>
-            <td style="padding: 5px 0; font-size: 14px; text-align: right;">Dr. ${payment.dietitian.firstName} ${payment.dietitian.lastName}</td>
+            <td style="padding: 5px 0; font-size: 14px; text-align: right;">Dt. ${payment.dietitian.firstName} ${payment.dietitian.lastName}</td>
           </tr>
           ` : ''}
         </table>

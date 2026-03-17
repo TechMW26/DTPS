@@ -165,7 +165,7 @@ export default function MyPlanPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">My Meal Plan</h1>
             <p className="text-gray-600 mt-1">
-              Created by Dr. {mealPlan.dietitian.firstName} {mealPlan.dietitian.lastName}
+              Created by Dt. {mealPlan.dietitian.firstName} {mealPlan.dietitian.lastName}
             </p>
           </div>
         </div>

@@ -643,7 +643,7 @@ export default function HealthCounselorClientsPage() {
                                   return (
                                     <div className="flex flex-col gap-1">
                                       <span className="text-sm font-medium text-gray-900">
-                                        Dr. {client.assignedDietitian.firstName} {client.assignedDietitian.lastName}
+                                        Dt. {client.assignedDietitian.firstName} {client.assignedDietitian.lastName}
                                       </span>
                                     </div>
                                   );
@@ -655,7 +655,7 @@ export default function HealthCounselorClientsPage() {
                                     return (
                                       <div className="flex flex-col gap-1">
                                         <span className="text-sm font-medium text-gray-900">
-                                          Dr. {dietitians[0].firstName} {dietitians[0].lastName}
+                                          Dt. {dietitians[0].firstName} {dietitians[0].lastName}
                                           {dietitians.length > 1 && <span className="text-xs text-gray-500"> +{dietitians.length - 1}</span>}
                                         </span>
                                       </div>
@@ -899,7 +899,7 @@ export default function HealthCounselorClientsPage() {
                                 {d.firstName?.[0]}{d.lastName?.[0]}
                               </AvatarFallback>
                             </Avatar>
-                            <span>Dr. {d.firstName} {d.lastName}</span>
+                            <span>Dt. {d.firstName} {d.lastName}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -950,9 +950,9 @@ export default function HealthCounselorClientsPage() {
                     <p>
                       Dietitian: {
                         selectedClientForAssign.assignedDietitian?.firstName
-                          ? `Dr. ${selectedClientForAssign.assignedDietitian.firstName} ${selectedClientForAssign.assignedDietitian.lastName}`
+                          ? `Dt. ${selectedClientForAssign.assignedDietitian.firstName} ${selectedClientForAssign.assignedDietitian.lastName}`
                           : selectedClientForAssign.assignedDietitians?.[0]?.firstName
-                            ? `Dr. ${selectedClientForAssign.assignedDietitians[0].firstName} ${selectedClientForAssign.assignedDietitians[0].lastName}`
+                            ? `Dt. ${selectedClientForAssign.assignedDietitians[0].firstName} ${selectedClientForAssign.assignedDietitians[0].lastName}`
                             : 'Not assigned'
                       }
                     </p>

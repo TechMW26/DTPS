@@ -69,7 +69,7 @@ function generateConfirmationEmailHTML(data: AppointmentEmailData, isProvider: b
   const formattedDate = format(data.scheduledAt, 'EEEE, MMMM d, yyyy');
   const formattedTime = format(data.scheduledAt, 'h:mm a');
   const recipientName = isProvider ? data.providerName : data.clientName;
-  const otherPartyName = isProvider ? data.clientName : `Dr. ${data.providerName}`;
+  const otherPartyName = isProvider ? data.clientName : `Dt. ${data.providerName}`;
   const roleLabel = data.providerRole === 'dietitian' ? 'Dietitian' : 'Health Counselor';
 
   return `

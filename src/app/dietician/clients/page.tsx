@@ -465,6 +465,7 @@ export default function DieticianClientsPage() {
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Plan Start</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Plan End</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Last Diet</TableHead>
+                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Assigned Dietitian</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Created By</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Joined</TableHead>
                         {canAssign && (
@@ -475,7 +476,7 @@ export default function DieticianClientsPage() {
                     <TableBody>
                       {filteredClients.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={canAssign ? 13 : 12} className="text-center py-12 text-gray-500">
+                          <TableCell colSpan={canAssign ? 14 : 13} className="text-center py-12 text-gray-500">
                             No clients found
                           </TableCell>
                         </TableRow>
@@ -547,6 +548,15 @@ export default function DieticianClientsPage() {
                               {client.mealPlanEndDate ? formatDate(client.mealPlanEndDate) : (client.programEnd ? formatDate(client.programEnd) : '-')}
                             </TableCell>
                             <TableCell className="px-3 text-sm whitespace-nowrap">{client.lastDiet || '-'}</TableCell>
+                            <TableCell className="px-3 text-sm whitespace-nowrap">
+                              {client.assignedDietitian ? (
+                                <span className="text-blue-600 font-medium">
+                                  Dt. {client.assignedDietitian.firstName} {client.assignedDietitian.lastName}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </TableCell>
                             <TableCell className="px-3 text-sm">
                               {client.createdBy?.role ? (
                                 <div className="space-y-0.5">

@@ -96,7 +96,7 @@ End Date: ${format(new Date(subscription.endDate), 'PPP')}
 
 DIETITIAN
 ========================================
-Name: Dr. ${subscription.dietitian.firstName} ${subscription.dietitian.lastName}
+Name: Dt. ${subscription.dietitian.firstName} ${subscription.dietitian.lastName}
 Email: ${subscription.dietitian.email}
 
 STATUS
@@ -223,7 +223,7 @@ Thank you for your subscription!
               <CardContent>
                 <div className="space-y-2">
                   <p className="font-semibold">
-                    Dr. {subscription.dietitian.firstName} {subscription.dietitian.lastName}
+                    Dt. {subscription.dietitian.firstName} {subscription.dietitian.lastName}
                   </p>
                   <p className="text-sm text-gray-600">{subscription.dietitian.email}</p>
                 </div>

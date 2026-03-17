@@ -172,7 +172,7 @@ export default function AdminRecipesPage() {
     if (!recipe.createdBy) return 'Not Assigned';
     const firstName = recipe.createdBy.firstName || 'Unknown';
     const lastName = recipe.createdBy.lastName || '';
-    return `Dr. ${firstName} ${lastName}`.trim();
+    return `Dt. ${firstName} ${lastName}`.trim();
   };
 
   return (

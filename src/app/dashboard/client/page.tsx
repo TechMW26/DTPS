@@ -49,14 +49,14 @@ export default function ClientDashboard() {
       id: 1,
       date: '2024-08-28',
       time: '10:00 AM',
-      dietitian: 'Dr. Sarah Johnson',
+      dietitian: 'Dt. Sarah Johnson',
       type: 'Follow-up Consultation'
     },
     {
       id: 2,
       date: '2024-09-02',
       time: '2:00 PM',
-      dietitian: 'Dr. Sarah Johnson',
+      dietitian: 'Dt. Sarah Johnson',
       type: 'Progress Review'
     }
   ];

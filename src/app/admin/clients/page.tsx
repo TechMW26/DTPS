@@ -233,12 +233,14 @@ export default function AdminClientsPage() {
     try {
       setSaving(true);
       setError(null);
-      const payload = assignType === 'dietitian'
-        ? { assignedDietitian: selectedDietitianId === "none" ? null : selectedDietitianId }
-        : { assignedHealthCounselor: selectedHealthCounselorId === "none" ? null : selectedHealthCounselorId };
 
-      const res = await fetch(`/api/users/${assigningClient._id}`, {
-        method: "PUT",
+      // Use proper assignment API that handles primary/secondary correctly
+      const payload = assignType === 'dietitian'
+        ? { dietitianId: selectedDietitianId === "none" ? "" : selectedDietitianId }
+        : { healthCounselorId: selectedHealthCounselorId === "none" ? "" : selectedHealthCounselorId };
+
+      const res = await fetch(`/api/admin/clients/${assigningClient._id}/assign`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });

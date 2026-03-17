@@ -256,7 +256,7 @@ function DesktopBookAppointmentPage() {
                       {dietitians.map((dietitian) => (
                         <SelectItem key={dietitian._id} value={dietitian._id}>
                           <div className="flex items-center justify-between w-full">
-                            <span>Dr. {dietitian.firstName} {dietitian.lastName}</span>
+                            <span>Dt. {dietitian.firstName} {dietitian.lastName}</span>
                             <span className="text-sm text-gray-500 ml-2">
                               ${dietitian.consultationFee}
                             </span>
@@ -269,7 +269,7 @@ function DesktopBookAppointmentPage() {
                   {selectedDietitian && (
                     <div className="mt-2 p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm font-medium">
-                        Dr. {selectedDietitian.firstName} {selectedDietitian.lastName}
+                        Dt. {selectedDietitian.firstName} {selectedDietitian.lastName}
                       </p>
                       {selectedDietitian.specializations && (
                         <p className="text-sm text-gray-600">

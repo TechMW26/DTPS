@@ -280,7 +280,7 @@ export default function PaymentSuccessPage() {
                     Dietitian
                   </span>
                   <span className="font-medium text-gray-900">
-                    Dr. {payment.dietitian.firstName} {payment.dietitian.lastName}
+                    Dt. {payment.dietitian.firstName} {payment.dietitian.lastName}
                   </span>
                 </div>
               )}

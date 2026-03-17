@@ -242,7 +242,7 @@ export default function UserDashboard() {
                 </div>
                 <div>
                   <p className="font-semibold text-gray-900">Next Appointment</p>
-                  <p className="text-sm text-gray-600">Dr. Smith - Tomorrow, 10:00 AM</p>
+                  <p className="text-sm text-gray-600">Dt. Smith - Tomorrow, 10:00 AM</p>
                 </div>
               </div>
               <Button size="sm" variant="outline" className="border-green-200 text-green-700">

@@ -310,7 +310,7 @@ function DesktopAppointmentsPage() {
                   <User className="h-4 w-4" />
                   <span>
                     {session?.user?.role === 'client' 
-                      ? `Dr. ${appointment.dietitian.firstName} ${appointment.dietitian.lastName}`
+                      ? `Dt. ${appointment.dietitian.firstName} ${appointment.dietitian.lastName}`
                       : `${appointment.client.firstName} ${appointment.client.lastName}`
                     }
                   </span>

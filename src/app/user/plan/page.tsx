@@ -1458,7 +1458,7 @@ export default function UserPlanPage() {
                 <h3 className="text-lg font-bold text-white">{fullRecipeData?.name || recipeModal.item?.name}</h3>
                 {fullRecipeData?.createdBy && (
                   <p className="text-xs text-white/70 mt-0.5">
-                    By Dr. {fullRecipeData.createdBy?.firstName} {fullRecipeData.createdBy?.lastName}
+                    By Dt. {fullRecipeData.createdBy?.firstName} {fullRecipeData.createdBy?.lastName}
                   </p>
                 )}
               </div>

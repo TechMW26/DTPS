@@ -244,7 +244,7 @@ export default function MobileAppointmentsPage() {
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div>
                             <h3 className="font-bold text-gray-900 text-lg">
-                              Dr. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
+                              Dt. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
                             </h3>
                             <p className="text-xs text-gray-500 mt-0.5">
                               {formatDistanceToNow(new Date(appointment.scheduledAt), { addSuffix: true })}
@@ -330,7 +330,7 @@ export default function MobileAppointmentsPage() {
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div>
                             <h3 className="font-bold text-gray-700 text-lg">
-                              Dr. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
+                              Dt. {appointment.dietitian.firstName} {appointment.dietitian.lastName}
                             </h3>
                             <p className="text-xs text-gray-400 mt-0.5">Completed</p>
                           </div>

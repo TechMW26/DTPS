@@ -636,7 +636,7 @@ export default function AdminPaymentsPage() {
                 <div className="p-4 bg-gray-50 rounded-xl">
                   <p className="text-sm text-gray-500 mb-1">Assigned Dietitian</p>
                   <p className="font-medium text-gray-900">
-                    Dr. {selectedPayment.dietitian.firstName} {selectedPayment.dietitian.lastName}
+                    Dt. {selectedPayment.dietitian.firstName} {selectedPayment.dietitian.lastName}
                   </p>
                 </div>
               )}

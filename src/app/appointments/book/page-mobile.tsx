@@ -240,7 +240,7 @@ export default function MobileBookAppointmentPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <h3 className="font-semibold text-gray-900 text-lg">
-                        Dr. {dietitian.firstName} {dietitian.lastName}
+                        Dt. {dietitian.firstName} {dietitian.lastName}
                       </h3>
                       <ChevronRight className="h-5 w-5 text-gray-400 shrink-0" />
                     </div>
@@ -285,7 +285,7 @@ export default function MobileBookAppointmentPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-gray-900">
-                  Dr. {selectedDietitian.firstName} {selectedDietitian.lastName}
+                  Dt. {selectedDietitian.firstName} {selectedDietitian.lastName}
                 </h3>
                 <p className="text-sm text-gray-500">Selected Dietitian</p>
               </div>
@@ -411,7 +411,7 @@ export default function MobileBookAppointmentPage() {
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900">
-                  Dr. {selectedDietitian.firstName} {selectedDietitian.lastName}
+                  Dt. {selectedDietitian.firstName} {selectedDietitian.lastName}
                 </h4>
                 <p className="text-sm text-gray-500">Dietitian</p>
               </div>

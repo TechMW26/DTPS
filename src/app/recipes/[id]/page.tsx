@@ -382,7 +382,7 @@ export default function RecipeViewPage() {
                 <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                   <div className="flex items-center space-x-1">
                     <Users className="h-4 w-4" />
-                    <span>By Dr. {recipe.createdBy.firstName} {recipe.createdBy.lastName}</span>
+                    <span>By Dt. {recipe.createdBy.firstName} {recipe.createdBy.lastName}</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <Clock className="h-4 w-4" />
