@@ -20,20 +20,28 @@ export async function GET(request: NextRequest) {
     const includeAvailability = searchParams.get('includeAvailability') === 'true';
     const search = searchParams.get('search');
     const specialization = searchParams.get('specialization');
+    const includeAll = searchParams.get('includeAll') === 'true'; // For admin to see all statuses
+
+    // Check if admin role
+    const isAdmin = session.user.role?.toLowerCase()?.includes('admin');
 
     // Build query - include both dietitians and health counselors
     let query: any = {
       role: { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
-      status: 'active'
     };
+
+    // Only filter by active status unless admin requests all
+    if (!isAdmin || !includeAll) {
+      query.status = 'active';
+    }
 
     // For clients, only show their assigned dietitian
     if (session.user.role === UserRole.CLIENT) {
       const currentUser = await withCache(
-      `users:dietitians:${JSON.stringify(session.user.id)}`,
-      async () => await User.findById(session.user.id).select('assignedDietitian'),
-      { ttl: 120000, tags: ['users'] }
-    );
+        `users:dietitians:${JSON.stringify(session.user.id)}`,
+        async () => await User.findById(session.user.id).select('assignedDietitian'),
+        { ttl: 120000, tags: ['users'] }
+      );
 
       if (currentUser?.assignedDietitian) {
         // Override query to show only assigned dietitian
@@ -66,7 +74,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Select fields
-    let selectFields = 'firstName lastName email avatar bio experience consultationFee specializations credentials';
+    let selectFields = 'firstName lastName email avatar bio experience consultationFee specializations credentials status';
     if (includeAvailability) {
       selectFields += ' availability';
     }
@@ -74,8 +82,8 @@ export async function GET(request: NextRequest) {
     const dietitians = await withCache(
       `users:dietitians:${JSON.stringify(query)}`,
       async () => await User.find(query)
-      .select(selectFields)
-      .sort({ firstName: 1, lastName: 1 })
+        .select(selectFields)
+        .sort({ firstName: 1, lastName: 1 })
       ,
       { ttl: 120000, tags: ['users'] }
     );
@@ -93,6 +101,7 @@ export async function GET(request: NextRequest) {
       consultationFee: dietitian.consultationFee,
       specializations: dietitian.specializations || [],
       credentials: dietitian.credentials || [],
+      status: dietitian.status || 'active',
       availability: includeAvailability ? dietitian.availability : undefined
     }));
 
