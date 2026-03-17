@@ -6,13 +6,14 @@ import PaymentLink from '@/lib/db/models/PaymentLink';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { UserRole } from '@/types';
 import Razorpay from 'razorpay';
+import { emitPaymentUpdate, emitPaymentLinkUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';
 
 // Initialize Razorpay
 const razorpay = process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
   ? new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
-    })
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  })
   : null;
 
 // POST /api/payment-links/sync - Sync payment status from Razorpay
@@ -51,72 +52,72 @@ export async function POST(request: NextRequest) {
 
     // If already paid, no need to sync
     if (paymentLink.status === 'paid') {
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         message: 'Payment already marked as paid',
-        paymentLink 
+        paymentLink
       });
     }
 
     // Check if Razorpay is configured
     if (!razorpay || !paymentLink.razorpayPaymentLinkId) {
-      return NextResponse.json({ 
-        error: 'Razorpay not configured or no Razorpay payment link ID' 
+      return NextResponse.json({
+        error: 'Razorpay not configured or no Razorpay payment link ID'
       }, { status: 400 });
     }
 
     // Fetch payment link status from Razorpay
     try {
       const razorpayLink: any = await razorpay.paymentLink.fetch(paymentLink.razorpayPaymentLinkId);
-      
+
 
       // Update status based on Razorpay response
       if (razorpayLink.status === 'paid') {
         paymentLink.status = 'paid';
         paymentLink.paidAt = razorpayLink.paid_at ? new Date(razorpayLink.paid_at * 1000) : new Date(); // Convert Unix timestamp
-        
+
         // Try to fetch payment details if available
         if (razorpayLink.payments && Array.isArray(razorpayLink.payments) && razorpayLink.payments.length > 0) {
           const latestPayment = razorpayLink.payments[razorpayLink.payments.length - 1];
-          
+
           try {
             // Fetch full payment details
             const paymentDetails: any = await razorpay.payments.fetch(latestPayment.payment_id);
-            
+
             paymentLink.razorpayPaymentId = paymentDetails.id;
             paymentLink.razorpayOrderId = paymentDetails.order_id;
-            
+
             // Transaction ID
-            paymentLink.transactionId = paymentDetails.acquirer_data?.rrn || 
-                                        paymentDetails.acquirer_data?.upi_transaction_id ||
-                                        paymentDetails.acquirer_data?.bank_transaction_id ||
-                                        paymentDetails.id;
-            
+            paymentLink.transactionId = paymentDetails.acquirer_data?.rrn ||
+              paymentDetails.acquirer_data?.upi_transaction_id ||
+              paymentDetails.acquirer_data?.bank_transaction_id ||
+              paymentDetails.id;
+
             // Payment method
             paymentLink.paymentMethod = paymentDetails.method;
-            
+
             // Payer details
             paymentLink.payerEmail = paymentDetails.email;
             paymentLink.payerPhone = paymentDetails.contact;
-            
+
             // Card details
             if (paymentDetails.card) {
               paymentLink.cardLast4 = paymentDetails.card.last4;
               paymentLink.cardNetwork = paymentDetails.card.network;
             }
-            
+
             // Bank/Wallet/UPI
             if (paymentDetails.bank) paymentLink.bank = paymentDetails.bank;
             if (paymentDetails.wallet) paymentLink.wallet = paymentDetails.wallet;
             if (paymentDetails.vpa) paymentLink.vpa = paymentDetails.vpa;
-            
+
           } catch (paymentFetchError) {
             console.error('Error fetching payment details:', paymentFetchError);
             // Continue with what we have
             paymentLink.razorpayPaymentId = latestPayment.payment_id;
           }
         }
-        
+
         await paymentLink.save();
 
         // Create/Update UnifiedPayment record (UPDATE existing, don't create duplicate)
@@ -171,7 +172,32 @@ export async function POST(request: NextRequest) {
             console.error('Error syncing UnifiedPayment during sync:', purchaseError);
           }
         }
-        
+
+        // Emit real-time update SSE events so all dashboards update immediately
+        clearPaymentCaches();
+        await emitPaymentLinkUpdate(
+          String(paymentLink.client),
+          {
+            paymentLinkId: String(paymentLink._id),
+            status: paymentLink.status,
+            paidAt: paymentLink.paidAt,
+            syncedAt: new Date().toISOString(),
+          },
+          paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+        );
+        if (unifiedPaymentCreated) {
+          await emitPaymentUpdate(
+            String(paymentLink.client),
+            {
+              paymentLinkId: String(paymentLink._id),
+              status: 'paid',
+              paidAt: paymentLink.paidAt,
+              syncedAt: new Date().toISOString(),
+            },
+            paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+          );
+        }
+
         return NextResponse.json({
           success: true,
           message: 'Payment status synced successfully - Payment is PAID',
@@ -182,7 +208,18 @@ export async function POST(request: NextRequest) {
       } else if (razorpayLink.status === 'expired') {
         paymentLink.status = 'expired';
         await paymentLink.save();
-        
+
+        // Emit real-time update
+        clearPaymentCaches();
+        await emitPaymentLinkUpdate(
+          String(paymentLink.client),
+          {
+            paymentLinkId: String(paymentLink._id),
+            status: paymentLink.status,
+          },
+          paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+        );
+
         return NextResponse.json({
           success: true,
           message: 'Payment link is expired',
@@ -192,7 +229,18 @@ export async function POST(request: NextRequest) {
       } else if (razorpayLink.status === 'cancelled') {
         paymentLink.status = 'cancelled';
         await paymentLink.save();
-        
+
+        // Emit real-time update
+        clearPaymentCaches();
+        await emitPaymentLinkUpdate(
+          String(paymentLink.client),
+          {
+            paymentLinkId: String(paymentLink._id),
+            status: paymentLink.status,
+          },
+          paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+        );
+
         return NextResponse.json({
           success: true,
           message: 'Payment link is cancelled',
@@ -211,9 +259,9 @@ export async function POST(request: NextRequest) {
 
     } catch (razorpayError: any) {
       console.error('Error fetching from Razorpay:', razorpayError);
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Failed to fetch payment status from Razorpay',
-        details: razorpayError.message 
+        details: razorpayError.message
       }, { status: 500 });
     }
 
@@ -261,7 +309,7 @@ export async function GET(request: NextRequest) {
     for (const paymentLink of pendingLinks) {
       try {
         const razorpayLink: any = await razorpay.paymentLink.fetch(paymentLink.razorpayPaymentLinkId!);
-        
+
         if (razorpayLink.status === 'paid') {
           paymentLink.status = 'paid';
           paymentLink.paidAt = razorpayLink.paid_at ? new Date(razorpayLink.paid_at * 1000) : new Date();

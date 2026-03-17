@@ -7,6 +7,8 @@ import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { SSEManager } from '@/lib/realtime/sse-manager';
 import { clearCacheByTag } from '@/lib/cache/memoryCache';
+import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
+import { emitPaymentUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';
 import crypto from 'crypto';
 
 // POST /api/client/service-plans/verify - Verify Razorpay payment
@@ -60,29 +62,22 @@ export async function POST(request: NextRequest) {
     );
 
     // Invalidate caches so payment lists return fresh data
-    clearCacheByTag('payment_links');
-    clearCacheByTag('payments');
-    clearCacheByTag('client_purchases');
+    clearPaymentCaches();
 
-    // Emit SSE events so billing pages update in real-time
-    try {
-      const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-      const sse = SSEManager.getInstance();
-      const notifyUserIds = new Set<string>([
-        ...admins.map((a: any) => String(a._id)),
-        session.user.id,
-      ]);
-      // Also notify dietitian if present on the payment
-      if (payment?.dietitian) {
-        notifyUserIds.add(String(payment.dietitian));
-      }
-      sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+    // Notify ALL relevant users: admins, client, dietitian, health counselor
+    await emitPaymentUpdate(
+      session.user.id,
+      {
         paymentId: payment ? String(payment._id) : undefined,
         status: 'paid',
         paidAt: new Date(),
-      });
-    } catch (e) {
-      console.warn('Failed to emit payment SSE events (client verify):', e);
+      },
+      payment?.dietitian ? [String(payment.dietitian)] : []
+    );
+
+    // Auto-send invoice email (fire-and-forget)
+    if (payment) {
+      sendInvoiceOnPayment(String(payment._id)).catch(() => { });
     }
 
     return NextResponse.json({

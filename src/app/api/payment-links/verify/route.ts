@@ -9,6 +9,7 @@ import { UserRole } from '@/types';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { SSEManager } from '@/lib/realtime/sse-manager';
 import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
+import { emitPaymentUpdate, emitPaymentLinkUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';
 
 // Helper function to create/update UnifiedPayment from PaymentLink
 // Uses syncRazorpayPayment to UPDATE existing or CREATE new (NO DUPLICATES)
@@ -120,34 +121,29 @@ export async function POST(request: NextRequest) {
       const unifiedPayment = await createUnifiedPaymentFromPaymentLink(paymentLink);
 
       // Invalidate caches so payment sections update without manual refresh.
-      clearCacheByTag('payment_links');
-      clearCacheByTag('payments');
-      clearCacheByTag('client_purchases');
+      clearPaymentCaches();
 
-      // Realtime notify: admin + involved client + involved dietitian
-      try {
-        const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-        const sse = SSEManager.getInstance();
-        const notifyUserIds = new Set<string>([
-          ...admins.map(a => String(a._id)),
-          String(paymentLink.client),
-          String(paymentLink.dietitian),
-        ]);
-        sse.sendToUsers(Array.from(notifyUserIds), 'payment_link_updated', {
+      // Notify ALL relevant users: admins, client, dietitian, health counselor
+      await emitPaymentLinkUpdate(
+        String(paymentLink.client),
+        {
           paymentLinkId: String(paymentLink._id),
           status: paymentLink.status,
           paidAt: paymentLink.paidAt,
-        });
-        if (unifiedPayment) {
-          sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+        },
+        paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+      );
+      if (unifiedPayment) {
+        await emitPaymentUpdate(
+          String(paymentLink.client),
+          {
             paymentId: String(unifiedPayment._id),
             status: unifiedPayment.status,
             paidAt: unifiedPayment.paidAt,
             paymentLinkId: String(paymentLink._id),
-          });
-        }
-      } catch (e) {
-        console.warn('Failed to emit payment SSE events (verify):', e);
+          },
+          paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+        );
       }
 
       // Auto-send invoice email (fire-and-forget)

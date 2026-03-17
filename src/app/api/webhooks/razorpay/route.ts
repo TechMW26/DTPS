@@ -12,6 +12,7 @@ import { computeClientStatus } from '@/lib/status/computeClientStatus';
 import { SSEManager } from '@/lib/realtime/sse-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
+import { emitPaymentUpdate, emitPaymentLinkUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';
 //
 // Verify Razorpay webhook signature
 function verifyRazorpaySignature(
@@ -168,26 +169,15 @@ async function handlePaymentSuccess(payload: any) {
     //
 
     // Clear caches and emit SSE for real-time updates
-    clearCacheByTag('payments');
-    clearCacheByTag('subscriptions');
-    clearCacheByTag('client_purchases');
+    clearPaymentCaches();
 
-    try {
-      const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-      const sse = SSEManager.getInstance();
-      const notifyUserIds = new Set<string>([
-        ...admins.map(a => String(a._id)),
-        String(subscription.client),
-        String(subscription.dietitian),
-      ]);
-      sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
-        subscriptionId: String(subscription._id),
-        status: 'paid',
-        paidAt: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.warn('Failed to emit payment SSE event (webhook success):', e);
-    }
+    // Notify ALL relevant users: admins, client, dietitian, health counselor
+    const clientId = subscription.client?.toString();
+    await emitPaymentUpdate(clientId, {
+      subscriptionId: String(subscription._id),
+      status: 'paid',
+      paidAt: new Date().toISOString(),
+    }, subscription.dietitian ? [String(subscription.dietitian)] : []);
 
     // Auto-send invoice email (fire-and-forget)
     try {
@@ -346,27 +336,18 @@ async function handlePaymentLinkCompleted(payload: any) {
       }
       //
       // Clear caches for real-time updates
-      clearCacheByTag('payments');
-      clearCacheByTag('payment_links');
-      clearCacheByTag('client_purchases');
+      clearPaymentCaches();
 
-      // Emit SSE event for real-time UI updates
-      try {
-        const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-        const sse = SSEManager.getInstance();
-        const notifyUserIds = new Set<string>([
-          ...admins.map(a => String(a._id)),
-          String(paymentLink.client),
-          String(paymentLink.dietitian),
-        ]);
-        sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+      // Notify ALL relevant users: admins, client, dietitian, health counselor
+      await emitPaymentUpdate(
+        String(paymentLink.client),
+        {
           paymentLinkId: String(paymentLink._id),
           status: 'paid',
           paidAt: new Date().toISOString(),
-        });
-      } catch (e) {
-        console.warn('Failed to emit payment SSE event (webhook):', e);
-      }
+        },
+        paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+      );
 
       // Auto-send invoice email (fire-and-forget)
       try {

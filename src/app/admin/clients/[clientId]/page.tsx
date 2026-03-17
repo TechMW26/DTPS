@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useRealtime } from '@/hooks/useRealtime';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -152,6 +153,30 @@ export default function AdminClientDetailPage() {
       fetchClientDetails();
     }
   }, [clientId]);
+
+  // Quiet re-fetch for real-time updates (no loading spinner)
+  const fetchClientDetailsQuiet = useCallback(async () => {
+    if (!clientId) return;
+    try {
+      const response = await fetch(`/api/admin/clients/${clientId}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      setClient(data.client);
+      setMealPlans(data.mealPlans || []);
+      setPayments(data.payments || []);
+    } catch {
+      // Quiet fail for background refresh
+    }
+  }, [clientId]);
+
+  // Real-time SSE: auto-refresh when payment status changes
+  useRealtime({
+    onMessage: (event) => {
+      if (event.type === 'payment_updated' || event.type === 'payment_link_updated') {
+        fetchClientDetailsQuiet();
+      }
+    },
+  });
 
   const fetchClientDetails = async () => {
     try {

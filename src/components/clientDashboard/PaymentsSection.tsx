@@ -122,7 +122,8 @@ export default function PaymentsSection({
   const [amount, setAmount] = useState<number | "">("");
   const [tax, setTax] = useState<number | "">(0);
   const [discount, setDiscount] = useState<number | "">(0);
-  const [finalAmount, setFinalAmount] = useState<number>(0);
+  const [finalAmount, setFinalAmount] = useState<number | "">(0);
+  const [isEditingFinalAmount, setIsEditingFinalAmount] = useState(false);
   const [notes, setNotes] = useState("");
   const [showToClient, setShowToClient] = useState(true);
   const [planCategory, setPlanCategory] = useState("");
@@ -205,8 +206,10 @@ export default function PaymentsSection({
     }
   };
 
-  // Auto-calc final amount
+  // Auto-calc final amount when discount changes (only when not editing final amount directly)
   useEffect(() => {
+    if (isEditingFinalAmount) return; // Skip if user is editing final amount directly
+
     const amt = typeof amount === "number" ? amount : 0;
     const t = typeof tax === "number" ? tax : 0;
     const d = typeof discount === "number" ? discount : 0;
@@ -222,7 +225,34 @@ export default function PaymentsSection({
     const finalVal = Math.max(0, taxed - (amt * effectiveDiscount) / 100);
     // Round up to nearest integer (e.g., 739.26 → 740, 72.12 → 73)
     setFinalAmount(Math.ceil(finalVal));
-  }, [amount, tax, discount, maxDiscount]);
+  }, [amount, tax, discount, maxDiscount, isEditingFinalAmount]);
+
+  // Calculate discount from final amount when user edits final amount directly
+  const handleFinalAmountChange = (newFinalAmount: number) => {
+    setIsEditingFinalAmount(true);
+    setFinalAmount(newFinalAmount);
+
+    const amt = typeof amount === "number" ? amount : 0;
+    const t = typeof tax === "number" ? tax : 0;
+
+    if (amt > 0) {
+      // Calculate what the taxed amount would be
+      const taxedAmount = amt + (amt * t) / 100;
+
+      // Calculate discount amount needed to get to final amount
+      // finalAmount = taxedAmount - (amt * discount / 100)
+      // So: discount = (taxedAmount - finalAmount) * 100 / amt
+      const discountAmount = taxedAmount - newFinalAmount;
+      const calculatedDiscount = (discountAmount * 100) / amt;
+
+      // Clamp to valid range [0, maxDiscount]
+      const clampedDiscount = Math.max(0, Math.min(calculatedDiscount, maxDiscount));
+      setDiscount(Math.round(clampedDiscount * 100) / 100); // Round to 2 decimal places
+    }
+
+    // Reset the flag after a short delay to allow normal discount editing again
+    setTimeout(() => setIsEditingFinalAmount(false), 100);
+  };
 
   // Fetch payment links from API
   const fetchPaymentLinks = useCallback(async () => {
@@ -270,6 +300,8 @@ export default function PaymentsSection({
     setAmount("");
     setTax(0);
     setDiscount(0);
+    setFinalAmount(0);
+    setIsEditingFinalAmount(false);
     setNotes("");
     setShowToClient(true);
     setPlanCategory("");
@@ -1321,10 +1353,19 @@ export default function PaymentsSection({
 
                 {/* Final Amount */}
                 <div>
-                  <label className="text-xs font-medium text-gray-700">Final Amount</label>
-                  <div className="mt-1 p-2 bg-green-50 rounded-lg font-bold text-green-700 text-lg border border-green-200">
-                    ₹{finalAmount.toLocaleString()}
+                  <label className="text-xs font-medium text-gray-700">Final Amount (Editable)</label>
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-green-600 font-semibold">₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={finalAmount}
+                      onChange={(e) => handleFinalAmountChange(Number(e.target.value))}
+                      className="w-full border border-green-300 p-2 pl-8 rounded-lg bg-green-50 font-bold text-green-700 text-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      placeholder="Enter final amount"
+                    />
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">Edit to auto-calculate discount %</p>
                 </div>
 
                 {/* Notes */}

@@ -8,6 +8,7 @@ import { UserRole } from '@/types';
 import { SSEManager } from '@/lib/realtime/sse-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
+import { emitPaymentUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';
 import crypto from 'crypto';
 
 // POST /api/client/subscriptions/verify - Verify Razorpay payment for subscriptions
@@ -66,30 +67,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Clear caches so UI updates immediately
-    clearCacheByTag('payments');
-    clearCacheByTag('client_purchases');
-    clearCacheByTag('subscriptions');
+    clearPaymentCaches();
 
-    // Emit SSE event for real-time UI update
-    try {
-      const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-      const sse = SSEManager.getInstance();
-      const notifyUserIds = new Set<string>([
-        ...admins.map(a => String(a._id)),
-        session.user.id,
-      ]);
-      // Add dietitian if payment has one
-      if (payment.dietitian) {
-        notifyUserIds.add(String(payment.dietitian));
-      }
-      sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+    // Notify ALL relevant users: admins, client, dietitian, health counselor
+    await emitPaymentUpdate(
+      session.user.id,
+      {
         paymentId: String(payment._id),
         status: 'paid',
         paidAt: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.warn('Failed to emit payment SSE event:', e);
-    }
+      },
+      payment.dietitian ? [String(payment.dietitian)] : []
+    );
 
     // Auto-send invoice email (fire-and-forget)
     sendInvoiceOnPayment(String(payment._id)).catch(() => { });

@@ -7,6 +7,7 @@ import { clearCacheByTag } from '@/lib/api/utils';
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { SSEManager } from '@/lib/realtime/sse-manager';
+import { emitPaymentUpdate, emitPaymentLinkUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';
 
 // Razorpay webhook secret
 const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
@@ -117,41 +118,41 @@ export async function POST(request: NextRequest) {
         // This captures payment regardless of which phone/email was used
         paymentLink.status = 'paid';
         paymentLink.paidAt = new Date();
-        
+
         if (paymentEntity) {
           // Core payment identifiers
           paymentLink.razorpayPaymentId = paymentEntity.id;
           paymentLink.razorpayOrderId = paymentEntity.order_id;
-          
+
           // Transaction ID (unique identifier for the payment)
-          paymentLink.transactionId = paymentEntity.acquirer_data?.rrn || 
-                                      paymentEntity.acquirer_data?.upi_transaction_id ||
-                                      paymentEntity.acquirer_data?.bank_transaction_id ||
-                                      paymentEntity.id;
-          
+          paymentLink.transactionId = paymentEntity.acquirer_data?.rrn ||
+            paymentEntity.acquirer_data?.upi_transaction_id ||
+            paymentEntity.acquirer_data?.bank_transaction_id ||
+            paymentEntity.id;
+
           // Payment method used
           paymentLink.paymentMethod = paymentEntity.method; // card, netbanking, wallet, upi
-          
+
           // Payer details (whoever actually paid, regardless of registered phone)
           paymentLink.payerEmail = paymentEntity.email;
           paymentLink.payerPhone = paymentEntity.contact;
-          
+
           // Card details
           if (paymentEntity.card) {
             paymentLink.cardLast4 = paymentEntity.card.last4;
             paymentLink.cardNetwork = paymentEntity.card.network;
           }
-          
+
           // Bank/Netbanking
           if (paymentEntity.bank) {
             paymentLink.bank = paymentEntity.bank;
           }
-          
+
           // Wallet
           if (paymentEntity.wallet) {
             paymentLink.wallet = paymentEntity.wallet;
           }
-          
+
           // UPI
           if (paymentEntity.vpa) {
             paymentLink.vpa = paymentEntity.vpa;
@@ -163,32 +164,29 @@ export async function POST(request: NextRequest) {
         // Create UnifiedPayment record - this replaces both ClientPurchase and Payment
         const payment = await createUnifiedPaymentFromPaymentLink(paymentLink);
 
-        clearCacheByTag('payment_links');
-        clearCacheByTag('payments');
+        clearPaymentCaches();
 
-        try {
-          const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-          const sse = SSEManager.getInstance();
-          const notifyUserIds = new Set<string>([
-            ...admins.map(a => String(a._id)),
-            String(paymentLink.client),
-            String(paymentLink.dietitian),
-          ]);
-          sse.sendToUsers(Array.from(notifyUserIds), 'payment_link_updated', {
+        // Notify ALL relevant users: admins, client, dietitian, health counselor
+        await emitPaymentLinkUpdate(
+          String(paymentLink.client),
+          {
             paymentLinkId: String(paymentLink._id),
             status: paymentLink.status,
             paidAt: paymentLink.paidAt,
-          });
-          if (payment) {
-            sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+          },
+          paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+        );
+        if (payment) {
+          await emitPaymentUpdate(
+            String(paymentLink.client),
+            {
               paymentId: String(payment._id),
               status: payment.status,
               paidAt: payment.paidAt,
               paymentLinkId: String(paymentLink._id),
-            });
-          }
-        } catch (e) {
-          console.warn('Failed to emit payment SSE events (webhook paid):', e);
+            },
+            paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+          );
         }
 
         break;
@@ -209,22 +207,15 @@ export async function POST(request: NextRequest) {
           paymentLink.status = 'expired';
           await paymentLink.save();
 
-          clearCacheByTag('payment_links');
-          try {
-            const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-            const sse = SSEManager.getInstance();
-            const notifyUserIds = new Set<string>([
-              ...admins.map(a => String(a._id)),
-              String(paymentLink.client),
-              String(paymentLink.dietitian),
-            ]);
-            sse.sendToUsers(Array.from(notifyUserIds), 'payment_link_updated', {
+          clearPaymentCaches();
+          await emitPaymentLinkUpdate(
+            String(paymentLink.client),
+            {
               paymentLinkId: String(paymentLink._id),
               status: paymentLink.status,
-            });
-          } catch (e) {
-            console.warn('Failed to emit payment_link_updated (expired):', e);
-          }
+            },
+            paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+          );
         }
         break;
       }
@@ -244,22 +235,15 @@ export async function POST(request: NextRequest) {
           paymentLink.status = 'cancelled';
           await paymentLink.save();
 
-          clearCacheByTag('payment_links');
-          try {
-            const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-            const sse = SSEManager.getInstance();
-            const notifyUserIds = new Set<string>([
-              ...admins.map(a => String(a._id)),
-              String(paymentLink.client),
-              String(paymentLink.dietitian),
-            ]);
-            sse.sendToUsers(Array.from(notifyUserIds), 'payment_link_updated', {
+          clearPaymentCaches();
+          await emitPaymentLinkUpdate(
+            String(paymentLink.client),
+            {
               paymentLinkId: String(paymentLink._id),
               status: paymentLink.status,
-            });
-          } catch (e) {
-            console.warn('Failed to emit payment_link_updated (cancelled):', e);
-          }
+            },
+            paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+          );
         }
         break;
       }
@@ -267,31 +251,31 @@ export async function POST(request: NextRequest) {
       case 'payment.captured': {
         // Handle direct payment capture
         const paymentEntity = event.payload.payment?.entity;
-        
+
         // Try to find payment link by notes or by payment link reference
         let paymentLink = null;
-        
+
         if (paymentEntity?.notes?.paymentLinkId) {
           paymentLink = await PaymentLink.findById(paymentEntity.notes.paymentLinkId);
         } else if (paymentEntity?.notes?.razorpayPaymentLinkId) {
           paymentLink = await PaymentLink.findOne({ razorpayPaymentLinkId: paymentEntity.notes.razorpayPaymentLinkId });
         }
-        
+
         if (paymentLink && paymentLink.status !== 'paid') {
           paymentLink.status = 'paid';
           paymentLink.paidAt = new Date();
           paymentLink.razorpayPaymentId = paymentEntity.id;
           paymentLink.razorpayOrderId = paymentEntity.order_id;
-          
+
           // Capture all transaction details
-          paymentLink.transactionId = paymentEntity.acquirer_data?.rrn || 
-                                      paymentEntity.acquirer_data?.upi_transaction_id ||
-                                      paymentEntity.acquirer_data?.bank_transaction_id ||
-                                      paymentEntity.id;
+          paymentLink.transactionId = paymentEntity.acquirer_data?.rrn ||
+            paymentEntity.acquirer_data?.upi_transaction_id ||
+            paymentEntity.acquirer_data?.bank_transaction_id ||
+            paymentEntity.id;
           paymentLink.paymentMethod = paymentEntity.method;
           paymentLink.payerEmail = paymentEntity.email;
           paymentLink.payerPhone = paymentEntity.contact;
-          
+
           if (paymentEntity.card) {
             paymentLink.cardLast4 = paymentEntity.card.last4;
             paymentLink.cardNetwork = paymentEntity.card.network;
@@ -299,39 +283,36 @@ export async function POST(request: NextRequest) {
           if (paymentEntity.bank) paymentLink.bank = paymentEntity.bank;
           if (paymentEntity.wallet) paymentLink.wallet = paymentEntity.wallet;
           if (paymentEntity.vpa) paymentLink.vpa = paymentEntity.vpa;
-          
+
           await paymentLink.save();
-          
+
           // Create UnifiedPayment record - this replaces both ClientPurchase and Payment
           const payment = await createUnifiedPaymentFromPaymentLink(paymentLink);
 
-          clearCacheByTag('payment_links');
-          clearCacheByTag('payments');
-          try {
-            const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-            const sse = SSEManager.getInstance();
-            const notifyUserIds = new Set<string>([
-              ...admins.map(a => String(a._id)),
-              String(paymentLink.client),
-              String(paymentLink.dietitian),
-            ]);
-            sse.sendToUsers(Array.from(notifyUserIds), 'payment_link_updated', {
+          clearPaymentCaches();
+          // Notify ALL relevant users: admins, client, dietitian, health counselor
+          await emitPaymentLinkUpdate(
+            String(paymentLink.client),
+            {
               paymentLinkId: String(paymentLink._id),
               status: paymentLink.status,
               paidAt: paymentLink.paidAt,
-            });
-            if (payment) {
-              sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+            },
+            paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+          );
+          if (payment) {
+            await emitPaymentUpdate(
+              String(paymentLink.client),
+              {
                 paymentId: String(payment._id),
                 status: payment.status,
                 paidAt: payment.paidAt,
                 paymentLinkId: String(paymentLink._id),
-              });
-            }
-          } catch (e) {
-            console.warn('Failed to emit payment SSE events (captured):', e);
+              },
+              paymentLink.dietitian ? [String(paymentLink.dietitian)] : []
+            );
           }
-          
+
         }
         break;
       }

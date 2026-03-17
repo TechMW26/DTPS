@@ -745,6 +745,11 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
       const data = await res.json();
 
       if (data.success) {
+        // Show payment warning if plan was created without a linked payment
+        if (data.paymentWarning) {
+          toast.warning(data.paymentWarning, { duration: 8000 });
+        }
+
         // Keep latest meal type timings in local state
         setInitialMealTypes(finalMealTypes);
 

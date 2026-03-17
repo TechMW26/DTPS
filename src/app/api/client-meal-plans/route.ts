@@ -5,6 +5,7 @@ import connectDB from '@/lib/db/connection';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import MealPlanTemplate from '@/lib/db/models/MealPlanTemplate';
 import DietTemplate from '@/lib/db/models/DietTemplate';
+import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { z } from 'zod';
@@ -321,6 +322,42 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // Check if client has a valid (paid) payment record
+    // This ensures plans are always linked to payments in the payment section
+    let paymentWarning: string | null = null;
+    let linkedPaymentId: string | null = validatedData.purchaseId || null;
+
+    if (!linkedPaymentId) {
+      // Try to find a recent paid payment for this client that doesn't have a meal plan yet
+      const recentPaidPayment = await UnifiedPayment.findOne({
+        client: validatedData.clientId,
+        $or: [
+          { status: 'paid' },
+          { paymentStatus: 'paid' },
+          { status: 'completed' }
+        ],
+        mealPlanCreated: { $ne: true }
+      }).sort({ paidAt: -1, createdAt: -1 }).lean() as any;
+
+      if (recentPaidPayment) {
+        linkedPaymentId = String(recentPaidPayment._id);
+      } else {
+        // Check if ANY payment exists for this client at all
+        const anyPayment = await UnifiedPayment.findOne({
+          client: validatedData.clientId,
+          $or: [
+            { status: 'paid' },
+            { paymentStatus: 'paid' },
+            { status: 'completed' }
+          ]
+        }).lean();
+
+        if (!anyPayment) {
+          paymentWarning = 'No paid payment record found for this client. The plan has been created but is not linked to any payment. Please ensure a payment is created for proper billing tracking.';
+        }
+      }
+    }
+
     // Check for overlapping active meal plans for the same client (no cache for write operations)
     const overlappingPlan = await ClientMealPlan.findOne({
       clientId: validatedData.clientId,
@@ -344,7 +381,7 @@ export async function POST(request: NextRequest) {
     const mealPlanData: any = {
       clientId: validatedData.clientId,
       dietitianId: session.user.id,
-      purchaseId: validatedData.purchaseId || undefined, // For shared freeze tracking
+      purchaseId: linkedPaymentId || validatedData.purchaseId || undefined, // Link to payment for tracking
       name: validatedData.name,
       description: validatedData.description,
       startDate: startDate,
@@ -380,6 +417,18 @@ export async function POST(request: NextRequest) {
     const clientMealPlan = new ClientMealPlan(mealPlanData);
 
     await clientMealPlan.save();
+
+    // Mark the linked payment as having a meal plan created
+    if (linkedPaymentId) {
+      try {
+        await UnifiedPayment.findByIdAndUpdate(linkedPaymentId, {
+          mealPlanCreated: true,
+          $addToSet: { linkedMealPlanIds: clientMealPlan._id }
+        });
+      } catch (linkErr) {
+        console.warn('[ClientMealPlan] Failed to link payment to meal plan:', linkErr);
+      }
+    }
 
     // Populate the created meal plan
     await clientMealPlan.populate([
@@ -473,8 +522,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Meal plan assigned successfully',
-      mealPlan: clientMealPlan
+      message: paymentWarning
+        ? 'Meal plan assigned successfully (Warning: No payment linked)'
+        : 'Meal plan assigned successfully',
+      mealPlan: clientMealPlan,
+      paymentWarning: paymentWarning || undefined,
+      linkedPaymentId: linkedPaymentId || undefined,
     }, { status: 201 });
 
   } catch (error) {
