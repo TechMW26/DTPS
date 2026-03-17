@@ -121,8 +121,8 @@ export default function PaymentsSection({
   const [expireDate, setExpireDate] = useState("");
   const [amount, setAmount] = useState<number | "">("");
   const [tax, setTax] = useState<number | "">(0);
-  const [discount, setDiscount] = useState<number | "">(0);
-  const [finalAmount, setFinalAmount] = useState<number | "">(0);
+  const [discount, setDiscount] = useState("0");
+  const [finalAmount, setFinalAmount] = useState("0");
   const [isEditingFinalAmount, setIsEditingFinalAmount] = useState(false);
   const [notes, setNotes] = useState("");
   const [showToClient, setShowToClient] = useState(true);
@@ -212,46 +212,79 @@ export default function PaymentsSection({
 
     const amt = typeof amount === "number" ? amount : 0;
     const t = typeof tax === "number" ? tax : 0;
-    const d = typeof discount === "number" ? discount : 0;
+    const d = parseFloat(discount) || 0;
 
     // Enforce max discount limit
     const effectiveDiscount = Math.min(d, maxDiscount);
-    if (d > maxDiscount) {
-      setDiscount(maxDiscount);
-      toast.error(`Maximum discount for this plan is ${maxDiscount}%`);
-    }
 
     const taxed = amt + (amt * t) / 100;
     const finalVal = Math.max(0, taxed - (amt * effectiveDiscount) / 100);
     // Round up to nearest integer (e.g., 739.26 → 740, 72.12 → 73)
-    setFinalAmount(Math.ceil(finalVal));
+    setFinalAmount(String(Math.ceil(finalVal)));
   }, [amount, tax, discount, maxDiscount, isEditingFinalAmount]);
 
-  // Calculate discount from final amount when user edits final amount directly
-  const handleFinalAmountChange = (newFinalAmount: number) => {
-    setIsEditingFinalAmount(true);
-    setFinalAmount(newFinalAmount);
+  // Handle discount input change — allow free typing, validate on blur
+  const handleDiscountChange = (value: string) => {
+    // Allow empty string, digits, and one decimal point
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      setDiscount(value);
+    }
+  };
 
+  // Validate discount on blur — clamp to [0, maxDiscount]
+  const handleDiscountBlur = () => {
+    const d = parseFloat(discount) || 0;
+    const clamped = Math.min(Math.max(0, d), maxDiscount);
+    if (d > maxDiscount) {
+      toast.error(`Maximum discount for this plan is ${maxDiscount}%`);
+    }
+    setDiscount(String(Math.round(clamped * 100) / 100));
+  };
+
+  // Calculate discount from final amount when user edits final amount directly
+  const handleFinalAmountChange = (value: string) => {
+    // Allow empty string, digits, and one decimal point
+    if (value !== '' && !/^\d*\.?\d*$/.test(value)) return;
+
+    setIsEditingFinalAmount(true);
+    setFinalAmount(value);
+  };
+
+  // Validate final amount on blur and calculate discount
+  const handleFinalAmountBlur = () => {
     const amt = typeof amount === "number" ? amount : 0;
     const t = typeof tax === "number" ? tax : 0;
+    const taxedAmount = amt + (amt * t) / 100;
 
-    if (amt > 0) {
-      // Calculate what the taxed amount would be
-      const taxedAmount = amt + (amt * t) / 100;
+    // Parse the entered final amount
+    let val = parseFloat(finalAmount) || 0;
+    val = Math.max(0, val); // No negative
 
-      // Calculate discount amount needed to get to final amount
-      // finalAmount = taxedAmount - (amt * discount / 100)
-      // So: discount = (taxedAmount - finalAmount) * 100 / amt
-      const discountAmount = taxedAmount - newFinalAmount;
-      const calculatedDiscount = (discountAmount * 100) / amt;
+    // Calculate minimum final amount based on max discount
+    const minFinalAmount = taxedAmount - (amt * maxDiscount) / 100;
 
-      // Clamp to valid range [0, maxDiscount]
-      const clampedDiscount = Math.max(0, Math.min(calculatedDiscount, maxDiscount));
-      setDiscount(Math.round(clampedDiscount * 100) / 100); // Round to 2 decimal places
+    if (val < minFinalAmount && amt > 0) {
+      toast.error(`Final amount cannot be less than ₹${Math.ceil(minFinalAmount)} (max ${maxDiscount}% discount)`);
+      val = minFinalAmount;
     }
 
-    // Reset the flag after a short delay to allow normal discount editing again
-    setTimeout(() => setIsEditingFinalAmount(false), 100);
+    // If final amount is more than taxed amount, set discount to 0
+    if (val > taxedAmount) {
+      val = taxedAmount;
+    }
+
+    const finalVal = Math.ceil(val);
+    setFinalAmount(String(finalVal));
+
+    // Now calculate the actual discount percentage
+    if (amt > 0) {
+      const discountAmount = taxedAmount - finalVal;
+      const calculatedDiscount = (discountAmount * 100) / amt;
+      setDiscount(String(Math.round(Math.max(0, calculatedDiscount) * 100) / 100));
+    }
+
+    // Reset editing flag
+    setIsEditingFinalAmount(false);
   };
 
   // Fetch payment links from API
@@ -299,8 +332,8 @@ export default function PaymentsSection({
     setExpireDate("");
     setAmount("");
     setTax(0);
-    setDiscount(0);
-    setFinalAmount(0);
+    setDiscount("0");
+    setFinalAmount("0");
     setIsEditingFinalAmount(false);
     setNotes("");
     setShowToClient(true);
@@ -346,8 +379,8 @@ export default function PaymentsSection({
           clientId: client._id,
           amount,
           tax: Number(tax) || 0,
-          discount: Math.min(Number(discount) || 0, maxDiscount),
-          finalAmount,
+          discount: Math.min(parseFloat(discount) || 0, maxDiscount),
+          finalAmount: parseFloat(finalAmount) || 0,
           planCategory: planCategory || undefined,
           planName: planName || undefined,
           duration: durationLabel || `${duration} Days`,
@@ -1338,14 +1371,11 @@ export default function PaymentsSection({
                     Discount % <span className="text-gray-400">(Max {maxDiscount}%)</span>
                   </label>
                   <input
-                    type="number"
-                    min="0"
-                    max={maxDiscount}
+                    type="text"
+                    inputMode="decimal"
                     value={discount}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setDiscount(Math.min(val, maxDiscount));
-                    }}
+                    onChange={(e) => handleDiscountChange(e.target.value)}
+                    onBlur={handleDiscountBlur}
                     className="w-full border p-2 rounded-lg mt-1"
                     placeholder={`Max ${maxDiscount}%`}
                   />
@@ -1357,10 +1387,11 @@ export default function PaymentsSection({
                   <div className="relative mt-1">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-green-600 font-semibold">₹</span>
                     <input
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
                       value={finalAmount}
-                      onChange={(e) => handleFinalAmountChange(Number(e.target.value))}
+                      onChange={(e) => handleFinalAmountChange(e.target.value)}
+                      onBlur={handleFinalAmountBlur}
                       className="w-full border border-green-300 p-2 pl-8 rounded-lg bg-green-50 font-bold text-green-700 text-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                       placeholder="Enter final amount"
                     />
