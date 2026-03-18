@@ -115,7 +115,7 @@ export default function CreatePlanTemplateBasicPage() {
         setName(restored.name || '');
         setDescription(restored.description || '');
         setCategory(restored.category || '');
-        setDuration(restored.duration || 7);
+        setDuration(restored.duration );
         setDifficulty((restored.difficulty as 'beginner' | 'intermediate' | 'advanced') || 'intermediate');
         setCalMin(restored.calMin || 1200);
         setCalMax(restored.calMax || 2500);
