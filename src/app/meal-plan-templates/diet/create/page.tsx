@@ -197,6 +197,18 @@ export default function CreateDietTemplatePage() {
   // Main template state
   const [template, setTemplate] = useState<MealPlanTemplate>(defaultTemplate);
 
+  // Store weekPlan and mealTypes data from DietPlanDashboard
+  const [weekPlanData, setWeekPlanData] = useState<any[]>([]);
+  const [mealTypesData, setMealTypesData] = useState<{ name: string; time: string }[]>(DEFAULT_MEAL_TYPES_LIST);
+
+  // Combined draft data for auto-save (includes all state that should be persisted)
+  const draftData = useMemo(() => ({
+    template,
+    weekPlanData,
+    mealTypesData,
+    currentStep,
+  }), [template, weekPlanData, mealTypesData, currentStep]);
+
   // Auto-save hook for diet templates
   const {
     isSaving,
@@ -205,7 +217,7 @@ export default function CreateDietTemplatePage() {
     clearDraft,
     saveDraft,
     restoreDraft
-  } = useDietTemplateAutoSave('new-diet-template', template, {
+  } = useDietTemplateAutoSave('new-diet-template', draftData, {
     debounceMs: 2000,
     enabled: !!session?.user?.id,
     onSaveSuccess: () => { },
@@ -219,11 +231,32 @@ export default function CreateDietTemplatePage() {
     if (!draftRestored && session?.user?.id) {
       const restored = restoreDraft();
       if (restored && Object.keys(restored).length > 0) {
-        if (restored.name !== undefined) {
+        // Handle new combined draft format
+        if (restored.template !== undefined) {
+          // New format: { template, weekPlanData, mealTypesData, currentStep }
+          setTemplate(prev => ({
+            ...prev,
+            ...restored.template,
+            dietaryRestrictions: normalizeRestrictionsArray(restored.template.dietaryRestrictions)
+          }));
+          if (restored.weekPlanData && restored.weekPlanData.length > 0) {
+            setWeekPlanData(restored.weekPlanData);
+          }
+          if (restored.mealTypesData && restored.mealTypesData.length > 0) {
+            setMealTypesData(restored.mealTypesData);
+          }
+          if (restored.currentStep && restored.currentStep >= 1 && restored.currentStep <= 3) {
+            setCurrentStep(restored.currentStep);
+          }
+          toast.success('Draft restored', {
+            description: 'Your previous work has been restored. Draft expires in 24 hours.',
+            duration: 4000
+          });
+        } else if (restored.name !== undefined) {
+          // Legacy format: direct template object
           setTemplate(prev => ({
             ...prev,
             ...restored,
-            // Normalize dietary restrictions from restored draft
             dietaryRestrictions: normalizeRestrictionsArray(restored.dietaryRestrictions)
           }));
           toast.success('Draft restored', {
@@ -402,10 +435,6 @@ export default function CreateDietTemplatePage() {
   };
 
   const dayMeals = useMemo(() => template.meals[selectedDay - 1], [template.meals, selectedDay]);
-
-  // Store weekPlan and mealTypes data from DietPlanDashboard
-  const [weekPlanData, setWeekPlanData] = useState<any[]>([]);
-  const [mealTypesData, setMealTypesData] = useState<{ name: string; time: string }[]>(DEFAULT_MEAL_TYPES_LIST);
 
   // -------------- SAVE/PUBLISH TEMPLATE -------------
   const saveTemplate = async (weekPlan?: any[], mealTypes?: { name: string; time: string }[]) => {

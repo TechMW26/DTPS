@@ -193,7 +193,7 @@ export default function CreateMealPlanTemplatePage() {
     name: '',
     description: '',
     category: '',
-    duration: 7,
+    duration: 0,
     targetCalories: { min: 1200, max: 2500 },
     targetMacros: {
       protein: { min: 50, max: 150 },
