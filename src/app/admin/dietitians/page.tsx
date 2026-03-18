@@ -63,7 +63,7 @@ export default function AdminDietitiansPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`/api/users/dietitians?includeAll=true`);
+      const res = await fetch(`/api/users/dietitians`);
       if (!res.ok) throw new Error(await res.text());
       const body = await res.json();
       setData(body.dietitians || []);
@@ -233,8 +233,8 @@ export default function AdminDietitiansPage() {
                         <td className="p-3">{u.email}</td>
                         <td className="p-3">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${u.status === 'active'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-red-100 text-red-700'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
                             }`}>
                             {u.status || 'active'}
                           </span>

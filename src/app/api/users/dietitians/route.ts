@@ -20,7 +20,6 @@ export async function GET(request: NextRequest) {
     const includeAvailability = searchParams.get('includeAvailability') === 'true';
     const search = searchParams.get('search');
     const specialization = searchParams.get('specialization');
-    const includeAll = searchParams.get('includeAll') === 'true'; // For admin to see all statuses
 
     // Check if admin role
     const isAdmin = session.user.role?.toLowerCase()?.includes('admin');
@@ -30,12 +29,13 @@ export async function GET(request: NextRequest) {
       role: { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
     };
 
-    // Only filter by active status unless admin requests all
-    if (!isAdmin || !includeAll) {
+    // Admin always sees ALL dietitians regardless of status
+    // Non-admin, non-client users see only active
+    if (!isAdmin && session.user.role !== UserRole.CLIENT) {
       query.status = 'active';
     }
 
-    // For clients, only show their assigned dietitian
+    // For clients, show their assigned dietitian (regardless of status) or all active
     if (session.user.role === UserRole.CLIENT) {
       const currentUser = await withCache(
         `users:dietitians:${JSON.stringify(session.user.id)}`,
@@ -44,10 +44,9 @@ export async function GET(request: NextRequest) {
       );
 
       if (currentUser?.assignedDietitian) {
-        // Override query to show only assigned dietitian
+        // Override query to show only assigned dietitian (regardless of status)
         query = {
           _id: currentUser.assignedDietitian,
-          status: 'active'
         };
       } else {
         // If no assigned dietitian, show all active dietitians
