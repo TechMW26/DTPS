@@ -443,7 +443,32 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
     }
 
     if (template.meals && template.meals.length > 0) {
-      setInitialMeals(template.meals);
+      // In edit mode, merge template meals with existing meals instead of overwriting
+      if (isEditMode && initialMeals.length > 0) {
+        const templateMealsList = template.meals!;
+        const mergedMeals = initialMeals.map((existingDay: any, i: number) => {
+          const templateDay = templateMealsList[i];
+          if (!templateDay || !templateDay.meals) return existingDay;
+
+          // Deep clone the existing day's meals
+          const mergedDayMeals = existingDay.meals ? { ...existingDay.meals } : {};
+
+          // Only add meal types from template that don't already have food data
+          Object.keys(templateDay.meals).forEach((mealType: string) => {
+            const existingMeal = mergedDayMeals[mealType];
+            const hasFoodData = existingMeal?.foodOptions?.some((opt: any) => opt.food?.trim());
+            if (!hasFoodData) {
+              // No existing data for this meal type — use template data
+              mergedDayMeals[mealType] = deepCloneMealDay({ meals: { [mealType]: templateDay.meals[mealType] } })[mealType];
+            }
+          });
+
+          return { ...existingDay, meals: mergedDayMeals };
+        });
+        setInitialMeals(mergedMeals);
+      } else {
+        setInitialMeals(template.meals);
+      }
     }
 
     // Force DietPlanDashboard to re-mount with new meals
@@ -492,27 +517,13 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
       const dayDate = addDays(baseDate, i);
       const dateStr = format(dayDate, 'yyyy-MM-dd');
 
+      // In edit mode, preserve existing day data as base
+      const existingDay = isEditMode && initialMeals[i] ? initialMeals[i] : null;
+
       if (templateDayIndex === undefined || templateDayIndex === -1) {
-        // Skip — push an empty day with no meals
-        mappedMeals.push({
-          id: `day-${i}`,
-          day: `Day ${i + 1}`,
-          date: dateStr,
-          meals: {},
-          note: ''
-        });
-      } else {
-        // Use the template day's data — deep clone to avoid reference issues
-        const sourceDay = templateMeals?.[templateDayIndex];
-        if (sourceDay) {
-          const clonedMeals = deepCloneMealDay(sourceDay);
-          mappedMeals.push({
-            id: `day-${i}`,
-            day: `Day ${i + 1}`,
-            date: dateStr,
-            meals: clonedMeals,
-            note: sourceDay.note || '',
-          });
+        // Skip — keep existing day data if editing, otherwise push empty
+        if (existingDay) {
+          mappedMeals.push({ ...existingDay, date: dateStr });
         } else {
           mappedMeals.push({
             id: `day-${i}`,
@@ -521,6 +532,50 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
             meals: {},
             note: ''
           });
+        }
+      } else {
+        // Use the template day's data — deep clone to avoid reference issues
+        const sourceDay = templateMeals?.[templateDayIndex];
+        if (sourceDay) {
+          const clonedMeals = deepCloneMealDay(sourceDay);
+
+          if (existingDay && existingDay.meals) {
+            // Merge: template meals fill in empty slots, existing data takes priority
+            const mergedMeals = { ...existingDay.meals };
+            Object.keys(clonedMeals).forEach(mealType => {
+              const existing = mergedMeals[mealType];
+              const hasFoodData = existing?.foodOptions?.some((opt: any) => opt.food?.trim());
+              if (!hasFoodData) {
+                mergedMeals[mealType] = clonedMeals[mealType];
+              }
+            });
+            mappedMeals.push({
+              ...existingDay,
+              date: dateStr,
+              meals: mergedMeals,
+              note: existingDay.note || sourceDay.note || '',
+            });
+          } else {
+            mappedMeals.push({
+              id: `day-${i}`,
+              day: `Day ${i + 1}`,
+              date: dateStr,
+              meals: clonedMeals,
+              note: sourceDay.note || '',
+            });
+          }
+        } else {
+          if (existingDay) {
+            mappedMeals.push({ ...existingDay, date: dateStr });
+          } else {
+            mappedMeals.push({
+              id: `day-${i}`,
+              day: `Day ${i + 1}`,
+              date: dateStr,
+              meals: {},
+              note: ''
+            });
+          }
         }
       }
     }
@@ -934,6 +989,7 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
         description,
         startDate,
         endDate,
+        duration,
         meals: mealsWithDates,
         mealTypes: finalMealTypes,
         customizations: {

@@ -58,6 +58,42 @@ const mealTimeSuggestions: { [key: string]: string } = Object.fromEntries(
 
 const DAYS_PER_PAGE = 14;
 
+// ============ DEEP CLONE HELPERS ============
+// Deep-clone a FoodItem
+function cloneFoodItem(f: MealFoodItem): MealFoodItem {
+  return { ...f };
+}
+
+// Deep-clone a FoodOption (including its foods array)
+function cloneFoodOption(opt: FoodOption): FoodOption {
+  return {
+    ...opt,
+    foods: opt.foods ? opt.foods.map(cloneFoodItem) : undefined,
+  };
+}
+
+// Deep-clone a Meal
+function cloneMeal(meal: Meal): Meal {
+  return {
+    ...meal,
+    foodOptions: meal.foodOptions.map(cloneFoodOption),
+  };
+}
+
+// Deep-clone a DayPlan (including all meals)
+function cloneDay(day: DayPlan): DayPlan {
+  const clonedMeals: { [key: string]: Meal } = {};
+  for (const key of Object.keys(day.meals)) {
+    clonedMeals[key] = cloneMeal(day.meals[key]);
+  }
+  return { ...day, meals: clonedMeals };
+}
+
+// Deep-clone the entire weekPlan array
+function cloneWeekPlan(plan: DayPlan[]): DayPlan[] {
+  return plan.map(cloneDay);
+}
+
 // Helper to format a number to at most 2 decimal places (strips trailing zeros)
 function formatNum(val: number): string {
   if (Number.isNaN(val) || !Number.isFinite(val)) return '0';
@@ -221,7 +257,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
   const addMealToCell = (dayIndex: number, mealType: string) => {
     if (readOnly || !onUpdate) return;
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
     const existingMeal = newWeekPlan[dayIndex].meals[mealType];
     if (!existingMeal) {
       // Create brand new meal with initial option
@@ -245,7 +281,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
   const updateMealTime = (dayIndex: number, mealType: string, time: string) => {
     if (readOnly || !onUpdate) return;
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
     if (newWeekPlan[dayIndex].meals[mealType]) {
       newWeekPlan[dayIndex].meals[mealType].time = time;
       onUpdate(newWeekPlan);
@@ -265,7 +301,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
   const toggleAlternatives = (dayIndex: number, mealType: string) => {
     if (readOnly || !onUpdate) return;
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
     if (newWeekPlan[dayIndex].meals[mealType]) {
       newWeekPlan[dayIndex].meals[mealType].showAlternatives =
         !newWeekPlan[dayIndex].meals[mealType].showAlternatives;
@@ -275,7 +311,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
   const addFoodOption = (dayIndex: number, mealType: string, isAlternative: boolean = false) => {
     if (readOnly || !onUpdate) return;
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
     const meal = newWeekPlan[dayIndex].meals[mealType];
     if (meal) {
       meal.foodOptions.push({
@@ -299,7 +335,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
   const removeFoodOption = (dayIndex: number, mealType: string, optionIndex: number) => {
     if (readOnly || !onUpdate) return;
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
     const meal = newWeekPlan[dayIndex].meals[mealType];
     if (meal) {
       meal.foodOptions.splice(optionIndex, 1);
@@ -315,7 +351,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     value: string
   ) => {
     if (readOnly || !onUpdate) return;
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
     const meal = newWeekPlan[dayIndex].meals[mealType];
     if (meal && meal.foodOptions[optionIndex]) {
       (meal.foodOptions[optionIndex] as Record<string, unknown>)[field] = value;
@@ -325,7 +361,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
   const updateDayInfo = (dayIndex: number, field: 'date' | 'note', value: string) => {
     if (readOnly || !onUpdate) return;
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
     newWeekPlan[dayIndex][field] = value;
     onUpdate(newWeekPlan);
   };
@@ -344,20 +380,20 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     const sourceMeal = weekPlan[copySource.dayIndex].meals[copySource.mealType];
     if (!sourceMeal) return;
 
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
 
     // Copy to all selected day and meal combinations
     selectedDays.forEach(targetDayIndex => {
       selectedMeals.forEach(targetMealType => {
-        // Deep copy the meal
+        // Deep copy the meal with fully new IDs
         newWeekPlan[targetDayIndex].meals[targetMealType] = {
-          ...sourceMeal,
+          ...cloneMeal(sourceMeal),
           id: Math.random().toString(36).substr(2, 9),
           name: targetMealType,
           foodOptions: sourceMeal.foodOptions.map(option => ({
-            ...option,
+            ...cloneFoodOption(option),
             id: Math.random().toString(36).substr(2, 9),
-            foods: option.foods ? option.foods.map(f => ({ ...f, id: Math.random().toString(36).substr(2, 9) })) : undefined,
+            foods: option.foods ? option.foods.map(f => ({ ...cloneFoodItem(f), id: Math.random().toString(36).substr(2, 9) })) : undefined,
           }))
         };
       });
@@ -378,7 +414,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     const sourceFoodItem = sourceOption.foods?.[copyFoodSource.foodIndex];
     if (!sourceFoodItem) return;
 
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
     const isAlternative = sourceOption.isAlternative || false;
 
     // Copy to all selected day and meal combinations
@@ -484,7 +520,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     const sourceOption = sourceMeal.foodOptions[copyOptionSource.optionIndex];
     const isAlternative = sourceOption.isAlternative || false;
 
-    const newWeekPlan = [...weekPlan];
+    const newWeekPlan = cloneWeekPlan(weekPlan);
 
     // Copy to all selected day and meal combinations
     selectedDaysForOptionCopy.forEach(targetDayIndex => {
@@ -643,20 +679,11 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
     // Also update the time in all weekPlan days for this meal type
     if (onUpdate) {
-      const newWeekPlan = weekPlan.map(day => {
+      const newWeekPlan = cloneWeekPlan(weekPlan);
+      newWeekPlan.forEach(day => {
         if (day.meals[mealType]) {
-          return {
-            ...day,
-            meals: {
-              ...day.meals,
-              [mealType]: {
-                ...day.meals[mealType],
-                time: time
-              }
-            }
-          };
+          day.meals[mealType].time = time;
         }
-        return day;
       });
       onUpdate(newWeekPlan);
     }
@@ -681,8 +708,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     const time = newMealTime || '12:00 PM';
 
     // Create meal in all days if missing
-    const newWeekPlan = weekPlan.map(d => {
-      const day = { ...d, meals: { ...d.meals } };
+    const newWeekPlan = cloneWeekPlan(weekPlan);
+    newWeekPlan.forEach(day => {
       if (!day.meals[name]) {
         day.meals[name] = {
           id: Math.random().toString(36).substr(2, 9),
@@ -703,7 +730,6 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
           ]
         };
       }
-      return day;
     });
     onUpdate(newWeekPlan);
 
@@ -915,12 +941,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       return false;
     };
 
-    const newWeekPlan = weekPlan.map((d, idx) => {
-      if (!selectedDaysForReplace.includes(idx)) return d;
-      const day = { ...d, meals: { ...d.meals } };
+    const newWeekPlan = cloneWeekPlan(weekPlan);
+    newWeekPlan.forEach((day, idx) => {
+      if (!selectedDaysForReplace.includes(idx)) return;
       Object.keys(day.meals).forEach(mt => {
         if (!selectedMealTypesForReplace.includes(mt)) return;
-        const meal = { ...day.meals[mt] };
+        const meal = day.meals[mt];
 
         if (replaceAction === 'delete') {
           // Delete matching food options
@@ -937,9 +963,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
               : opt
           );
         }
-        day.meals[mt] = meal;
       });
-      return day;
     });
     onUpdate(newWeekPlan);
     resetFindReplaceDialog();
@@ -979,26 +1003,19 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     if (!onUpdate) return;
 
     // Update all days with new meal times
-    const newWeekPlan = weekPlan.map(day => {
-      const newMeals = { ...day.meals };
-      Object.keys(newMeals).forEach(mealType => {
+    const newWeekPlan = cloneWeekPlan(weekPlan);
+    newWeekPlan.forEach(day => {
+      Object.keys(day.meals).forEach(mealType => {
         if (mealTimesForBulkEdit[mealType]) {
-          newMeals[mealType] = {
-            ...newMeals[mealType],
-            time: mealTimesForBulkEdit[mealType]
-          };
+          day.meals[mealType].time = mealTimesForBulkEdit[mealType];
         }
       });
       // Also update meal types that exist in the bulk editor but not yet in this day
       Object.keys(mealTimesForBulkEdit).forEach(mealType => {
-        if (newMeals[mealType] && !newMeals[mealType].time) {
-          newMeals[mealType] = {
-            ...newMeals[mealType],
-            time: mealTimesForBulkEdit[mealType]
-          };
+        if (day.meals[mealType] && !day.meals[mealType].time) {
+          day.meals[mealType].time = mealTimesForBulkEdit[mealType];
         }
       });
-      return { ...day, meals: newMeals };
     });
 
     // Update customMealTimes for local display
@@ -1075,7 +1092,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     if (!source) return;
     if (readOnly || !onUpdate) return;
 
-    const newWeekPlan = [...weekPlan].map(d => ({ ...d, meals: { ...d.meals } }));
+    const newWeekPlan = cloneWeekPlan(weekPlan);
     const sourceMeal = newWeekPlan[source.dayIndex].meals[source.mealType];
     if (!sourceMeal) return;
     const movedOption = sourceMeal.foodOptions[source.optionIndex];
@@ -1103,9 +1120,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       // Compute insertion index relative to target meal
       let insertionIndex = getInsertionIndex(e, targetMeal);
       const duplicate = {
-        ...movedOption,
+        ...cloneFoodOption(movedOption),
         id: Math.random().toString(36).substr(2, 9),
-        foods: movedOption.foods ? movedOption.foods.map(f => ({ ...f, id: Math.random().toString(36).substr(2, 9) })) : undefined,
+        foods: movedOption.foods ? movedOption.foods.map(f => ({ ...cloneFoodItem(f), id: Math.random().toString(36).substr(2, 9) })) : undefined,
       };
       // If target has a single blank option, replace
       if (
@@ -1337,7 +1354,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 const isFrozenDay = (day as any).isFrozen === true;
 
                 return (
-                  <tr key={day.id} className={`hover:opacity-90 transition-opacity ${isFrozenDay ? 'opacity-40 blur-[1px]' : ''}`}>
+                  <tr key={`${day.id}-${actualDayIndex}`} className={`hover:opacity-90 transition-opacity ${isFrozenDay ? 'opacity-40 blur-[1px]' : ''}`}>
                     <td className="border-r border-b border-gray-300 p-5 align-top" style={{ backgroundColor: rowColor }}>
                       <div className="space-y-2.5">
                         <div className="flex items-center justify-between">
@@ -1541,7 +1558,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                     value={foodItem.food}
                                                     onChange={(e) => {
                                                       if (readOnly || !onUpdate) return;
-                                                      const newWeekPlan = [...weekPlan];
+                                                      const newWeekPlan = cloneWeekPlan(weekPlan);
                                                       const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                       if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
                                                         meal.foodOptions[optionIndex].foods![foodIndex].food = e.target.value;
@@ -1580,7 +1597,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                   size="sm"
                                                   onClick={() => {
                                                     if (readOnly || !onUpdate) return;
-                                                    const newWeekPlan = [...weekPlan];
+                                                    const newWeekPlan = cloneWeekPlan(weekPlan);
                                                     const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                     if (meal?.foodOptions[optionIndex]?.foods) {
                                                       meal.foodOptions[optionIndex].foods!.splice(foodIndex, 1);
@@ -1620,7 +1637,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 value={foodItem.unit}
                                                 onChange={(e) => {
                                                   if (readOnly || !onUpdate) return;
-                                                  const newWeekPlan = [...weekPlan];
+                                                  const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
                                                     meal.foodOptions[optionIndex].foods![foodIndex].unit = e.target.value;
@@ -1634,7 +1651,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 value={foodItem.cal}
                                                 onChange={(e) => {
                                                   if (readOnly || !onUpdate) return;
-                                                  const newWeekPlan = [...weekPlan];
+                                                  const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
                                                     meal.foodOptions[optionIndex].foods![foodIndex].cal = e.target.value;
@@ -1655,7 +1672,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 value={foodItem.carbs}
                                                 onChange={(e) => {
                                                   if (readOnly || !onUpdate) return;
-                                                  const newWeekPlan = [...weekPlan];
+                                                  const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
                                                     meal.foodOptions[optionIndex].foods![foodIndex].carbs = e.target.value;
@@ -1672,7 +1689,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 value={foodItem.fats}
                                                 onChange={(e) => {
                                                   if (readOnly || !onUpdate) return;
-                                                  const newWeekPlan = [...weekPlan];
+                                                  const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
                                                     meal.foodOptions[optionIndex].foods![foodIndex].fats = e.target.value;
@@ -1693,7 +1710,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 value={foodItem.protein}
                                                 onChange={(e) => {
                                                   if (readOnly || !onUpdate) return;
-                                                  const newWeekPlan = [...weekPlan];
+                                                  const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
                                                     meal.foodOptions[optionIndex].foods![foodIndex].protein = e.target.value;
@@ -1915,7 +1932,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 </div>
                 <div className="grid grid-cols-2 gap-3 p-4 border-2 border-gray-300 rounded-md bg-slate-50">
                   {weekPlan.map((day, index) => (
-                    <div key={day.id} className="flex items-center space-x-2.5">
+                    <div key={`${day.id}-${index}`} className="flex items-center space-x-2.5">
                       <Checkbox
                         id={`day-${index}`}
                         checked={selectedDays.includes(index)}
@@ -2026,7 +2043,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 </div>
                 <div className="grid grid-cols-2 gap-3 p-4 border-2 border-gray-300 rounded-md bg-slate-50">
                   {weekPlan.map((day, index) => (
-                    <div key={day.id} className="flex items-center space-x-2.5">
+                    <div key={`${day.id}-${index}`} className="flex items-center space-x-2.5">
                       <Checkbox
                         id={`food-copy-day-${index}`}
                         checked={selectedDaysForFoodCopy.includes(index)}
@@ -2158,7 +2175,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 </div>
                 <div className="grid grid-cols-2 gap-3 p-4 border-2 border-gray-300 rounded-md bg-slate-50">
                   {weekPlan.map((day, index) => (
-                    <div key={day.id} className="flex items-center space-x-2.5">
+                    <div key={`${day.id}-${index}`} className="flex items-center space-x-2.5">
                       <Checkbox
                         id={`option-copy-day-${index}`}
                         checked={selectedDaysForOptionCopy.includes(index)}
@@ -2650,7 +2667,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 </div>
                 <div className="grid grid-cols-3 gap-2 p-3 border rounded-md bg-slate-50 max-h-40 overflow-y-auto">
                   {weekPlan.map((day, idx) => (
-                    <div key={day.id} className="flex items-center space-x-2">
+                    <div key={`${day.id}-${idx}`} className="flex items-center space-x-2">
                       <Checkbox
                         id={`fr-day-${idx}`}
                         checked={selectedDaysForReplace.includes(idx)}
@@ -2710,7 +2727,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
               if (readOnly || !onUpdate) return;
 
-              const newWeekPlan = [...weekPlan];
+              const newWeekPlan = cloneWeekPlan(weekPlan);
               const meal = newWeekPlan[dayIndex].meals[mealType];
 
               if (meal) {

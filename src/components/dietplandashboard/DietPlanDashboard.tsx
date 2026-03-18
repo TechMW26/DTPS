@@ -131,8 +131,16 @@ const normalizeTime = (value?: string): string => {
 
 // Normalize meal keys in a day's meals object
 // Converts keys like "EARLY_MORNING" to "Early Morning" and deduplicates
+// Also deep-clones food options to prevent reference sharing with initialMeals
 const normalizeMealKeys = (meals: Record<string, Meal>): Record<string, Meal> => {
   const normalized: Record<string, Meal> = {};
+
+  // Helper to deep clone a food option
+  const cloneOption = (opt: FoodOption): FoodOption => ({
+    ...opt,
+    foods: opt.foods ? opt.foods.map(f => ({ ...f })) : undefined,
+  });
+
   Object.keys(meals).forEach(mealName => {
     const current = meals[mealName];
     if (!current) return;
@@ -143,14 +151,15 @@ const normalizeMealKeys = (meals: Record<string, Meal>): Record<string, Meal> =>
       // Merge food options if same meal type appears under different key names
       normalized[displayName].foodOptions = [
         ...normalized[displayName].foodOptions,
-        ...current.foodOptions
+        ...current.foodOptions.map(cloneOption)
       ];
     } else {
       normalized[displayName] = {
         ...current,
         name: displayName,
         // Prefer user-saved time over canonical default
-        time: current.time || canonicalTime || '12:00 PM'
+        time: current.time || canonicalTime || '12:00 PM',
+        foodOptions: current.foodOptions ? current.foodOptions.map(cloneOption) : []
       };
     }
   });
@@ -623,10 +632,15 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onDu
     // Remove from mealTypeConfigs
     setMealTypeConfigs(prev => prev.filter(config => config.name !== mealTypeName));
 
-    // Also remove from weekPlan meals
+    // Also remove from weekPlan meals — use functional updater for safety
     setWeekPlan(prev => prev.map(day => {
-      const { [mealTypeName]: removed, ...remainingMeals } = day.meals;
-      return { ...day, meals: remainingMeals };
+      const newMeals: { [key: string]: Meal } = {};
+      Object.keys(day.meals).forEach(key => {
+        if (key !== mealTypeName) {
+          newMeals[key] = { ...day.meals[key], foodOptions: day.meals[key].foodOptions.map(opt => ({ ...opt, foods: opt.foods ? opt.foods.map(f => ({ ...f })) : undefined })) };
+        }
+      });
+      return { ...day, meals: newMeals };
     }));
   };
 

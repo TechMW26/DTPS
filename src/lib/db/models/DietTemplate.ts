@@ -95,6 +95,18 @@ export interface IDietTemplate extends Document {
   }[];
 }
 
+// Food item schema (for stacked foods within a single food option)
+const FoodItemSchema = new Schema({
+  id: String,
+  food: String,
+  unit: String,
+  cal: String,
+  carbs: String,
+  fats: String,
+  protein: String,
+  recipeUuid: String
+}, { _id: false, strict: false });
+
 // Food option schema (from DietPlanDashboard)
 const FoodOptionSchema = new Schema({
   id: String,
@@ -105,7 +117,9 @@ const FoodOptionSchema = new Schema({
   carbs: String,
   fats: String,
   protein: String,
-  recipeUuid: String // UUID of the recipe if added from recipe database
+  recipeUuid: String, // UUID of the recipe if added from recipe database
+  foods: { type: [FoodItemSchema], default: undefined }, // Multiple stacked foods in same slot
+  isAlternative: { type: Boolean, default: false } // Mark as alternative food option
 }, { _id: false, strict: false });
 // Meal schema (from DietPlanDashboard)
 const MealSchema = new Schema({

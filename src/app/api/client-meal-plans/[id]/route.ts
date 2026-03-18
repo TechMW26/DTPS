@@ -3,6 +3,8 @@ import connectDB from '@/lib/db/connection';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { updateClientStatusFromMealPlan } from '@/lib/status/computeClientStatus';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 // GET single meal plan by ID
 export async function GET(
@@ -11,24 +13,24 @@ export async function GET(
 ) {
   try {
     await connectDB();
-    
+
     const { id } = await context.params;
-    
+
     const mealPlan = await withCache(
       `client-meal-plans:id:${JSON.stringify(id)}`,
       async () => await ClientMealPlan.findById(id)
-      .populate('templateId', 'name category duration')
+        .populate('templateId', 'name category duration')
       ,
       { ttl: 120000, tags: ['client_meal_plans'] }
     );
-    
+
     if (!mealPlan) {
       return NextResponse.json(
         { success: false, error: 'Meal plan not found' },
         { status: 404 }
       );
     }
-    
+
     return NextResponse.json({
       success: true,
       mealPlan
@@ -48,23 +50,32 @@ export async function PUT(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     await connectDB();
-    
+
     const { id } = await context.params;
     const body = await request.json();
-    
+
     const {
       name,
       description,
       startDate,
       endDate,
+      duration,
       meals,
       mealTypes,
       customizations,
       goals,
       status
     } = body;
-    
+
     // Validate date range
     if (startDate && endDate) {
       const start = new Date(startDate);
@@ -76,33 +87,55 @@ export async function PUT(
         );
       }
     }
-    
-    // Build update object
+
+    // Fetch existing plan first to allow partial/merge updates
+    const existingPlan = await ClientMealPlan.findById(id);
+    if (!existingPlan) {
+      return NextResponse.json(
+        { success: false, error: 'Meal plan not found' },
+        { status: 404 }
+      );
+    }
+
+    // Build update object — only include fields explicitly provided
     const updateData: Record<string, any> = {};
-    
-    if (name) updateData.name = name;
+
+    if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
-    if (startDate) updateData.startDate = new Date(startDate);
-    if (endDate) updateData.endDate = new Date(endDate);
-    if (meals) updateData.meals = meals;
-    if (mealTypes) updateData.mealTypes = mealTypes;
-    if (customizations) updateData.customizations = customizations;
-    if (goals) updateData.goals = goals;
-    if (status) updateData.status = status;
-    
+    if (startDate !== undefined) updateData.startDate = new Date(startDate);
+    if (endDate !== undefined) updateData.endDate = new Date(endDate);
+    if (duration !== undefined) updateData.duration = duration;
+
+    // For meals: accept the full structured array as-is (preserves nested meal data)
+    if (meals !== undefined && Array.isArray(meals)) {
+      updateData.meals = meals;
+    }
+
+    // For mealTypes: accept the array of { name, time } configs
+    if (mealTypes !== undefined && Array.isArray(mealTypes)) {
+      updateData.mealTypes = mealTypes;
+    }
+
+    if (customizations !== undefined) updateData.customizations = customizations;
+    if (goals !== undefined) updateData.goals = goals;
+    if (status !== undefined) updateData.status = status;
+
     const updatedPlan = await ClientMealPlan.findByIdAndUpdate(
       id,
       { $set: updateData },
       { new: true, runValidators: true }
     ).populate('templateId', 'name category duration');
-    
+
     if (!updatedPlan) {
       return NextResponse.json(
         { success: false, error: 'Meal plan not found' },
         { status: 404 }
       );
     }
-    
+
+    // Clear cached responses so subsequent GETs return fresh data
+    clearCacheByTag('client_meal_plans');
+
     // Update client status if status or dates changed (could affect active status)
     if (status || startDate || endDate) {
       try {
@@ -116,7 +149,7 @@ export async function PUT(
         // Don't fail the request - meal plan was updated successfully
       }
     }
-    
+
     return NextResponse.json({
       success: true,
       message: 'Meal plan updated successfully',
@@ -145,24 +178,24 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
-    
+
     const { id } = await context.params;
-    
+
     // First, get the meal plan to know the clientId before deleting
     const mealPlan = await ClientMealPlan.findById(id);
-    
+
     if (!mealPlan) {
       return NextResponse.json(
         { success: false, error: 'Meal plan not found' },
         { status: 404 }
       );
     }
-    
+
     const clientId = mealPlan.clientId?.toString();
-    
+
     // Now delete the meal plan
     await ClientMealPlan.findByIdAndDelete(id);
-    
+
     // Update client status after deletion
     if (clientId) {
       try {
@@ -173,7 +206,7 @@ export async function DELETE(
         // Don't fail the request - meal plan was deleted successfully
       }
     }
-    
+
     return NextResponse.json({
       success: true,
       message: 'Meal plan deleted successfully'
