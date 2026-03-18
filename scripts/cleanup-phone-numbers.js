@@ -43,26 +43,26 @@ const User = mongoose.model('User', userSchema);
  */
 function normalizePhone(phone) {
     if (!phone) return null;
-    
+
     // Remove all non-digit characters
     let digits = phone.replace(/\D/g, '');
-    
+
     if (!digits || digits.length === 0) return null;
-    
+
     // If 10 digits or less, return as-is (already normalized or incomplete)
     if (digits.length <= 10) {
         return digits.length === 10 ? digits : null;
     }
-    
+
     // More than 10 digits - extract last 10 digits
     // This handles all cases: +91XXXXXXXXXX, 91XXXXXXXXXX, 9191XXXXXXXXXX, etc.
     const last10 = digits.slice(-10);
-    
+
     // Validate: Indian mobile numbers start with 6, 7, 8, or 9
     if (/^[6-9]/.test(last10)) {
         return last10;
     }
-    
+
     // If doesn't start with valid digit, try different approaches
     // Case: 91XXXXXXXXXX (12 digits) - remove 91 prefix
     if (digits.length === 12 && digits.startsWith('91')) {
@@ -71,7 +71,7 @@ function normalizePhone(phone) {
             return withoutPrefix;
         }
     }
-    
+
     // Case: 9191XXXXXXXXXX (14 digits) - remove 9191 prefix
     if (digits.length === 14 && digits.startsWith('9191')) {
         const withoutPrefix = digits.slice(4);
@@ -79,7 +79,7 @@ function normalizePhone(phone) {
             return withoutPrefix;
         }
     }
-    
+
     // Case: 0XXXXXXXXXX (11 digits) - remove leading 0
     if (digits.length === 11 && digits.startsWith('0')) {
         const withoutZero = digits.slice(1);
@@ -87,7 +87,7 @@ function normalizePhone(phone) {
             return withoutZero;
         }
     }
-    
+
     // Fallback: return last 10 digits
     return last10;
 }
@@ -123,7 +123,7 @@ async function cleanupPhoneNumbers() {
             if (user.phone) {
                 const originalPhone = user.phone;
                 const normalizedPhone = normalizePhone(originalPhone);
-                
+
                 if (normalizedPhone && normalizedPhone !== originalPhone) {
                     updates.phone = normalizedPhone;
                     needsUpdate = true;
@@ -140,7 +140,7 @@ async function cleanupPhoneNumbers() {
             if (user.alternativePhone) {
                 const originalAltPhone = user.alternativePhone;
                 const normalizedAltPhone = normalizePhone(originalAltPhone);
-                
+
                 if (normalizedAltPhone && normalizedAltPhone !== originalAltPhone) {
                     updates.alternativePhone = normalizedAltPhone;
                     needsUpdate = true;

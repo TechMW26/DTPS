@@ -24,10 +24,12 @@ export default function GlobalError({
       if (typeof window !== 'undefined' && 'caches' in window) {
         caches.keys().then((names) => {
           Promise.all(names.filter(n => n.startsWith('dtps-')).map(n => caches.delete(n)))
-            .then(() => window.location.reload());
-        }).catch(() => window.location.reload());
-      } else {
-        window.location.reload();
+            .then(() => (window as any).location.reload());
+        }).catch(() => {
+          if (typeof window !== 'undefined') (window as any).location.reload();
+        });
+      } else if (typeof window !== 'undefined') {
+        (window as any).location.reload();
       }
     }
   }, [error]);
