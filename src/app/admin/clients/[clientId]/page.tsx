@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRealtime } from '@/hooks/useRealtime';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -84,12 +84,58 @@ interface MealPlan {
 
 interface Payment {
   _id: string;
+  // Plan details
+  planName?: string;
+  planCategory?: string;
+  durationDays?: number;
+  durationLabel?: string;
+  // Pricing
+  baseAmount?: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  taxPercent?: number;
+  taxAmount?: number;
+  finalAmount?: number;
   amount: number;
   currency: string;
-  status: string;
+  // Transaction
+  transactionId?: string;
   paymentMethod?: string;
+  paymentType?: string;
+  // Razorpay
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpayPaymentLinkUrl?: string;
+  // Payer
+  payerEmail?: string;
+  payerPhone?: string;
+  payerName?: string;
+  // Card/Bank
+  cardLast4?: string;
+  cardNetwork?: string;
+  bank?: string;
+  wallet?: string;
+  vpa?: string;
+  // Status
+  status: string;
+  paymentStatus?: string;
+  // Dates
+  purchaseDate?: string;
+  startDate?: string;
+  endDate?: string;
+  paidAt?: string;
+  // Meal plan tracking
+  mealPlanCreated?: boolean;
+  daysUsed?: number;
+  remainingDays?: number;
+  // Notes
   description?: string;
+  notes?: string;
+  // Refs
+  dietitian?: { _id: string; firstName: string; lastName: string; email: string };
+  servicePlan?: { _id: string; name: string; category?: string; duration?: number };
   createdAt: string;
+  updatedAt?: string;
 }
 
 interface Client {
@@ -147,6 +193,26 @@ export default function AdminClientDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
+
+  // Payment pagination & filter state
+  const [paymentPage, setPaymentPage] = useState(1);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
+  const paymentsPerPage = 10;
+
+  // Filtered & paginated payments
+  const filteredPayments = useMemo(() => {
+    if (paymentStatusFilter === 'all') return payments;
+    return payments.filter(p => p.status === paymentStatusFilter);
+  }, [payments, paymentStatusFilter]);
+
+  const totalPaymentPages = Math.max(1, Math.ceil(filteredPayments.length / paymentsPerPage));
+  const paginatedPayments = useMemo(() => {
+    const start = (paymentPage - 1) * paymentsPerPage;
+    return filteredPayments.slice(start, start + paymentsPerPage);
+  }, [filteredPayments, paymentPage, paymentsPerPage]);
+
+  // Reset to page 1 when filter changes
+  useEffect(() => { setPaymentPage(1); }, [paymentStatusFilter]);
 
   useEffect(() => {
     if (clientId) {
@@ -802,53 +868,253 @@ export default function AdminClientDetailPage() {
         <TabsContent value="payments">
           <Card>
             <CardHeader>
-              <CardTitle>Payment History</CardTitle>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <CardTitle>Payment History</CardTitle>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Status filter */}
+                  <Select value={paymentStatusFilter} onValueChange={setPaymentStatusFilter}>
+                    <SelectTrigger className="w-40 h-9">
+                      <SelectValue placeholder="All Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="processing">Processing</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                      <SelectItem value="refunded">Refunded</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                      <SelectItem value="expired">Expired</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {payments.length > 0 && (
+                    <Badge variant="outline" className="text-sm whitespace-nowrap">
+                      {filteredPayments.length} of {payments.length} payment{payments.length !== 1 ? 's' : ''} · Total: ₹{filteredPayments.filter(p => p.status === 'completed' || p.status === 'paid').reduce((sum, p) => sum + (p.finalAmount || p.amount || 0), 0).toLocaleString()}
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              {payments.length ? (
-                <div className="space-y-3">
-                  {payments.map((payment) => (
+              {filteredPayments.length ? (
+                <div className="space-y-4">
+                  {paginatedPayments.map((payment) => (
                     <div
                       key={payment._id}
-                      className="border rounded-lg p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800"
+                      className="border rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800 space-y-3"
                     >
-                      <div>
-                        <p className="font-medium">
-                          {payment.currency} {payment.amount.toLocaleString()}
-                        </p>
-                        <p className="text-sm text-gray-500">{payment.description || 'Payment'}</p>
-                        <p className="text-xs text-gray-400">
-                          {format(new Date(payment.createdAt), 'MMM dd, yyyy HH:mm')}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'}>
-                          {payment.status}
-                        </Badge>
-                        {payment.paymentMethod && (
-                          <p className="text-xs text-gray-400 mt-1">{payment.paymentMethod}</p>
-                        )}
-                        {(payment.status === 'completed' || payment.status === 'paid') && (
-                          <div className="mt-2 flex justify-end">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => window.open(`/api/invoices/${payment._id}`, '_blank')}
-                              className="h-8 text-xs"
-                            >
-                              <Download className="h-3 w-3 mr-1" />
-                              Invoice
-                            </Button>
+                      {/* Top row: Plan name, status, amount */}
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-semibold text-base">
+                            {payment.planName || payment.description || 'Payment'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {payment.planCategory && (
+                              <Badge variant="outline" className="text-xs capitalize">{payment.planCategory}</Badge>
+                            )}
+                            {payment.durationLabel && (
+                              <span className="text-xs text-gray-500">{payment.durationLabel}{payment.durationDays ? ` (${payment.durationDays} days)` : ''}</span>
+                            )}
+                            {payment.paymentType && (
+                              <Badge variant="outline" className="text-xs capitalize">{payment.paymentType.replace('_', ' ')}</Badge>
+                            )}
                           </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-lg">₹{(payment.finalAmount || payment.amount || 0).toLocaleString()}</p>
+                          <Badge
+                            variant={payment.status === 'completed' || payment.status === 'paid' ? 'default' : payment.status === 'failed' || payment.status === 'cancelled' ? 'destructive' : 'secondary'}
+                            className="mt-1"
+                          >
+                            {payment.status}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Pricing breakdown */}
+                      {(payment.baseAmount || payment.discountAmount || payment.taxAmount) && (
+                        <div className="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-sm">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {payment.baseAmount != null && (
+                              <div>
+                                <span className="text-gray-500">Base:</span>{' '}
+                                <span className="font-medium">₹{payment.baseAmount.toLocaleString()}</span>
+                              </div>
+                            )}
+                            {(payment.discountAmount != null && payment.discountAmount > 0) && (
+                              <div>
+                                <span className="text-gray-500">Discount:</span>{' '}
+                                <span className="font-medium text-green-600">-₹{payment.discountAmount.toLocaleString()}{payment.discountPercent ? ` (${payment.discountPercent}%)` : ''}</span>
+                              </div>
+                            )}
+                            {(payment.taxAmount != null && payment.taxAmount > 0) && (
+                              <div>
+                                <span className="text-gray-500">Tax:</span>{' '}
+                                <span className="font-medium">+₹{payment.taxAmount.toLocaleString()}{payment.taxPercent ? ` (${payment.taxPercent}%)` : ''}</span>
+                              </div>
+                            )}
+                            {payment.finalAmount != null && (
+                              <div>
+                                <span className="text-gray-500">Final:</span>{' '}
+                                <span className="font-semibold">₹{payment.finalAmount.toLocaleString()}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Transaction & Payment details */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+                        {payment.paymentMethod && (
+                          <div><span className="text-gray-500">Method:</span> <span className="capitalize font-medium">{payment.paymentMethod}</span></div>
+                        )}
+                        {payment.transactionId && (
+                          <div><span className="text-gray-500">Transaction ID:</span> <span className="font-mono text-xs">{payment.transactionId}</span></div>
+                        )}
+                        {payment.razorpayPaymentId && (
+                          <div><span className="text-gray-500">Razorpay ID:</span> <span className="font-mono text-xs">{payment.razorpayPaymentId}</span></div>
+                        )}
+                        {payment.razorpayOrderId && (
+                          <div><span className="text-gray-500">Order ID:</span> <span className="font-mono text-xs">{payment.razorpayOrderId}</span></div>
+                        )}
+                        {payment.cardLast4 && (
+                          <div><span className="text-gray-500">Card:</span> <span className="font-medium">{payment.cardNetwork ? `${payment.cardNetwork} ` : ''}****{payment.cardLast4}</span></div>
+                        )}
+                        {payment.bank && (
+                          <div><span className="text-gray-500">Bank:</span> <span className="font-medium">{payment.bank}</span></div>
+                        )}
+                        {payment.wallet && (
+                          <div><span className="text-gray-500">Wallet:</span> <span className="font-medium">{payment.wallet}</span></div>
+                        )}
+                        {payment.vpa && (
+                          <div><span className="text-gray-500">UPI:</span> <span className="font-medium">{payment.vpa}</span></div>
                         )}
                       </div>
+
+                      {/* Payer info */}
+                      {(payment.payerName || payment.payerEmail || payment.payerPhone) && (
+                        <div className="text-sm flex flex-wrap gap-3">
+                          {payment.payerName && (<span><span className="text-gray-500">Payer:</span> {payment.payerName}</span>)}
+                          {payment.payerEmail && (<span><span className="text-gray-500">Email:</span> {payment.payerEmail}</span>)}
+                          {payment.payerPhone && (<span><span className="text-gray-500">Phone:</span> {payment.payerPhone}</span>)}
+                        </div>
+                      )}
+
+                      {/* Dates row */}
+                      <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+                        <span>Created: {format(new Date(payment.createdAt), 'MMM dd, yyyy HH:mm')}</span>
+                        {payment.paidAt && <span>Paid: {format(new Date(payment.paidAt), 'MMM dd, yyyy HH:mm')}</span>}
+                        {payment.purchaseDate && <span>Purchase: {format(new Date(payment.purchaseDate), 'MMM dd, yyyy')}</span>}
+                        {payment.startDate && <span>Start: {format(new Date(payment.startDate), 'MMM dd, yyyy')}</span>}
+                        {payment.endDate && <span>End: {format(new Date(payment.endDate), 'MMM dd, yyyy')}</span>}
+                      </div>
+
+                      {/* Meal plan tracking & Dietitian */}
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
+                        {payment.mealPlanCreated != null && (
+                          <Badge variant={payment.mealPlanCreated ? 'default' : 'secondary'} className="text-xs">
+                            Meal Plan: {payment.mealPlanCreated ? 'Created' : 'Pending'}
+                          </Badge>
+                        )}
+                        {payment.daysUsed != null && payment.daysUsed > 0 && (
+                          <span className="text-gray-500">Days used: {payment.daysUsed}/{payment.durationDays || '-'}</span>
+                        )}
+                        {payment.remainingDays != null && payment.remainingDays > 0 && (
+                          <span className="text-gray-500">Remaining: {payment.remainingDays} days</span>
+                        )}
+                        {payment.dietitian && (
+                          <span className="text-gray-500">Dietitian: {payment.dietitian.firstName} {payment.dietitian.lastName}</span>
+                        )}
+                      </div>
+
+                      {/* Notes */}
+                      {(payment.notes || payment.description) && (
+                        <div className="text-sm text-gray-600 dark:text-gray-400 border-t pt-2">
+                          {payment.notes && <p><span className="text-gray-500">Notes:</span> {payment.notes}</p>}
+                          {payment.description && payment.description !== payment.planName && <p><span className="text-gray-500">Description:</span> {payment.description}</p>}
+                        </div>
+                      )}
+
+                      {/* Invoice button */}
+                      {(payment.status === 'completed' || payment.status === 'paid') && (
+                        <div className="flex justify-end border-t pt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(`/api/invoices/${payment._id}`, '_blank')}
+                            className="h-8 text-xs"
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            Download Invoice
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
+
+                  {/* Pagination Controls */}
+                  {totalPaymentPages > 1 && (
+                    <div className="flex items-center justify-between pt-4 border-t">
+                      <p className="text-sm text-gray-500">
+                        Showing {((paymentPage - 1) * paymentsPerPage) + 1}–{Math.min(paymentPage * paymentsPerPage, filteredPayments.length)} of {filteredPayments.length} payments
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPaymentPage(p => Math.max(1, p - 1))}
+                          disabled={paymentPage === 1}
+                        >
+                          Previous
+                        </Button>
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: Math.min(5, totalPaymentPages) }, (_, i) => {
+                            let pageNum: number;
+                            if (totalPaymentPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (paymentPage <= 3) {
+                              pageNum = i + 1;
+                            } else if (paymentPage >= totalPaymentPages - 2) {
+                              pageNum = totalPaymentPages - 4 + i;
+                            } else {
+                              pageNum = paymentPage - 2 + i;
+                            }
+                            return (
+                              <Button
+                                key={pageNum}
+                                variant={paymentPage === pageNum ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setPaymentPage(pageNum)}
+                                className="w-9 h-9"
+                              >
+                                {pageNum}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPaymentPage(p => Math.min(totalPaymentPages, p + 1))}
+                          disabled={paymentPage === totalPaymentPages}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <CreditCard className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                  <p>No payment records</p>
+                  <p>{paymentStatusFilter !== 'all' ? `No ${paymentStatusFilter} payments found` : 'No payment records'}</p>
+                  {paymentStatusFilter !== 'all' && (
+                    <Button variant="link" size="sm" className="mt-2" onClick={() => setPaymentStatusFilter('all')}>
+                      Show all payments
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>

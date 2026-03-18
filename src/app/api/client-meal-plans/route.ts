@@ -21,7 +21,7 @@ const clientMealPlanSchema = z.object({
   templateId: z.string().optional(), // Optional - can create plan without template
   purchaseId: z.string().optional(), // Optional - purchase ID for shared freeze tracking
   name: z.string().min(1, 'Plan name is required').max(200),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(10000).optional(),
   startDate: z.string().refine(date => !isNaN(Date.parse(date)), 'Invalid start date'),
   endDate: z.string().refine(date => !isNaN(Date.parse(date)), 'Invalid end date'),
   duration: z.number().min(1).max(365).optional(),

@@ -97,21 +97,23 @@ export async function GET(request: NextRequest) {
     const primaryGoal = searchParams.get('primaryGoal');
 
     // Build query
-    const query: any = { isActive: true };
+    const query: any = {};
 
     // Filter by creator - dietitians can only see their own templates, admins can see all
     if (session?.user) {
       if (session.user.role === UserRole.ADMIN) {
-        // Admin can see all templates
+        // Admin sees all active templates
+        query.isActive = true;
         if (createdBy) {
           query.createdBy = createdBy;
         }
       } else if (session.user.role === UserRole.DIETITIAN) {
-        // Dietitian can only see templates they created
+        // Dietitian sees ALL their own templates (active + inactive)
         query.createdBy = session.user.id;
       }
     } else {
-      // No session - only show public templates
+      // No session - only show public active templates
+      query.isActive = true;
       query.isPublic = true;
     }
 

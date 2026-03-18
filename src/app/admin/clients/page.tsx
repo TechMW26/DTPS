@@ -50,6 +50,7 @@ export default function AdminClientsPage() {
   const [selectedDietitianId, setSelectedDietitianId] = useState("");
   const [selectedHealthCounselorId, setSelectedHealthCounselorId] = useState("");
   const [assignType, setAssignType] = useState<'dietitian' | 'healthCounselor'>('dietitian');
+  const [statusFilter, setStatusFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalClients, setTotalClients] = useState(0);
@@ -68,12 +69,13 @@ export default function AdminClientsPage() {
 
   const filtered = data; // No client-side filtering, use API search instead
 
-  async function fetchClients(page = 1, searchQuery = '') {
+  async function fetchClients(page = 1, searchQuery = '', status = statusFilter) {
     try {
       setLoading(true);
       setError(null);
       const searchParam = searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : '';
-      const res = await fetch(`/api/users/clients?limit=${itemsPerPage}&page=${page}${searchParam}`);
+      const statusParam = status ? `&status=${encodeURIComponent(status)}` : '';
+      const res = await fetch(`/api/users/clients?limit=${itemsPerPage}&page=${page}${searchParam}${statusParam}`);
       if (!res.ok) throw new Error(await res.text());
       const body = await res.json();
       setData(body.clients || []);
@@ -110,11 +112,11 @@ export default function AdminClientsPage() {
   // Debounced search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchClients(1, search);
+      fetchClients(1, search, statusFilter);
     }, 500); // 500ms debounce
 
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, statusFilter]);
 
   function openCreate() {
     setEditing(null);
@@ -260,8 +262,24 @@ export default function AdminClientsPage() {
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Manage Clients</h1>
-          <div className="flex gap-2">
-            <Input placeholder="Search clients..." value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="flex gap-2 items-center">
+            <Input
+              placeholder="Search by name, email, phone, client ID..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-72"
+            />
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="lead">Lead</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
             <Button onClick={openCreate}>New Client</Button>
           </div>
         </div>

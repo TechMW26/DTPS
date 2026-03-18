@@ -92,17 +92,10 @@ function RecipesPageContent() {
 
   // Debounce search term to prevent excessive API calls
   const debouncedSearchTerm = useDebounce(searchTerm, 400);
-  
+
   // Track if this is the initial load or a search
   const isInitialLoad = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Bulk AI add state
-  const [showBulkModal, setShowBulkModal] = useState(false);
-  const [bulkRecipeNames, setBulkRecipeNames] = useState('');
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResults, setBulkResults] = useState<{ name: string; status: 'success' | 'error' | 'skipped' | 'merged'; message?: string }[] | null>(null);
-  const [bulkProgress, setBulkProgress] = useState('');
 
   const RECIPES_PER_PAGE = 50;
 
@@ -135,10 +128,10 @@ function RecipesPageContent() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    
+
     // Create new abort controller for this request
     abortControllerRef.current = new AbortController();
-    
+
     try {
       setLoading(true);
 
@@ -163,12 +156,12 @@ function RecipesPageContent() {
       const response = await fetch(`/api/recipes?${params.toString()}`, {
         signal: abortControllerRef.current.signal
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         const fetchedRecipes: Recipe[] = data.recipes || [];
         const total = data.pagination?.total || 0;
-        
+
         // Remove duplicates based on _id
         const seenIds = new Set<string>();
         const uniqueRecipes = fetchedRecipes.filter(recipe => {
@@ -178,7 +171,7 @@ function RecipesPageContent() {
           seenIds.add(recipe._id);
           return true;
         });
-        
+
         setRecipes(uniqueRecipes);
         setCategories(data.categories || data.tags || []);
         setTotalRecipes(total);
@@ -228,7 +221,7 @@ function RecipesPageContent() {
   const getPageNumbers = (): (number | string)[] => {
     const pages: (number | string)[] = [];
     const maxVisible = 5;
-    
+
     if (totalPages <= maxVisible + 2) {
       // Show all pages if total is small
       for (let i = 1; i <= totalPages; i++) {
@@ -237,7 +230,7 @@ function RecipesPageContent() {
     } else {
       // Always show first page
       pages.push(1);
-      
+
       if (currentPage <= 3) {
         // Near start
         for (let i = 2; i <= Math.min(4, totalPages - 1); i++) {
@@ -258,105 +251,14 @@ function RecipesPageContent() {
         }
         pages.push('...');
       }
-      
+
       // Always show last page
       if (!pages.includes(totalPages)) {
         pages.push(totalPages);
       }
     }
-    
+
     return pages;
-  };
-
-  // Bulk AI add handler (SSE streaming)
-  const handleBulkAIAdd = async () => {
-    if (!bulkRecipeNames.trim()) return;
-    
-    const names = bulkRecipeNames.split(',').map(n => n.trim()).filter(n => n.length >= 2);
-    if (names.length === 0) {
-      toast.error('Please enter at least one valid recipe name');
-      return;
-    }
-    if (names.length > 500) {
-      toast.error('Maximum 500 recipes can be added at once');
-      return;
-    }
-
-    setBulkLoading(true);
-    setBulkResults([]);
-    setBulkProgress(`Starting AI generation for ${names.length} recipe${names.length > 1 ? 's' : ''}...`);
-
-    try {
-      const response = await fetch('/api/recipes/ai-bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipeNames: bulkRecipeNames.trim() }),
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to start bulk generation');
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Stream not available');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Parse SSE events from buffer
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // keep incomplete line in buffer
-
-        let currentEvent = '';
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6);
-            try {
-              const data = JSON.parse(jsonStr);
-              
-              if (currentEvent === 'init') {
-                const skipMsg = data.skipped > 0 ? ` (${data.skipped} duplicates skipped)` : '';
-                setBulkProgress(`Generating 0/${data.total} recipes${skipMsg}...`);
-              } else if (currentEvent === 'recipe') {
-                setBulkResults(prev => [
-                  ...(prev || []),
-                  { name: data.name, status: data.status, message: data.message }
-                ]);
-                setBulkProgress(`Processing ${data.progress}/${data.total} recipes...`);
-              } else if (currentEvent === 'done') {
-                setBulkProgress('');
-                if (data.successCount > 0 || data.mergedCount > 0) {
-                  toast.success(data.message);
-                  fetchRecipes(currentPage);
-                } else {
-                  toast.error('No new recipes were created');
-                }
-              } else if (currentEvent === 'error') {
-                toast.error(data.message || 'Stream error');
-                setBulkProgress('');
-              }
-            } catch {
-              // skip malformed JSON
-            }
-            currentEvent = '';
-          }
-        }
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to bulk add recipes');
-      setBulkProgress('');
-    } finally {
-      setBulkLoading(false);
-    }
   };
 
   return (
@@ -370,20 +272,8 @@ function RecipesPageContent() {
               Manage your collection of healthy recipes
             </p>
           </div>
-          
+
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowBulkModal(true);
-                setBulkResults(null);
-                setBulkProgress('');
-              }}
-              className="bg-linear-to-r from-purple-50 to-blue-50 border-purple-200 hover:from-purple-100 hover:to-blue-100 text-purple-700 dark:bg-purple-900/20 dark:border-purple-700 dark:text-purple-300"
-            >
-              <Sparkles className="h-4 w-4 mr-2" />
-              AI Bulk Add
-            </Button>
             <Button asChild>
               <Link href="/recipes/create">
                 <Plus className="h-4 w-4 mr-2" />
@@ -427,7 +317,7 @@ function RecipesPageContent() {
                   </button>
                 )}
               </div>
-              
+
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                 <SelectTrigger>
                   <SelectValue placeholder="All tags" />
@@ -441,18 +331,18 @@ function RecipesPageContent() {
                   ))}
                 </SelectContent>
               </Select>
-              
+
               <Input
                 type="number"
                 placeholder="Max calories"
                 value={maxCalories}
                 onChange={(e) => setMaxCalories(e.target.value)}
               />
-              
+
               <div className="flex items-center space-x-2 text-sm text-gray-600">
                 <ChefHat className="h-4 w-4" />
                 <span>
-                  {totalRecipes > 0 
+                  {totalRecipes > 0
                     ? `Showing ${((currentPage - 1) * RECIPES_PER_PAGE) + 1}-${Math.min(currentPage * RECIPES_PER_PAGE, totalRecipes)} of ${totalRecipes} recipes`
                     : '0 recipes'
                   }
@@ -476,7 +366,7 @@ function RecipesPageContent() {
               >
                 <ChevronsLeft className="h-4 w-4" />
               </Button>
-              
+
               {/* Previous Page */}
               <Button
                 variant="outline"
@@ -487,7 +377,7 @@ function RecipesPageContent() {
                 <ChevronLeft className="h-4 w-4" />
                 <span className="hidden sm:inline ml-1">Previous</span>
               </Button>
-              
+
               {/* Page Numbers */}
               <div className="flex items-center gap-1">
                 {getPageNumbers().map((pageNum, index) => (
@@ -506,7 +396,7 @@ function RecipesPageContent() {
                   )
                 ))}
               </div>
-              
+
               {/* Next Page */}
               <Button
                 variant="outline"
@@ -517,7 +407,7 @@ function RecipesPageContent() {
                 <span className="hidden sm:inline mr-1">Next</span>
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              
+
               {/* Last Page */}
               <Button
                 variant="outline"
@@ -555,7 +445,7 @@ function RecipesPageContent() {
                   <Link href="/recipes/create">Add Your First Recipe</Link>
                 </Button>
               )}
-            </CardContent> 
+            </CardContent>
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4  ">
@@ -594,7 +484,7 @@ function RecipesPageContent() {
                           ID: {recipe.uuid}
                         </Badge>
                       )}
-                      
+
                     </div>
                   </div>
                 </CardHeader>
@@ -677,7 +567,7 @@ function RecipesPageContent() {
               >
                 <ChevronsLeft className="h-4 w-4" />
               </Button>
-              
+
               {/* Previous Page */}
               <Button
                 variant="outline"
@@ -688,7 +578,7 @@ function RecipesPageContent() {
                 <ChevronLeft className="h-4 w-4" />
                 <span className="hidden sm:inline ml-1">Previous</span>
               </Button>
-              
+
               {/* Page Numbers */}
               <div className="flex items-center gap-1">
                 {getPageNumbers().map((pageNum, index) => (
@@ -707,7 +597,7 @@ function RecipesPageContent() {
                   )
                 ))}
               </div>
-              
+
               {/* Next Page */}
               <Button
                 variant="outline"
@@ -718,7 +608,7 @@ function RecipesPageContent() {
                 <span className="hidden sm:inline mr-1">Next</span>
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              
+
               {/* Last Page */}
               <Button
                 variant="outline"
@@ -730,148 +620,10 @@ function RecipesPageContent() {
                 <ChevronsRight className="h-4 w-4" />
               </Button>
             </div>
-            
+
             <p className="text-sm text-gray-500">
               Page {currentPage} of {totalPages} ({totalRecipes} total recipes)
             </p>
-          </div>
-        )}
-
-        {/* Bulk AI Add Modal */}
-        {showBulkModal && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between p-6 border-b">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-purple-600" />
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">AI Bulk Add Recipes</h2>
-                </div>
-                <button
-                  onClick={() => { setShowBulkModal(false); setBulkRecipeNames(''); setBulkResults(null); }}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Recipe Names (comma-separated)
-                  </label>
-                  <Textarea
-                    value={bulkRecipeNames}
-                    onChange={(e) => setBulkRecipeNames(e.target.value)}
-                    placeholder="e.g., Paneer Butter Masala, Dal Makhani, Palak Paneer, Chole Bhature, Rajma Chawal"
-                    rows={4}
-                    disabled={bulkLoading}
-                    className="w-full"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Enter up to 500 recipe names separated by commas. AI will generate full details for each with real-time progress.
-                  </p>
-                </div>
-
-                {bulkRecipeNames.trim() && (
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    <span className="font-medium">
-                      {bulkRecipeNames.split(',').map(n => n.trim()).filter(n => n.length >= 2).length}
-                    </span> recipe(s) will be created
-                  </div>
-                )}
-
-                {bulkProgress && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                      <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
-                      <p className="text-sm text-purple-700 dark:text-purple-300">{bulkProgress}</p>
-                    </div>
-                    {bulkResults && bulkResults.length > 0 && (
-                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div
-                          className="bg-linear-to-r from-purple-600 to-blue-600 h-2 rounded-full transition-all duration-300"
-                          style={{
-                            width: `${Math.round((bulkResults.length / Math.max(bulkRecipeNames.split(',').map(n => n.trim()).filter(n => n.length >= 2).length, 1)) * 100)}%`
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {bulkResults && bulkResults.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Results:</h3>
-                      <span className="text-xs text-gray-500">
-                        {bulkResults.filter(r => r.status === 'success').length} created
-                        {bulkResults.filter(r => r.status === 'merged').length > 0 && `, ${bulkResults.filter(r => r.status === 'merged').length} merged`}
-                        {bulkResults.filter(r => r.status === 'skipped').length > 0 && `, ${bulkResults.filter(r => r.status === 'skipped').length} skipped`}
-                        {bulkResults.filter(r => r.status === 'error').length > 0 && `, ${bulkResults.filter(r => r.status === 'error').length} failed`}
-                      </span>
-                    </div>
-                    <div className="max-h-60 overflow-y-auto space-y-1">
-                      {bulkResults.map((result, idx) => (
-                        <div
-                          key={idx}
-                          className={`flex items-center justify-between p-2 rounded text-sm ${
-                            result.status === 'success'
-                              ? 'bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-300'
-                              : result.status === 'merged'
-                              ? 'bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300'
-                              : result.status === 'skipped'
-                              ? 'bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300'
-                              : 'bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-300'
-                          }`}
-                        >
-                          <span className="font-medium">{result.name}</span>
-                          <span>
-                            {result.status === 'success' ? (
-                              <CheckCircle className="h-4 w-4 text-green-600" />
-                            ) : result.status === 'merged' ? (
-                              <span className="text-xs">Merged</span>
-                            ) : result.status === 'skipped' ? (
-                              <span className="text-xs">{result.message}</span>
-                            ) : (
-                              <span className="text-xs">{result.message}</span>
-                            )}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => { setShowBulkModal(false); setBulkRecipeNames(''); setBulkResults(null); }}
-                    disabled={bulkLoading}
-                  >
-                    {bulkResults && bulkResults.length > 0 && !bulkLoading ? 'Close' : 'Cancel'}
-                  </Button>
-                  {(!bulkResults || bulkResults.length === 0) && !bulkLoading && (
-                    <Button
-                      onClick={handleBulkAIAdd}
-                      disabled={bulkLoading || !bulkRecipeNames.trim()}
-                      className="bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                    >
-                      {bulkLoading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4 mr-2" />
-                          Generate & Add
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </div>

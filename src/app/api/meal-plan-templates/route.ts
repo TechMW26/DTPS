@@ -65,13 +65,14 @@ export async function GET(request: NextRequest) {
     const dietaryRestrictions = searchParams.get('dietaryRestrictions');
     const templateType = searchParams.get('templateType');
     const createdBy = searchParams.get('createdBy');
+    const primaryGoal = searchParams.get('primaryGoal');
     const sortBy = searchParams.get('sortBy') || 'newest';
     const limit = parseInt(searchParams.get('limit') || '1000');
     const skip = parseInt(searchParams.get('skip') || '0');
     const days = searchParams.get('days'); // filter by duration
 
     // Build query
-    const query: any = { isActive: true };
+    const query: any = {};
     if (templateType) {
       if (templateType === 'plan') {
         // include legacy documents with no templateType field
@@ -80,8 +81,22 @@ export async function GET(request: NextRequest) {
         query.templateType = templateType;
       }
     }
-    if (createdBy) {
-      query.createdBy = createdBy;
+
+    // Get session for cache key and optional filtering
+    const session = await getServerSession(authOptions);
+    let sessionUserId = '';
+    if (session?.user) {
+      sessionUserId = session.user.id || '';
+      // Show ALL active plan templates to all authenticated users (dietitians, admins, health counselors)
+      query.isActive = true;
+      // Optionally filter by specific creator if provided
+      if (createdBy) {
+        query.createdBy = createdBy;
+      }
+    } else {
+      // No session - only show public active templates
+      query.isActive = true;
+      query.isPublic = true;
     }
 
     if (category && category !== 'all') {
@@ -94,6 +109,15 @@ export async function GET(request: NextRequest) {
 
     if (difficulty && difficulty !== 'all') {
       query.difficulty = difficulty;
+    }
+
+    // Filter by primary goal - match category or targetAudience.goals
+    if (primaryGoal && primaryGoal !== 'all') {
+      query.$or = [
+        { category: primaryGoal },
+        { 'goals.primaryGoal': primaryGoal },
+        { 'targetAudience.goals': primaryGoal }
+      ];
     }
 
     if (dietaryRestrictions) {
@@ -133,8 +157,8 @@ export async function GET(request: NextRequest) {
         sortOptions = { createdAt: -1 };
     }
 
-    // Generate cache key based on query params
-    const cacheKey = `meal-plan-templates:${templateType || ''}:${category || ''}:${createdBy || ''}:${search || ''}:${sortBy}:${skip}:${limit}`;
+    // Generate cache key based on query params (include session user for per-user caching)
+    const cacheKey = `meal-plan-templates:${sessionUserId}:${templateType || ''}:${category || ''}:${search || ''}:${sortBy}:${skip}:${limit}`;
 
     const { templates, total, categories } = await withCache(
       cacheKey,

@@ -45,20 +45,20 @@ export interface IClientMealPlan extends Document {
   clientId: mongoose.Types.ObjectId;
   dietitianId: mongoose.Types.ObjectId;
   templateId: mongoose.Types.ObjectId;
-  
+
   // Purchase tracking (for shared freeze days across plan phases)
   purchaseId?: mongoose.Types.ObjectId;
-  
+
   // Plan details
   name: string;
   startDate: Date;
   endDate: Date;
   status: 'active' | 'completed' | 'paused' | 'cancelled';
-  
+
   // Freeze tracking
   freezedDays: IFreezeDay[];
   totalFreezeCount: number;
-  
+
   // Customizations from template
   customizations?: {
     targetCalories?: number;
@@ -75,11 +75,11 @@ export interface IClientMealPlan extends Document {
       modifications: string;
     }[];
   };
-  
+
   // Progress tracking
   progress: IProgressEntry[];
   mealCompletions: IMealCompletion[];
-  
+
   // Goals and targets
   goals: {
     weightGoal?: number;
@@ -88,7 +88,7 @@ export interface IClientMealPlan extends Document {
     primaryGoal: 'weight-loss' | 'weight-gain' | 'maintenance' | 'muscle-gain' | 'health-improvement';
     secondaryGoals?: string[];
   };
-  
+
   // Feedback and communication
   feedback?: {
     clientFeedback?: {
@@ -102,7 +102,7 @@ export interface IClientMealPlan extends Document {
       isPrivate: boolean;
     }[];
   };
-  
+
   // Reminders and notifications
   reminders: {
     mealReminders: boolean;
@@ -115,7 +115,7 @@ export interface IClientMealPlan extends Document {
       isActive: boolean;
     }[];
   };
-  
+
   // Analytics
   analytics: {
     averageAdherence?: number;
@@ -124,7 +124,7 @@ export interface IClientMealPlan extends Document {
     challengingMeals?: string[];
     progressTrend?: 'improving' | 'stable' | 'declining';
   };
-  
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -151,8 +151,8 @@ const ProgressEntrySchema = new Schema({
 // Meal completion schema
 const MealCompletionSchema = new Schema({
   date: { type: Date, required: true },
-  mealType: { 
-    type: String, 
+  mealType: {
+    type: String,
     required: true,
     enum: MEAL_TYPE_KEYS
   },
@@ -172,56 +172,56 @@ const FreezeDaySchema = new Schema({
 
 // Main client meal plan schema
 const ClientMealPlanSchema = new Schema({
-  clientId: { 
-    type: Schema.Types.ObjectId, 
-    ref: 'User', 
+  clientId: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
     required: true
   },
-  dietitianId: { 
-    type: Schema.Types.ObjectId, 
+  dietitianId: {
+    type: Schema.Types.ObjectId,
     required: true
   },
-  templateId: { 
-    type: Schema.Types.ObjectId, 
-    ref: 'DietTemplate', 
+  templateId: {
+    type: Schema.Types.ObjectId,
+    ref: 'DietTemplate',
     required: false // Optional - can create plan without template
   },
-  
+
   // Purchase tracking (for shared freeze days across plan phases)
-  purchaseId: { 
-    type: Schema.Types.ObjectId, 
-    ref: 'ClientPurchase', 
+  purchaseId: {
+    type: Schema.Types.ObjectId,
+    ref: 'ClientPurchase',
     required: false
   },
-  
-  name: { 
-    type: String, 
-    required: true, 
+
+  name: {
+    type: String,
+    required: true,
     trim: true,
     maxlength: 200
   },
-  
+
   description: {
     type: String,
-    maxlength: 2000
+    maxlength: 100000
   },
-  
+
   // Store meals directly in the plan (for plans created without template)
   meals: {
     type: [Schema.Types.Mixed],
     default: []
   },
-  
+
   mealTypes: [{
     name: { type: String, required: true },
-    time: { type: String, default: '12:00 PM' }
+    time: { type: String }
   }],
-  startDate: { 
-    type: Date, 
+  startDate: {
+    type: Date,
     required: true
   },
-  endDate: { 
-    type: Date, 
+  endDate: {
+    type: Date,
     required: true
   },
   // Original plan duration in days (doesn't change when frozen)
@@ -230,13 +230,13 @@ const ClientMealPlanSchema = new Schema({
     required: false,
     min: 1
   },
-  status: { 
-    type: String, 
+  status: {
+    type: String,
     required: true,
     enum: ['active', 'completed', 'paused', 'cancelled'],
     default: 'active'
   },
-  
+
   // Freeze tracking
   freezedDays: {
     type: [FreezeDaySchema],
@@ -247,7 +247,7 @@ const ClientMealPlanSchema = new Schema({
     default: 0,
     min: 0
   },
-  
+
   customizations: {
     targetCalories: { type: Number, min: 800, max: 5000 },
     targetMacros: {
@@ -263,22 +263,22 @@ const ClientMealPlanSchema = new Schema({
       modifications: { type: String, required: true, maxlength: 500 }
     }]
   },
-  
+
   progress: [ProgressEntrySchema],
   mealCompletions: [MealCompletionSchema],
-  
+
   goals: {
     weightGoal: { type: Number, min: 20, max: 500 },
     bodyFatGoal: { type: Number, min: 3, max: 50 },
     targetDate: Date,
-    primaryGoal: { 
-      type: String, 
+    primaryGoal: {
+      type: String,
       required: true,
       enum: ['weight-loss', 'weight-gain', 'maintenance', 'muscle-gain', 'health-improvement']
     },
     secondaryGoals: [{ type: String, trim: true }]
   },
-  
+
   feedback: {
     clientFeedback: [{
       rating: { type: Number, required: true, min: 1, max: 5 },
@@ -291,7 +291,7 @@ const ClientMealPlanSchema = new Schema({
       isPrivate: { type: Boolean, default: false }
     }]
   },
-  
+
   reminders: {
     mealReminders: { type: Boolean, default: true },
     progressReminders: { type: Boolean, default: true },
@@ -303,14 +303,14 @@ const ClientMealPlanSchema = new Schema({
       isActive: { type: Boolean, default: true }
     }]
   },
-  
+
   analytics: {
     averageAdherence: { type: Number, min: 0, max: 100 },
     totalDaysCompleted: { type: Number, min: 0, default: 0 },
     favoriteRecipes: [{ type: Schema.Types.ObjectId, ref: 'Recipe' }],
     challengingMeals: [{ type: String }],
-    progressTrend: { 
-      type: String, 
+    progressTrend: {
+      type: String,
       enum: ['improving', 'stable', 'declining']
     }
   }
@@ -322,7 +322,7 @@ const ClientMealPlanSchema = new Schema({
 });
 
 // Validation: ensure startDate is not after endDate
-ClientMealPlanSchema.pre('save', function(next) {
+ClientMealPlanSchema.pre('save', function (next) {
   if (this.startDate && this.endDate && this.startDate > this.endDate) {
     next(new Error('Start date cannot be after end date'));
   } else {
@@ -330,7 +330,7 @@ ClientMealPlanSchema.pre('save', function(next) {
   }
 });
 
-ClientMealPlanSchema.pre('findOneAndUpdate', function(next) {
+ClientMealPlanSchema.pre('findOneAndUpdate', function (next) {
   const update = this.getUpdate() as any;
   if (update.$set && update.$set.startDate && update.$set.endDate) {
     if (new Date(update.$set.startDate) > new Date(update.$set.endDate)) {
@@ -351,19 +351,19 @@ ClientMealPlanSchema.index({ 'progress.date': 1 });
 ClientMealPlanSchema.index({ 'mealCompletions.date': 1 });
 
 // Virtual for calculated duration (fallback if duration field is not set)
-ClientMealPlanSchema.virtual('calculatedDuration').get(function() {
+ClientMealPlanSchema.virtual('calculatedDuration').get(function () {
   return Math.ceil((this.endDate.getTime() - this.startDate.getTime()) / (1000 * 60 * 60 * 24));
 });
 
 // Virtual for days remaining
-ClientMealPlanSchema.virtual('daysRemaining').get(function() {
+ClientMealPlanSchema.virtual('daysRemaining').get(function () {
   const today = new Date();
   if (today > this.endDate) return 0;
   return Math.ceil((this.endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 });
 
 // Virtual for completion percentage
-ClientMealPlanSchema.virtual('completionPercentage').get(function() {
+ClientMealPlanSchema.virtual('completionPercentage').get(function () {
   const totalDays = this.duration || Math.ceil((this.endDate.getTime() - this.startDate.getTime()) / (1000 * 60 * 60 * 24));
   const today = new Date();
   const daysElapsed = Math.min(totalDays, Math.ceil((today.getTime() - this.startDate.getTime()) / (1000 * 60 * 60 * 24)));
@@ -371,7 +371,7 @@ ClientMealPlanSchema.virtual('completionPercentage').get(function() {
 });
 
 // Pre-save middleware to update analytics
-ClientMealPlanSchema.pre('save', function(next) {
+ClientMealPlanSchema.pre('save', function (next) {
   if (this.isModified('mealCompletions') || this.isModified('progress')) {
     // Initialize analytics if not exists
     if (!this.analytics) {
@@ -397,7 +397,7 @@ ClientMealPlanSchema.pre('save', function(next) {
     // Calculate total days completed
     const uniqueDates = new Set(this.mealCompletions.map(mc => mc.date.toDateString()));
     this.analytics!.totalDaysCompleted = uniqueDates.size;
-    
+
     // Determine progress trend (simplified)
     if (this.progress && this.progress.length >= 3) {
       const recent = this.progress.slice(-3);

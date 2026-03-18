@@ -129,10 +129,11 @@ export async function GET(
       .limit(10)
       .lean();
 
-    // Get payments
+    // Get ALL payments with full details
     const payments = await UnifiedPayment.find({ client: new mongoose.Types.ObjectId(clientId) })
+      .populate('servicePlan', 'name category duration')
+      .populate('dietitian', 'firstName lastName email')
       .sort({ createdAt: -1 })
-      .limit(20)
       .lean();
 
     return NextResponse.json({

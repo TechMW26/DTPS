@@ -787,8 +787,8 @@ export default function EditRecipePage() {
                     type="button"
                     onClick={() => setIsActive(!isActive)}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isActive
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                       }`}
                   >
                     {isActive ? (
@@ -817,20 +817,6 @@ export default function EditRecipePage() {
                       required
                       className="flex-1"
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={fetchAIRecipeData}
-                      disabled={aiFetching || name.trim().length < 2}
-                      className="shrink-0 bg-linear-to-r from-purple-50 to-blue-50 border-purple-200 hover:from-purple-100 hover:to-blue-100 text-purple-700"
-                    >
-                      {aiFetching ? (
-                        <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Generating...</>
-                      ) : (
-                        <><Sparkles className="h-4 w-4 mr-1" />AI Fill</>
-                      )}
-                    </Button>
                   </div>
                 </div>
 
@@ -1156,15 +1142,15 @@ export default function EditRecipePage() {
                         <div
                           key={condition}
                           className={`p-2 rounded-lg border cursor-pointer transition-colors ${medicalContraindications.includes(condition)
-                              ? 'bg-red-50 border-red-200 text-red-800'
-                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                            ? 'bg-red-50 border-red-200 text-red-800'
+                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
                             }`}
                           onClick={() => toggleMedicalContraindication(condition)}
                         >
                           <div className="flex items-center space-x-2">
                             <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${medicalContraindications.includes(condition)
-                                ? 'bg-red-500 border-red-500'
-                                : 'border-gray-300'
+                              ? 'bg-red-500 border-red-500'
+                              : 'border-gray-300'
                               }`}>
                               {medicalContraindications.includes(condition) && (
                                 <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">

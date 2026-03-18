@@ -157,11 +157,11 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<DietTemplate | null>(null);
-  const [templateType, setTemplateType] = useState<'plan' | 'diet'>('diet'); // 'plan' for Plan Templates, 'diet' for Diet Templates
+  const [templateType, setTemplateType] = useState<'plan' | 'diet'>('plan'); // Default to plan templates in planning flow
   const [templateSearch, setTemplateSearch] = useState('');
   const [templatePage, setTemplatePage] = useState(1);
   const [totalTemplates, setTotalTemplates] = useState(0);
-  const TEMPLATES_PER_PAGE = 10;
+  const TEMPLATES_PER_PAGE = 50;
 
   // Diet Date Selection modal state
   const [showDateSelectionModal, setShowDateSelectionModal] = useState(false);
@@ -348,12 +348,12 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
       // Plan templates use /api/meal-plan-templates?templateType=plan
       // Diet templates use /api/diet-templates
       const params = new URLSearchParams({
-        isActive: 'true',
         page: page.toString(),
         limit: TEMPLATES_PER_PAGE.toString(),
         skip: ((page - 1) * TEMPLATES_PER_PAGE).toString(),
         ...(search && { search }),
-        ...(primaryGoal && { primaryGoal })
+        // Only filter by primaryGoal for diet templates, show ALL plan templates
+        ...(type === 'diet' && primaryGoal && { primaryGoal })
       });
 
       const url = type === 'plan'
@@ -375,7 +375,7 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
           .map(s => s.trim().toLowerCase())
           .filter(Boolean);
 
-        if (clientRestrictions.length > 0) {
+        if (type === 'diet' && clientRestrictions.length > 0) {
           fetchedTemplates = fetchedTemplates.filter((template: DietTemplate) => {
             const templateRestrictions = (template.dietaryRestrictions || [])
               .map(r => r.toLowerCase().trim());
@@ -409,7 +409,7 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [templateSearch]);
+  }, [templateSearch, primaryGoal]);
 
   // Load template data into form
   const loadTemplate = (template: DietTemplate) => {
@@ -433,8 +433,9 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
 
   // Apply template directly without date mapping (for plan templates)
   const applyTemplateDirectly = (template: DietTemplate) => {
-    // Keep user's plan name and description — only load meals, meal types, and duration
-    setDuration(template.duration);
+    // Only load title and description — keep user's duration, dates, meal types, and meals
+    setPlanTitle(template.name);
+    setDescription(template.description || '');
     setSelectedTemplate(template);
 
     if (template.mealTypes && template.mealTypes.length > 0) {
@@ -2266,9 +2267,10 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                   if (open) {
                     setTemplateSearch('');
                     setTemplatePage(1);
+                    setTemplateType('plan');
                     setPendingTemplate(null);
                     setTemplateDayMapping({});
-                    fetchTemplates(templateType, 1, '');
+                    fetchTemplates('plan', 1, '');
                   } else {
                     setPendingTemplate(null);
                     setTemplateDayMapping({});
@@ -2349,11 +2351,20 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                                     <div className="flex items-center justify-between gap-3">
                                       <div className="flex-1 min-w-0">
                                         <h4 className="font-medium text-gray-900 truncate">{template.name}</h4>
+                                        {template.description && (
+                                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{template.description}</p>
+                                        )}
                                         <div className="flex flex-wrap items-center gap-2 mt-1">
                                           {template.category && (
                                             <Badge className="text-xs capitalize bg-blue-100 text-blue-800">{template.category.replace(/-/g, ' ')}</Badge>
                                           )}
                                           <span className="text-xs text-gray-600">{template.duration} days</span>
+                                          {template.targetCalories && (
+                                            <span className="text-xs text-gray-600">{template.targetCalories.min}-{template.targetCalories.max} kcal</span>
+                                          )}
+                                          {template.meals && template.meals.length > 0 && (
+                                            <span className="text-xs text-gray-600">{template.meals.length} day{template.meals.length !== 1 ? 's' : ''} of meals</span>
+                                          )}
                                           {template.goals?.primaryGoal && (
                                             <Badge variant="secondary" className="text-xs capitalize">
                                               {template.goals.primaryGoal.replace(/-/g, ' ')}
@@ -2676,11 +2687,20 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                                     <div className="flex items-center justify-between gap-3">
                                       <div className="flex-1 min-w-0">
                                         <h4 className="font-medium text-gray-900 truncate">{template.name}</h4>
+                                        {template.description && (
+                                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{template.description}</p>
+                                        )}
                                         <div className="flex flex-wrap items-center gap-2 mt-1">
                                           {template.category && (
                                             <Badge className="text-xs capitalize bg-blue-100 text-blue-800">{template.category.replace(/-/g, ' ')}</Badge>
                                           )}
                                           <span className="text-xs text-gray-600">{template.duration} days</span>
+                                          {template.targetCalories && (
+                                            <span className="text-xs text-gray-600">{template.targetCalories.min}-{template.targetCalories.max} kcal</span>
+                                          )}
+                                          {template.meals && template.meals.length > 0 && (
+                                            <span className="text-xs text-gray-600">{template.meals.length} day{template.meals.length !== 1 ? 's' : ''} of meals</span>
+                                          )}
                                           {template.goals?.primaryGoal && (
                                             <Badge variant="secondary" className="text-xs capitalize">
                                               {template.goals.primaryGoal.replace(/-/g, ' ')}

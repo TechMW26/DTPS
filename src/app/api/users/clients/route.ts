@@ -108,28 +108,89 @@ export async function GET(request: NextRequest) {
     }
     // Admin (without viewAs) can see all clients (no additional filter needed)
 
-    // Add search filter
+    // Support plan name search - find client IDs from payments/meal plans matching plan name
+    const planNameSearch = searchParams.get('planName') || '';
+    let planNameClientIds: mongoose.Types.ObjectId[] = [];
+    if (planNameSearch) {
+      const [paymentClients, mealPlanClients] = await Promise.all([
+        UnifiedPayment.distinct('client', { planName: { $regex: planNameSearch, $options: 'i' } }),
+        ClientMealPlan.distinct('clientId', { name: { $regex: planNameSearch, $options: 'i' } })
+      ]);
+      planNameClientIds = [...new Set([...paymentClients, ...mealPlanClients])];
+      if (planNameClientIds.length > 0) {
+        query._id = { $in: planNameClientIds };
+      } else {
+        // No matching plans, return empty
+        return NextResponse.json({
+          clients: [],
+          pagination: { page: 1, limit, total: 0, pages: 0 }
+        });
+      }
+    }
+
+    // Add status filter
+    const statusFilter = searchParams.get('status') || '';
+    if (statusFilter) {
+      query.clientStatus = statusFilter;
+    }
+
+    // Add search filter - search by name, email, phone, clientId, ObjectId
     if (search) {
-      const searchCondition = {
-        $or: [
-          { firstName: { $regex: search, $options: 'i' } },
-          { lastName: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } },
-          { phone: { $regex: search, $options: 'i' } }
-        ]
-      };
+      const searchOrConditions: any[] = [
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { clientId: { $regex: search, $options: 'i' } },
+      ];
+
+      // Also search by ObjectId if it looks like a valid one
+      if (mongoose.Types.ObjectId.isValid(search)) {
+        searchOrConditions.push({ _id: new mongoose.Types.ObjectId(search) });
+      }
+
+      // Search by full name (first + last combined)
+      const nameParts = search.trim().split(/\s+/);
+      if (nameParts.length >= 2) {
+        searchOrConditions.push({
+          $and: [
+            { firstName: { $regex: nameParts[0], $options: 'i' } },
+            { lastName: { $regex: nameParts.slice(1).join(' '), $options: 'i' } }
+          ]
+        });
+      }
+
+      // Also search by plan name via payments/meal plans
+      const [searchPaymentClients, searchMealPlanClients] = await Promise.all([
+        UnifiedPayment.distinct('client', { planName: { $regex: search, $options: 'i' } }),
+        ClientMealPlan.distinct('clientId', { name: { $regex: search, $options: 'i' } })
+      ]);
+      const searchPlanClientIds = [...new Set([...searchPaymentClients, ...searchMealPlanClients])];
+      if (searchPlanClientIds.length > 0) {
+        searchOrConditions.push({ _id: { $in: searchPlanClientIds } });
+      }
+
+      const searchCondition = { $or: searchOrConditions };
 
       if (query.$or) {
         // Combine existing $or with search $or using $and
+        const andConditions: any[] = [
+          { $or: query.$or },
+          searchCondition
+        ];
+        if (statusFilter) {
+          andConditions.push({ clientStatus: statusFilter });
+        }
+        if (planNameClientIds.length > 0) {
+          andConditions.push({ _id: { $in: planNameClientIds } });
+        }
         query = {
           role: UserRole.CLIENT,
-          $and: [
-            { $or: query.$or },
-            searchCondition
-          ]
+          $and: andConditions
         };
       } else {
-        query = { ...query, ...searchCondition };
+        const newQuery = { ...query, ...searchCondition };
+        query = newQuery;
       }
     }
 
