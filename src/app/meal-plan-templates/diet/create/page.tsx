@@ -676,7 +676,7 @@ export default function CreateDietTemplatePage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <DietPlanDashboard
-                key={`diet-dashboard-${template.duration}`}
+                key={`diet-dashboard-${template.duration}-${weekPlanData.length}`}
                 clientId="template-create-new"
                 clientData={{
                   name: template.name || 'Untitled Template',
@@ -688,9 +688,14 @@ export default function CreateDietTemplatePage() {
                 onDurationChange={(nextDuration) =>
                   setTemplate(prev => ({ ...prev, duration: nextDuration }))
                 }
+                initialMeals={weekPlanData.length > 0 ? weekPlanData : undefined}
                 initialMealTypes={mealTypesData}
                 clientDietaryRestrictions={template.dietaryRestrictions?.join(', ') || ''}
                 onBack={() => setCurrentStep(2)}
+                onSave={(weekPlan) => {
+                  // Sync weekPlan changes to parent for draft auto-save
+                  setWeekPlanData(weekPlan);
+                }}
                 onSavePlan={(weekPlan, mealTypes) => {
                   setWeekPlanData(weekPlan);
                   if (mealTypes) setMealTypesData(mealTypes);

@@ -456,6 +456,33 @@ userSchema.index({ role: 1, createdAt: -1 });
 // Text index for search functionality
 userSchema.index({ firstName: 'text', lastName: 'text', email: 'text' });
 
+// Pre-save hook to auto-generate clientId for new clients
+userSchema.pre('save', async function (next) {
+  // Only generate clientId for new client users who don't have one
+  if (this.isNew && this.role === UserRole.CLIENT && !this.clientId) {
+    try {
+      // Find the highest existing clientId number using aggregation for proper numeric sorting
+      const User = mongoose.model('User');
+      const result = await User.aggregate([
+        { $match: { role: UserRole.CLIENT, clientId: { $exists: true, $ne: null, $regex: /^C-\d+$/ } } },
+        { $project: { clientIdNum: { $toInt: { $substr: ['$clientId', 2, -1] } } } },
+        { $sort: { clientIdNum: -1 } },
+        { $limit: 1 }
+      ]);
+
+      let nextNumber = 1;
+      if (result.length > 0 && result[0].clientIdNum) {
+        nextNumber = result[0].clientIdNum + 1;
+      }
+      this.clientId = `C-${nextNumber}`;
+    } catch (error) {
+      console.error('Error generating clientId:', error);
+      // Continue without clientId if there's an error
+    }
+  }
+  next();
+});
+
 // Pre-save hook to hash password with bcrypt
 userSchema.pre('save', async function (next) {
   // Only hash the password if it has been modified (or is new)

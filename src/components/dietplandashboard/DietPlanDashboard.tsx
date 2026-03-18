@@ -384,6 +384,10 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onDu
     saveTimeoutRef.current = setTimeout(() => {
       saveToStorage();
       previousDataRef.current = currentDataStr;
+      // Also sync to parent for their draft saving (without triggering full save)
+      if (onSave && weekPlan.length > 0) {
+        onSave(weekPlan);
+      }
     }, DEBOUNCE_MS);
 
     return () => {
@@ -391,7 +395,7 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onDu
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [weekPlan, mealTypeConfigs, readOnly, session?.user?.id, saveToStorage]);
+  }, [weekPlan, mealTypeConfigs, readOnly, session?.user?.id, saveToStorage, onSave]);
 
   // Restore draft on mount
   useEffect(() => {

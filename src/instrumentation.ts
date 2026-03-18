@@ -1,9 +1,5 @@
-import * as Sentry from "@sentry/nextjs";
-
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    await import("../sentry.server.config");
-    
     // Pre-warm MongoDB connection on server startup so the first request is fast
     try {
       const { default: connectDB } = await import("@/lib/db/connection");
@@ -16,10 +12,4 @@ export async function register() {
       // Silently ignore — connection will be established on first request
     }
   }
-
-  if (process.env.NEXT_RUNTIME === "edge") {
-    await import("../sentry.edge.config");
-  }
 }
-
-export const onRequestError = Sentry.captureRequestError;
