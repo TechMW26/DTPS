@@ -229,31 +229,32 @@ export default function CreateDietTemplatePage() {
   // Restore draft on mount
   useEffect(() => {
     if (!draftRestored && session?.user?.id) {
-      const restored = restoreDraft();
-      if (restored && Object.keys(restored).length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const restored: any = restoreDraft();
+      if (restored && typeof restored === 'object' && Object.keys(restored).length > 0) {
         // Handle new combined draft format
-        if (restored.template !== undefined) {
+        if ('template' in restored && restored.template) {
           // New format: { template, weekPlanData, mealTypesData, currentStep }
           setTemplate(prev => ({
             ...prev,
             ...restored.template,
-            dietaryRestrictions: normalizeRestrictionsArray(restored.template.dietaryRestrictions)
+            dietaryRestrictions: normalizeRestrictionsArray(restored.template?.dietaryRestrictions)
           }));
-          if (restored.weekPlanData && restored.weekPlanData.length > 0) {
+          if (Array.isArray(restored.weekPlanData) && restored.weekPlanData.length > 0) {
             setWeekPlanData(restored.weekPlanData);
           }
-          if (restored.mealTypesData && restored.mealTypesData.length > 0) {
+          if (Array.isArray(restored.mealTypesData) && restored.mealTypesData.length > 0) {
             setMealTypesData(restored.mealTypesData);
           }
-          if (restored.currentStep && restored.currentStep >= 1 && restored.currentStep <= 3) {
+          if (typeof restored.currentStep === 'number' && restored.currentStep >= 1 && restored.currentStep <= 3) {
             setCurrentStep(restored.currentStep);
           }
           toast.success('Draft restored', {
             description: 'Your previous work has been restored. Draft expires in 24 hours.',
             duration: 4000
           });
-        } else if (restored.name !== undefined) {
-          // Legacy format: direct template object
+        } else if ('name' in restored && restored.name !== undefined) {
+          // Legacy format: direct template object (old drafts)
           setTemplate(prev => ({
             ...prev,
             ...restored,
