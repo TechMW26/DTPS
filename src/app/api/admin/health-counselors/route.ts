@@ -15,16 +15,47 @@ export async function GET(req: NextRequest) {
 
     await dbConnect();
 
-    // Fetch all health counselors with client count
-    const healthCounselors = await User.find({ role: 'health_counselor' })
-      .select('firstName lastName email avatar phone status createdAt updatedAt')
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get('search') || '';
+
+    // Build query
+    const query: any = { role: 'health_counselor' };
+
+    // Add search filter
+    if (search) {
+      const searchConditions: any[] = [
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+      ];
+      // Search by full name (first + last combined)
+      const nameParts = search.trim().split(/\s+/);
+      if (nameParts.length >= 2) {
+        searchConditions.push({
+          $and: [
+            { firstName: { $regex: nameParts[0], $options: 'i' } },
+            { lastName: { $regex: nameParts.slice(1).join(' '), $options: 'i' } }
+          ]
+        });
+      }
+      query.$or = searchConditions;
+    }
+
+    // Fetch health counselors with search
+    const healthCounselors = await User.find(query)
+      .select('firstName lastName email avatar phone specializations credentials experience consultationFee bio role status createdAt updatedAt')
+      .sort({ firstName: 1, lastName: 1 })
       .lean();
 
-    // Get client count for each health counselor
+    // Get client count for each health counselor (check both singular and plural assignment fields)
     const healthCounselorsWithCount = await Promise.all(
       healthCounselors.map(async (hc: any) => {
         const clientCount = await User.countDocuments({
-          assignedHealthCounselor: hc._id
+          $or: [
+            { assignedHealthCounselor: hc._id },
+            { assignedHealthCounselors: hc._id }
+          ]
         });
         return {
           ...hc,

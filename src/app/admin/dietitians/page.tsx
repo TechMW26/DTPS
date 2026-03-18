@@ -19,12 +19,14 @@ interface Dietitian {
   email: string;
   firstName: string;
   lastName: string;
+  phone?: string;
   bio?: string;
   experience?: number;
   consultationFee?: number;
   specializations?: string[];
   credentials?: string[];
   status: string;
+  clientCount?: number;
 }
 
 export default function AdminDietitiansPage() {
@@ -55,15 +57,19 @@ export default function AdminDietitiansPage() {
     if (!q) return data;
     return data.filter(u =>
       u.email.toLowerCase().includes(q) ||
-      `${u.firstName} ${u.lastName}`.toLowerCase().includes(q)
+      `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+      (u.phone && u.phone.toLowerCase().includes(q)) ||
+      (u.specializations || []).some(s => s.toLowerCase().includes(q))
     );
   }, [data, search]);
 
-  async function fetchDietitians() {
+  async function fetchDietitians(searchQuery = '') {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`/api/users/dietitians`);
+      const params = new URLSearchParams();
+      if (searchQuery) params.set('search', searchQuery);
+      const res = await fetch(`/api/admin/dietitians?${params}`);
       if (!res.ok) throw new Error(await res.text());
       const body = await res.json();
       setData(body.dietitians || []);
@@ -76,8 +82,16 @@ export default function AdminDietitiansPage() {
 
   useEffect(() => { fetchDietitians(); }, []);
 
+  // Debounced server-side search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchDietitians(search);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   // Subscribe to real-time dietitians updates
-  useDataRefresh(DataEventTypes.DIETITIANS_UPDATED, fetchDietitians, [fetchDietitians]);
+  useDataRefresh(DataEventTypes.DIETITIANS_UPDATED, () => fetchDietitians(search), [fetchDietitians, search]);
 
   function openCreate() {
     setEditing(null);
@@ -194,7 +208,7 @@ export default function AdminDietitiansPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Manage Dietitians</h1>
           <div className="flex gap-2">
-            <Input placeholder="Search dietitians..." value={search} onChange={e => setSearch(e.target.value)} />
+            <Input placeholder="Search by name, email, phone..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
             <Button onClick={openCreate}>New Dietitian</Button>
           </div>
         </div>
@@ -215,7 +229,9 @@ export default function AdminDietitiansPage() {
                     <tr>
                       <th className="text-left p-3">Name</th>
                       <th className="text-left p-3">Email</th>
+                      <th className="text-left p-3">Phone</th>
                       <th className="text-left p-3">Status</th>
+                      <th className="text-left p-3">Assigned Clients</th>
                       <th className="text-left p-3">Experience</th>
                       <th className="text-left p-3">Fee</th>
                       <th className="text-left p-3">Specializations</th>
@@ -231,12 +247,18 @@ export default function AdminDietitiansPage() {
                       >
                         <td className="p-3">{u.firstName} {u.lastName}</td>
                         <td className="p-3">{u.email}</td>
+                        <td className="p-3">{u.phone || '-'}</td>
                         <td className="p-3">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${u.status === 'active'
                             ? 'bg-green-100 text-green-700'
                             : 'bg-red-100 text-red-700'
                             }`}>
                             {u.status || 'active'}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                            {u.clientCount || 0} clients
                           </span>
                         </td>
                         <td className="p-3">{u.experience || 0} yrs</td>

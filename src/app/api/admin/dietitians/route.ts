@@ -32,27 +32,43 @@ export async function GET(request: NextRequest) {
 
     // Add search filter
     if (search) {
-      query.$or = [
+      const searchConditions: any[] = [
         { firstName: { $regex: search, $options: 'i' } },
         { lastName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { specializations: { $in: [new RegExp(search, 'i')] } }
       ];
+      // Search by full name (first + last combined)
+      const nameParts = search.trim().split(/\s+/);
+      if (nameParts.length >= 2) {
+        searchConditions.push({
+          $and: [
+            { firstName: { $regex: nameParts[0], $options: 'i' } },
+            { lastName: { $regex: nameParts.slice(1).join(' '), $options: 'i' } }
+          ]
+        });
+      }
+      query.$or = searchConditions;
     }
 
     const dietitians = await withCache(
       `admin:dietitians:${JSON.stringify(query)}`,
       async () => await User.find(query)
-        .select('firstName lastName email avatar phone specialization status updatedAt')
+        .select('firstName lastName email avatar phone specializations credentials experience consultationFee bio role status updatedAt')
         .sort({ firstName: 1, lastName: 1 }),
       { ttl: 120000, tags: ['admin'] }
     );
 
-    // Get client count for each dietitian
+    // Get client count for each dietitian (check both singular and plural assignment fields)
     const dietitiansWithCounts = await Promise.all(
       dietitians.map(async (dietitian) => {
         const clientCount = await User.countDocuments({
           role: UserRole.CLIENT,
-          assignedDietitian: dietitian._id
+          $or: [
+            { assignedDietitian: dietitian._id },
+            { assignedDietitians: dietitian._id }
+          ]
         });
         return {
           ...dietitian.toObject(),

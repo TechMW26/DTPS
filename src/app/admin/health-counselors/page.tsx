@@ -27,6 +27,7 @@ interface HealthCounselor {
   specializations?: string[];
   credentials?: string[];
   avatar?: string;
+  clientCount?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -56,17 +57,17 @@ export default function AdminHealthCounselorsPage() {
     credentials: [] as string[],
   });
 
-  async function fetchHealthCounselors() {
+  async function fetchHealthCounselors(searchQuery = '') {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      
-      const response = await fetch(`/api/users/health-counselors?${params}`);
+      if (searchQuery) params.set('search', searchQuery);
+
+      const response = await fetch(`/api/admin/health-counselors?${params}`);
       const data = await response.json();
-      
+
       if (!response.ok) throw new Error(data.error || 'Failed to fetch health counselors');
-      
+
       setHealthCounselors(data.healthCounselors || []);
     } catch (e: any) {
       setError(e?.message || "Failed to load health counselors");
@@ -77,20 +78,28 @@ export default function AdminHealthCounselorsPage() {
 
   useEffect(() => {
     fetchHealthCounselors();
+  }, []);
+
+  // Debounced server-side search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchHealthCounselors(search);
+    }, 400);
+    return () => clearTimeout(timer);
   }, [search]);
 
   // Subscribe to real-time health counselors updates
-  useDataRefresh(DataEventTypes.HEALTH_COUNSELORS_UPDATED, () => fetchHealthCounselors(), [search]);
+  useDataRefresh(DataEventTypes.HEALTH_COUNSELORS_UPDATED, () => fetchHealthCounselors(search), [search]);
 
   function openCreate() {
     setEditing(null);
-    setForm({ 
-      email: "", 
-      password: "", 
-      firstName: "", 
-      lastName: "", 
-      role: UserRole.HEALTH_COUNSELOR, 
-      status: UserStatus.ACTIVE, 
+    setForm({
+      email: "",
+      password: "",
+      firstName: "",
+      lastName: "",
+      role: UserRole.HEALTH_COUNSELOR,
+      status: UserStatus.ACTIVE,
       phone: "",
       bio: "",
       experience: "",
@@ -124,17 +133,17 @@ export default function AdminHealthCounselorsPage() {
     try {
       const url = editing ? `/api/users/${editing._id}` : '/api/users';
       const method = editing ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) throw new Error(data.error || 'Failed to save health counselor');
-      
+
       toast.success(editing ? 'Health counselor updated successfully' : 'Health counselor created successfully');
       setOpen(false);
       fetchHealthCounselors();
@@ -146,7 +155,7 @@ export default function AdminHealthCounselorsPage() {
   async function handleStatusToggle(id: string, currentStatus: string) {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
     const action = newStatus === 'active' ? 'activate' : 'deactivate';
-    
+
     if (!confirm(`Are you sure you want to ${action} this health counselor?`)) return;
 
     try {
@@ -163,13 +172,13 @@ export default function AdminHealthCounselorsPage() {
 
       const updatedHC = await response.json();
       setHealthCounselors(prev => prev.map(hc => hc._id === id ? updatedHC.user : hc));
-      
+
       const actionPast = newStatus === 'active' ? 'activated' : 'deactivated';
       toast.success(`Health counselor ${actionPast} successfully`);
-      
+
       // Emit event for real-time updates
       emitDataChange(DataEventTypes.HEALTH_COUNSELORS_UPDATED);
-      
+
       // Refresh list
       await fetchHealthCounselors();
     } catch (e: any) {
@@ -178,9 +187,12 @@ export default function AdminHealthCounselorsPage() {
   }
 
   const filtered = healthCounselors.filter(hc =>
+    !search.trim() ||
     hc.firstName.toLowerCase().includes(search.toLowerCase()) ||
     hc.lastName.toLowerCase().includes(search.toLowerCase()) ||
-    hc.email.toLowerCase().includes(search.toLowerCase())
+    hc.email.toLowerCase().includes(search.toLowerCase()) ||
+    (hc.phone && hc.phone.toLowerCase().includes(search.toLowerCase())) ||
+    `${hc.firstName} ${hc.lastName}`.toLowerCase().includes(search.toLowerCase())
   );
 
   if (loading) return <DashboardLayout><LoadingSpinner /></DashboardLayout>;
@@ -201,7 +213,7 @@ export default function AdminHealthCounselorsPage() {
           <CardContent>
             <div className="mb-4">
               <Input
-                placeholder="Search health counselors..."
+                placeholder="Search by name, email, phone..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="max-w-sm"
@@ -216,6 +228,7 @@ export default function AdminHealthCounselorsPage() {
                     <th className="text-left p-3">Email</th>
                     <th className="text-left p-3">Phone</th>
                     <th className="text-left p-3">Status</th>
+                    <th className="text-left p-3">Assigned Clients</th>
                     <th className="text-left p-3">Fee</th>
                     <th className="text-left p-3">Created</th>
                     <th className="text-left p-3">Actions</th>
@@ -223,8 +236,8 @@ export default function AdminHealthCounselorsPage() {
                 </thead>
                 <tbody>
                   {filtered.map(hc => (
-                    <tr 
-                      key={hc._id} 
+                    <tr
+                      key={hc._id}
                       className="border-b hover:bg-gray-50 cursor-pointer"
                       onClick={() => router.push(`/admin/health-counselors/${hc._id}`)}
                     >
@@ -232,13 +245,18 @@ export default function AdminHealthCounselorsPage() {
                       <td className="p-3">{hc.email}</td>
                       <td className="p-3">{hc.phone || '-'}</td>
                       <td className="p-3 capitalize">{hc.status}</td>
-                      <td className="p-3">${hc.consultationFee || 0}</td>
+                      <td className="p-3">
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                          {hc.clientCount || 0} clients
+                        </span>
+                      </td>
+                      <td className="p-3">{hc.consultationFee ? `₹${hc.consultationFee}` : '-'}</td>
                       <td className="p-3">{hc.createdAt ? new Date(hc.createdAt).toLocaleString() : '-'}</td>
                       <td className="p-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
                         <Button variant="outline" size="sm" onClick={() => router.push(`/admin/health-counselors/${hc._id}`)}>View</Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
                           onClick={() => router.push(`/health-counselor/clients?viewAs=${hc._id}`)}
                         >
@@ -268,7 +286,7 @@ export default function AdminHealthCounselorsPage() {
             <DialogHeader>
               <DialogTitle>{editing ? 'Edit Health Counselor' : 'Create Health Counselor'}</DialogTitle>
             </DialogHeader>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-gray-600">First Name</label>

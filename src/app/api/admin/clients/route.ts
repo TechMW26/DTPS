@@ -62,14 +62,24 @@ export async function GET(request: NextRequest) {
     // Add search filter
     if (search) {
       const searchRegex = { $regex: search, $options: 'i' };
-      andConditions.push({
-        $or: [
-          { firstName: searchRegex },
-          { lastName: searchRegex },
-          { email: searchRegex },
-          { phone: searchRegex }
-        ]
-      });
+      const searchConditions: any[] = [
+        { firstName: searchRegex },
+        { lastName: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex },
+        { clientId: searchRegex },
+      ];
+      // Search by full name (first + last combined)
+      const nameParts = search.trim().split(/\s+/);
+      if (nameParts.length >= 2) {
+        searchConditions.push({
+          $and: [
+            { firstName: { $regex: nameParts[0], $options: 'i' } },
+            { lastName: { $regex: nameParts.slice(1).join(' '), $options: 'i' } }
+          ]
+        });
+      }
+      andConditions.push({ $or: searchConditions });
     }
 
     const query = andConditions.length === 1 ? andConditions[0] : { $and: andConditions };

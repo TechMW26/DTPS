@@ -2319,7 +2319,7 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                           <div className="relative mb-3">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                             <Input
-                              placeholder="Search templates by name..."
+                              placeholder="Search by name or category..."
                               value={templateSearch}
                               onChange={(e) => setTemplateSearch(e.target.value)}
                               className="pl-9"
@@ -2358,12 +2358,8 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                                           {template.category && (
                                             <Badge className="text-xs capitalize bg-blue-100 text-blue-800">{template.category.replace(/-/g, ' ')}</Badge>
                                           )}
-                                          <span className="text-xs text-gray-600">{template.duration} days</span>
                                           {template.targetCalories && (
                                             <span className="text-xs text-gray-600">{template.targetCalories.min}-{template.targetCalories.max} kcal</span>
-                                          )}
-                                          {template.meals && template.meals.length > 0 && (
-                                            <span className="text-xs text-gray-600">{template.meals.length} day{template.meals.length !== 1 ? 's' : ''} of meals</span>
                                           )}
                                           {template.goals?.primaryGoal && (
                                             <Badge variant="secondary" className="text-xs capitalize">
@@ -2654,7 +2650,7 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                           <div className="relative mb-3">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                             <Input
-                              placeholder="Search templates by name..."
+                              placeholder="Search by name or category..."
                               value={templateSearch}
                               onChange={(e) => setTemplateSearch(e.target.value)}
                               className="pl-9"
@@ -2694,12 +2690,8 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                                           {template.category && (
                                             <Badge className="text-xs capitalize bg-blue-100 text-blue-800">{template.category.replace(/-/g, ' ')}</Badge>
                                           )}
-                                          <span className="text-xs text-gray-600">{template.duration} days</span>
                                           {template.targetCalories && (
                                             <span className="text-xs text-gray-600">{template.targetCalories.min}-{template.targetCalories.max} kcal</span>
-                                          )}
-                                          {template.meals && template.meals.length > 0 && (
-                                            <span className="text-xs text-gray-600">{template.meals.length} day{template.meals.length !== 1 ? 's' : ''} of meals</span>
                                           )}
                                           {template.goals?.primaryGoal && (
                                             <Badge variant="secondary" className="text-xs capitalize">
