@@ -82,10 +82,10 @@ export async function GET(request: NextRequest) {
       if (clientId) {
         // Check if dietitian has access to this client
         const client = await withCache(
-          `client-meal-plans:${JSON.stringify(clientId)}`,
-          async () => await User.findById(clientId).select('assignedDietitian assignedDietitians'),
+          `client-access:${clientId}`,
+          async () => await User.findById(clientId).select('assignedDietitian assignedDietitians').lean(),
           { ttl: 120000, tags: ['client_meal_plans'] }
-        );
+        ) as { assignedDietitian?: any; assignedDietitians?: any[] } | null;
         if (!client) {
           return NextResponse.json({
             success: true,
@@ -117,20 +117,14 @@ export async function GET(request: NextRequest) {
       } else {
         // No clientId specified - get all clients assigned to this dietitian
         const assignedClients = await withCache(
-          `client-meal-plans:${JSON.stringify({
-            role: UserRole.CLIENT,
-            $or: [
-              { assignedDietitian: session.user.id },
-              { assignedDietitians: session.user.id }
-            ]
-          })}`,
+          `dietitian-clients:${session.user.id}`,
           async () => await User.find({
             role: UserRole.CLIENT,
             $or: [
               { assignedDietitian: session.user.id },
               { assignedDietitians: session.user.id }
             ]
-          }).select('_id'),
+          }).select('_id').lean(),
           { ttl: 120000, tags: ['client_meal_plans'] }
         );
         const assignedClientIds = assignedClients.map(c => c._id);
@@ -151,10 +145,10 @@ export async function GET(request: NextRequest) {
       if (clientId) {
         // Check if HC has access to this client
         const client = await withCache(
-          `client-meal-plans:${JSON.stringify(clientId)}`,
-          async () => await User.findById(clientId).select('assignedHealthCounselor'),
+          `client-hc-access:${clientId}`,
+          async () => await User.findById(clientId).select('assignedHealthCounselor').lean(),
           { ttl: 120000, tags: ['client_meal_plans'] }
-        );
+        ) as { assignedHealthCounselor?: any } | null;
         if (!client) {
           return NextResponse.json({
             success: true,
@@ -177,14 +171,11 @@ export async function GET(request: NextRequest) {
       } else {
         // No clientId specified - get all clients assigned to this HC
         const assignedClients = await withCache(
-          `client-meal-plans:${JSON.stringify({
-            role: UserRole.CLIENT,
-            assignedHealthCounselor: session.user.id
-          })}`,
+          `hc-clients:${session.user.id}`,
           async () => await User.find({
             role: UserRole.CLIENT,
             assignedHealthCounselor: session.user.id
-          }).select('_id'),
+          }).select('_id').lean(),
           { ttl: 120000, tags: ['client_meal_plans'] }
         );
         const assignedClientIds = assignedClients.map(c => c._id);

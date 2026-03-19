@@ -1,4 +1,4 @@
-import { messaging } from './firebaseAdmin';
+import { getMessaging } from './firebaseAdmin';
 import User from '@/lib/db/models/User';
 import Notification from '@/lib/db/models/Notification';
 import connectDB from '@/lib/db/connection';
@@ -49,7 +49,7 @@ export async function sendNotificationToUser(
 ): Promise<SendNotificationResult> {
     try {
         await connectDB();
-        
+
         // Save notification to database (unless explicitly disabled)
         if (notification.saveToDb !== false) {
             try {
@@ -68,6 +68,7 @@ export async function sendNotificationToUser(
             }
         }
 
+        const messaging = await getMessaging();
         if (!messaging) {
             console.warn('Firebase messaging not initialized');
             return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
@@ -98,7 +99,7 @@ export async function sendNotificationToUsers(
 ): Promise<SendNotificationResult> {
     try {
         await connectDB();
-        
+
         // Save notifications to database for all users (unless explicitly disabled)
         if (notification.saveToDb !== false && userIds.length > 0) {
             try {
@@ -118,6 +119,7 @@ export async function sendNotificationToUsers(
             }
         }
 
+        const messaging = await getMessaging();
         if (!messaging) {
             console.warn('Firebase messaging not initialized');
             return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
@@ -156,6 +158,7 @@ async function sendNotificationToTokens(
     notification: FCMNotificationPayload,
     userId?: string
 ): Promise<SendNotificationResult> {
+    const messaging = await getMessaging();
     if (!messaging) {
         return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
     }
@@ -359,6 +362,7 @@ export async function sendNotificationToRole(
  * Utility: Test Firebase connection
  */
 export async function testFirebaseConnection(): Promise<{ success: boolean; message: string }> {
+    const messaging = await getMessaging();
     if (!messaging) {
         return { success: false, message: 'Firebase messaging not initialized. Check your environment variables.' };
     }

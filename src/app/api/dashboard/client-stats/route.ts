@@ -33,37 +33,38 @@ export async function GET(request: NextRequest) {
         `dashboard:client-stats:user-${userId}`,
         async () => User.findById(userId)
           .select('firstName lastName email goals assignedDietitian')
-          .populate('assignedDietitian', 'firstName lastName email avatar bio experience specializations'),
+          .populate('assignedDietitian', 'firstName lastName email avatar bio experience specializations')
+          .lean() as Promise<any>,
         { ttl: 120000, tags: ['dashboard'] }
-      ),
+      ) as Promise<any>,
       // Today's food log
       withCache(
         `dashboard:client-stats:foodlog-${userId}-${today.toISOString()}`,
-        async () => FoodLog.findOne({ client: userId, date: { $gte: today, $lte: endOfDay } }),
+        async () => FoodLog.findOne({ client: userId, date: { $gte: today, $lte: endOfDay } }).lean() as Promise<any>,
         { ttl: 120000, tags: ['dashboard'] }
-      ),
+      ) as Promise<any>,
       // Latest weight
       withCache(
         `dashboard:client-stats:weight-latest-${userId}`,
-        async () => ProgressEntry.findOne({ user: userId, type: 'weight' }).sort({ recordedAt: -1 }),
+        async () => ProgressEntry.findOne({ user: userId, type: 'weight' }).sort({ recordedAt: -1 }).lean() as Promise<any>,
         { ttl: 120000, tags: ['dashboard'] }
-      ),
+      ) as Promise<any>,
       // Weight from 7 days ago
       withCache(
         `dashboard:client-stats:weight-week-${userId}`,
         async () => {
           const sevenDaysAgo = new Date(today);
           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-          return ProgressEntry.findOne({ user: userId, type: 'weight', recordedAt: { $lte: sevenDaysAgo } }).sort({ recordedAt: -1 });
+          return ProgressEntry.findOne({ user: userId, type: 'weight', recordedAt: { $lte: sevenDaysAgo } }).sort({ recordedAt: -1 }).lean() as Promise<any>;
         },
         { ttl: 120000, tags: ['dashboard'] }
-      ),
+      ) as Promise<any>,
       // First weight entry
       withCache(
         `dashboard:client-stats:weight-first-${userId}`,
-        async () => ProgressEntry.findOne({ user: userId, type: 'weight' }).sort({ recordedAt: 1 }),
+        async () => ProgressEntry.findOne({ user: userId, type: 'weight' }).sort({ recordedAt: 1 }).lean() as Promise<any>,
         { ttl: 120000, tags: ['dashboard'] }
-      ),
+      ) as Promise<any>,
       // Streak
       calculateStreak(userId),
       // Next appointment
@@ -75,9 +76,10 @@ export async function GET(request: NextRequest) {
           status: { $in: ['scheduled', 'confirmed'] }
         })
           .populate('dietitian', 'firstName lastName')
-          .sort({ scheduledAt: 1 }),
+          .sort({ scheduledAt: 1 })
+          .lean() as Promise<any>,
         { ttl: 120000, tags: ['dashboard'] }
-      )
+      ) as Promise<any>
     ]);
 
     // Derived calculations

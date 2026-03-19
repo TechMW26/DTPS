@@ -18,12 +18,12 @@ export async function GET(request: NextRequest) {
     const tags = await withCache(
       `tags:all`,
       async () => await Tag.find()
-      .sort({ createdAt: -1 })
-      ,
+        .sort({ createdAt: -1 })
+        .lean(),
       { ttl: 120000, tags: ['tags'] }
     );
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       tags,
       count: tags.length
     });
@@ -48,8 +48,8 @@ export async function POST(request: NextRequest) {
 
     // Validation
     if (!name || !name.trim()) {
-      return NextResponse.json({ 
-        error: 'Tag name is required' 
+      return NextResponse.json({
+        error: 'Tag name is required'
       }, { status: 400 });
     }
 
@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
       { ttl: 120000, tags: ['tags'] }
     );
     if (existingTag) {
-      return NextResponse.json({ 
-        error: 'Tag with this name already exists' 
+      return NextResponse.json({
+        error: 'Tag with this name already exists'
       }, { status: 409 });
     }
 
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     await newTag.save();
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: 'Tag created successfully',
       tag: newTag
     }, { status: 201 });

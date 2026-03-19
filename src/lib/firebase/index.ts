@@ -10,4 +10,4 @@ export {
     type SendNotificationResult,
 } from './firebaseNotification';
 
-export { firebaseAdmin, messaging } from './firebaseAdmin';
+export { getFirebaseAdmin, getMessaging } from './firebaseAdmin';

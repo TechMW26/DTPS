@@ -76,6 +76,9 @@ const nextConfig: NextConfig = {
   // Turbopack configuration for Next.js 16+
   turbopack: {},
 
+  // Mark firebase-admin as external for server components (prevents Turbopack bundling issues)
+  serverExternalPackages: ['firebase-admin'],
+
   // Webpack optimizations for better build performance (fallback for --webpack flag)
   webpack: (config, { dev, isServer }) => {
     // Optimize for production builds
