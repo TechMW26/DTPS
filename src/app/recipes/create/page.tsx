@@ -25,20 +25,9 @@ import {
   ToggleLeft,
   ToggleRight,
   RefreshCw,
-  Sparkles,
-  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { compressImage, validateImageFile, uploadCompressedImage } from '@/lib/imageCompression';
-import {
-  AISkeleton,
-  AISkeletonInput,
-  AISkeletonTextarea,
-  AISkeletonBadges,
-  AISkeletonIngredientRow,
-  AISkeletonInstructionRow,
-  AISkeletonOverlay,
-} from '@/components/ui/ai-skeleton';
 
 interface Ingredient {
   name: string;
@@ -75,11 +64,8 @@ export default function CreateRecipePage() {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
-  const [aiFetching, setAiFetching] = useState(false);
-  const [aiGenerated, setAiGenerated] = useState(false);
   const [forceCreate, setForceCreate] = useState(false);
   const [similarRecipe, setSimilarRecipe] = useState<{ id: string; name: string; ingredientOverlap: number } | null>(null);
-  const lastAiFetchedName = useState<string>('');  // track to avoid duplicate fetches
 
   // Form state
   const [name, setName] = useState('');
@@ -184,8 +170,6 @@ export default function CreateRecipePage() {
     setDietaryRestrictions([]);
     setMedicalContraindications([]);
     setError('');
-    setAiGenerated(false);
-    lastAiFetchedName[0] = '';
     toast.success('Draft cleared', { description: 'Starting fresh.' });
   }, [clearDraft]);
 
@@ -307,70 +291,6 @@ export default function CreateRecipePage() {
       setMedicalContraindications([...medicalContraindications, condition]);
     }
   };
-
-  // AI Auto-fill: fetch recipe data from OpenAI
-  const fetchAIRecipeData = useCallback(async (recipeName?: string) => {
-    const nameToFetch = recipeName || name;
-    if (!nameToFetch || nameToFetch.trim().length < 2) return;
-    if (aiFetching) return;
-    if (lastAiFetchedName[0] === nameToFetch.trim()) return;
-
-    setAiFetching(true);
-    setError('');
-
-    try {
-      const response = await fetch('/api/recipes/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipeName: nameToFetch.trim() }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to fetch AI data');
-      }
-
-      const data = await response.json();
-
-      // Auto-fill all fields
-      if (data.description) setDescription(data.description);
-      if (data.prepTime) setPrepTime(String(data.prepTime));
-      if (data.cookTime) setCookTime(String(data.cookTime));
-      if (data.portionSize) setServings(data.portionSize);
-      if (data.nutrition) {
-        if (data.nutrition.calories) setCalories(String(data.nutrition.calories));
-        if (data.nutrition.protein) setProtein(String(data.nutrition.protein));
-        if (data.nutrition.carbs) setCarbs(String(data.nutrition.carbs));
-        if (data.nutrition.fat) setFat(String(data.nutrition.fat));
-      }
-      if (data.ingredients?.length > 0) {
-        setIngredients(data.ingredients);
-      }
-      if (data.instructions?.length > 0) {
-        setInstructions(data.instructions);
-      }
-      if (data.dietaryRestrictions?.length > 0) {
-        setDietaryRestrictions(data.dietaryRestrictions);
-      }
-      if (data.medicalContraindications?.length > 0) {
-        setMedicalContraindications(data.medicalContraindications);
-      }
-
-      lastAiFetchedName[0] = nameToFetch.trim();
-      setAiGenerated(true);
-      toast.success('AI auto-filled recipe data!', {
-        description: 'Review and adjust the values as needed.',
-        duration: 4000,
-      });
-    } catch (err: any) {
-      console.error('AI fetch error:', err);
-      toast.error('AI auto-fill failed', {
-        description: err.message || 'Please try again or fill in manually.',
-      });
-    } finally {
-      setAiFetching(false);
-    }
-  }, [name, aiFetching, lastAiFetchedName]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -653,56 +573,24 @@ export default function CreateRecipePage() {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="name">Recipe Name *</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      onBlur={() => {
-                        if (name.trim().length >= 2 && !aiGenerated) {
-                          fetchAIRecipeData();
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          if (name.trim().length >= 2) {
-                            fetchAIRecipeData();
-                          }
-                        }
-                      }}
-                      placeholder="e.g., Paneer Butter Masala"
-                      required
-                      className="flex-1"
-                    />
-                  </div>
-                  {aiFetching && (
-                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1 flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" />
-                      Fetching ingredients, nutrition, and dietary info with AI...
-                    </p>
-                  )}
-                  {aiGenerated && !aiFetching && (
-                    <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" />
-                      AI-generated data applied. Review and adjust as needed.
-                    </p>
-                  )}
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., Paneer Butter Masala"
+                    required
+                  />
                 </div>
 
                 <div>
                   <Label htmlFor="description">Description</Label>
-                  {aiFetching ? (
-                    <AISkeletonTextarea rows={3} />
-                  ) : (
-                    <Textarea
-                      id="description"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Brief description of the recipe..."
-                      rows={3}
-                    />
-                  )}
+                  <Textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Brief description of the recipe..."
+                    rows={3}
+                  />
                 </div>
 
                 <div>
@@ -748,65 +636,48 @@ export default function CreateRecipePage() {
                   </div>
                 </div>
 
-                {aiFetching ? (
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label>Prep Time (min) *</Label>
-                      <AISkeletonInput />
-                    </div>
-                    <div>
-                      <Label>Cook Time (min) *</Label>
-                      <AISkeletonInput />
-                    </div>
-                    <div>
-                      <Label>Portion Size *</Label>
-                      <AISkeletonInput />
-                    </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="prepTime">Prep Time (min) *</Label>
+                    <Input
+                      id="prepTime"
+                      type="number"
+                      value={prepTime}
+                      onChange={(e) => setPrepTime(e.target.value)}
+                      placeholder="15"
+                      required
+                    />
                   </div>
-                ) : (
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label htmlFor="prepTime">Prep Time (min) *</Label>
-                      <Input
-                        id="prepTime"
-                        type="number"
-                        value={prepTime}
-                        onChange={(e) => setPrepTime(e.target.value)}
-                        placeholder="15"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="cookTime">Cook Time (min) *</Label>
-                      <Input
-                        id="cookTime"
-                        type="number"
-                        value={cookTime}
-                        onChange={(e) => setCookTime(e.target.value)}
-                        placeholder="30"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="servings">Serving Size *</Label>
-                      <Select
-                        value={servings}
-                        onValueChange={(value) => setServings(value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select serving size" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {portionSizes.map((size) => (
-                            <SelectItem key={size} value={size}>
-                              {size}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div>
+                    <Label htmlFor="cookTime">Cook Time (min) *</Label>
+                    <Input
+                      id="cookTime"
+                      type="number"
+                      value={cookTime}
+                      onChange={(e) => setCookTime(e.target.value)}
+                      placeholder="30"
+                      required
+                    />
                   </div>
-                )}
+                  <div>
+                    <Label htmlFor="servings">Serving Size *</Label>
+                    <Select
+                      value={servings}
+                      onValueChange={(value) => setServings(value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select serving size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {portionSizes.map((size) => (
+                          <SelectItem key={size} value={size}>
+                            {size}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -816,163 +687,120 @@ export default function CreateRecipePage() {
                 <CardTitle className="flex items-center space-x-2">
                   <Target className="h-5 w-5" />
                   <span>Nutrition (per serving)</span>
-                  {aiGenerated && (
-                    <Badge variant="outline" className="ml-2 bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-700">
-                      <Sparkles className="h-3 w-3 mr-1" />
-                      AI Generated
-                    </Badge>
-                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {aiFetching ? (
-                  <>
-                    <div>
-                      <Label>Calories *</Label>
-                      <AISkeletonInput />
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div><Label>Protein (g) *</Label><AISkeletonInput /></div>
-                      <div><Label>Carbs (g) *</Label><AISkeletonInput /></div>
-                      <div><Label>Fat (g) *</Label><AISkeletonInput /></div>
-                    </div>
-                    <div>
-                      <Label>Dietary Restrictions</Label>
-                      <div className="mt-2"><AISkeletonBadges count={5} /></div>
-                    </div>
-                    <div>
-                      <Label>Medical Contraindications</Label>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Select medical conditions for which this recipe should NOT be recommended
-                      </p>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                          <AISkeleton key={i} className="h-10 w-full rounded-lg" />
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <Label htmlFor="calories">Calories *</Label>
-                      <Input
-                        id="calories"
-                        type="number"
-                        step="any"
-                        value={calories}
-                        onChange={(e) => setCalories(e.target.value)}
-                        placeholder="350.5"
-                        required
-                      />
-                    </div>
+                <div>
+                  <Label htmlFor="calories">Calories *</Label>
+                  <Input
+                    id="calories"
+                    type="number"
+                    step="any"
+                    value={calories}
+                    onChange={(e) => setCalories(e.target.value)}
+                    placeholder="350.5"
+                    required
+                  />
+                </div>
 
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <Label htmlFor="protein">Protein (g) *</Label>
-                        <Input
-                          id="protein"
-                          type="number"
-                          step="any"
-                          value={protein}
-                          onChange={(e) => setProtein(e.target.value)}
-                          placeholder="25"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="carbs">Carbs (g) *</Label>
-                        <Input
-                          id="carbs"
-                          type="number"
-                          step="any"
-                          value={carbs}
-                          onChange={(e) => setCarbs(e.target.value)}
-                          placeholder="30"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="fat">Fat (g) *</Label>
-                        <Input
-                          id="fat"
-                          type="number"
-                          step="any"
-                          value={fat}
-                          onChange={(e) => setFat(e.target.value)}
-                          placeholder="15"
-                          required
-                        />
-                      </div>
-                    </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="protein">Protein (g) *</Label>
+                    <Input
+                      id="protein"
+                      type="number"
+                      step="any"
+                      value={protein}
+                      onChange={(e) => setProtein(e.target.value)}
+                      placeholder="25"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="carbs">Carbs (g) *</Label>
+                    <Input
+                      id="carbs"
+                      type="number"
+                      step="any"
+                      value={carbs}
+                      onChange={(e) => setCarbs(e.target.value)}
+                      placeholder="30"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="fat">Fat (g) *</Label>
+                    <Input
+                      id="fat"
+                      type="number"
+                      step="any"
+                      value={fat}
+                      onChange={(e) => setFat(e.target.value)}
+                      placeholder="15"
+                      required
+                    />
+                  </div>
+                </div>
 
-                    <div>
-                      <Label>Dietary Restrictions</Label>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {availableDietaryRestrictions.map((restriction) => (
-                          <Badge
-                            key={restriction}
-                            variant={dietaryRestrictions.includes(restriction) ? "default" : "outline"}
-                            className="cursor-pointer"
-                            onClick={() => toggleDietaryRestriction(restriction)}
-                          >
-                            {restriction}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
+                <div>
+                  <Label>Dietary Restrictions</Label>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {availableDietaryRestrictions.map((restriction) => (
+                      <Badge
+                        key={restriction}
+                        variant={dietaryRestrictions.includes(restriction) ? "default" : "outline"}
+                        className="cursor-pointer"
+                        onClick={() => toggleDietaryRestriction(restriction)}
+                      >
+                        {restriction}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
 
-                    <div>
-                      <Label>Medical Contraindications</Label>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Select medical conditions for which this recipe should NOT be recommended
-                      </p>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                        {availableMedicalContraindications.map((condition) => (
-                          <div
-                            key={condition}
-                            className={`p-2 rounded-lg border cursor-pointer transition-colors ${medicalContraindications.includes(condition)
-                              ? 'bg-red-50 border-red-200 text-red-800'
-                              : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                              }`}
-                            onClick={() => toggleMedicalContraindication(condition)}
-                          >
-                            <div className="flex items-center space-x-2">
-                              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${medicalContraindications.includes(condition)
-                                ? 'bg-red-500 border-red-500'
-                                : 'border-gray-300'
-                                }`}>
-                                {medicalContraindications.includes(condition) && (
-                                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                              </div>
-                              <span className="text-sm font-medium">{condition}</span>
-                            </div>
+                <div>
+                  <Label>Medical Contraindications</Label>
+                  <p className="text-sm text-gray-600 mb-2">
+                    Select medical conditions for which this recipe should NOT be recommended
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {availableMedicalContraindications.map((condition) => (
+                      <div
+                        key={condition}
+                        className={`p-2 rounded-lg border cursor-pointer transition-colors ${medicalContraindications.includes(condition)
+                          ? 'bg-red-50 border-red-200 text-red-800'
+                          : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                          }`}
+                        onClick={() => toggleMedicalContraindication(condition)}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${medicalContraindications.includes(condition)
+                            ? 'bg-red-500 border-red-500'
+                            : 'border-gray-300'
+                            }`}>
+                            {medicalContraindications.includes(condition) && (
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
                           </div>
-                        ))}
+                          <span className="text-sm font-medium">{condition}</span>
+                        </div>
                       </div>
-                    </div>
-                  </>
-                )}
+                    ))}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Ingredients */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Ingredients *</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {aiFetching ? (
-                <>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <AISkeletonIngredientRow key={i} />
-                  ))}
-                </>
-              ) : (
+          <div className="space-y-6">
+            {/* Ingredients */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Ingredients *</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <>
                   {ingredients.map((ingredient, index) => (
                     <div key={index} className="space-y-3">
@@ -1037,23 +865,15 @@ export default function CreateRecipePage() {
                     Add Ingredient
                   </Button>
                 </>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Instructions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Instructions *</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {aiFetching ? (
-                <>
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <AISkeletonInstructionRow key={i} step={i + 1} />
-                  ))}
-                </>
-              ) : (
+            {/* Instructions */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Instructions *</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <>
                   {instructions.map((instruction, index) => (
                     <div key={index} className="flex items-start space-x-4">
@@ -1085,25 +905,25 @@ export default function CreateRecipePage() {
                     Add Step
                   </Button>
                 </>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Submit Button */}
-          <div className="flex justify-end space-x-4">
-            <Button type="button" variant="outline" onClick={() => router.back()}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading || aiFetching}>
-              {loading ? (
-                <>
-                  <LoadingSpinner className="mr-2 h-4 w-4" />
-                  Creating...
-                </>
-              ) : (
-                'Create Recipe'
-              )}
-            </Button>
+            {/* Submit Button */}
+            <div className="flex justify-end space-x-4">
+              <Button type="button" variant="outline" onClick={() => router.back()}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <LoadingSpinner className="mr-2 h-4 w-4" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Recipe'
+                )}
+              </Button>
+            </div>
           </div>
         </form>
       </div>

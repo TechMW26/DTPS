@@ -73,7 +73,10 @@ const nextConfig: NextConfig = {
     },
   } as any,
 
-  // Webpack optimizations for better build performance
+  // Turbopack configuration for Next.js 16+
+  turbopack: {},
+
+  // Webpack optimizations for better build performance (fallback for --webpack flag)
   webpack: (config, { dev, isServer }) => {
     // Optimize for production builds
     if (!dev && !isServer) {
