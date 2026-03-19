@@ -32,7 +32,7 @@ function isOnboardingExemptRoute(pathname: string): boolean {
 function addCacheControlHeaders(response: NextResponse, isApiRoute: boolean): NextResponse {
   // Always add app version header
   response.headers.set('X-App-Version', APP_VERSION);
-  
+
   if (isApiRoute) {
     // For authenticated API routes, prevent caching
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -40,7 +40,7 @@ function addCacheControlHeaders(response: NextResponse, isApiRoute: boolean): Ne
     response.headers.set('Expires', '0');
     response.headers.set('Surrogate-Control', 'no-store');
   }
-  
+
   return response;
 }
 
@@ -62,12 +62,12 @@ export default withAuth(
     // If no token and accessing client-facing routes, redirect to /client-auth/signin
     // This prevents NextAuth from sending mobile/client users to the staff /auth/signin page
     if (!token) {
-      const isClientRoute = pathname.startsWith('/user') || 
-                            pathname.startsWith('/dashboard/client') || 
-                            pathname.startsWith('/client-dashboard') ||
-                            pathname.startsWith('/my-plan') ||
-                            pathname.startsWith('/payment');
-      
+      const isClientRoute = pathname.startsWith('/user') ||
+        pathname.startsWith('/dashboard/client') ||
+        pathname.startsWith('/client-dashboard') ||
+        pathname.startsWith('/my-plan') ||
+        pathname.startsWith('/payment');
+
       if (isClientRoute) {
         const signInUrl = new URL('/client-auth/signin', req.url);
         signInUrl.searchParams.set('callbackUrl', pathname);
@@ -87,18 +87,18 @@ export default withAuth(
       if (!userRole || !userRole.includes('admin')) {
         console.log('Admin access denied. Role:', token?.role);
         // Redirect non-admins to their appropriate dashboard
-        
-        const redirectPath = userRole === 'dietitian' 
+
+        const redirectPath = userRole === 'dietitian'
           ? '/dashboard/dietitian'
           : userRole === 'health_counselor'
-          ? '/dashboard/health-counselor'
-          : userRole === 'client'
-          ? '/user'
-          : '/client-auth/signin';
+            ? '/dashboard/health-counselor'
+            : userRole === 'client'
+              ? '/user'
+              : '/client-auth/signin';
         return NextResponse.redirect(new URL(redirectPath, req.url));
       }
     }
-    
+
     // Health Counselor specific routes - only health counselors and admins
     if (pathname.startsWith('/health-counselor') || pathname.startsWith('/dashboard/health-counselor')) {
       if (userRole !== 'health_counselor' && !userRole?.includes('admin')) {
@@ -106,12 +106,12 @@ export default withAuth(
         const redirectPath = userRole === 'dietitian'
           ? '/dashboard/dietitian'
           : userRole === 'client'
-          ? '/user'
-          : '/client-auth/signin';
+            ? '/user'
+            : '/client-auth/signin';
         return NextResponse.redirect(new URL(redirectPath, req.url));
       }
     }
-    
+
     // Dietitian-only routes - do NOT allow health counselors on dietitian dashboard
     if (pathname.startsWith('/dashboard/dietitian')) {
       if (userRole !== 'dietitian' && !userRole?.includes('admin')) {
@@ -119,17 +119,17 @@ export default withAuth(
         const redirectPath = userRole === 'health_counselor'
           ? '/dashboard/health-counselor'
           : userRole === 'client'
-          ? '/user'
-          : '/client-auth/signin';
+            ? '/user'
+            : '/client-auth/signin';
         return NextResponse.redirect(new URL(redirectPath, req.url));
       }
     }
-    
+
     // Dietician client routes - allow dietitians, health counselors, and admins
     if (pathname.startsWith('/dietician')) {
-      if (userRole !== 'dietitian' && 
-          userRole !== 'health_counselor' && 
-          !userRole?.includes('admin')) {
+      if (userRole !== 'dietitian' &&
+        userRole !== 'health_counselor' &&
+        !userRole?.includes('admin')) {
         console.log('Dietitian route access denied. Role:', token?.role);
         // Redirect to appropriate dashboard
         const redirectPath = userRole === 'client'
@@ -138,29 +138,29 @@ export default withAuth(
         return NextResponse.redirect(new URL(redirectPath, req.url));
       }
     }
-    
+
     // Client/User routes - only for clients (NOT for admin or dietitian)
     // Public user routes are already handled above, so we can safely check all /user routes here
     if (pathname.startsWith('/user') || pathname.startsWith('/dashboard/client') || pathname.startsWith('/client-dashboard')) {
       if (userRole !== 'client') {
         console.log('Client access denied. Role:', token?.role);
         // Redirect to appropriate dashboard
-        const redirectPath = userRole === 'dietitian' 
+        const redirectPath = userRole === 'dietitian'
           ? '/dashboard/dietitian'
           : userRole === 'health_counselor'
-          ? '/health-counselor/clients'
-          : userRole === 'admin'
-          ? '/admin'
-          : '/client-auth/signin';
+            ? '/health-counselor/clients'
+            : userRole === 'admin'
+              ? '/admin'
+              : '/client-auth/signin';
         return NextResponse.redirect(new URL(redirectPath, req.url));
       }
-      
+
       // CRITICAL: Onboarding redirect logic for clients
       // Check if user has completed onboarding (from JWT token)
       // Skip check for onboarding-exempt routes (onboarding page itself, auth routes)
       if (!isOnboardingExemptRoute(pathname)) {
         const onboardingCompleted = token?.onboardingCompleted;
-        
+
         // If onboardingCompleted is explicitly false, redirect to onboarding
         // Note: undefined or true means allow access (backward compatibility)
         if (onboardingCompleted === false) {
@@ -169,7 +169,7 @@ export default withAuth(
         }
       }
     }
-    
+
     // If client is on onboarding page but has already completed onboarding, redirect to /user
     if (pathname === '/user/onboarding' || pathname.startsWith('/user/onboarding')) {
       if (userRole === 'client' && token?.onboardingCompleted === true) {
@@ -228,14 +228,14 @@ export default withAuth(
           '/client-auth/reset-password',
           '/client-auth/error',
         ];
-        
+
         // Home page now handles its own redirect (server component)
         if (pathname === '/') {
           return true;
         }
 
         // Check if the route is public
-        const isPublicRoute = publicRoutes.some(route => 
+        const isPublicRoute = publicRoutes.some(route =>
           pathname.startsWith(route)
         );
 
@@ -246,11 +246,11 @@ export default withAuth(
         // For client-facing routes, return true even without token so the
         // middleware function can redirect to /client-auth/signin instead of
         // NextAuth's default /auth/signin (which is the staff login page).
-        const isClientRoute = pathname.startsWith('/user') || 
-                              pathname.startsWith('/dashboard/client') || 
-                              pathname.startsWith('/client-dashboard') ||
-                              pathname.startsWith('/my-plan') ||
-                              pathname.startsWith('/payment');
+        const isClientRoute = pathname.startsWith('/user') ||
+          pathname.startsWith('/dashboard/client') ||
+          pathname.startsWith('/client-dashboard') ||
+          pathname.startsWith('/my-plan') ||
+          pathname.startsWith('/payment');
         if (isClientRoute && !token) {
           return true;
         }
