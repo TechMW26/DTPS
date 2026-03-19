@@ -59,8 +59,21 @@ export default withAuth(
       return addCacheControlHeaders(response, isApiRoute);
     }
 
-    // If no token and not a public route, the authorized callback will handle redirect
+    // If no token and accessing client-facing routes, redirect to /client-auth/signin
+    // This prevents NextAuth from sending mobile/client users to the staff /auth/signin page
     if (!token) {
+      const isClientRoute = pathname.startsWith('/user') || 
+                            pathname.startsWith('/dashboard/client') || 
+                            pathname.startsWith('/client-dashboard') ||
+                            pathname.startsWith('/my-plan') ||
+                            pathname.startsWith('/payment');
+      
+      if (isClientRoute) {
+        const signInUrl = new URL('/client-auth/signin', req.url);
+        signInUrl.searchParams.set('callbackUrl', pathname);
+        return NextResponse.redirect(signInUrl);
+      }
+
       const response = NextResponse.next();
       return addCacheControlHeaders(response, isApiRoute);
     }
@@ -227,6 +240,18 @@ export default withAuth(
         );
 
         if (isPublicRoute) {
+          return true;
+        }
+
+        // For client-facing routes, return true even without token so the
+        // middleware function can redirect to /client-auth/signin instead of
+        // NextAuth's default /auth/signin (which is the staff login page).
+        const isClientRoute = pathname.startsWith('/user') || 
+                              pathname.startsWith('/dashboard/client') || 
+                              pathname.startsWith('/client-dashboard') ||
+                              pathname.startsWith('/my-plan') ||
+                              pathname.startsWith('/payment');
+        if (isClientRoute && !token) {
           return true;
         }
 
