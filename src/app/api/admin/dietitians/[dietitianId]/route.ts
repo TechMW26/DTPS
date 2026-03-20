@@ -16,7 +16,7 @@ const getClientNoteModel = (): mongoose.Model<any> => {
   if (mongoose.models.ClientNote) {
     return mongoose.models.ClientNote;
   }
-  
+
   const noteSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -28,7 +28,7 @@ const getClientNoteModel = (): mongoose.Model<any> => {
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
-  
+
   return mongoose.model('ClientNote', noteSchema);
 };
 
@@ -54,7 +54,7 @@ export async function GET(
     const dietitian = await withCache(
       `admin:dietitians:dietitianId:${JSON.stringify(dietitianId)}`,
       async () => await User.findById(dietitianId)
-      .select('-password'),
+        .select('-password'),
       { ttl: 120000, tags: ['admin'] }
     );
 
@@ -71,21 +71,21 @@ export async function GET(
     // Get assigned clients with their progress
     const assignedClients = await withCache(
       `admin:dietitians:dietitianId:${JSON.stringify({
-      role: UserRole.CLIENT,
-      $or: [
-        { assignedDietitian: dietitianId },
-        { assignedDietitians: dietitianId }
-      ]
-    })}`,
+        role: UserRole.CLIENT,
+        $or: [
+          { assignedDietitian: dietitianId },
+          { assignedDietitians: dietitianId }
+        ]
+      })}`,
       async () => await User.find({
-      role: UserRole.CLIENT,
-      $or: [
-        { assignedDietitian: dietitianId },
-        { assignedDietitians: dietitianId }
-      ]
-    })
-      .select('firstName lastName email avatar phone status createdAt weight height healthGoals generalGoal onboardingCompleted')
-      .sort({ createdAt: -1 }),
+        role: UserRole.CLIENT,
+        $or: [
+          { assignedDietitian: dietitianId },
+          { assignedDietitians: dietitianId }
+        ]
+      })
+        .select('firstName lastName email avatar phone status clientStatus createdAt weight height healthGoals generalGoal onboardingCompleted')
+        .sort({ createdAt: -1 }),
       { ttl: 120000, tags: ['admin'] }
     );
 
@@ -100,16 +100,16 @@ export async function GET(
 
         // Get latest meal plan
         const latestMealPlan = await withCache(
-      `admin:dietitians:dietitianId:${JSON.stringify({
-          clientId: client._id
-        })}`,
-      async () => await ClientMealPlan.findOne({
-          clientId: client._id
-        })
-          .populate('templateId', 'name')
-          .sort({ createdAt: -1 }),
-      { ttl: 120000, tags: ['admin'] }
-    );
+          `admin:dietitians:dietitianId:${JSON.stringify({
+            clientId: client._id
+          })}`,
+          async () => await ClientMealPlan.findOne({
+            clientId: client._id
+          })
+            .populate('templateId', 'name')
+            .sort({ createdAt: -1 }),
+          { ttl: 120000, tags: ['admin'] }
+        );
 
         // Get appointment count
         const appointmentCount = await Appointment.countDocuments({
@@ -119,15 +119,15 @@ export async function GET(
 
         // Get upcoming appointment
         const upcomingAppointment = await withCache(
-      `admin:dietitians:dietitianId:upcoming-appointment:${client._id}:${dietitianId}`,
-      async () => await Appointment.findOne({
-          client: client._id,
-          dietitian: dietitianId,
-          scheduledAt: { $gte: new Date() },
-          status: AppointmentStatus.SCHEDULED
-        }).sort({ scheduledAt: 1 }),
-      { ttl: 120000, tags: ['admin'] }
-    );
+          `admin:dietitians:dietitianId:upcoming-appointment:${client._id}:${dietitianId}`,
+          async () => await Appointment.findOne({
+            client: client._id,
+            dietitian: dietitianId,
+            scheduledAt: { $gte: new Date() },
+            status: AppointmentStatus.SCHEDULED
+          }).sort({ scheduledAt: 1 }),
+          { ttl: 120000, tags: ['admin'] }
+        );
 
         return {
           ...client.toObject(),
@@ -222,7 +222,7 @@ export async function GET(
       totalTasks: tasks.length,
       completedTasks: tasks.filter(t => t.status === 'completed').length,
       pendingTasks: tasks.filter(t => t.status === 'pending').length,
-      overdueTasks: tasks.filter(t => 
+      overdueTasks: tasks.filter(t =>
         t.status !== 'completed' && t.endDate && new Date(t.endDate) < new Date()
       ).length
     };
@@ -325,7 +325,7 @@ export async function DELETE(
 
     if (action === 'delete') {
       if (assignedClientsCount > 0) {
-        return NextResponse.json({ 
+        return NextResponse.json({
           error: 'Cannot delete dietitian with assigned clients. Please reassign clients first.',
           assignedClientsCount
         }, { status: 400 });
@@ -343,8 +343,8 @@ export async function DELETE(
         return NextResponse.json({ error: 'Dietitian not found' }, { status: 404 });
       }
 
-      return NextResponse.json({ 
-        dietitian, 
+      return NextResponse.json({
+        dietitian,
         message: 'Dietitian deactivated successfully',
         warning: assignedClientsCount > 0 ? `This dietitian has ${assignedClientsCount} assigned clients` : null
       });

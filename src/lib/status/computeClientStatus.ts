@@ -5,9 +5,10 @@ import { ClientStatus } from '@/types';
  *
  * Rules:
  *   LEAD     → Registered but no successful payment yet.
- *   ACTIVE   → Has at least one successful payment AND a meal plan whose endDate is in the future
- *              (even if startDate is in the future - the plan is paid and upcoming).
- *   INACTIVE → Has paid in the past, but no meal plan, or all plans have expired (endDate < today).
+ *   ACTIVE   → Has at least one successful payment AND either:
+ *              - A meal plan whose endDate is in the future, OR
+ *              - No meal plan created yet (awaiting diet plan).
+ *   INACTIVE → Has paid in the past, but all plans have expired (endDate < today).
  *
  * This function is **pure** — it does NOT touch the database. Callers are
  * responsible for fetching the required data and persisting the result.
@@ -44,10 +45,13 @@ export function computeClientStatus(input: StatusInput): ClientStatus {
     if (activePlan.status === 'active' && endDate >= today) {
       return ClientStatus.ACTIVE;
     }
+
+    // Rule 3: Has paid, plan exists but expired → INACTIVE
+    return ClientStatus.INACTIVE;
   }
 
-  // Rule 3: Has paid, but no valid active plan (or plan expired) → INACTIVE
-  return ClientStatus.INACTIVE;
+  // Rule 4: Has paid but no meal plan created yet → ACTIVE (awaiting diet plan)
+  return ClientStatus.ACTIVE;
 }
 
 /**
@@ -97,16 +101,16 @@ export async function updateClientStatusFromMealPlan(clientId: string): Promise<
   const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
   const { default: UnifiedPayment } = await import('@/lib/db/models/UnifiedPayment');
   const { default: User } = await import('@/lib/db/models/User');
-  
+
   // Fetch all meal plans for this client
   const mealPlans = await ClientMealPlan.find(
     { clientId },
     { startDate: 1, endDate: 1, status: 1 }
   ).lean();
-  
+
   // Fetch payment status for this client
   const payments = await UnifiedPayment.find(
-    { 
+    {
       client: clientId,
       $or: [
         { status: { $in: ['paid', 'completed', 'active'] } },
@@ -115,30 +119,30 @@ export async function updateClientStatusFromMealPlan(clientId: string): Promise<
     },
     { status: 1, paymentStatus: 1 }
   ).lean();
-  
+
   // Check for successful payment
   const hasSuccessfulPayment = payments.length > 0;
-  
+
   // Find an active plan with endDate in the future (including upcoming plans)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   const activePlan = mealPlans.find((plan: any) => {
     const end = new Date(plan.endDate);
     end.setHours(23, 59, 59, 999);
-    
+
     // Plan is valid if status is 'active' and endDate is today or in the future
     return plan.status === 'active' && end >= today;
   }) || null;
-  
+
   // Compute new status
   const newStatus = computeClientStatus({ hasSuccessfulPayment, activePlan });
-  
+
   // Update the user's clientStatus in database
   await User.findByIdAndUpdate(clientId, { clientStatus: newStatus });
-  
+
   console.log(`[ClientStatus] Updated client ${clientId} status to: ${newStatus}`);
-  
+
   return newStatus;
 }
 
@@ -150,17 +154,17 @@ export async function updateClientStatusFromMealPlan(clientId: string): Promise<
  */
 export async function hasActiveMealPlan(clientId: string): Promise<boolean> {
   const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
-  
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   // Find any active plan with endDate in the future (including upcoming plans)
   const activePlan = await ClientMealPlan.findOne({
     clientId,
     status: 'active',
     endDate: { $gte: today }
   });
-  
+
   return !!activePlan;
 }
 
@@ -179,10 +183,10 @@ export async function getClientStatusInfo(clientId: string): Promise<{
 }> {
   const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
   const { default: UnifiedPayment } = await import('@/lib/db/models/UnifiedPayment');
-  
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   // Run both queries in PARALLEL for faster response
   const [activePlan, hasPayment] = await Promise.all([
     // Find active plan with endDate in the future (including upcoming plans)
@@ -200,15 +204,15 @@ export async function getClientStatusInfo(clientId: string): Promise<{
       ]
     })
   ]);
-  
+
   const hasSuccessfulPayment = !!hasPayment;
   const hasActivePlan = !!activePlan;
-  
-  const clientStatus = computeClientStatus({ 
-    hasSuccessfulPayment, 
-    activePlan: activePlan as any 
+
+  const clientStatus = computeClientStatus({
+    hasSuccessfulPayment,
+    activePlan: activePlan as any
   });
-  
+
   return {
     clientStatus,
     hasActivePlan,

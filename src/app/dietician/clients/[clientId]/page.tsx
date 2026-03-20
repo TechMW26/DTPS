@@ -1917,16 +1917,19 @@ export default function ClientDetailPage() {
                           </p>
                         </div>
                       )}
-                      <div className={`rounded-xl bg-linear-to-br ${activePlan.status === 'active' || activePlan.status === 'upcoming' ? 'from-emerald-500 to-green-600' :
-                        'from-gray-500 to-gray-600'
+                      <div className={`rounded-xl bg-linear-to-br ${clientComputedStatus === 'active' ? 'from-emerald-500 to-green-600' :
+                        clientComputedStatus === 'lead' ? 'from-blue-500 to-blue-600' :
+                          'from-gray-500 to-gray-600'
                         } px-4 py-3 shadow-md`}>
-                        <p className={`text-xs font-medium uppercase tracking-wide ${activePlan.status === 'active' || activePlan.status === 'upcoming' ? 'text-emerald-100' :
-                          'text-gray-100'
+                        <p className={`text-xs font-medium uppercase tracking-wide ${clientComputedStatus === 'active' ? 'text-emerald-100' :
+                          clientComputedStatus === 'lead' ? 'text-blue-100' :
+                            'text-gray-100'
                           }`}>Status</p>
-                        <Badge className={`mt-1.5 ${activePlan.status === 'active' || activePlan.status === 'upcoming' ? 'bg-white/20' :
-                          'bg-gray-500/20'
+                        <Badge className={`mt-1.5 ${clientComputedStatus === 'active' ? 'bg-white/20' :
+                          clientComputedStatus === 'lead' ? 'bg-blue-500/20' :
+                            'bg-gray-500/20'
                           } backdrop-blur-sm border border-white/30 text-[11px] text-white font-semibold`}>
-                          {activePlan.status === 'active' || activePlan.status === 'upcoming' ? 'Active' : 'Completed'}
+                          {clientComputedStatus === 'active' ? 'Active' : clientComputedStatus === 'inactive' ? 'Inactive' : 'Lead'}
                         </Badge>
                       </div>
                     </div>
