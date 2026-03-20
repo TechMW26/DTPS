@@ -200,6 +200,50 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
     }
 
+    // ======== EXPECTED END DATE VALIDATION ========
+    // Only dietitian can edit expected dates
+    // Edits allowed only up to one day before the current expected end date
+    // No edits allowed on or after the expected end date
+    if (expectedEndDate !== undefined) {
+      // Check if user is dietitian (only dietitians can edit expected end date)
+      if (session.user.role !== 'dietitian') {
+        return NextResponse.json({
+          error: 'Only dietitians are permitted to modify the expected end date',
+          code: 'ROLE_UNAUTHORIZED'
+        }, { status: 403 });
+      }
+
+      // Check if purchase already has an expected end date set
+      if (currentPurchase.expectedEndDate) {
+        const existingEndDate = new Date(currentPurchase.expectedEndDate);
+        existingEndDate.setHours(0, 0, 0, 0);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Calculate one day before the expected end date
+        const oneDayBeforeEnd = new Date(existingEndDate);
+        oneDayBeforeEnd.setDate(oneDayBeforeEnd.getDate() - 1);
+
+        // Check if today is on or after the expected end date (not allowed)
+        if (today >= existingEndDate) {
+          return NextResponse.json({
+            error: 'Cannot modify expected end date: The expected end date has already passed or is today. Modifications are not allowed.',
+            code: 'DATE_EXPIRED'
+          }, { status: 400 });
+        }
+
+        // Check if today is after one day before the expected end date (not allowed)
+        if (today > oneDayBeforeEnd) {
+          return NextResponse.json({
+            error: 'Cannot modify expected end date: Changes are only allowed up to one day before the current expected end date.',
+            code: 'DATE_TOO_CLOSE'
+          }, { status: 400 });
+        }
+      }
+    }
+    // ======== END EXPECTED END DATE VALIDATION ========
+
     const updateData: any = {};
     if (mealPlanId) updateData.mealPlan = mealPlanId;
     if (mealPlanCreated !== undefined) updateData.mealPlanCreated = mealPlanCreated;
@@ -236,6 +280,10 @@ export async function PUT(request: NextRequest) {
     if (!updatedPurchase) {
       return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
     }
+
+    // Clear cache to ensure real-time updates across all platforms
+    clearCacheByTag('client_purchases');
+    clearCacheByTag(`client-purchases:${JSON.stringify(purchaseId)}`);
 
     return NextResponse.json({
       success: true,
