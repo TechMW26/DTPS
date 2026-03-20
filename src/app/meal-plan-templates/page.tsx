@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 import {
   Search,
@@ -17,7 +19,9 @@ import {
   CheckCircle,
   ChefHat,
   Pencil,
-  Trash2
+  Trash2,
+  Copy,
+  Loader2
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import Link from 'next/link';
@@ -78,6 +82,14 @@ function MealPlanTemplatesPageContent() {
   const [dietSearchTerm, setDietSearchTerm] = useState('');
   const [dietDietaryRestrictions, setDietDietaryRestrictions] = useState<string[]>([]);
   const [dietLoading, setDietLoading] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [duplicateDialog, setDuplicateDialog] = useState<{
+    open: boolean;
+    templateId: string;
+    templateType: 'plan' | 'diet';
+    originalName: string;
+    newName: string;
+  }>({ open: false, templateId: '', templateType: 'plan', originalName: '', newName: '' });
   const dietaryRestrictionsList = [
     'vegetarian', 'vegan', 'gluten-free', 'dairy-free', 'nut-free', 'egg-free', 'soy-free', 'keto', 'paleo', 'low-carb', 'low-fat', 'diabetic-friendly'
   ];
@@ -99,6 +111,7 @@ function MealPlanTemplatesPageContent() {
       const params = new URLSearchParams();
       params.append('templateType', 'plan');
       params.append('limit', '1000');
+      params.append('_t', Date.now().toString()); // Cache-bust
       if (planSearch) params.append('search', planSearch);
       const response = await fetch(`/api/meal-plan-templates?${params.toString()}`);
       if (response.ok) {
@@ -116,6 +129,7 @@ function MealPlanTemplatesPageContent() {
       setDietLoading(true);
       const params = new URLSearchParams();
       params.append('limit', '1000');
+      params.append('_t', Date.now().toString()); // Cache-bust
       if (dietSearchTerm) params.append('search', dietSearchTerm);
       if (dietDietaryRestrictions.length > 0)
         params.append('dietaryRestrictions', dietDietaryRestrictions.join(','));
@@ -151,17 +165,17 @@ function MealPlanTemplatesPageContent() {
   // Delete template
   const handleDeleteTemplate = async (templateId: string, templateType: 'plan' | 'diet') => {
     if (!confirm('Are you sure you want to delete this template?')) return;
-    
+
     try {
       // Use different API endpoints for plan and diet templates
-      const apiUrl = templateType === 'diet' 
+      const apiUrl = templateType === 'diet'
         ? `/api/diet-templates/${templateId}`
         : `/api/meal-plan-templates/${templateId}`;
-      
+
       const response = await fetch(apiUrl, {
         method: 'DELETE'
       });
-      
+
       if (response.ok) {
         toast.success('Template deleted successfully');
         if (templateType === 'plan') {
@@ -176,6 +190,131 @@ function MealPlanTemplatesPageContent() {
     } catch (error) {
       console.error('Error deleting template:', error);
       toast.error('Failed to delete template');
+    }
+  };
+
+  // Duplicate template - opens dialog
+  const handleDuplicateTemplate = (templateId: string, templateType: 'plan' | 'diet', templateName: string) => {
+    setDuplicateDialog({
+      open: true,
+      templateId,
+      templateType,
+      originalName: templateName,
+      newName: `${templateName} (Copy)`
+    });
+  };
+
+  // Execute the actual duplication after user confirms
+  const executeDuplicate = async () => {
+    const { templateId, templateType, newName } = duplicateDialog;
+    if (!newName.trim()) {
+      toast.error('Please enter a name for the duplicate template');
+      return;
+    }
+
+    setDuplicateDialog(prev => ({ ...prev, open: false }));
+    setDuplicatingId(templateId);
+    try {
+      // First, fetch the full template details
+      const getApiUrl = templateType === 'diet'
+        ? `/api/diet-templates/${templateId}`
+        : `/api/meal-plan-templates/${templateId}`;
+
+      const getResponse = await fetch(getApiUrl);
+      if (!getResponse.ok) {
+        toast.error('Failed to fetch template details');
+        return;
+      }
+
+      const templateData = await getResponse.json();
+      const src = templateData.template || templateData;
+
+      // Helper: strip _id from nested objects/arrays recursively
+      const stripIds = (obj: any): any => {
+        if (Array.isArray(obj)) return obj.map(stripIds);
+        if (obj && typeof obj === 'object') {
+          const cleaned: any = {};
+          for (const [k, v] of Object.entries(obj)) {
+            if (k === '_id' || k === '__v' || k === 'id') continue;
+            cleaned[k] = stripIds(v);
+          }
+          return cleaned;
+        }
+        return obj;
+      };
+
+      // Build a clean payload with only the fields the POST API expects
+      const duplicateData: any = {
+        name: newName.trim(),
+        description: src.description || '',
+        category: src.category,
+        duration: src.duration,
+        meals: stripIds(src.meals || []),
+        mealTypes: (src.mealTypes || []).map((mt: any) => ({ name: mt.name, time: mt.time || '' })),
+        dietaryRestrictions: src.dietaryRestrictions || [],
+        tags: src.tags || [],
+        isPublic: false,
+        isPremium: src.isPremium || false,
+        difficulty: src.difficulty || 'intermediate',
+      };
+
+      // Copy optional structured fields if present
+      if (src.targetCalories) {
+        duplicateData.targetCalories = { min: src.targetCalories.min, max: src.targetCalories.max };
+      }
+      if (src.targetMacros) {
+        duplicateData.targetMacros = {
+          protein: { min: src.targetMacros.protein?.min || 0, max: src.targetMacros.protein?.max || 0 },
+          carbs: { min: src.targetMacros.carbs?.min || 0, max: src.targetMacros.carbs?.max || 0 },
+          fat: { min: src.targetMacros.fat?.min || 0, max: src.targetMacros.fat?.max || 0 },
+        };
+      }
+      if (src.prepTime) {
+        duplicateData.prepTime = { daily: src.prepTime.daily || 0, weekly: src.prepTime.weekly || 0 };
+      }
+      if (src.targetAudience) {
+        duplicateData.targetAudience = {
+          ageGroup: src.targetAudience.ageGroup || [],
+          activityLevel: src.targetAudience.activityLevel || [],
+          healthConditions: src.targetAudience.healthConditions || [],
+          goals: src.targetAudience.goals || [],
+        };
+      }
+
+      // For plan templates, also copy templateType
+      if (templateType === 'plan') {
+        duplicateData.templateType = 'plan';
+      }
+
+      // Create the duplicate
+      const createApiUrl = templateType === 'diet'
+        ? '/api/diet-templates'
+        : '/api/meal-plan-templates';
+
+      const createResponse = await fetch(createApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(duplicateData)
+      });
+
+      if (createResponse.ok) {
+        toast.success(`Template duplicated as "${newName.trim()}"`);
+        // Refresh the appropriate list
+        if (templateType === 'plan') {
+          fetchPlanTemplates();
+        } else {
+          fetchDietTemplates();
+        }
+      } else {
+        const errorData = await createResponse.json();
+        console.error('Duplicate failed:', errorData);
+        toast.error(errorData.error || 'Failed to duplicate template');
+      }
+    } catch (error) {
+      console.error('Error duplicating template:', error);
+      toast.error('Failed to duplicate template');
+    } finally {
+      setDuplicatingId(null);
     }
   };
 
@@ -284,11 +423,26 @@ function MealPlanTemplatesPageContent() {
                                   <Link href={`/meal-plan-templates/${t._id}`}>View</Link>
                                 </Button>
                                 {(session?.user?.role === UserRole.DIETITIAN || session?.user?.role === UserRole.ADMIN) && (
-                                  <Button size="sm" variant="outline" asChild>
-                                    <Link href={`/meal-plan-templates/${t._id}/edit`}>
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </Link>
-                                  </Button>
+                                  <>
+                                    <Button size="sm" variant="outline" asChild>
+                                      <Link href={`/meal-plan-templates/${t._id}/edit`}>
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Link>
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDuplicateTemplate(t._id, 'plan', t.name)}
+                                      disabled={duplicatingId === t._id}
+                                      title="Duplicate template"
+                                    >
+                                      {duplicatingId === t._id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Copy className="h-3.5 w-3.5" />
+                                      )}
+                                    </Button>
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -407,11 +561,27 @@ function MealPlanTemplatesPageContent() {
                                   <Link href={`/meal-plan-templates/diet/${t._id}`}>View</Link>
                                 </Button>
                                 {(session?.user?.role === UserRole.DIETITIAN || session?.user?.role === UserRole.ADMIN) && (
-                                  <Button size="sm" variant="outline" asChild>
-                                    <Link href={`/meal-plan-templates/diet/${t._id}/edit`}>
-                                      <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
-                                    </Link>
-                                  </Button>
+                                  <>
+                                    <Button size="sm" variant="outline" asChild>
+                                      <Link href={`/meal-plan-templates/diet/${t._id}/edit`}>
+                                        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                                      </Link>
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDuplicateTemplate(t._id, 'diet', t.name)}
+                                      disabled={duplicatingId === t._id}
+                                      title="Duplicate template"
+                                    >
+                                      {duplicatingId === t._id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                                      ) : (
+                                        <Copy className="h-3.5 w-3.5 mr-1" />
+                                      )}
+                                      Duplicate
+                                    </Button>
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -425,6 +595,46 @@ function MealPlanTemplatesPageContent() {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Duplicate Template Dialog */}
+        <Dialog open={duplicateDialog.open} onOpenChange={(open) => setDuplicateDialog(prev => ({ ...prev, open }))}>
+          <DialogContent className="max-w-sm w-[400px] rounded-xl p-5">
+            <DialogHeader className="space-y-1">
+              <DialogTitle className="text-base flex items-center gap-2">
+                <Copy className="h-4 w-4 text-blue-600" />
+                Duplicate Template
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Copy of &ldquo;{duplicateDialog.originalName}&rdquo;
+              </DialogDescription>
+            </DialogHeader>
+            <div className="pt-2 pb-3">
+              <Label htmlFor="duplicate-name" className="text-xs font-medium mb-1.5 block text-gray-700">
+                New Name
+              </Label>
+              <Input
+                id="duplicate-name"
+                value={duplicateDialog.newName}
+                onChange={(e) => setDuplicateDialog(prev => ({ ...prev, newName: e.target.value }))}
+                placeholder="Enter template name..."
+                className="h-9 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') executeDuplicate();
+                }}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => setDuplicateDialog(prev => ({ ...prev, open: false }))}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={executeDuplicate} disabled={!duplicateDialog.newName.trim()}>
+                <Copy className="h-3.5 w-3.5 mr-1.5" />
+                Duplicate
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

@@ -253,6 +253,9 @@ export async function POST(request: NextRequest) {
 
     await template.save();
 
+    // Clear cached GET responses so the new template appears immediately
+    clearCacheByTag('diet_templates');
+
     // Populate creator info
     await template.populate('createdBy', 'firstName lastName');
 
