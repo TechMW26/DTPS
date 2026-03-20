@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import PageTransition from "@/components/animations/PageTransition";
 import { useTheme } from "@/contexts/ThemeContext";
 import { emitDataChange, DataEventTypes } from '@/lib/events/useDataRefresh';
+import { useGoalCategories } from "@/hooks/useGoalCategories";
 import {
   ArrowLeft,
   Save,
@@ -54,15 +55,6 @@ const activityLevels = [
   { value: "extremely_active", label: "Extremely Active", desc: "Very hard exercise, physical job" }
 ];
 
-const healthGoals = [
-  { value: "weight-loss", label: "Weight Loss" },
-  { value: "weight-gain", label: "Weight Gain" },
-  { value: "muscle-gain", label: "Muscle Gain" },
-  { value: "maintain-weight", label: "Maintain Weight" },
-  { value: "disease-management", label: "Disease Management" },
-  { value: "not-specified", label: "Not Specified" }
-];
-
 const dietTypes = [
   { value: "standard", label: "Standard" },
   { value: "vegetarian", label: "Vegetarian" },
@@ -75,6 +67,7 @@ export default function PersonalInfoPage() {
   const { data: session, status, update: updateSession } = useSession();
   const router = useRouter();
   const { isDarkMode } = useTheme();
+  const { categories: goalCategories, loading: categoriesLoading } = useGoalCategories();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -540,7 +533,7 @@ export default function PersonalInfoPage() {
         {/* Health Goal */}
         <Section title="Health Goal" icon={Target}>
           <div className="flex flex-wrap gap-2">
-            {healthGoals.map(goal => (
+            {goalCategories.map(goal => (
               <button
                 key={goal.value}
                 onClick={() => setData({ ...data, generalGoal: goal.value })}
@@ -549,7 +542,7 @@ export default function PersonalInfoPage() {
                   : (isDarkMode ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]" : "bg-gray-50 text-gray-600 hover:bg-[#3AB1A0]/10")
                   }`}
               >
-                {goal.label}
+                {goal.name}
               </button>
             ))}
           </div>

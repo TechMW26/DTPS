@@ -136,7 +136,7 @@ export async function updateClientStatusFromMealPlan(clientId: string): Promise<
   }) || null;
 
   // Compute new status
-  const newStatus = computeClientStatus({ hasSuccessfulPayment, activePlan });
+  const newStatus = computeClientStatus({ hasSuccessfulPayment, activePlan: activePlan as any });
 
   // Update the user's clientStatus in database
   await User.findByIdAndUpdate(clientId, { clientStatus: newStatus });
@@ -216,8 +216,8 @@ export async function getClientStatusInfo(clientId: string): Promise<{
   return {
     clientStatus,
     hasActivePlan,
-    activePlanStartDate: activePlan?.startDate,
-    activePlanEndDate: activePlan?.endDate
+    activePlanStartDate: (activePlan as any)?.startDate,
+    activePlanEndDate: (activePlan as any)?.endDate
   };
 }
 

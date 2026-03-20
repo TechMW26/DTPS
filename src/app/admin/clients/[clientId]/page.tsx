@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useRealtime } from '@/hooks/useRealtime';
+import { useGoalCategories } from '@/hooks/useGoalCategories';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -182,6 +183,7 @@ export default function AdminClientDetailPage() {
   const params = useParams();
   const router = useRouter();
   const clientId = params.clientId as string;
+  const { categories: goalCategories } = useGoalCategories();
 
   const [client, setClient] = useState<Client | null>(null);
   const [mealPlans, setMealPlans] = useState<MealPlan[]>([]);
@@ -633,11 +635,11 @@ export default function AdminClientDetailPage() {
                       <SelectValue placeholder="Select goal" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="weight-loss">Weight Loss</SelectItem>
-                      <SelectItem value="weight-gain">Weight Gain</SelectItem>
-                      <SelectItem value="maintain-weight">Maintain Weight</SelectItem>
-                      <SelectItem value="muscle-gain">Muscle Gain</SelectItem>
-                      <SelectItem value="disease-management">Disease Management</SelectItem>
+                      {goalCategories.map(goal => (
+                        <SelectItem key={goal._id} value={goal.value}>
+                          {goal.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 ) : (

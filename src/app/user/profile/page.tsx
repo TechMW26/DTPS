@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDataRefresh, DataEventTypes } from '@/lib/events/useDataRefresh';
+import { useGoalCategories } from "@/hooks/useGoalCategories";
 import {
   User,
   Heart,
@@ -133,6 +134,7 @@ export default function ProfilePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { isDarkMode } = useTheme();
+  const { categories: goalCategories } = useGoalCategories();
   const [activeTab, setActiveTab] = useState("personal");
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
@@ -250,6 +252,9 @@ export default function ProfilePage() {
   };
 
   const getGoalLabel = (goal: string) => {
+    const category = goalCategories.find(g => g.value === goal);
+    if (category) return category.name;
+    // Fallback for legacy values
     const labels: Record<string, string> = {
       'weight-loss': 'Weight Loss',
       'weight-gain': 'Weight Gain',
