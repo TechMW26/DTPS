@@ -5,6 +5,7 @@ import { useSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import PageTransition from "@/components/animations/PageTransition";
 import { useTheme } from "@/contexts/ThemeContext";
+import { emitDataChange, DataEventTypes } from '@/lib/events/useDataRefresh';
 import {
   ArrowLeft,
   Save,
@@ -180,6 +181,12 @@ export default function PersonalInfoPage() {
         }
 
         toast.success("Personal information saved successfully");
+
+        // Emit real-time sync event for dietitian panel
+        emitDataChange(DataEventTypes.BASIC_INFO_UPDATED, {
+          clientId: session?.user?.id
+        });
+
         router.push("/user/profile");
       } else {
         toast.error(result.error || "Failed to save personal information");
@@ -395,8 +402,8 @@ export default function PersonalInfoPage() {
                     key={gender}
                     onClick={() => setData({ ...data, gender })}
                     className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${data.gender === gender
-                        ? (isDarkMode ? "bg-[#ff9500] text-white shadow-lg shadow-[#ff9500]/25" : "bg-[#3AB1A0] text-white shadow-lg shadow-[#3AB1A0]/25")
-                        : (isDarkMode ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]" : "bg-gray-50 text-gray-600 hover:bg-[#3AB1A0]/10")
+                      ? (isDarkMode ? "bg-[#ff9500] text-white shadow-lg shadow-[#ff9500]/25" : "bg-[#3AB1A0] text-white shadow-lg shadow-[#3AB1A0]/25")
+                      : (isDarkMode ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]" : "bg-gray-50 text-gray-600 hover:bg-[#3AB1A0]/10")
                       }`}
                   >
                     {gender.charAt(0).toUpperCase() + gender.slice(1)}
@@ -517,8 +524,8 @@ export default function PersonalInfoPage() {
                 key={level.value}
                 onClick={() => setData({ ...data, activityLevel: level.value })}
                 className={`w-full p-3 rounded-xl text-left transition-all border ${data.activityLevel === level.value
-                    ? (isDarkMode ? "bg-white/5 border-[#ff9500] ring-2 ring-[#ff9500]" : "bg-[#3AB1A0]/10 border-[#3AB1A0] ring-2 ring-[#3AB1A0]")
-                    : (isDarkMode ? "bg-[#111] border-[#2a2a2a] hover:border-[#ff9500]/60" : "bg-gray-50 border-gray-200 hover:border-green-300")
+                  ? (isDarkMode ? "bg-white/5 border-[#ff9500] ring-2 ring-[#ff9500]" : "bg-[#3AB1A0]/10 border-[#3AB1A0] ring-2 ring-[#3AB1A0]")
+                  : (isDarkMode ? "bg-[#111] border-[#2a2a2a] hover:border-[#ff9500]/60" : "bg-gray-50 border-gray-200 hover:border-green-300")
                   }`}
               >
                 <p className={`font-medium ${data.activityLevel === level.value ? (isDarkMode ? 'text-[#ff9500]' : 'text-green-700') : (isDarkMode ? 'text-white' : 'text-gray-900')}`}>
@@ -538,8 +545,8 @@ export default function PersonalInfoPage() {
                 key={goal.value}
                 onClick={() => setData({ ...data, generalGoal: goal.value })}
                 className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${data.generalGoal === goal.value
-                    ? (isDarkMode ? "bg-[#ff9500] text-white shadow-lg shadow-[#ff9500]/25" : "bg-[#3AB1A0] text-white shadow-lg shadow-[#3AB1A0]/25")
-                    : (isDarkMode ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]" : "bg-gray-50 text-gray-600 hover:bg-[#3AB1A0]/10")
+                  ? (isDarkMode ? "bg-[#ff9500] text-white shadow-lg shadow-[#ff9500]/25" : "bg-[#3AB1A0] text-white shadow-lg shadow-[#3AB1A0]/25")
+                  : (isDarkMode ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]" : "bg-gray-50 text-gray-600 hover:bg-[#3AB1A0]/10")
                   }`}
               >
                 {goal.label}
@@ -556,8 +563,8 @@ export default function PersonalInfoPage() {
                 key={diet.value}
                 onClick={() => setData({ ...data, dietType: diet.value })}
                 className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${data.dietType === diet.value
-                    ? (isDarkMode ? "bg-[#ff9500] text-white shadow-lg shadow-[#ff9500]/25" : "bg-[#3AB1A0] text-white shadow-lg shadow-[#3AB1A0]/25")
-                    : (isDarkMode ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]" : "bg-gray-50 text-gray-600 hover:bg-[#3AB1A0]/10")
+                  ? (isDarkMode ? "bg-[#ff9500] text-white shadow-lg shadow-[#ff9500]/25" : "bg-[#3AB1A0] text-white shadow-lg shadow-[#3AB1A0]/25")
+                  : (isDarkMode ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]" : "bg-gray-50 text-gray-600 hover:bg-[#3AB1A0]/10")
                   }`}
               >
                 {diet.label}

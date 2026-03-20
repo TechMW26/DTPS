@@ -147,6 +147,11 @@ export async function PUT(
       targetUserName: `${client.firstName || ''} ${client.lastName || ''} (${client.email})`,
     }).catch(() => { });
 
+    // Clear caches so both client and dietitian panels show updated data immediately
+    clearCacheByTag('dietitian_panel');
+    clearCacheByTag('client');
+    clearCacheByTag(`client:dietary-recall:${clientId}`);
+
     return NextResponse.json({
       success: true,
       message: 'Dietary recall updated successfully',

@@ -2,7 +2,7 @@
 // Triggers automatic UI updates when data changes
 
 type EventCallback = () => void;
-type EventType = 
+type EventType =
   | 'meal-plan-updated'
   | 'meal-plan-created'
   | 'meal-plan-deleted'
@@ -22,6 +22,11 @@ type EventType =
   | 'dietitians-updated'
   | 'health-counselors-updated'
   | 'goal-categories-updated'
+  | 'basic-info-updated'
+  | 'lifestyle-info-updated'
+  | 'medical-info-updated'
+  | 'dietary-recall-updated'
+  | 'form-data-updated'
   | 'data-changed'; // Generic event for any data change
 
 class DataEventEmitter {
@@ -42,7 +47,7 @@ class DataEventEmitter {
 
   // Emit an event to trigger all listeners
   emit(event: EventType, data?: any): void {
-    
+
     // Trigger specific event listeners
     this.listeners.get(event)?.forEach(callback => {
       try {
@@ -99,5 +104,11 @@ export const DataEventTypes = {
   DIETITIANS_UPDATED: 'dietitians-updated' as EventType,
   HEALTH_COUNSELORS_UPDATED: 'health-counselors-updated' as EventType,
   GOAL_CATEGORIES_UPDATED: 'goal-categories-updated' as EventType,
+  // Form data sync events
+  BASIC_INFO_UPDATED: 'basic-info-updated' as EventType,
+  LIFESTYLE_INFO_UPDATED: 'lifestyle-info-updated' as EventType,
+  MEDICAL_INFO_UPDATED: 'medical-info-updated' as EventType,
+  DIETARY_RECALL_UPDATED: 'dietary-recall-updated' as EventType,
+  FORM_DATA_UPDATED: 'form-data-updated' as EventType,
   DATA_CHANGED: 'data-changed' as EventType,
 };

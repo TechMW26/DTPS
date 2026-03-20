@@ -60,6 +60,7 @@ import DocumentsSection from '@/components/clientDashboard/DocumentsSection';
 import HistorySection from '@/components/clientDashboard/HistorySection';
 import ImageLightbox from '@/components/ui/image-lightbox';
 import TasksSection from '@/components/clientDashboard/TasksSection';
+import { useDataRefresh, DataEventTypes, emitDataChange } from '@/lib/events/useDataRefresh';
 
 interface ClientData {
   _id: string;
@@ -304,6 +305,22 @@ export default function HealthCounselorClientDetailPage() {
       fetchActivePlan();
     }
   }, [params.clientId]);
+
+  // Subscribe to form data events for real-time sync
+  useDataRefresh(
+    [
+      DataEventTypes.BASIC_INFO_UPDATED,
+      DataEventTypes.LIFESTYLE_INFO_UPDATED,
+      DataEventTypes.MEDICAL_INFO_UPDATED,
+      DataEventTypes.DIETARY_RECALL_UPDATED,
+      DataEventTypes.FORM_DATA_UPDATED
+    ],
+    () => {
+      fetchClientDetails();
+      fetchActivePlan();
+    },
+    [params.clientId]
+  );
 
   const fetchActivePlan = async () => {
     try {
@@ -793,6 +810,13 @@ export default function HealthCounselorClientDetailPage() {
       }
 
       toast.success('Client data saved successfully');
+
+      // Emit form data updated event for real-time sync
+      emitDataChange(DataEventTypes.FORM_DATA_UPDATED, {
+        clientId: params.clientId,
+        updatedFields: ['basic', 'lifestyle', 'medical']
+      });
+
       fetchClientDetails();
     } catch (error) {
       console.error('Error saving client data:', error);

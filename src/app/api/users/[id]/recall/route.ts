@@ -201,6 +201,12 @@ export async function POST(
       });
     }
 
+    // Clear caches for real-time sync
+    clearCacheByTag('users');
+    clearCacheByTag(`users:id:${userId}`);
+    clearCacheByTag('client');
+    clearCacheByTag(`client:dietary-recall:${userId}`);
+
     return NextResponse.json(
       { success: true, recall, recallId: recall._id },
       { status: 201 }

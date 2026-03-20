@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/contexts/ThemeContext";
+import { emitDataChange, DataEventTypes } from '@/lib/events/useDataRefresh';
 import {
   ArrowLeft,
   Save,
@@ -186,6 +187,12 @@ export default function LifestyleInfoPage() {
 
       if (res.ok) {
         toast.success("Lifestyle information saved successfully");
+
+        // Emit real-time sync event for dietitian panel
+        emitDataChange(DataEventTypes.LIFESTYLE_INFO_UPDATED, {
+          clientId: session?.user?.id
+        });
+
         router.push("/user/profile");
       } else {
         const errorData = await res.json();
@@ -267,10 +274,10 @@ export default function LifestyleInfoPage() {
                 key={level.value}
                 onClick={() => setData({ ...data, activityLevel: level.value })}
                 className={`w-full p-3 rounded-xl text-left transition-all border ${data.activityLevel === level.value
-                    ? "bg-green-50 border-green-500 ring-2 ring-green-500"
-                    : isDarkMode
-                      ? "bg-[#111] border-[#2a2a2a] hover:border-green-500/60"
-                      : "bg-gray-50 border-gray-200 hover:border-green-300"
+                  ? "bg-green-50 border-green-500 ring-2 ring-green-500"
+                  : isDarkMode
+                    ? "bg-[#111] border-[#2a2a2a] hover:border-green-500/60"
+                    : "bg-gray-50 border-gray-200 hover:border-green-300"
                   }`}
               >
                 <p className={`font-medium ${data.activityLevel === level.value ? 'text-green-700' : (isDarkMode ? 'text-white' : 'text-gray-900')}`}>
@@ -290,10 +297,10 @@ export default function LifestyleInfoPage() {
                 key={pref}
                 onClick={() => setData({ ...data, foodPreference: pref })}
                 className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${data.foodPreference === pref
-                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                    : isDarkMode
-                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                  ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                  : isDarkMode
+                    ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                    : "bg-gray-50 text-gray-600 hover:bg-green-50"
                   }`}
               >
                 {pref}
@@ -310,10 +317,10 @@ export default function LifestyleInfoPage() {
                 key={cuisine}
                 onClick={() => toggleArrayItem("preferredCuisine", cuisine)}
                 className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.preferredCuisine.includes(cuisine)
-                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                    : isDarkMode
-                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                  ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                  : isDarkMode
+                    ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                    : "bg-gray-50 text-gray-600 hover:bg-green-50"
                   }`}
               >
                 {cuisine}
@@ -330,10 +337,10 @@ export default function LifestyleInfoPage() {
                 key={oil}
                 onClick={() => toggleArrayItem("cookingOil", oil)}
                 className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.cookingOil.includes(oil)
-                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                    : isDarkMode
-                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                  ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                  : isDarkMode
+                    ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                    : "bg-gray-50 text-gray-600 hover:bg-green-50"
                   }`}
               >
                 {oil}
@@ -351,10 +358,10 @@ export default function LifestyleInfoPage() {
                   key={allergy}
                   onClick={() => toggleArrayItem("allergiesFood", allergy)}
                   className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.allergiesFood.includes(allergy)
-                      ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                      : isDarkMode
-                        ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                        : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                    : isDarkMode
+                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
                     }`}
                 >
                   {allergy}
@@ -411,10 +418,10 @@ export default function LifestyleInfoPage() {
                 key={craving}
                 onClick={() => setData({ ...data, cravingType: craving })}
                 className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${data.cravingType === craving
-                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                    : isDarkMode
-                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                  ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                  : isDarkMode
+                    ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                    : "bg-gray-50 text-gray-600 hover:bg-green-50"
                   }`}
               >
                 {craving}
@@ -431,10 +438,10 @@ export default function LifestyleInfoPage() {
                 key={day}
                 onClick={() => toggleArrayItem("fastDays", day)}
                 className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.fastDays.includes(day)
-                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                    : isDarkMode
-                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                  ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                  : isDarkMode
+                    ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                    : "bg-gray-50 text-gray-600 hover:bg-green-50"
                   }`}
               >
                 {day.slice(0, 3)}
@@ -452,10 +459,10 @@ export default function LifestyleInfoPage() {
                   key={day}
                   onClick={() => toggleArrayItem("nonVegExemptDays", day)}
                   className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.nonVegExemptDays.includes(day)
-                      ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                      : isDarkMode
-                        ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                        : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                    : isDarkMode
+                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
                     }`}
                 >
                   {day.slice(0, 3)}
@@ -503,10 +510,10 @@ export default function LifestyleInfoPage() {
                 key={freq}
                 onClick={() => setData({ ...data, eatOutFrequency: freq })}
                 className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${data.eatOutFrequency === freq
-                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                    : isDarkMode
-                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                  ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                  : isDarkMode
+                    ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                    : "bg-gray-50 text-gray-600 hover:bg-green-50"
                   }`}
               >
                 {freq}
@@ -528,10 +535,10 @@ export default function LifestyleInfoPage() {
                     key={freq}
                     onClick={() => setData({ ...data, smokingFrequency: freq })}
                     className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.smokingFrequency === freq
-                        ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                        : isDarkMode
-                          ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                          : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                      ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                      : isDarkMode
+                        ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                        : "bg-gray-50 text-gray-600 hover:bg-green-50"
                       }`}
                   >
                     {freq}
@@ -550,10 +557,10 @@ export default function LifestyleInfoPage() {
                     key={freq}
                     onClick={() => setData({ ...data, alcoholFrequency: freq })}
                     className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.alcoholFrequency === freq
-                        ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                        : isDarkMode
-                          ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                          : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                      ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                      : isDarkMode
+                        ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                        : "bg-gray-50 text-gray-600 hover:bg-green-50"
                       }`}
                   >
                     {freq}

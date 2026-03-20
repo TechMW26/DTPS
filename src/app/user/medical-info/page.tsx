@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import PageTransition from "@/components/animations/PageTransition";
 import { useTheme } from "@/contexts/ThemeContext";
+import { emitDataChange, DataEventTypes } from '@/lib/events/useDataRefresh';
 import {
   ArrowLeft,
   Save,
@@ -168,6 +169,12 @@ export default function MedicalInfoPage() {
 
       if (res.ok) {
         toast.success("Medical information saved successfully");
+
+        // Emit real-time sync event for dietitian panel
+        emitDataChange(DataEventTypes.MEDICAL_INFO_UPDATED, {
+          clientId: session?.user?.id
+        });
+
         router.push("/user/profile");
       } else {
         toast.error(result.error || "Failed to save medical information");
@@ -381,10 +388,10 @@ export default function MedicalInfoPage() {
                 key={group}
                 onClick={() => setData({ ...data, bloodGroup: group })}
                 className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${data.bloodGroup === group
-                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                    : isDarkMode
-                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                  ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                  : isDarkMode
+                    ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                    : "bg-gray-50 text-gray-600 hover:bg-green-50"
                   }`}
               >
                 {group}
@@ -402,10 +409,10 @@ export default function MedicalInfoPage() {
                   key={condition}
                   onClick={() => toggleArrayItem("medicalConditions", condition)}
                   className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.medicalConditions.includes(condition)
-                      ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                      : isDarkMode
-                        ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                        : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                    : isDarkMode
+                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
                     }`}
                 >
                   {condition}
@@ -442,10 +449,10 @@ export default function MedicalInfoPage() {
                   key={allergy}
                   onClick={() => toggleArrayItem("allergies", allergy)}
                   className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.allergies.includes(allergy)
-                      ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                      : isDarkMode
-                        ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                        : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                    : isDarkMode
+                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
                     }`}
                 >
                   {allergy}
@@ -482,10 +489,10 @@ export default function MedicalInfoPage() {
                   key={restriction}
                   onClick={() => toggleArrayItem("dietaryRestrictions", restriction)}
                   className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.dietaryRestrictions.includes(restriction)
-                      ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                      : isDarkMode
-                        ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                        : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                    : isDarkMode
+                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
                     }`}
                 >
                   {restriction}
@@ -521,10 +528,10 @@ export default function MedicalInfoPage() {
                 key={issue}
                 onClick={() => toggleArrayItem("gutIssues", issue)}
                 className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${data.gutIssues.includes(issue)
-                    ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                    : isDarkMode
-                      ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                      : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                  ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                  : isDarkMode
+                    ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                    : "bg-gray-50 text-gray-600 hover:bg-green-50"
                   }`}
               >
                 {issue}
@@ -566,10 +573,10 @@ export default function MedicalInfoPage() {
                       key={cycle}
                       onClick={() => setData({ ...data, menstrualCycle: cycle })}
                       className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${data.menstrualCycle === cycle
-                          ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                          : isDarkMode
-                            ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                            : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                        ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                        : isDarkMode
+                          ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                          : "bg-gray-50 text-gray-600 hover:bg-green-50"
                         }`}
                     >
                       {cycle.charAt(0).toUpperCase() + cycle.slice(1)}
@@ -586,10 +593,10 @@ export default function MedicalInfoPage() {
                       key={flow}
                       onClick={() => setData({ ...data, bloodFlow: flow })}
                       className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${data.bloodFlow === flow
-                          ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
-                          : isDarkMode
-                            ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
-                            : "bg-gray-50 text-gray-600 hover:bg-green-50"
+                        ? "bg-green-500 text-white shadow-lg shadow-green-500/25"
+                        : isDarkMode
+                          ? "bg-[#111] text-gray-300 hover:bg-white/10 border border-[#2a2a2a]"
+                          : "bg-gray-50 text-gray-600 hover:bg-green-50"
                         }`}
                     >
                       {flow.charAt(0).toUpperCase() + flow.slice(1)}

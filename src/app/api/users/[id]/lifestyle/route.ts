@@ -64,6 +64,9 @@ export async function POST(
     clearCacheByTag('users');
     clearCacheByTag(`users:id:${id}`);
     clearCacheByTag(`users:id:lifestyle:${id}`);
+    // Also clear client cache tags for real-time sync
+    clearCacheByTag('client');
+    clearCacheByTag(`client:lifestyle-info:${id}`);
 
     return NextResponse.json({ lifestyleInfo });
   } catch (error) {

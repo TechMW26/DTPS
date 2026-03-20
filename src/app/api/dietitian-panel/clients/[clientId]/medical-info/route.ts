@@ -156,6 +156,11 @@ export async function PUT(
       targetUserName: `${client.firstName || ''} ${client.lastName || ''} (${client.email})`,
     }).catch(() => { });
 
+    // Clear caches so both client and dietitian panels show updated data immediately
+    clearCacheByTag('dietitian_panel');
+    clearCacheByTag('client');
+    clearCacheByTag(`client:medical-info:${clientId}`);
+
     return NextResponse.json({
       success: true,
       message: 'Medical info updated successfully',

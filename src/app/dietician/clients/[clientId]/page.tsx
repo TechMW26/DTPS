@@ -59,7 +59,7 @@ import { logHistory, generateChangeDetails } from '@/lib/utils/history';
 import { BasicInfoForm, type BasicInfoData } from '@/components/clients/BasicInfoForm';
 import { MedicalForm, type MedicalData } from '@/components/clients/MedicalForm';
 import { LifestyleForm, type LifestyleData } from '@/components/clients/LifestyleForm';
-import { useDataRefresh, DataEventTypes } from '@/lib/events/useDataRefresh';
+import { useDataRefresh, DataEventTypes, emitDataChange } from '@/lib/events/useDataRefresh';
 import { RecallForm, type RecallEntry } from '@/components/clients/RecallForm';
 import FormsSection from '@/components/clientDashboard/FormsSection';
 import { JournalSection } from '@/components/journal';
@@ -535,9 +535,15 @@ export default function ClientDetailPage() {
       DataEventTypes.MEAL_PLAN_PAUSED,
       DataEventTypes.MEAL_PLAN_RESUMED,
       DataEventTypes.CLIENT_UPDATED,
+      DataEventTypes.BASIC_INFO_UPDATED,
+      DataEventTypes.LIFESTYLE_INFO_UPDATED,
+      DataEventTypes.MEDICAL_INFO_UPDATED,
+      DataEventTypes.DIETARY_RECALL_UPDATED,
+      DataEventTypes.FORM_DATA_UPDATED,
     ],
     () => {
       fetchActivePlan(); // Refresh active plan banner when data changes
+      fetchClientDetails(true); // Silent refresh of client data
     },
     [params.clientId]
   );
@@ -1251,6 +1257,13 @@ export default function ClientDetailPage() {
       });
 
       toast.success('Client details updated successfully');
+
+      // Emit form data updated event for real-time sync
+      emitDataChange(DataEventTypes.FORM_DATA_UPDATED, {
+        clientId: params.clientId,
+        updatedFields: ['basic', 'lifestyle', 'medical', 'recall']
+      });
+
       fetchClientDetails();
       setIsEditing(false);
     } catch (error) {

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/contexts/ThemeContext";
+import { emitDataChange, DataEventTypes } from '@/lib/events/useDataRefresh';
 import {
   ArrowLeft,
   Save,
@@ -220,6 +221,12 @@ export default function DietaryRecallPage() {
         clearDraftFromLocalStorage();
         setHasDraft(false);
         toast.success("Dietary recall saved successfully");
+
+        // Emit real-time sync event for dietitian panel
+        emitDataChange(DataEventTypes.DIETARY_RECALL_UPDATED, {
+          clientId: session?.user?.id
+        });
+
         router.push("/user/profile");
       } else {
         toast.error("Failed to save dietary recall");
