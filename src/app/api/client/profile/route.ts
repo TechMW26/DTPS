@@ -55,7 +55,7 @@ export async function GET() {
             "name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource assignedDietitian bmi bmiCategory height weight clientStatus"
           )
           .populate('assignedDietitian', 'firstName lastName email phone')
-          .lean();
+          .lean() as any;
 
         if (!user) {
           return null;
@@ -159,7 +159,7 @@ export async function PUT(request: Request) {
 
     if (isWeightOrHeightUpdated) {
       // Get current user data to calculate BMI with new values
-      const currentUser = await User.findById(session.user.id).select('weightKg heightCm').lean();
+      const currentUser = await User.findById(session.user.id).select('weightKg heightCm').lean() as any;
 
       const finalWeightKg = parseFloat(data.weightKg !== undefined ? String(data.weightKg) : currentUser?.weightKg || '0');
       const finalHeightCm = parseFloat(data.heightCm !== undefined ? String(data.heightCm) : currentUser?.heightCm || '0');
@@ -186,6 +186,8 @@ export async function PUT(request: Request) {
     clearCacheByTag(`client-profile:${session.user.id}`);
     clearCacheByTag('client-profile');
     clearCacheByTag('client');
+    // Also clear dashboard cache to reflect name/avatar changes immediately
+    clearCacheByTag(`dashboard:${session.user.id}`);
 
     // Log activity
     const changedFields = Object.keys(updateData);

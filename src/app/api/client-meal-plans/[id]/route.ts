@@ -181,7 +181,7 @@ export async function DELETE(
 
     const { id } = await context.params;
 
-    // First, get the meal plan to know the clientId before deleting
+    // First, get the meal plan to know the clientId and duration before deleting
     const mealPlan = await ClientMealPlan.findById(id);
 
     if (!mealPlan) {
@@ -192,9 +192,28 @@ export async function DELETE(
     }
 
     const clientId = mealPlan.clientId?.toString();
+    const purchaseId = mealPlan.purchaseId;
+    const planDuration = mealPlan.duration || 0;
 
     // Now delete the meal plan
     await ClientMealPlan.findByIdAndDelete(id);
+
+    // Reduce daysUsed in the associated purchase if purchaseId exists
+    if (purchaseId && planDuration > 0) {
+      try {
+        const { default: UnifiedPayment } = await import('@/lib/db/models/UnifiedPayment');
+        const purchase = await UnifiedPayment.findById(purchaseId);
+        if (purchase) {
+          // Subtract the plan duration from daysUsed, but don't go below 0
+          purchase.daysUsed = Math.max(0, (purchase.daysUsed || 0) - planDuration);
+          await purchase.save();
+          console.log(`[ClientMealPlan] Reduced daysUsed by ${planDuration} for purchase ${purchaseId}. New daysUsed: ${purchase.daysUsed}`);
+        }
+      } catch (purchaseError) {
+        console.error('Failed to update purchase daysUsed after deletion:', purchaseError);
+        // Don't fail the request - meal plan was deleted successfully
+      }
+    }
 
     // Update client status after deletion
     if (clientId) {

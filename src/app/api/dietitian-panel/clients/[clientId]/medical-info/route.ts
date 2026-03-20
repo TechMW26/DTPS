@@ -150,7 +150,7 @@ export async function PUT(
       userEmail: session.user.email || '',
       action: 'Updated Medical Info',
       actionType: 'update',
-      category: 'medical',
+      category: 'other',
       description: `Dietitian updated medical info for client ${client.firstName || ''} ${client.lastName || ''} (${client.email}).`,
       targetUserId: clientId,
       targetUserName: `${client.firstName || ''} ${client.lastName || ''} (${client.email})`,

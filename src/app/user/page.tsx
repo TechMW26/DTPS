@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useDataRefresh, DataEventTypes } from '@/lib/events/useDataRefresh';
 import {
   Droplet,
   Moon,
@@ -127,6 +128,8 @@ export default function UserHomePage() {
   const [hasPendingDietitianAssignment, setHasPendingDietitianAssignment] = useState(false);
   const [activePurchases, setActivePurchases] = useState<PurchaseInfo[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userName, setUserName] = useState<string>('');
+  const [userAvatar, setUserAvatar] = useState<string>('');
   const [paymentVerifying, setPaymentVerifying] = useState(false);
   const [blogs, setBlogs] = useState<BlogItem[]>([]);
   const [blogsLoading, setBlogsLoading] = useState(false);
@@ -250,6 +253,14 @@ export default function UserHomePage() {
             heightCm: summary.profile.heightCm || '',
             generalGoal: summary.profile.generalGoal || ''
           });
+
+          // Update userName and userAvatar from API response
+          if (summary.profile.firstName) {
+            setUserName(summary.profile.firstName);
+          }
+          if (summary.profile.avatar) {
+            setUserAvatar(summary.profile.avatar);
+          }
         }
       }
 
@@ -383,6 +394,22 @@ export default function UserHomePage() {
 
   // Listen for data changes and refresh
   useDataChangeListener(refreshAllData);
+
+  // Listen for form data changes (basic info, lifestyle, medical, recall) and refresh
+  useDataRefresh(
+    [
+      DataEventTypes.BASIC_INFO_UPDATED,
+      DataEventTypes.LIFESTYLE_INFO_UPDATED,
+      DataEventTypes.MEDICAL_INFO_UPDATED,
+      DataEventTypes.DIETARY_RECALL_UPDATED,
+      DataEventTypes.FORM_DATA_UPDATED
+    ],
+    () => {
+      console.log('Form data changed, refreshing user data...');
+      fetchHealthData();
+    },
+    []
+  );
 
   // Helper to load service plans (used by onboarding check fast path)
   const loadServicePlans = async () => {
@@ -643,7 +670,9 @@ export default function UserHomePage() {
   const waterPercent = (data.water.current / data.water.goal) * 100;
   const mealsPercent = (data.meals.eaten / data.meals.total) * 100;
 
-  const userName = session?.user?.firstName || 'Alex';
+  // Use state userName (from API) with fallback to session, then 'Alex'
+  const displayName = userName || session?.user?.firstName || 'Alex';
+  const displayAvatar = userAvatar || session?.user?.avatar;
 
   // Show loading while mounting, session is loading, checking onboarding, or verifying payment
   if (!mounted || status === 'loading' || checkingOnboarding || paymentVerifying) {
@@ -672,14 +701,14 @@ export default function UserHomePage() {
                 {dayName}, {dateStr}
               </p>
               <h1 className={`mt-1 text-2xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
-                Hi, {userName}
+                Hi, {displayName}
               </h1>
             </div>
             <Link href="/user/profile">
               <div className="h-12 w-12 rounded-full bg-[#E06A26]/10 flex items-center justify-center overflow-hidden border-2 border-[#E06A26]/30 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-                {session?.user?.avatar ? (
+                {displayAvatar ? (
                   <img
-                    src={session.user.avatar}
+                    src={displayAvatar}
                     alt="Profile"
                     loading="lazy"
                     className="w-full h-full rounded-full "

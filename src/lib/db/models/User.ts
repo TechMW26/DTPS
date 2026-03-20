@@ -258,9 +258,9 @@ const userSchema = new Schema({
     type: String
   }],
 
+  // Allow any goal value since goal categories are dynamically defined in admin panel
   generalGoal: {
     type: String,
-    enum: ['', 'not-specified', 'weight-loss', 'weight-gain', 'disease-management', 'muscle-gain', 'maintain-weight'],
     default: ''
   },
 

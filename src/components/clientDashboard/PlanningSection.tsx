@@ -191,6 +191,37 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
   // Success dialog state
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [createdPlanInfo, setCreatedPlanInfo] = useState<{ days: number; remainingDays: number } | null>(null);
+  const [recalculating, setRecalculating] = useState(false);
+
+  // Recalculate daysUsed based on actual meal plans
+  const recalculateDaysUsed = async () => {
+    if (!paymentCheck?.purchase?._id) return;
+
+    setRecalculating(true);
+    try {
+      const res = await fetch('/api/client-purchases', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purchaseId: paymentCheck.purchase._id,
+          action: 'recalculate'
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Days recalculated: ${data.oldDaysUsed} → ${data.newDaysUsed}`);
+        checkPaymentStatus(); // Refresh to show new values
+      } else {
+        toast.error(data.error || 'Failed to recalculate');
+      }
+    } catch (error) {
+      console.error('Error recalculating days:', error);
+      toast.error('Failed to recalculate days used');
+    } finally {
+      setRecalculating(false);
+    }
+  };
 
   // Check client's payment status (also syncs with Razorpay)
   const checkPaymentStatus = async (showToast = false) => {
@@ -3152,7 +3183,20 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
               <div className="flex items-start gap-3">
                 <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <h4 className="font-medium text-green-900">✅ Active Plan: {paymentCheck.purchase?.planName}</h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-green-900">✅ Active Plan: {paymentCheck.purchase?.planName}</h4>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={recalculateDaysUsed}
+                      disabled={recalculating}
+                      className="text-xs text-gray-500 hover:text-green-700"
+                      title="Recalculate days used from actual meal plans"
+                    >
+                      <RefreshCw className={`h-3 w-3 mr-1 ${recalculating ? 'animate-spin' : ''}`} />
+                      {recalculating ? 'Fixing...' : 'Fix Days'}
+                    </Button>
+                  </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3 text-sm">
                     <div className="bg-white rounded p-2 border border-green-200">
                       <p className="text-gray-600 text-xs">Total Duration</p>

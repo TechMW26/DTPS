@@ -465,12 +465,17 @@ export async function PUT(
       .reduce((obj: any, key) => {
         const value = body[key];
         if (value === "" || value === null) return obj;
-        // Special handling for generalGoal enum - only allow valid single values
-        if (key === 'generalGoal' && value) {
-          const validGoals = ['not-specified', 'weight-loss', 'weight-gain', 'disease-management', 'muscle-gain', 'maintain-weight'];
-          if (!validGoals.includes(value)) {
-            return obj; // Skip invalid values
+        // Special handling for generalGoal enum - handle 'none' and dynamic categories
+        if (key === 'generalGoal') {
+          // If 'none' or empty, convert to empty string (clears the field)
+          if (value === 'none' || !value) {
+            obj[key] = '';
+            return obj;
           }
+          // Accept dynamic goal categories (from admin-defined goals) as well as standard ones
+          // We'll store whatever value is sent - validation is relaxed to allow dynamic categories
+          obj[key] = value;
+          return obj;
         }
         // Special handling for status
         if (key === 'status' && value) {
@@ -573,10 +578,29 @@ export async function PUT(
       user: updatedUser,
       message: "User updated successfully"
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating user:", error);
+
+    // Handle Mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((e: any) => e.message);
+      return NextResponse.json(
+        { error: messages.join(', ') },
+        { status: 400 }
+      );
+    }
+
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyValue)[0];
+      return NextResponse.json(
+        { error: `${field} already exists` },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Failed to update user" },
+      { error: error.message || "Failed to update user" },
       { status: 500 }
     );
   }

@@ -75,12 +75,15 @@ export async function GET(request: Request) {
         const stepsGoal = journal?.targets?.steps || 10000;
         const assignedSteps = journal?.steps?.assigned || null;
 
-        // --- Profile (BMI + goals) ---
+        // --- Profile (BMI + goals + name) ---
         const bmi = user?.bmi || '';
         const bmiCategory = user?.bmiCategory || '';
         const weightKg = user?.weightKg || '';
         const heightCm = user?.heightCm || '';
         const generalGoal = user?.generalGoal || '';
+        const firstName = user?.firstName || '';
+        const lastName = user?.lastName || '';
+        const avatar = user?.avatar || '';
 
         return {
           hydration: {
@@ -113,6 +116,9 @@ export async function GET(request: Request) {
             weightKg,
             heightCm,
             generalGoal,
+            firstName,
+            lastName,
+            avatar,
           },
         };
       },

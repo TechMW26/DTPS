@@ -9,7 +9,7 @@ import { withCache, clearCacheByTag } from '@/lib/api/utils';
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -24,17 +24,17 @@ export async function GET(request: NextRequest) {
     const query: any = {
       paymentStatus: 'paid' // Only show paid purchases
     };
-    
+
     // Filter by client
     if (clientId) {
       query.client = clientId;
     }
-    
+
     // Filter by status
     if (status) {
       query.status = status;
     }
-    
+
     // Filter active purchases (not expired)
     if (activeOnly) {
       query.status = { $in: ['paid', 'completed'] };
@@ -44,31 +44,45 @@ export async function GET(request: NextRequest) {
     const purchases = await withCache(
       `client-purchases:${JSON.stringify(query)}`,
       async () => await UnifiedPayment.find(query)
-      .populate('client', 'firstName lastName email phone')
-      .populate('dietitian', 'firstName lastName')
-      .populate('servicePlan', 'name category')
-      .populate('paymentLink', 'razorpayPaymentLinkId status paidAt')
-      .sort({ purchaseDate: -1 }),
+        .populate('client', 'firstName lastName email phone')
+        .populate('dietitian', 'firstName lastName')
+        .populate('servicePlan', 'name category')
+        .populate('paymentLink', 'razorpayPaymentLinkId status paidAt')
+        .sort({ purchaseDate: -1 }),
       { ttl: 120000, tags: ['client_purchases'] }
     );
 
     // Add remaining days to each purchase
+    // remainingDays = durationDays - daysUsed (plan allocation remaining)
+    // calendarDaysUntilEnd = days until endDate/expectedEndDate (for expiration tracking)
     const purchasesWithInfo = purchases.map(purchase => {
       const purchaseObj = purchase.toObject();
       const now = new Date();
-      const endDate = purchaseObj.endDate ? new Date(purchaseObj.endDate) : now;
-      const diffTime = endDate.getTime() - now.getTime();
-      const remainingDays = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-      
+
+      // Calculate plan-based remaining days (allocation)
+      const durationDays = purchaseObj.durationDays || 0;
+      const daysUsed = purchaseObj.daysUsed || 0;
+      const remainingDays = Math.max(0, durationDays - daysUsed);
+
+      // Calculate calendar days until end date (for expiration)
+      const endDate = purchaseObj.expectedEndDate || purchaseObj.endDate;
+      const calendarDaysUntilEnd = endDate
+        ? Math.max(0, Math.ceil((new Date(endDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+        : remainingDays;
+
+      // A purchase is expired if endDate has passed OR all days are used
+      const isExpired = calendarDaysUntilEnd === 0 || remainingDays === 0;
+
       return {
         ...purchaseObj,
-        remainingDays,
-        isExpired: remainingDays === 0
+        remainingDays,  // Plan allocation remaining (durationDays - daysUsed)
+        calendarDaysUntilEnd, // Days until expectedEndDate/endDate
+        isExpired
       };
     });
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       purchases: purchasesWithInfo,
       total: purchases.length
     });
@@ -83,7 +97,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -91,9 +105,9 @@ export async function POST(request: NextRequest) {
     await dbConnect();
 
     const body = await request.json();
-    const { 
-      clientId, 
-      servicePlanId, 
+    const {
+      clientId,
+      servicePlanId,
       paymentLinkId,
       pricingTierId,
       planName,
@@ -109,8 +123,8 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!clientId || !servicePlanId || !paymentLinkId || !durationDays) {
-      return NextResponse.json({ 
-        error: 'Client ID, service plan ID, payment link ID, and duration are required' 
+      return NextResponse.json({
+        error: 'Client ID, service plan ID, payment link ID, and duration are required'
       }, { status: 400 });
     }
 
@@ -147,8 +161,8 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       purchase,
       message: 'Client purchase recorded successfully'
     });
@@ -162,7 +176,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -189,7 +203,7 @@ export async function PUT(request: NextRequest) {
     const updateData: any = {};
     if (mealPlanId) updateData.mealPlan = mealPlanId;
     if (mealPlanCreated !== undefined) updateData.mealPlanCreated = mealPlanCreated;
-    
+
     // Update expected dates
     if (expectedStartDate !== undefined) {
       updateData.expectedStartDate = expectedStartDate ? new Date(expectedStartDate) : null;
@@ -197,12 +211,12 @@ export async function PUT(request: NextRequest) {
     if (expectedEndDate !== undefined) {
       updateData.expectedEndDate = expectedEndDate ? new Date(expectedEndDate) : null;
     }
-    
+
     // Update parent purchase reference (for multi-phase plans)
     if (parentPurchaseId !== undefined) {
       updateData.parentPaymentId = parentPurchaseId || null;
     }
-    
+
     // If addDaysUsed is provided, ADD to existing daysUsed (for multiple meal plans)
     if (addDaysUsed !== undefined && addDaysUsed > 0) {
       updateData.daysUsed = (currentPurchase.daysUsed || 0) + addDaysUsed;
@@ -210,7 +224,7 @@ export async function PUT(request: NextRequest) {
       // Legacy: direct set (for backwards compatibility)
       updateData.daysUsed = daysUsed;
     }
-    
+
     if (status) updateData.status = status;
 
     const updatedPurchase = await UnifiedPayment.findByIdAndUpdate(
@@ -223,8 +237,8 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       purchase: updatedPurchase,
       totalDaysUsed: updatedPurchase.daysUsed || 0,
       remainingDays: Math.max(0, (updatedPurchase.durationDays || 0) - (updatedPurchase.daysUsed || 0)),
@@ -233,5 +247,66 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error('Error updating client purchase:', error);
     return NextResponse.json({ error: 'Failed to update client purchase' }, { status: 500 });
+  }
+}
+
+// PATCH - Recalculate daysUsed for a purchase based on actual meal plans
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    await dbConnect();
+
+    const body = await request.json();
+    const { purchaseId, action } = body;
+
+    if (action !== 'recalculate') {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+
+    if (!purchaseId) {
+      return NextResponse.json({ error: 'Purchase ID is required' }, { status: 400 });
+    }
+
+    // Get the purchase
+    const purchase = await UnifiedPayment.findById(purchaseId);
+    if (!purchase) {
+      return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
+    }
+
+    // Import ClientMealPlan model
+    const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
+
+    // Sum up all active meal plan durations for this purchase
+    const mealPlans = await ClientMealPlan.find({
+      purchaseId: purchaseId,
+      status: { $in: ['active', 'completed'] }
+    });
+
+    const totalDaysUsed = mealPlans.reduce((sum, plan) => sum + (plan.duration || 0), 0);
+    const oldDaysUsed = purchase.daysUsed || 0;
+
+    // Update the purchase
+    purchase.daysUsed = totalDaysUsed;
+    await purchase.save();
+
+    // Clear cache
+    clearCacheByTag('client_purchases');
+
+    return NextResponse.json({
+      success: true,
+      message: `Days used recalculated: ${oldDaysUsed} → ${totalDaysUsed}`,
+      oldDaysUsed,
+      newDaysUsed: totalDaysUsed,
+      mealPlansCount: mealPlans.length,
+      remainingDays: Math.max(0, (purchase.durationDays || 0) - totalDaysUsed)
+    });
+  } catch (error) {
+    console.error('Error recalculating days used:', error);
+    return NextResponse.json({ error: 'Failed to recalculate days used' }, { status: 500 });
   }
 }

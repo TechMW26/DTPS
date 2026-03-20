@@ -41,7 +41,7 @@ export interface IClientPurchase extends Document {
   planCategory: string;
   durationDays: number;
   durationLabel: string;
-  
+
   // Selected tier info
   selectedTier?: {
     durationDays: number;
@@ -50,7 +50,7 @@ export interface IClientPurchase extends Document {
     extendDays?: number;
     freezeDays?: number;
   };
-  
+
   baseAmount?: number;
   discountPercent?: number;
   taxPercent?: number;
@@ -70,10 +70,10 @@ export interface IClientPurchase extends Document {
 
   // Status
   status: 'active' | 'expired' | 'cancelled' | 'pending';
-  
+
   // Payment status
   paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
-  
+
   // Payment details
   paymentMethod?: string;
   razorpayPaymentId?: string;
@@ -227,7 +227,7 @@ const clientPurchaseSchema = new Schema({
     required: false,
     default: '30 Days'
   },
-  
+
   // Selected tier info
   selectedTier: {
     durationDays: { type: Number },
@@ -236,7 +236,7 @@ const clientPurchaseSchema = new Schema({
     extendDays: { type: Number, default: 0 },
     freezeDays: { type: Number, default: 0 }
   },
-  
+
   baseAmount: {
     type: Number,
     required: false,
@@ -301,14 +301,14 @@ const clientPurchaseSchema = new Schema({
     enum: ['active', 'expired', 'cancelled', 'pending'],
     default: 'active'
   },
-  
+
   // Payment status
   paymentStatus: {
     type: String,
     enum: ['pending', 'paid', 'failed', 'refunded'],
     default: 'pending'
   },
-  
+
   // Payment details
   paymentMethod: {
     type: String,
@@ -365,10 +365,19 @@ clientPurchaseSchema.statics.getClientActivePurchase = function (clientId: strin
     .sort({ endDate: -1 });
 };
 
-// Method to check remaining days
+// Method to check remaining days (plan allocation: durationDays - daysUsed)
 clientPurchaseSchema.methods.getRemainingDays = function () {
+  // Plan allocation remaining = durationDays - daysUsed
+  const durationDays = this.durationDays || 0;
+  const daysUsed = this.daysUsed || 0;
+  return Math.max(0, durationDays - daysUsed);
+};
+
+// Method to get calendar days until end date (for expiration tracking)
+clientPurchaseSchema.methods.getCalendarDaysUntilEnd = function () {
+  if (!this.endDate && !this.expectedEndDate) return 0;
   const now = new Date();
-  const endDate = new Date(this.endDate);
+  const endDate = new Date(this.expectedEndDate || this.endDate);
   const diffTime = endDate.getTime() - now.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return Math.max(0, diffDays);

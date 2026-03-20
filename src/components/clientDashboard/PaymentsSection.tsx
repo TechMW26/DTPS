@@ -72,6 +72,8 @@ export default function PaymentsSection({
 }) {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
+  const isDietitian = session?.user?.role === 'dietitian';
+  const canEditExpectedDates = isAdmin || isDietitian; // Admin and Dietitian can edit expected dates
   const canEmailInvoice = session?.user?.role === 'admin' || session?.user?.role === 'dietitian' || session?.user?.role === 'health_counselor';
 
   const [paymentsState, setPaymentsState] = useState<PaymentItem[]>([]);
@@ -1163,12 +1165,12 @@ export default function PaymentsSection({
                     );
                     const hasExpectedDates = purchase?.expectedStartDate && purchase?.expectedEndDate;
 
-                    // If dates are already set, only admin can edit
-                    if (hasExpectedDates && !isAdmin) {
+                    // If dates are already set, only admin and dietitian can edit
+                    if (hasExpectedDates && !canEditExpectedDates) {
                       return (
                         <div className="w-full px-4 py-2 text-left text-sm text-gray-400 flex items-center gap-2 cursor-not-allowed">
                           <Calendar className="h-4 w-4" />
-                          <span>Expected dates set (Admin only)</span>
+                          <span>Expected dates set (Admin/Dietitian only)</span>
                         </div>
                       );
                     }

@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useDataRefresh, DataEventTypes } from '@/lib/events/useDataRefresh';
 import {
   User,
   Heart,
@@ -139,6 +140,46 @@ export default function ProfilePage() {
   const [lifestyleData, setLifestyleData] = useState<LifestyleData | null>(null);
   const [dietaryRecallData, setDietaryRecallData] = useState<DietaryRecallData | null>(null);
 
+  // Function to fetch all profile data
+  const fetchAllData = async () => {
+    try {
+      setLoading(true);
+
+      const [profileRes, medicalRes, lifestyleRes, recallRes] = await Promise.all([
+        fetch("/api/client/profile", { cache: 'no-store' }),
+        fetch("/api/client/medical-info", { cache: 'no-store' }),
+        fetch("/api/client/lifestyle-info", { cache: 'no-store' }),
+        fetch("/api/client/dietary-recall", { cache: 'no-store' })
+      ]);
+
+      if (profileRes.ok) {
+        const data = await profileRes.json();
+        setProfileData(data.user || data);
+      }
+
+      if (medicalRes.ok) {
+        const data = await medicalRes.json();
+        setMedicalData(data);
+      }
+
+      if (lifestyleRes.ok) {
+        const data = await lifestyleRes.json();
+        setLifestyleData(data);
+      }
+
+      if (recallRes.ok) {
+        const data = await recallRes.json();
+        if (data.recalls && data.recalls.length > 0) {
+          setDietaryRecallData(data.recalls[0]);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/login");
@@ -146,49 +187,27 @@ export default function ProfilePage() {
   }, [status, router]);
 
   useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        setLoading(true);
-
-        const [profileRes, medicalRes, lifestyleRes, recallRes] = await Promise.all([
-          fetch("/api/client/profile", { cache: 'no-store' }),
-          fetch("/api/client/medical-info", { cache: 'no-store' }),
-          fetch("/api/client/lifestyle-info", { cache: 'no-store' }),
-          fetch("/api/client/dietary-recall", { cache: 'no-store' })
-        ]);
-
-        if (profileRes.ok) {
-          const data = await profileRes.json();
-          setProfileData(data.user || data);
-        }
-
-        if (medicalRes.ok) {
-          const data = await medicalRes.json();
-          setMedicalData(data);
-        }
-
-        if (lifestyleRes.ok) {
-          const data = await lifestyleRes.json();
-          setLifestyleData(data);
-        }
-
-        if (recallRes.ok) {
-          const data = await recallRes.json();
-          if (data.recalls && data.recalls.length > 0) {
-            setDietaryRecallData(data.recalls[0]);
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (session?.user) {
       fetchAllData();
     }
   }, [session]);
+
+  // Listen for form data changes and refresh automatically
+  useDataRefresh(
+    [
+      DataEventTypes.BASIC_INFO_UPDATED,
+      DataEventTypes.LIFESTYLE_INFO_UPDATED,
+      DataEventTypes.MEDICAL_INFO_UPDATED,
+      DataEventTypes.DIETARY_RECALL_UPDATED,
+      DataEventTypes.FORM_DATA_UPDATED
+    ],
+    () => {
+      if (session?.user) {
+        fetchAllData();
+      }
+    },
+    [session]
+  );
 
   if (loading) {
     return (
