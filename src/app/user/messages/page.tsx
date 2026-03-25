@@ -20,9 +20,6 @@ import {
   Send,
   Paperclip,
   Image as ImageIcon,
-  Phone,
-  Video,
-  MoreVertical,
   Check,
   CheckCheck,
   Clock,
@@ -116,6 +113,7 @@ export default function UserMessagesPage() {
       try {
         if (evt.type === 'new_message') {
           const incoming = (evt.data as any)?.message;
+          const conversationWith = (evt.data as any)?.conversationWith;
           if (incoming?._id) {
             const currentConv = selectedConversationRef.current;
             // If this belongs to the currently open conversation, append it
@@ -126,12 +124,49 @@ export default function UserMessagesPage() {
               setMessages(prev => (prev.some(m => m._id === incoming._id) ? prev : [...prev, incoming]));
               setTimeout(() => scrollToBottom(), 50);
             }
-            // Debounce conversation refresh (max once per 2 seconds)
-            const now = Date.now();
-            if (now - lastFetchTimeRef.current > 2000) {
-              lastFetchTimeRef.current = now;
-              fetchConversationsRef.current();
+
+            // Update ONLY the specific conversation in the list (not a full refetch)
+            if (conversationWith) {
+              setConversations(prev => {
+                const idx = prev.findIndex(c => c._id === conversationWith);
+                if (idx === -1) {
+                  // New conversation partner — do a full refetch to pick them up
+                  const now = Date.now();
+                  if (now - lastFetchTimeRef.current > 2000) {
+                    lastFetchTimeRef.current = now;
+                    fetchConversationsRef.current();
+                  }
+                  return prev;
+                }
+                const updated = [...prev];
+                updated[idx] = {
+                  ...updated[idx],
+                  lastMessage: {
+                    content: incoming.content,
+                    type: incoming.type || 'text',
+                    createdAt: incoming.createdAt,
+                    isRead: currentConv?._id === conversationWith ? true : false
+                  },
+                  unreadCount: currentConv?._id === conversationWith
+                    ? updated[idx].unreadCount
+                    : updated[idx].unreadCount + 1
+                };
+                // Move to top of list
+                if (idx > 0) {
+                  const [target] = updated.splice(idx, 1);
+                  updated.unshift(target);
+                }
+                return updated;
+              });
+            } else {
+              // Fallback for events without conversationWith (backwards compat)
+              const now = Date.now();
+              if (now - lastFetchTimeRef.current > 2000) {
+                lastFetchTimeRef.current = now;
+                fetchConversationsRef.current();
+              }
             }
+
             // Refresh unread counts
             refreshCounts();
           }
@@ -560,14 +595,7 @@ export default function UserMessagesPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-white/10 md:hover:bg-gray-100">
-                      <Phone className="h-5 w-5 text-white md:text-[#075E54]" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-white/10 md:hover:bg-gray-100">
-                      <Video className="h-5 w-5 text-white md:text-[#075E54]" />
-                    </Button>
-                  </div>
+
                 </div>
 
                 {/* Messages - WhatsApp Style - Scrollable area */}

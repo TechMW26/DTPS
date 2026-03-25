@@ -8,7 +8,7 @@ import { ChatBubble, TypingIndicator, type ChatMessage } from './ChatBubble';
 import { ChatInput } from './ChatInput';
 import { useRealtime } from '@/hooks/useRealtime';
 import { cn } from '@/lib/utils';
-import { ArrowLeft, Phone, Video, MoreVertical } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useCallManager } from '@/hooks/useCallManager';
 import { CallInterface } from '@/components/call/CallInterface';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -36,10 +36,9 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
   const [sending, setSending] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
 
-  // Call management
+  // Call management (incoming calls only — outbound call buttons removed)
   const {
     callState,
-    initiateCall,
     acceptCall,
     rejectCall,
     endCall,
@@ -49,10 +48,7 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
 
   // Notifications
   const {
-    notificationState,
     showMessageNotification,
-    showCallNotification,
-    clearNotification
   } = useNotifications();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -332,29 +328,7 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
           </div>
         </div>
 
-        <div className="flex items-center space-x-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="p-2 text-white hover:bg-white/10"
-            onClick={() => initiateCall(recipient._id, `${recipient.firstName} ${recipient.lastName}`, recipient.avatar, 'audio')}
-            disabled={callState.isInCall}
-          >
-            <Phone className="w-5 h-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="p-2 text-white hover:bg-white/10"
-            onClick={() => initiateCall(recipient._id, `${recipient.firstName} ${recipient.lastName}`, recipient.avatar, 'video')}
-            disabled={callState.isInCall}
-          >
-            <Video className="w-5 h-5" />
-          </Button>
-          <Button variant="ghost" size="sm" className="p-2 text-white hover:bg-white/10">
-            <MoreVertical className="w-5 h-5" />
-          </Button>
-        </div>
+
       </div>
 
       {/* Messages area */}

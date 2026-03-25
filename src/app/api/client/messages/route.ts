@@ -67,13 +67,13 @@ export async function GET(request: NextRequest) {
         },
         { isRead: true, readAt: new Date() }
       );
-      
+
       // Broadcast SSE update for unread counts
       const [notificationCount, messageCount] = await Promise.all([
         Notification.countDocuments({ userId: session.user.id, read: false }),
         Message.countDocuments({ receiver: session.user.id, isRead: false })
       ]);
-      
+
       broadcastUnreadCounts(session.user.id, {
         notifications: notificationCount,
         messages: messageCount
@@ -150,16 +150,22 @@ export async function POST(request: NextRequest) {
 
     // Send real-time notification to BOTH sender and recipient via SSE
     const sseManager = SSEManager.getInstance();
-    const messagePayload = {
-      message: message.toJSON(),
-      timestamp: Date.now()
-    };
-    
-    // Send to recipient
-    sseManager.sendToUser(recipientId, 'new_message', messagePayload);
-    
-    // Also send to sender (for multi-device sync)
-    sseManager.sendToUser(session.user.id, 'new_message', messagePayload);
+    const msgJson = message.toJSON();
+    const ts = Date.now();
+
+    // Send to recipient — from their perspective the conversation is with the sender
+    sseManager.sendToUser(recipientId, 'new_message', {
+      message: msgJson,
+      conversationWith: session.user.id,
+      timestamp: ts
+    });
+
+    // Send to sender — from their perspective the conversation is with the recipient
+    sseManager.sendToUser(session.user.id, 'new_message', {
+      message: msgJson,
+      conversationWith: recipientId,
+      timestamp: ts
+    });
 
     // Send push notification to recipient (dietitian/health counselor)
     const sender = await withCache(
@@ -204,152 +210,152 @@ export async function POST(request: NextRequest) {
 // Helper function to get conversations list (not exported as route handler)
 async function getConversations(userId: string) {
   const conversations = await withCache(
-      `client:messages:${JSON.stringify([
-    {
-      $match: {
-        $or: [
-          { sender: new mongoose.Types.ObjectId(userId) },
-          { receiver: new mongoose.Types.ObjectId(userId) }
-        ]
-      }
-    },
-    {
-      $sort: { createdAt: -1 }
-    },
-    {
-      $group: {
-        _id: {
-          $cond: [
-            { $eq: ['$sender', new mongoose.Types.ObjectId(userId)] },
-            '$receiver',
-            '$sender'
+    `client:messages:${JSON.stringify([
+      {
+        $match: {
+          $or: [
+            { sender: new mongoose.Types.ObjectId(userId) },
+            { receiver: new mongoose.Types.ObjectId(userId) }
           ]
-        },
-        lastMessage: { $first: '$$ROOT' },
-        unreadCount: {
-          $sum: {
+        }
+      },
+      {
+        $sort: { createdAt: -1 }
+      },
+      {
+        $group: {
+          _id: {
             $cond: [
-              {
-                $and: [
-                  { $eq: ['$receiver', new mongoose.Types.ObjectId(userId)] },
-                  { $eq: ['$isRead', false] }
-                ]
-              },
-              1,
-              0
+              { $eq: ['$sender', new mongoose.Types.ObjectId(userId)] },
+              '$receiver',
+              '$sender'
             ]
+          },
+          lastMessage: { $first: '$$ROOT' },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$receiver', new mongoose.Types.ObjectId(userId)] },
+                    { $eq: ['$isRead', false] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
           }
         }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      {
+        $unwind: '$user'
+      },
+      {
+        $project: {
+          _id: 1,
+          user: {
+            _id: '$user._id',
+            firstName: '$user.firstName',
+            lastName: '$user.lastName',
+            avatar: '$user.avatar',
+            role: '$user.role'
+          },
+          lastMessage: {
+            content: '$lastMessage.content',
+            type: '$lastMessage.type',
+            createdAt: '$lastMessage.createdAt',
+            isRead: '$lastMessage.isRead'
+          },
+          unreadCount: 1
+        }
+      },
+      {
+        $sort: { 'lastMessage.createdAt': -1 }
       }
-    },
-    {
-      $lookup: {
-        from: 'users',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'user'
-      }
-    },
-    {
-      $unwind: '$user'
-    },
-    {
-      $project: {
-        _id: 1,
-        user: {
-          _id: '$user._id',
-          firstName: '$user.firstName',
-          lastName: '$user.lastName',
-          avatar: '$user.avatar',
-          role: '$user.role'
-        },
-        lastMessage: {
-          content: '$lastMessage.content',
-          type: '$lastMessage.type',
-          createdAt: '$lastMessage.createdAt',
-          isRead: '$lastMessage.isRead'
-        },
-        unreadCount: 1
-      }
-    },
-    {
-      $sort: { 'lastMessage.createdAt': -1 }
-    }
-  ])}`,
-      async () => await Message.aggregate([
-    {
-      $match: {
-        $or: [
-          { sender: new mongoose.Types.ObjectId(userId) },
-          { receiver: new mongoose.Types.ObjectId(userId) }
-        ]
-      }
-    },
-    {
-      $sort: { createdAt: -1 }
-    },
-    {
-      $group: {
-        _id: {
-          $cond: [
-            { $eq: ['$sender', new mongoose.Types.ObjectId(userId)] },
-            '$receiver',
-            '$sender'
+    ])}`,
+    async () => await Message.aggregate([
+      {
+        $match: {
+          $or: [
+            { sender: new mongoose.Types.ObjectId(userId) },
+            { receiver: new mongoose.Types.ObjectId(userId) }
           ]
-        },
-        lastMessage: { $first: '$$ROOT' },
-        unreadCount: {
-          $sum: {
+        }
+      },
+      {
+        $sort: { createdAt: -1 }
+      },
+      {
+        $group: {
+          _id: {
             $cond: [
-              {
-                $and: [
-                  { $eq: ['$receiver', new mongoose.Types.ObjectId(userId)] },
-                  { $eq: ['$isRead', false] }
-                ]
-              },
-              1,
-              0
+              { $eq: ['$sender', new mongoose.Types.ObjectId(userId)] },
+              '$receiver',
+              '$sender'
             ]
+          },
+          lastMessage: { $first: '$$ROOT' },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$receiver', new mongoose.Types.ObjectId(userId)] },
+                    { $eq: ['$isRead', false] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
           }
         }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      {
+        $unwind: '$user'
+      },
+      {
+        $project: {
+          _id: 1,
+          user: {
+            _id: '$user._id',
+            firstName: '$user.firstName',
+            lastName: '$user.lastName',
+            avatar: '$user.avatar',
+            role: '$user.role'
+          },
+          lastMessage: {
+            content: '$lastMessage.content',
+            type: '$lastMessage.type',
+            createdAt: '$lastMessage.createdAt',
+            isRead: '$lastMessage.isRead'
+          },
+          unreadCount: 1
+        }
+      },
+      {
+        $sort: { 'lastMessage.createdAt': -1 }
       }
-    },
-    {
-      $lookup: {
-        from: 'users',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'user'
-      }
-    },
-    {
-      $unwind: '$user'
-    },
-    {
-      $project: {
-        _id: 1,
-        user: {
-          _id: '$user._id',
-          firstName: '$user.firstName',
-          lastName: '$user.lastName',
-          avatar: '$user.avatar',
-          role: '$user.role'
-        },
-        lastMessage: {
-          content: '$lastMessage.content',
-          type: '$lastMessage.type',
-          createdAt: '$lastMessage.createdAt',
-          isRead: '$lastMessage.isRead'
-        },
-        unreadCount: 1
-      }
-    },
-    {
-      $sort: { 'lastMessage.createdAt': -1 }
-    }
-  ]),
-      { ttl: 30000, tags: ['client'] }
-    );
+    ]),
+    { ttl: 30000, tags: ['client'] }
+  );
 
   return conversations;
 }

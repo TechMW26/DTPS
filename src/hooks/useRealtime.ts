@@ -56,15 +56,15 @@ class GlobalSSEManager {
   isConnecting(userId: string): boolean {
     return this.connectionStates.get(userId) === 'connecting';
   }
-  
+
   private resetRetries(userId: string): void {
     this.retryAttempts.set(userId, 0);
   }
-  
+
   private getRetryCount(userId: string): number {
     return this.retryAttempts.get(userId) || 0;
   }
-  
+
   private incrementRetries(userId: string): number {
     const current = this.getRetryCount(userId);
     this.retryAttempts.set(userId, current + 1);
@@ -84,11 +84,11 @@ class GlobalSSEManager {
 
     // Create new connection
     this.connectionStates.set(userId, 'connecting');
-    
+
     const connectionPromise = new Promise<EventSource>((resolve, reject) => {
       try {
         const eventSource = new EventSource('/api/realtime/sse');
-        
+
         eventSource.onopen = () => {
           this.connections.set(userId, eventSource);
           this.connectionStates.set(userId, 'connected');
@@ -109,32 +109,32 @@ class GlobalSSEManager {
           // EventSource automatically attempts to reconnect on error
           if (eventSource.readyState === EventSource.CLOSED) {
             const retryCount = this.getRetryCount(userId);
-            
+
             // Only attempt reconnection if under max retries
             if (retryCount < MAX_RETRIES) {
               const delay = calculateBackoff(retryCount);
               console.info(`[SSE] Connection closed. Reconnecting in ${Math.round(delay)}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
               this.incrementRetries(userId);
-              
+
               setTimeout(() => {
                 if (this.subscribers.has(userId) && (this.subscribers.get(userId)?.size || 0) > 0) {
-                  this.getOrCreateConnection(userId).catch(() => {});
+                  this.getOrCreateConnection(userId).catch(() => { });
                 }
               }, delay);
             } else {
               console.warn('[SSE] Max retries exceeded, stopping reconnection');
             }
-            
+
             this.connectionStates.set(userId, 'disconnected');
             this.connectionPromises.delete(userId);
             this.connections.delete(userId);
-            
+
             // Notify subscribers about disconnection
             const subscribers = this.subscribers.get(userId);
             if (subscribers) {
               subscribers.forEach(callback => callback({ type: 'connection_closed', data: null }));
             }
-            
+
             reject(new Error('SSE connection closed'));
           }
         };
@@ -149,13 +149,13 @@ class GlobalSSEManager {
 
         // Handle custom events (including call signaling)
         [
-          'user_online','user_offline','typing_start','typing_stop','heartbeat','connected','new_message',
-          'incoming_call','call_accepted','call_rejected','call_ended','ice_candidate','missed_call',
+          'user_online', 'user_offline', 'typing_start', 'typing_stop', 'heartbeat', 'connected', 'new_message',
+          'incoming_call', 'call_accepted', 'call_rejected', 'call_ended', 'ice_candidate', 'missed_call',
           'webrtc-signal',  // 🚀 NEW: Simple WebRTC signals
 
           // App domain events
-          'appointment_booked','appointment_cancelled','appointment_updated',
-          'task_created','task_updated','task_deleted',
+          'appointment_booked', 'appointment_cancelled', 'appointment_updated',
+          'task_created', 'task_updated', 'task_deleted',
 
           // Admin domain events
           'other_platform_payment_updated',
@@ -258,18 +258,25 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  
+
   const globalManager = GlobalSSEManager.getInstance();
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const connectionCheckRef = useRef<NodeJS.Timeout | null>(null);
 
-  const {
-    onMessage,
-    onUserOnline,
-    onUserOffline,
-    onTyping
-  } = options;
+  // Store latest callbacks in refs to avoid stale closures in the SSE subscriber.
+  // The subscriber is registered once per mount, but always reads the latest handlers.
+  const onMessageRef = useRef(options.onMessage);
+  const onUserOnlineRef = useRef(options.onUserOnline);
+  const onUserOfflineRef = useRef(options.onUserOffline);
+  const onTypingRef = useRef(options.onTyping);
+
+  useEffect(() => {
+    onMessageRef.current = options.onMessage;
+    onUserOnlineRef.current = options.onUserOnline;
+    onUserOfflineRef.current = options.onUserOffline;
+    onTypingRef.current = options.onTyping;
+  });
 
   const connect = useCallback(async () => {
     if (!session?.user?.id) {
@@ -277,13 +284,24 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
     }
 
     const userId = session.user.id;
-    
+
     try {
-      // Use global manager to get or create connection
+      // Use global manager to get or create connection (idempotent — reuses existing)
       await globalManager.getOrCreateConnection(userId);
-      
-      // Subscribe to events
+
+      // Unsubscribe any existing subscriber before creating a new one
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+
+      // Subscribe to events — uses refs so the subscriber never goes stale
       const unsubscribe = globalManager.subscribe(userId, (event) => {
+        const onMessage = onMessageRef.current;
+        const onUserOnline = onUserOnlineRef.current;
+        const onUserOffline = onUserOfflineRef.current;
+        const onTyping = onTypingRef.current;
+
         if (event.type === 'message' && onMessage) {
           try {
             const data = JSON.parse(event.data);
@@ -298,7 +316,6 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
         } else if (event.type === 'new_message' && onMessage) {
           try {
             const data = JSON.parse(event.data);
-            console.log('[useRealtime] Received new_message event:', data);
             onMessage({
               type: 'new_message',
               data,
@@ -356,7 +373,7 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
             console.error('Failed to parse typing_stop event:', error);
           }
         } else if (
-          ['incoming_call','call_accepted','call_rejected','call_ended','ice_candidate','missed_call'].includes(event.type)
+          ['incoming_call', 'call_accepted', 'call_rejected', 'call_ended', 'ice_candidate', 'missed_call'].includes(event.type)
           && onMessage
         ) {
           try {
@@ -412,14 +429,14 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'heartbeat' })
             });
-          } catch (_) {}
+          } catch (_) { }
         }, 30000);
       }
 
       // Start connection health check
       if (!connectionCheckRef.current) {
         connectionCheckRef.current = setInterval(() => {
-          const connection = globalManager.getConnection(session.user.id);
+          const connection = globalManager.getConnection(userId);
           if (!connection || connection.readyState === EventSource.CLOSED) {
             setIsConnected(false);
             // Trigger reconnection
@@ -435,7 +452,7 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
       setIsConnected(false);
       setConnectionError('Failed to connect');
     }
-  }, [session?.user?.id, onMessage, onUserOnline, onUserOffline, onTyping, globalManager]);
+  }, [session?.user?.id, globalManager]);
 
   const disconnect = useCallback(() => {
     if (unsubscribeRef.current) {
@@ -453,15 +470,12 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
     setIsConnected(false);
   }, []);
 
-  // Connect when session is available
+  // Connect and subscribe when session is available.
+  // Always calls connect() to ensure this hook's subscriber is registered,
+  // even if the SSE connection already exists from another component.
   useEffect(() => {
     if (session?.user?.id) {
-      const userId = session.user.id;
-      if (!globalManager.hasConnection(userId) && !globalManager.isConnecting(userId)) {
-        connect();
-      } else {
-        setIsConnected(true);
-      }
+      connect();
     } else {
       disconnect();
     }
@@ -470,7 +484,7 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
       // Debounced close in manager prevents churn
       disconnect();
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, connect, disconnect]);
 
   // Send typing indicator
   const sendTyping = useCallback(async (conversationId: string, isTyping: boolean) => {

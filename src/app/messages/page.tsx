@@ -22,7 +22,6 @@ import {
   Plus,
   Smile,
   Paperclip,
-  Phone,
   Video,
   MoreVertical,
   Home,
@@ -119,7 +118,7 @@ function ClientMessagesUI() {
   const [loadingDietitians, setLoadingDietitians] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [showChatMenu, setShowChatMenu] = useState(false);
+
   const [selectedChatUser, setSelectedChatUser] = useState<any>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -147,7 +146,7 @@ function ClientMessagesUI() {
 
   // Refs to avoid stale closures in SSE callbacks
   const selectedChatRef = useRef<string | null>(null);
-  const fetchConversationsQuietRef = useRef<() => void>(() => {});
+  const fetchConversationsQuietRef = useRef<() => void>(() => { });
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -203,17 +202,18 @@ function ClientMessagesUI() {
   // Handle incoming SSE messages for real-time updates
   const handleRealtimeMessage = useCallback((event: any) => {
     console.log('[Messages Page] SSE event received:', event.type, event.data);
-    
+
     if (event.type === 'new_message') {
       const newMsg = event.data?.message;
-      console.log('[Messages Page] New message received:', newMsg);
-      
+      const conversationWith = event.data?.conversationWith;
+      console.log('[Messages Page] New message received:', newMsg, 'conversationWith:', conversationWith);
+
       if (newMsg) {
         // Use ref to get the current selected chat (avoids stale closure)
         const currentChat = selectedChatRef.current;
         // Update messages if this is the active conversation
-        if (currentChat && 
-            (newMsg.sender._id === currentChat || newMsg.receiver._id === currentChat)) {
+        if (currentChat &&
+          (newMsg.sender._id === currentChat || newMsg.receiver._id === currentChat)) {
           console.log('[Messages Page] Adding message to current conversation');
           setMessages(prev => {
             // Avoid duplicates
@@ -226,8 +226,35 @@ function ClientMessagesUI() {
           // Scroll to bottom after adding new message
           setTimeout(() => scrollToBottom(), 100);
         }
-        // Update conversations list quietly (without loading state)
-        fetchConversationsQuietRef.current();
+
+        // Update ONLY the specific conversation in the list (not a full refetch)
+        if (conversationWith) {
+          setConversations(prev => {
+            const idx = prev.findIndex(c => c.user._id === conversationWith);
+            if (idx === -1) {
+              // New conversation partner — do a full refetch to pick them up
+              fetchConversationsQuietRef.current();
+              return prev;
+            }
+            const updated = [...prev];
+            updated[idx] = {
+              ...updated[idx],
+              lastMessage: newMsg,
+              unreadCount: conversationWith === currentChat
+                ? updated[idx].unreadCount
+                : updated[idx].unreadCount + 1
+            };
+            // Move to top of list
+            if (idx > 0) {
+              const [target] = updated.splice(idx, 1);
+              updated.unshift(target);
+            }
+            return updated;
+          });
+        } else {
+          // Fallback for events without conversationWith (backwards compat)
+          fetchConversationsQuietRef.current();
+        }
       }
     } else if (event.type === 'incoming_call') {
       handleIncomingCall(event.data);
@@ -381,7 +408,7 @@ function ClientMessagesUI() {
       // Don't add to messages here - wait for SSE event to update
       // This ensures the message appears through the real-time SSE handler
       console.log('[SendMessage] Message sent, waiting for SSE update');
-      
+
     } catch (error) {
       console.error('Error sending message:', error);
       setNewMessage(messageText); // Restore message on error
@@ -398,45 +425,7 @@ function ClientMessagesUI() {
     }
   };
 
-  const handleVoiceCall = async () => {
-    if (!selectedChat) return;
-    const selectedUser = conversations.find(c => c.user._id === selectedChat);
-    if (selectedUser) {
-      try {
-        // Check for microphone permissions
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(track => track.stop()); // Stop the test stream
 
-        const confirmed = confirm(`🎤 Start voice call with ${selectedUser.user.firstName} ${selectedUser.user.lastName}?`);
-        if (confirmed) {
-          // Initialize WebRTC audio call
-          await initiateWebRTCCall(selectedUser.user._id, 'audio');
-        }
-      } catch (error) {
-        alert('❌ Microphone access denied!\n\nPlease allow microphone access in your browser settings to make voice calls.');
-      }
-    }
-  };
-
-  const handleVideoCall = async () => {
-    if (!selectedChat) return;
-    const selectedUser = conversations.find(c => c.user._id === selectedChat);
-    if (selectedUser) {
-      try {
-        // Check for camera and microphone permissions
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        stream.getTracks().forEach(track => track.stop()); // Stop the test stream
-
-        const confirmed = confirm(`📹 Start video call with ${selectedUser.user.firstName} ${selectedUser.user.lastName}?`);
-        if (confirmed) {
-          // Initialize WebRTC video call
-          await initiateWebRTCCall(selectedUser.user._id, 'video');
-        }
-      } catch (error) {
-        alert('❌ Camera/Microphone access denied!\n\nPlease allow camera and microphone access in your browser settings to make video calls.');
-      }
-    }
-  };
 
   // WebRTC Call Initiation
   const initiateWebRTCCall = async (receiverId: string, callType: 'audio' | 'video') => {
@@ -852,8 +841,8 @@ function ClientMessagesUI() {
 
       // Determine message type based on file MIME type
       const type = file.type.startsWith('image/') ? 'image' :
-                   file.type.startsWith('video/') ? 'video' :
-                   file.type.startsWith('audio/') ? 'audio' : 'file';
+        file.type.startsWith('video/') ? 'video' :
+          file.type.startsWith('audio/') ? 'audio' : 'file';
 
       const attachment = {
         url: uploadData.url,
@@ -985,9 +974,7 @@ function ClientMessagesUI() {
     setRecordingTime(0);
   };
 
-  const handleChatMenuClick = () => {
-    setShowChatMenu(!showChatMenu);
-  };
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1189,9 +1176,8 @@ function ClientMessagesUI() {
             {/* Mute button */}
             <button
               onClick={toggleMute}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
-                isMuted ? 'bg-red-500' : 'bg-white/20'
-              }`}
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500' : 'bg-white/20'
+                }`}
             >
               {isMuted ? (
                 <MicOff className="w-6 h-6 text-white" />
@@ -1204,9 +1190,8 @@ function ClientMessagesUI() {
             {currentCall.type === 'video' && (
               <button
                 onClick={toggleVideo}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
-                  isVideoOff ? 'bg-red-500' : 'bg-white/20'
-                }`}
+                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isVideoOff ? 'bg-red-500' : 'bg-white/20'
+                  }`}
               >
                 {isVideoOff ? (
                   <VideoOff className="w-6 h-6 text-white" />
@@ -1277,57 +1262,7 @@ function ClientMessagesUI() {
               </div>
             </div>
 
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={handleVideoCall}
-                className="p-2 hover:bg-white/10 rounded-full active:scale-95 transition-all"
-              >
-                <Video className="h-5 w-5" />
-              </button>
-              <button
-                onClick={handleVoiceCall}
-                className="p-2 hover:bg-white/10 rounded-full active:scale-95 transition-all"
-              >
-                <Phone className="h-5 w-5" />
-              </button>
-              <div className="relative">
-                <button
-                  onClick={handleChatMenuClick}
-                  className="p-2 hover:bg-white/10 rounded-full active:scale-95 transition-all"
-                >
-                  <MoreVertical className="h-5 w-5" />
-                </button>
 
-                {/* Chat Menu Dropdown */}
-                {showChatMenu && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setShowChatMenu(false)}
-                    />
-                    <div className="absolute right-0 top-12 bg-white rounded-lg shadow-2xl py-2 z-50 min-w-50">
-                      <button className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-center space-x-3">
-                        <UserIcon className="h-4 w-4" />
-                        <span>View Profile</span>
-                      </button>
-                      <button className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-center space-x-3">
-                        <Search className="h-4 w-4" />
-                        <span>Search Messages</span>
-                      </button>
-                      <button className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-center space-x-3">
-                        <Camera className="h-4 w-4" />
-                        <span>Media & Files</span>
-                      </button>
-                      <div className="border-t border-gray-200 my-1" />
-                      <button className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 active:bg-red-100 transition-colors flex items-center space-x-3">
-                        <span>❌</span>
-                        <span>Clear Chat</span>
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1350,9 +1285,9 @@ function ClientMessagesUI() {
           ) : (
             messages.map((message, index) => {
               const isSent = message.sender._id === session.user.id;
-              const showTime = index === 0 || 
+              const showTime = index === 0 ||
                 new Date(messages[index - 1].createdAt).getTime() - new Date(message.createdAt).getTime() > 300000;
-              
+
               return (
                 <div key={message._id}>
                   {showTime && (
@@ -1364,15 +1299,14 @@ function ClientMessagesUI() {
                       </div>
                     </div>
                   )}
-                  
+
                   <div className={`flex ${isSent ? 'justify-end' : 'justify-start'} mb-1 px-1`}>
                     <div className={`max-w-[85%] sm:max-w-[75%] ${isSent ? 'order-2' : 'order-1'}`}>
                       <div
-                        className={`rounded-lg px-3 py-2 shadow-sm inline-block ${
-                          isSent
+                        className={`rounded-lg px-3 py-2 shadow-sm inline-block ${isSent
                             ? 'bg-[#DCF8C6] text-gray-900 rounded-tr-none'
                             : 'bg-white text-gray-900 rounded-tl-none'
-                        }`}
+                          }`}
                       >
                         {/* Image Messages */}
                         {message.type === 'image' && message.attachments?.[0] && (
@@ -1502,7 +1436,7 @@ function ClientMessagesUI() {
 
         {/* Image Preview Modal */}
         {previewImage && (
-          <div 
+          <div
             className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
             onClick={() => setPreviewImage(null)}
           >
@@ -1588,11 +1522,10 @@ function ClientMessagesUI() {
             <button
               onClick={newMessage.trim() ? sendMessage : (isRecording ? stopRecording : startRecording)}
               disabled={sending}
-              className={`p-2.5 sm:p-3 rounded-full shadow-lg active:scale-95 transition-all shrink-0 ${
-                isRecording
+              className={`p-2.5 sm:p-3 rounded-full shadow-lg active:scale-95 transition-all shrink-0 ${isRecording
                   ? 'bg-red-500 hover:bg-red-600'
                   : 'bg-[#075E54] hover:bg-[#064e47]'
-              } disabled:opacity-50`}
+                } disabled:opacity-50`}
             >
               {newMessage.trim() ? (
                 <Send className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-white" />
@@ -1645,7 +1578,7 @@ function ClientMessagesUI() {
               </button>
             </div>
           </div>
-          
+
           {/* Search Bar */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -1685,9 +1618,9 @@ function ClientMessagesUI() {
             >
               <div className="relative mr-3">
                 {conv.user.avatar ? (
-                  <img 
-                    src={conv.user.avatar} 
-                    alt="" 
+                  <img
+                    src={conv.user.avatar}
+                    alt=""
                     className="h-14 w-14 rounded-full object-cover"
                   />
                 ) : (
@@ -1699,7 +1632,7 @@ function ClientMessagesUI() {
                   <div className="absolute bottom-0 right-0 h-4 w-4 bg-green-500 rounded-full border-2 border-white" />
                 )}
               </div>
-              
+
               <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="text-[16px] font-semibold text-gray-900 truncate">
@@ -1709,7 +1642,7 @@ function ClientMessagesUI() {
                     {formatLastMessageTime(conv.lastMessage.createdAt)}
                   </span>
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <p className="text-[14px] text-gray-600 truncate flex-1 pr-2">
                     {conv.lastMessage.sender._id === session.user.id && (
@@ -1843,29 +1776,29 @@ function ClientMessagesUI() {
       {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom z-50">
         <div className="grid grid-cols-5 h-16">
-            <Link href="/client-dashboard" className="flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 active:bg-gray-50 transition-colors">
-              <Home className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Home</span>
-            </Link>
-            <Link href="/my-plan" className="flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 active:bg-gray-50 transition-colors">
-              <Target className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Plan</span>
-            </Link>
-            <button className="flex flex-col items-center justify-center -mt-6">
-              <div className="h-14 w-14 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg active:scale-95 transition-transform">
-                <Plus className="h-7 w-7 text-white" />
-              </div>
-            </button>
-            <Link href="/progress" className="flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 active:bg-gray-50 transition-colors">
-              <TrendingUp className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Progress</span>
-            </Link>
-            <Link href="/messages" className="flex flex-col items-center justify-center text-[#075E54] active:bg-gray-50 transition-colors">
-              <MessageCircle className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Messages</span>
-            </Link>
-          </div>
+          <Link href="/client-dashboard" className="flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 active:bg-gray-50 transition-colors">
+            <Home className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Home</span>
+          </Link>
+          <Link href="/my-plan" className="flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 active:bg-gray-50 transition-colors">
+            <Target className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Plan</span>
+          </Link>
+          <button className="flex flex-col items-center justify-center -mt-6">
+            <div className="h-14 w-14 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg active:scale-95 transition-transform">
+              <Plus className="h-7 w-7 text-white" />
+            </div>
+          </button>
+          <Link href="/progress" className="flex flex-col items-center justify-center text-gray-400 hover:text-gray-600 active:bg-gray-50 transition-colors">
+            <TrendingUp className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Progress</span>
+          </Link>
+          <Link href="/messages" className="flex flex-col items-center justify-center text-[#075E54] active:bg-gray-50 transition-colors">
+            <MessageCircle className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Messages</span>
+          </Link>
         </div>
+      </div>
     </div>
   );
 }

@@ -356,6 +356,13 @@ export default function UserPlanPage() {
         return;
       }
 
+      // Skip fetch if the item already has recipe data from the API enrichment
+      if (recipeModal.item.recipe?.ingredients && recipeModal.item.recipe.ingredients.length > 0) {
+        setFullRecipeData(null);
+        setLoadingRecipe(false);
+        return;
+      }
+
       setLoadingRecipe(true);
       try {
         let recipeData = null;
@@ -371,18 +378,18 @@ export default function UserPlanPage() {
           }
         }
 
-        // If no recipeId or fetch failed, search by food name
+        // If no recipeId or fetch failed, search by food name (exact match only)
         if (!recipeData && recipeModal.item.name) {
           const searchName = encodeURIComponent(recipeModal.item.name.trim());
-          const searchResponse = await fetch(`/api/recipes?search=${searchName}&limit=1`);
+          const searchResponse = await fetch(`/api/recipes?search=${searchName}&limit=5`);
           if (searchResponse.ok) {
             const searchData = await searchResponse.json();
             if (searchData.success && searchData.recipes && searchData.recipes.length > 0) {
-              // Find exact match or closest match
+              // Only use an exact name match — never fall back to a partial/fuzzy result
               const exactMatch = searchData.recipes.find(
                 (r: any) => r.name.toLowerCase() === recipeModal.item.name.toLowerCase()
               );
-              recipeData = exactMatch || searchData.recipes[0];
+              recipeData = exactMatch || null;
             }
           }
         }
@@ -1455,7 +1462,7 @@ export default function UserPlanPage() {
             {/* Modal Header - Sticky */}
             <div className="flex items-center justify-between p-5 bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B]">
               <div className="flex-1 pr-4">
-                <h3 className="text-lg font-bold text-white">{fullRecipeData?.name || recipeModal.item?.name}</h3>
+                <h3 className="text-lg font-bold text-white">{recipeModal.item?.name}</h3>
                 {fullRecipeData?.createdBy && (
                   <p className="text-xs text-white/70 mt-0.5">
                     By Dt. {fullRecipeData.createdBy?.firstName} {fullRecipeData.createdBy?.lastName}

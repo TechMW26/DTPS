@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       const otherUser = await User.findById(conversationWith)
         .select('role assignedDietitian assignedDietitians assignedHealthCounselor')
         .lean();
-      
+
       if (!otherUser) {
         return NextResponse.json({ error: 'User not found' }, { status: 404 });
       }
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       if (sessionRole === 'dietitian') {
         // Dietitian can only message their assigned clients OR other staff
         if (otherRole === 'client') {
-          const isAssigned = 
+          const isAssigned =
             (otherUser as any).assignedDietitian?.toString() === session.user.id ||
             (otherUser as any).assignedDietitians?.some((d: any) => d.toString() === session.user.id);
           if (!isAssigned) {
@@ -84,13 +84,13 @@ export async function GET(request: NextRequest) {
         const currentUser = await User.findById(session.user.id)
           .select('assignedDietitian assignedDietitians assignedHealthCounselor')
           .lean();
-        
+
         const assignedIds = [
           ...(currentUser as any)?.assignedDietitian ? [(currentUser as any).assignedDietitian.toString()] : [],
           ...((currentUser as any)?.assignedDietitians?.map((d: any) => d.toString()) || []),
           ...(currentUser as any)?.assignedHealthCounselor ? [(currentUser as any).assignedHealthCounselor.toString()] : []
         ];
-        
+
         if (!assignedIds.includes(conversationWith)) {
           return NextResponse.json({ error: 'You can only message your assigned staff' }, { status: 403 });
         }
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
     const recipientUser = await User.findById(validatedData.recipientId)
       .select('role assignedDietitian assignedDietitians assignedHealthCounselor')
       .lean();
-    
+
     if (!recipientUser) {
       return NextResponse.json({ error: 'Recipient not found' }, { status: 404 });
     }
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
     if (sessionRole === 'dietitian') {
       // Dietitian can message their assigned clients OR other staff
       if (recipientRole === 'client') {
-        const isAssigned = 
+        const isAssigned =
           (recipientUser as any).assignedDietitian?.toString() === session.user.id ||
           (recipientUser as any).assignedDietitians?.some((d: any) => d.toString() === session.user.id);
         if (!isAssigned) {
@@ -223,13 +223,13 @@ export async function POST(request: NextRequest) {
       const currentUser = await User.findById(session.user.id)
         .select('assignedDietitian assignedDietitians assignedHealthCounselor')
         .lean();
-      
+
       const assignedIds = [
         ...(currentUser as any)?.assignedDietitian ? [(currentUser as any).assignedDietitian.toString()] : [],
         ...((currentUser as any)?.assignedDietitians?.map((d: any) => d.toString()) || []),
         ...(currentUser as any)?.assignedHealthCounselor ? [(currentUser as any).assignedHealthCounselor.toString()] : []
       ];
-      
+
       if (!assignedIds.includes(validatedData.recipientId)) {
         return NextResponse.json({ error: 'You can only message your assigned staff' }, { status: 403 });
       }
@@ -260,16 +260,22 @@ export async function POST(request: NextRequest) {
 
     // Send real-time notification to BOTH sender and recipient
     const sseManager = SSEManager.getInstance();
-    const messagePayload = {
-      message: message.toJSON(),
-      timestamp: Date.now()
-    };
-    
-    // Send to recipient
-    sseManager.sendToUser(validatedData.recipientId, 'new_message', messagePayload);
-    
-    // Also send to sender (for multi-device sync)
-    sseManager.sendToUser(session.user.id, 'new_message', messagePayload);
+    const msgJson = message.toJSON();
+    const ts = Date.now();
+
+    // Send to recipient — from their perspective the conversation is with the sender
+    sseManager.sendToUser(validatedData.recipientId, 'new_message', {
+      message: msgJson,
+      conversationWith: session.user.id,
+      timestamp: ts
+    });
+
+    // Send to sender — from their perspective the conversation is with the recipient
+    sseManager.sendToUser(session.user.id, 'new_message', {
+      message: msgJson,
+      conversationWith: validatedData.recipientId,
+      timestamp: ts
+    });
 
     // Trigger webhook for message sent
     await createMessageWebhook(message.toJSON(), 'sent');
