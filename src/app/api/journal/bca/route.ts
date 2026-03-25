@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import JournalTracking from '@/lib/db/models/JournalTracking';
+import User from '@/lib/db/models/User';
+import LifestyleInfo from '@/lib/db/models/LifestyleInfo';
 import { UserRole } from '@/types';
 import mongoose from 'mongoose';
 import { logHistoryServer } from '@/lib/server/history';
@@ -43,23 +45,15 @@ export async function GET(request: NextRequest) {
     // Convert clientId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(clientId);
 
-    // Build query - filter by date if provided
+    // Always fetch all BCA entries for summary/trend (ignore dateParam for summary)
     const query: any = {
       client: clientObjectId,
       'bca.0': { $exists: true }
     };
 
-    if (dateParam) {
-      const filterDate = new Date(dateParam);
-      filterDate.setHours(0, 0, 0, 0);
-      const nextDay = new Date(filterDate);
-      nextDay.setDate(nextDay.getDate() + 1);
-      query.date = { $gte: filterDate, $lt: nextDay };
-    }
-
-    // Get journal entries for this client with BCA data
+    // Get all journal entries for this client with BCA data
     const journals = await withCache(
-      `journal:bca:${JSON.stringify(query)}`,
+      `journal:bca:all:${clientId}`,
       async () => await JournalTracking.find(query).sort({ date: -1 }),
       { ttl: 120000, tags: ['journal'] }
     );
@@ -146,8 +140,40 @@ export async function POST(request: NextRequest) {
 
     // Calculate BMI if height and weight provided
     let calculatedBMI = bcaData.bmi || 0;
-    if (bcaData.height && bcaData.weight && !bcaData.bmi) {
-      const heightInMeters = bcaData.height * 0.0254; // Convert inches to meters
+    let bcaHeight = bcaData.height || 0; // height in inches for BCA
+    let restingMetabolism = bcaData.restingMetabolism || 0;
+
+    // If height not provided in BCA, fetch from client profile
+    if (!bcaHeight && bcaData.weight) {
+      const [user, lifestyle] = await Promise.all([
+        User.findById(clientObjectId).select('heightFeet heightInch heightCm gender dateOfBirth').lean(),
+        LifestyleInfo.findOne({ userId: clientObjectId }).select('heightFeet heightInch heightCm').lean()
+      ]);
+      const hFeet = parseFloat(lifestyle?.heightFeet || user?.heightFeet || '0');
+      const hInch = parseFloat(lifestyle?.heightInch || user?.heightInch || '0');
+      const hCm = lifestyle?.heightCm ? parseFloat(lifestyle.heightCm) : (user?.heightCm ? parseFloat(user.heightCm as string) : (hFeet * 12 + hInch) * 2.54);
+      if (hCm > 0) {
+        bcaHeight = hCm / 2.54; // convert cm to inches for BCA storage
+      }
+      // Auto-calc BMI
+      if (!calculatedBMI && bcaData.weight && hCm > 0) {
+        const hm = hCm / 100;
+        calculatedBMI = bcaData.weight / (hm * hm);
+      }
+      // Auto-calc resting metabolism (BMR) using Mifflin-St Jeor
+      if (!restingMetabolism && bcaData.weight && hCm > 0 && user?.dateOfBirth) {
+        const dob = new Date(user.dateOfBirth);
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const m = today.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+        if (age > 0) {
+          const base = 10 * bcaData.weight + 6.25 * hCm - 5 * age;
+          restingMetabolism = user.gender === 'female' ? base - 161 : base + 5;
+        }
+      }
+    } else if (bcaHeight && bcaData.weight && !calculatedBMI) {
+      const heightInMeters = bcaHeight * 0.0254; // Convert inches to meters
       calculatedBMI = bcaData.weight / (heightInMeters * heightInMeters);
     }
 
@@ -155,12 +181,12 @@ export async function POST(request: NextRequest) {
     const newBCA = {
       bcaType: bcaData.bcaType || 'karada',
       measurementDate: measurementDate,
-      height: bcaData.height || 0,
+      height: bcaHeight,
       weight: bcaData.weight || 0,
       bmi: calculatedBMI,
       fatPercentage: bcaData.fatPercentage || 0,
       visceralFat: bcaData.visceralFat || 0,
-      restingMetabolism: bcaData.restingMetabolism || 0,
+      restingMetabolism: restingMetabolism,
       bodyAge: bcaData.bodyAge || 0,
       fatMass: bcaData.fatMass || 0,
       totalSubcutFat: bcaData.totalSubcutFat || 0,

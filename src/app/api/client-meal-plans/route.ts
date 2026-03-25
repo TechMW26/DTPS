@@ -52,7 +52,7 @@ const clientMealPlanSchema = z.object({
     progressReminders: z.boolean().default(true),
     checkInReminders: z.boolean().default(true)
   }).optional(),
-  status: z.enum(['active', 'completed', 'paused', 'cancelled']).optional()
+  status: z.enum(['draft', 'active', 'completed', 'paused', 'cancelled']).optional()
 });
 
 // GET /api/client-meal-plans - Get client meal plans
@@ -75,8 +75,9 @@ export async function GET(request: NextRequest) {
     let query: any = {};
 
     if (session.user.role === UserRole.CLIENT) {
-      // Clients can only see their own meal plans
+      // Clients can only see their own published meal plans (not drafts)
       query.clientId = session.user.id;
+      query.status = { $ne: 'draft' };
     } else if (session.user.role === UserRole.DIETITIAN) {
       // If clientId is specified, filter by that client
       if (clientId) {
@@ -313,12 +314,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Check if client has a valid (paid) payment record
+    const isDraft = validatedData.status === 'draft';
+
+    // Check if client has a valid (paid) payment record (skip for drafts)
     // This ensures plans are always linked to payments in the payment section
     let paymentWarning: string | null = null;
     let linkedPaymentId: string | null = validatedData.purchaseId || null;
 
-    if (!linkedPaymentId) {
+    if (!isDraft && !linkedPaymentId) {
       // Try to find a recent paid payment for this client that doesn't have a meal plan yet
       const recentPaidPayment = await UnifiedPayment.findOne({
         client: validatedData.clientId,
@@ -349,23 +352,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check for overlapping active meal plans for the same client (no cache for write operations)
-    const overlappingPlan = await ClientMealPlan.findOne({
-      clientId: validatedData.clientId,
-      status: 'active',
-      $or: [
-        {
-          startDate: { $lte: endDate },
-          endDate: { $gte: startDate }
-        }
-      ]
-    });
+    // Check for overlapping active meal plans for the same client (skip for drafts)
+    if (!isDraft) {
+      const overlappingPlan = await ClientMealPlan.findOne({
+        clientId: validatedData.clientId,
+        status: 'active',
+        $or: [
+          {
+            startDate: { $lte: endDate },
+            endDate: { $gte: startDate }
+          }
+        ]
+      });
 
-    if (overlappingPlan) {
-      return NextResponse.json({
-        error: 'Overlapping meal plan',
-        message: 'The client already has an active meal plan during this period'
-      }, { status: 409 });
+      if (overlappingPlan) {
+        return NextResponse.json({
+          error: 'Overlapping meal plan',
+          message: 'The client already has an active meal plan during this period'
+        }, { status: 409 });
+      }
     }
 
     // Create client meal plan - use template data if provided
@@ -409,8 +414,8 @@ export async function POST(request: NextRequest) {
 
     await clientMealPlan.save();
 
-    // Mark the linked payment as having a meal plan created
-    if (linkedPaymentId) {
+    // Mark the linked payment as having a meal plan created (skip for drafts)
+    if (!isDraft && linkedPaymentId) {
       try {
         await UnifiedPayment.findByIdAndUpdate(linkedPaymentId, {
           mealPlanCreated: true,
@@ -429,7 +434,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     // Update template usage count if template was used
-    if (validatedData.templateId && templateType) {
+    if (!isDraft && validatedData.templateId && templateType) {
       if (templateType === 'diet') {
         await DietTemplate.findByIdAndUpdate(
           validatedData.templateId,
@@ -443,6 +448,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Skip history logging, notifications, and client status update for drafts
+    if (!isDraft) {
     // Log history for meal plan assignment
     await logHistoryServer({
       userId: validatedData.clientId,
@@ -510,15 +517,18 @@ export async function POST(request: NextRequest) {
       console.error('Failed to update client status:', statusError);
       // Don't fail the request - meal plan was created successfully
     }
+    } // end !isDraft block
 
     return NextResponse.json({
       success: true,
-      message: paymentWarning
-        ? 'Meal plan assigned successfully (Warning: No payment linked)'
-        : 'Meal plan assigned successfully',
+      message: isDraft
+        ? 'Draft saved successfully'
+        : paymentWarning
+          ? 'Meal plan assigned successfully (Warning: No payment linked)'
+          : 'Meal plan assigned successfully',
       mealPlan: clientMealPlan,
-      paymentWarning: paymentWarning || undefined,
-      linkedPaymentId: linkedPaymentId || undefined,
+      paymentWarning: isDraft ? undefined : (paymentWarning || undefined),
+      linkedPaymentId: isDraft ? undefined : (linkedPaymentId || undefined),
     }, { status: 201 });
 
   } catch (error) {

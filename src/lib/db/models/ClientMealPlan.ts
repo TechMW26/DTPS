@@ -53,7 +53,7 @@ export interface IClientMealPlan extends Document {
   name: string;
   startDate: Date;
   endDate: Date;
-  status: 'active' | 'completed' | 'paused' | 'cancelled';
+  status: 'draft' | 'active' | 'completed' | 'paused' | 'cancelled';
 
   // Freeze tracking
   freezedDays: IFreezeDay[];
@@ -233,7 +233,7 @@ const ClientMealPlanSchema = new Schema({
   status: {
     type: String,
     required: true,
-    enum: ['active', 'completed', 'paused', 'cancelled'],
+    enum: ['draft', 'active', 'completed', 'paused', 'cancelled'],
     default: 'active'
   },
 

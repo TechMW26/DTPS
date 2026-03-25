@@ -73,9 +73,10 @@ interface BookingsSectionProps {
   clientName?: string;
   userRole?: 'dietitian' | 'health_counselor' | 'admin';
   dietitianId?: string; // Required for booking - the dietitian to book with
+  onRegisterReset?: (fn: () => void) => void;
 }
 
-export default function BookingsSection({ clientId, clientName, userRole = 'dietitian', dietitianId }: BookingsSectionProps) {
+export default function BookingsSection({ clientId, clientName, userRole = 'dietitian', dietitianId, onRegisterReset }: BookingsSectionProps) {
   const { data: session } = useSession();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,6 +120,16 @@ export default function BookingsSection({ clientId, clientName, userRole = 'diet
   useEffect(() => {
     fetchAppointments();
   }, [fetchAppointments]);
+
+  // Register reset callback for floating back button
+  useEffect(() => {
+    if (onRegisterReset) {
+      onRegisterReset(() => {
+        setShowQuickBookModal(false);
+        fetchAppointments();
+      });
+    }
+  }, [onRegisterReset]);
 
   const handleRealtimeMessage = useCallback(
     (event: { type: string; data: string }) => {

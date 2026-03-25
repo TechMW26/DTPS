@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, MutableRefObject } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -52,6 +52,7 @@ import {
   Play,
   Pause
 } from 'lucide-react';
+import { Home, RefreshCw as RefreshIcon, ArrowLeft as BackArrow } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -259,6 +260,15 @@ export default function ClientDetailPage() {
 
   // Notes panel state
   const [isNotesOpen, setIsNotesOpen] = useState(false);
+
+  // Reset-to-home callbacks for each section
+  const resetCallbacksRef = useRef<Record<string, (() => void) | undefined>>({});
+  const registerReset = useCallback((section: string, fn: () => void) => {
+    resetCallbacksRef.current[section] = fn;
+  }, []);
+  const handleResetToHome = useCallback(() => {
+    resetCallbacksRef.current[activeSection]?.();
+  }, [activeSection]);
   const [clientNotes, setClientNotes] = useState<ClientNote[]>([]);
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [newNote, setNewNote] = useState<ClientNote>({
@@ -1638,7 +1648,18 @@ export default function ClientDetailPage() {
         <div className="flex-1 overflow-y-auto bg-white">
           {/* Full-width client navigation */}
           <div className="w-full bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
-            <div className="max-w-full px-8 py-2 flex items-center  justify-around gap-2 overflow-x-auto">
+            <div className="max-w-full px-8 py-2 flex items-center gap-2 overflow-x-auto">
+
+              {/* Back button — resets active tab to its home view */}
+              <button
+                onClick={handleResetToHome}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg whitespace-nowrap transition-colors text-gray-500 hover:bg-gray-100 hover:text-gray-900 mr-1"
+                title="Back to section home"
+              >
+                <BackArrow className="h-4 w-4" />
+              </button>
+
+              <div className="w-px h-6 bg-gray-300 mr-1" />
 
               <button
                 onClick={() => setActiveSection('forms')}
@@ -2026,8 +2047,8 @@ export default function ClientDetailPage() {
               )}
             </div>
 
-            {/* Section Content */}
-            {activeSection === 'forms' && (
+            {/* Section Content - all sections rendered but hidden to preserve state */}
+            <div style={{ display: activeSection === 'forms' ? 'block' : 'none' }}>
               <FormsSection
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
@@ -2045,48 +2066,56 @@ export default function ClientDetailPage() {
                 loading={savingForm}
                 clientId={params.clientId as string}
                 userRole="dietitian"
+                onRegisterReset={(fn: () => void) => registerReset('forms', fn)}
               />
-            )}
+            </div>
 
-            {activeSection === 'journal' && <JournalSection clientId={params.clientId as string} />}
+            <div style={{ display: activeSection === 'journal' ? 'block' : 'none' }}>
+              <JournalSection clientId={params.clientId as string} onRegisterReset={(fn: () => void) => registerReset('journal', fn)} />
+            </div>
 
-            {activeSection === 'progress' && (
+            <div style={{ display: activeSection === 'progress' ? 'block' : 'none' }}>
               <ProgressSection
                 client={client}
                 setActiveSection={setActiveSection}
                 setActiveTab={setActiveTab}
                 formatDate={formatDate}
+                onRegisterReset={(fn: () => void) => registerReset('progress', fn)}
               />
-            )}
+            </div>
 
-            {activeSection === 'planning' && <PlanningSection client={client} />}
+            <div style={{ display: activeSection === 'planning' ? 'block' : 'none' }}>
+              <PlanningSection client={client} onRegisterReset={(fn: () => void) => registerReset('planning', fn)} />
+            </div>
 
-            {activeSection === 'payments' && (
-              <PaymentsSection client={client} formatDate={formatDate} />
-            )}
+            <div style={{ display: activeSection === 'payments' ? 'block' : 'none' }}>
+              <PaymentsSection client={client} formatDate={formatDate} onRegisterReset={(fn: () => void) => registerReset('payments', fn)} />
+            </div>
 
-            {activeSection === 'bookings' && (
+            <div style={{ display: activeSection === 'bookings' ? 'block' : 'none' }}>
               <BookingsSection
                 clientId={client._id}
                 clientName={`${client.firstName} ${client.lastName}`}
+                onRegisterReset={(fn: () => void) => registerReset('bookings', fn)}
               />
-            )}
+            </div>
 
-            {activeSection === 'documents' && (
-              <DocumentsSection client={client} formatDate={formatDate} />
-            )}
+            <div style={{ display: activeSection === 'documents' ? 'block' : 'none' }}>
+              <DocumentsSection client={client} formatDate={formatDate} onRegisterReset={(fn: () => void) => registerReset('documents', fn)} />
+            </div>
 
-            {activeSection === 'tasks' && (
+            <div style={{ display: activeSection === 'tasks' ? 'block' : 'none' }}>
               <TasksSection
                 clientId={params.clientId as string}
                 clientName={`${client?.firstName} ${client?.lastName}`}
                 dietitianEmail={session?.user?.email}
+                onRegisterReset={(fn: () => void) => registerReset('tasks', fn)}
               />
-            )}
+            </div>
 
-            {activeSection === 'history' && (
-              <HistorySection clientId={params.clientId as string} />
-            )}
+            <div style={{ display: activeSection === 'history' ? 'block' : 'none' }}>
+              <HistorySection clientId={params.clientId as string} onRegisterReset={(fn: () => void) => registerReset('history', fn)} />
+            </div>
           </div>
         </div>
       </div>

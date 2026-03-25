@@ -45,11 +45,13 @@ interface DocumentsSectionProps {
     documents?: ClientDocument[];
   };
   formatDate: (date: string) => string;
+  onRegisterReset?: (fn: () => void) => void;
 }
 
 export default function DocumentsSection({
   client,
   formatDate,
+  onRegisterReset,
 }: DocumentsSectionProps) {
   const [documents, setDocuments] = useState<ClientDocument[]>(
     client.documents || []
@@ -95,6 +97,15 @@ export default function DocumentsSection({
   useEffect(() => {
     fetchAllDocuments();
   }, [fetchAllDocuments]);
+
+  // Register reset callback for floating back button
+  useEffect(() => {
+    if (onRegisterReset) {
+      onRegisterReset(() => {
+        fetchAllDocuments();
+      });
+    }
+  }, [onRegisterReset]);
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [docType, setDocType] = useState<

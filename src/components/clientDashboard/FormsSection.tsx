@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -11,6 +11,9 @@ import BasicInfoForm, { type BasicInfoData } from '@/components/clients/BasicInf
 import MedicalForm, { type MedicalData } from '@/components/clients/MedicalForm';
 import LifestyleForm, { type LifestyleData } from '@/components/clients/LifestyleForm';
 import RecallForm, { type RecallEntry } from '@/components/clients/RecallForm';
+import BasicInfoDashboard from '@/components/clients/BasicInfoDashboard';
+import MedicalDashboard from '@/components/clients/MedicalDashboard';
+import LifestyleDashboard from '@/components/clients/LifestyleDashboard';
 
 interface FormsSectionProps {
   activeTab: string;
@@ -29,6 +32,7 @@ interface FormsSectionProps {
   loading: boolean;
   clientId?: string;
   userRole?: 'client' | 'dietitian';
+  onRegisterReset?: (fn: () => void) => void;
 }
 
 export default function FormsSection({
@@ -47,9 +51,20 @@ export default function FormsSection({
   handleDeleteRecallEntry,
   loading,
   clientId,
-  userRole = 'client'
+  userRole = 'client',
+  onRegisterReset
 }: FormsSectionProps) {
   const [showUnfilledPopup, setShowUnfilledPopup] = useState(false);
+  const [editingTab, setEditingTab] = useState<Record<string, boolean>>({});
+
+  // Register reset callback for floating back button
+  useEffect(() => {
+    if (onRegisterReset) {
+      onRegisterReset(() => {
+        setActiveTab('basic-details');
+      });
+    }
+  }, [onRegisterReset, setActiveTab]);
 
   // Check if each form is filled (updated for new structure)
   const isBasicInfoFilled = !!(basicInfo.firstName && basicInfo.lastName && basicInfo.email && basicInfo.weightKg && basicInfo.heightFeet);
@@ -172,42 +187,63 @@ export default function FormsSection({
           </TabsTrigger>
         </TabsList>
 
-        {/* Basic Details */}
-        <TabsContent value="basic-details" className="mt-6">
-          <BasicInfoForm
-            {...basicInfo}
-            onChange={(field, value) => setBasicInfo(prev => ({ ...prev, [field]: value }))}
-            onSave={handleSaveWithCheck}
-            loading={loading}
-            disableEmail
-            disablePhone
-          />
+        {/* Basic Details - forceMount keeps component alive, hidden via CSS */}
+        <TabsContent value="basic-details" className="mt-6" forceMount style={{ display: activeTab === 'basic-details' ? 'block' : 'none' }}>
+          {editingTab['basic-details'] ? (
+            <BasicInfoForm
+              {...basicInfo}
+              onChange={(field, value) => setBasicInfo(prev => ({ ...prev, [field]: value }))}
+              onSave={async () => {
+                await handleSaveWithCheck();
+                setEditingTab(prev => ({ ...prev, 'basic-details': false }));
+              }}
+              loading={loading}
+              disableEmail
+              disablePhone
+            />
+          ) : (
+            <BasicInfoDashboard data={basicInfo} onEdit={() => setEditingTab(prev => ({ ...prev, 'basic-details': true }))} />
+          )}
         </TabsContent>
 
         {/* Medical Info */}
-        <TabsContent value="medical-info" className="mt-6">
-          <MedicalForm
-            {...medicalData}
-            onChange={(field, value) => setMedicalData(prev => ({ ...prev, [field]: value }))}
-            onSave={handleSaveWithCheck}
-            loading={loading}
-            clientGender={basicInfo.gender}
-            clientId={clientId}
-          />
+        <TabsContent value="medical-info" className="mt-6" forceMount style={{ display: activeTab === 'medical-info' ? 'block' : 'none' }}>
+          {editingTab['medical-info'] ? (
+            <MedicalForm
+              {...medicalData}
+              onChange={(field, value) => setMedicalData(prev => ({ ...prev, [field]: value }))}
+              onSave={async () => {
+                await handleSaveWithCheck();
+                setEditingTab(prev => ({ ...prev, 'medical-info': false }));
+              }}
+              loading={loading}
+              clientGender={basicInfo.gender}
+              clientId={clientId}
+            />
+          ) : (
+            <MedicalDashboard data={medicalData} onEdit={() => setEditingTab(prev => ({ ...prev, 'medical-info': true }))} clientGender={basicInfo.gender} />
+          )}
         </TabsContent>
 
         {/* Lifestyle */}
-        <TabsContent value="lifestyle" className="mt-6">
-          <LifestyleForm
-            {...lifestyleData}
-            onChange={(field, value) => setLifestyleData(prev => ({ ...prev, [field]: value }))}
-            onSave={handleSaveWithCheck}
-            loading={loading}
-          />
+        <TabsContent value="lifestyle" className="mt-6" forceMount style={{ display: activeTab === 'lifestyle' ? 'block' : 'none' }}>
+          {editingTab['lifestyle'] ? (
+            <LifestyleForm
+              {...lifestyleData}
+              onChange={(field, value) => setLifestyleData(prev => ({ ...prev, [field]: value }))}
+              onSave={async () => {
+                await handleSaveWithCheck();
+                setEditingTab(prev => ({ ...prev, 'lifestyle': false }));
+              }}
+              loading={loading}
+            />
+          ) : (
+            <LifestyleDashboard data={lifestyleData} onEdit={() => setEditingTab(prev => ({ ...prev, 'lifestyle': true }))} />
+          )}
         </TabsContent>
 
         {/* Recall */}
-        <TabsContent value="recall" className="mt-6">
+        <TabsContent value="recall" className="mt-6" forceMount style={{ display: activeTab === 'recall' ? 'block' : 'none' }}>
           <RecallForm
             entries={recallEntries}
             onChange={setRecallEntries}

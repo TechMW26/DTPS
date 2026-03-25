@@ -51,6 +51,7 @@ type DietPlanDashboardProps = {
   onBack?: () => void;
   onSavePlan?: (weekPlan: DayPlan[], mealTypes: MealTypeConfig[]) => void; // trigger parent save with meal data and meal types
   onSave?: (weekPlan: DayPlan[]) => void; // Simple save callback for PlanningSection
+  onMealDataChange?: (weekPlan: DayPlan[], mealTypes: MealTypeConfig[]) => void; // Notify parent on every meal data change (for autosave)
   onDurationChange?: (duration: number) => void; // Notify parent when days count changes
   duration?: number; // number of days to show
   startDate?: string; // Start date in YYYY-MM-DD format
@@ -59,6 +60,7 @@ type DietPlanDashboardProps = {
   clientId?: string; // Client ID for saving
   clientName?: string; // Client name for display
   readOnly?: boolean; // View mode - hide save buttons and disable editing
+  draftSaveStatus?: 'idle' | 'saving' | 'saved' | 'error'; // Draft save status from parent
   clientDietaryRestrictions?: string; // comma-separated dietary restrictions
   clientMedicalConditions?: string;   // comma-separated medical conditions
   clientAllergies?: string;           // comma-separated allergies
@@ -166,7 +168,7 @@ const normalizeMealKeys = (meals: Record<string, Meal>): Record<string, Meal> =>
   return normalized;
 };
 
-export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onDurationChange, duration = 7, startDate, initialMeals, initialMealTypes, clientId, clientName, readOnly = false, clientDietaryRestrictions, clientMedicalConditions, clientAllergies, holdDays = [], totalHeldDays = 0 }: DietPlanDashboardProps) {
+export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMealDataChange, onDurationChange, duration = 7, startDate, initialMeals, initialMealTypes, clientId, clientName, readOnly = false, draftSaveStatus, clientDietaryRestrictions, clientMedicalConditions, clientAllergies, holdDays = [], totalHeldDays = 0 }: DietPlanDashboardProps) {
   // Get session for role-based export visibility
   const { data: session } = useSession();
   const userRole = session?.user?.role as string | undefined;
@@ -314,249 +316,35 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onDu
     }
   }, [weekPlan.length, duration, onDurationChange]);
 
-  // ============ AUTO-SAVE FUNCTIONALITY ============
-  // Draft key for this specific diet plan
-  const draftKey = useMemo(() => {
-    const identifier = clientId || 'new';
-    return `dietPlan_draft_${identifier}_${duration}`;
-  }, [clientId, duration]);
-
-  // Auto-save state
-  const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [hasDraft, setHasDraft] = useState(false);
-  const [draftRestored, setDraftRestored] = useState(false);
+  // ============ AUTO-SAVE FUNCTIONALITY (via parent callback) ============
   const [exportDialogOpen, setExportDialogOpen] = useState(false); // Export dialog state for MealGridTable
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const previousDataRef = useRef<string>('');
   const isInitializedRef = useRef(false);
 
-  const DRAFT_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
-  const DEBOUNCE_MS = 2000; // 2 seconds
-
-  // Memoized data for auto-save comparison
-  const draftData = useMemo(() => ({
-    weekPlan,
-    mealTypeConfigs,
-    lastSaved: Date.now(),
-    expiresAt: Date.now() + DRAFT_EXPIRY_MS,
-  }), [weekPlan, mealTypeConfigs]);
-
-  // Save to localStorage (no server calls - zero DB load)
-  const saveToStorage = useCallback(() => {
-    if (typeof window === 'undefined' || readOnly) return;
-
-    try {
-      localStorage.setItem(draftKey, JSON.stringify(draftData));
-      setHasDraft(true);
-      setLastSaved(new Date());
-      setIsSaving(false);
-    } catch (error) {
-      console.error('Failed to save diet plan draft:', error);
-      setIsSaving(false);
-    }
-  }, [draftKey, draftData, readOnly]);
-
-  // Debounced auto-save effect (2 second delay)
+  // Notify parent of meal data changes so it can handle DB draft saving
   useEffect(() => {
-    if (readOnly || !session?.user?.id) return;
+    if (readOnly || !onMealDataChange) return;
 
     const currentDataStr = JSON.stringify({ weekPlan, mealTypeConfigs });
 
     // Skip if no changes
     if (previousDataRef.current === currentDataStr) return;
 
-    // Skip initial state
+    // Skip initial render
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
       previousDataRef.current = currentDataStr;
       return;
     }
 
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    setIsSaving(true);
-
-    // Debounced save - only saves after 2 seconds of no changes
-    saveTimeoutRef.current = setTimeout(() => {
-      saveToStorage();
-      previousDataRef.current = currentDataStr;
-      // Also sync to parent for their draft saving (without triggering full save)
-      if (onSave && weekPlan.length > 0) {
-        onSave(weekPlan);
-      }
-    }, DEBOUNCE_MS);
-
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [weekPlan, mealTypeConfigs, readOnly, session?.user?.id, saveToStorage, onSave]);
-
-  // Restore draft on mount
-  useEffect(() => {
-    if (draftRestored || readOnly || !session?.user?.id) return;
-    if (typeof window === 'undefined') return;
-
-    try {
-      const stored = localStorage.getItem(draftKey);
-      if (!stored) {
-        setDraftRestored(true);
-        return;
-      }
-
-      const draft = JSON.parse(stored);
-
-      // Check if expired
-      if (draft.expiresAt && Date.now() > draft.expiresAt) {
-        localStorage.removeItem(draftKey);
-        setDraftRestored(true);
-        return;
-      }
-
-      // Only restore draft if initialMeals is empty/absent (new plan or template create)
-      // When initialMeals has data (editing existing plan/template), DB data takes priority
-      const hasInitialMeals = initialMeals && Array.isArray(initialMeals) && initialMeals.length > 0 &&
-        initialMeals.some((day: any) => day?.meals && Object.keys(day.meals).length > 0);
-
-      if (!hasInitialMeals && draft.weekPlan && draft.weekPlan.length > 0) {
-        const hasData = draft.weekPlan.some((day: DayPlan) =>
-          Object.keys(day.meals).length > 0 || day.note
-        );
-
-        if (hasData) {
-          // If initialMealTypes is provided, use that order; otherwise use draft's meal types
-          const baseMealTypes = initialMealTypes && initialMealTypes.length > 0
-            ? initialMealTypes
-            : (draft.mealTypeConfigs || defaultMealTypes);
-
-          const normalizedMealTypes = baseMealTypes.map((meal: MealTypeConfig) => {
-            const key = normalizeMealType(meal.name);
-            return {
-              ...meal,
-              name: key ? MEAL_TYPES[key].label : meal.name,
-              // Prefer user-saved time over canonical default
-              time: normalizeTime(meal.time) || (key ? MEAL_TYPES[key].time12h : '12:00 PM')
-            };
-          });
-          // Deduplicate by name
-          const seen = new Set<string>();
-          const dedupedMealTypes = normalizedMealTypes.filter((m: MealTypeConfig) => {
-            if (seen.has(m.name)) return false;
-            seen.add(m.name);
-            return true;
-          });
-
-          const mealTimeMap = new Map(dedupedMealTypes.map((meal: MealTypeConfig) => [meal.name, meal.time]));
-
-          // Collect all custom meal types from weekPlan that aren't in dedupedMealTypes
-          const customMealsFromWeekPlan: MealTypeConfig[] = [];
-          draft.weekPlan.forEach((day: DayPlan) => {
-            Object.entries(day.meals).forEach(([mealName, meal]) => {
-              if (!meal) return;
-              const mealKey = normalizeMealType(mealName);
-              const displayName = mealKey ? MEAL_TYPES[mealKey].label : mealName;
-              // If this meal type is not in dedupedMealTypes, it's a custom meal
-              if (!mealTimeMap.has(displayName) && !customMealsFromWeekPlan.some(m => m.name === displayName)) {
-                customMealsFromWeekPlan.push({
-                  name: displayName,
-                  time: normalizeTime(meal.time) || '12:00 PM'
-                });
-              }
-            });
-          });
-
-          // Merge custom meals into dedupedMealTypes
-          const allMealTypes = [...dedupedMealTypes, ...customMealsFromWeekPlan];
-
-          const normalizedWeekPlan = draft.weekPlan.map((day: DayPlan) => {
-            const meals: Record<string, Meal> = {};
-            Object.keys(day.meals).forEach((mealName) => {
-              const current = day.meals[mealName];
-              if (!current) return;
-              // Normalize the meal key to display label (e.g. "EARLY_MORNING" → "Early Morning")
-              const mealKey = normalizeMealType(mealName);
-              const displayName = mealKey ? MEAL_TYPES[mealKey].label : mealName;
-              const normalizedTimeVal = normalizeTime(current.time);
-              const fallbackTime = mealTimeMap.get(displayName) || '12:00 PM';
-              const resolvedTime = (normalizedTimeVal || fallbackTime) as string;
-              // If this display name already exists (duplicate), merge food options
-              if (meals[displayName]) {
-                meals[displayName].foodOptions = [
-                  ...meals[displayName].foodOptions,
-                  ...current.foodOptions
-                ];
-              } else {
-                meals[displayName] = {
-                  ...current,
-                  name: displayName,
-                  time: resolvedTime
-                };
-              }
-            });
-            return { ...day, meals };
-          });
-
-          setWeekPlan(normalizedWeekPlan);
-          setMealTypeConfigs(allMealTypes);
-          setHasDraft(true);
-          setLastSaved(draft.lastSaved ? new Date(draft.lastSaved) : null);
-
-          toast.success('Draft restored', {
-            description: 'Your previous diet plan work has been restored. Draft expires in 24 hours.',
-            duration: 4000
-          });
-        }
-      }
-
-      setDraftRestored(true);
-    } catch (error) {
-      console.error('Failed to restore diet plan draft:', error);
-      setDraftRestored(true);
-    }
-  }, [draftKey, draftRestored, readOnly, session?.user?.id, initialMealTypes]);
-
-  // Clear draft function
-  const handleClearDraft = useCallback(() => {
-    if (typeof window === 'undefined') return;
-
-    try {
-      localStorage.removeItem(draftKey);
-      setHasDraft(false);
-      setLastSaved(null);
-      previousDataRef.current = '';
-      isInitializedRef.current = false;
-
-      // Reset to initial state
-      const newDays = buildDays(duration);
-      if (initialMeals && initialMeals.length > 0) {
-        setWeekPlan(newDays.map((d, i) => ({
-          ...d,
-          ...(initialMeals[i] || {}),
-          meals: initialMeals[i]?.meals || {},
-          note: initialMeals[i]?.note || ''
-        })));
-      } else {
-        setWeekPlan(newDays);
-      }
-      setMealTypeConfigs(initialMealTypes || defaultMealTypes);
-
-      toast.success('Draft cleared', { description: 'Starting fresh.' });
-    } catch (error) {
-      console.error('Failed to clear diet plan draft:', error);
-    }
-  }, [draftKey, duration, initialMeals, initialMealTypes]);
+    previousDataRef.current = currentDataStr;
+    onMealDataChange(weekPlan, mealTypeConfigs);
+  }, [weekPlan, mealTypeConfigs, readOnly, onMealDataChange]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
+      // no-op
     };
   }, []);
   // ============ END AUTO-SAVE FUNCTIONALITY ============
@@ -604,16 +392,6 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onDu
   };
 
   const handleSavePlan = () => {
-    // Clear draft after save (draft will be deleted from localStorage)
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem(draftKey);
-        setHasDraft(false);
-        setLastSaved(null);
-        previousDataRef.current = '';
-      } catch {/* ignore */ }
-    }
-
     if (onSave) {
       // New simple callback for PlanningSection
       onSave(weekPlan);
@@ -684,32 +462,27 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onDu
               )}
             </div>
 
-            {/* Right side - Auto-save indicator + Actions */}
+            {/* Right side - Draft save status + Actions */}
             <div className="flex items-center space-x-3">
-              {/* Auto-save indicator */}
-              {!readOnly && (
+              {/* Draft auto-save status indicator */}
+              {!readOnly && draftSaveStatus && (
                 <>
-                  {isSaving && (
+                  {draftSaveStatus === 'saving' && (
                     <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                       <RefreshCw className="h-3 w-3 animate-spin" />
-                      Saving...
+                      Auto-saving...
                     </span>
                   )}
-                  {!isSaving && lastSaved && (
-                    <span className="text-xs text-green-600 dark:text-green-400">
-                      Saved {lastSaved.toLocaleTimeString()}
+                  {draftSaveStatus === 'saved' && (
+                    <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                      <Save className="h-3 w-3" />
+                      Saved
                     </span>
                   )}
-                  {hasDraft && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleClearDraft}
-                      className="border-gray-300 dark:border-gray-600"
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" />
-                      Clear Draft
-                    </Button>
+                  {draftSaveStatus === 'error' && (
+                    <span className="text-xs text-red-500 dark:text-red-400">
+                      Save failed
+                    </span>
                   )}
                 </>
               )}
@@ -732,10 +505,6 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onDu
                       dietitianName={session?.user?.firstName && session?.user?.lastName ? `${session.user.firstName} ${session.user.lastName}` : session?.user?.name || undefined}
                     />
                   )}
-                  <Button onClick={handleSavePlan} className="bg-green-600 hover:bg-green-700 shadow font-medium">
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Plan
-                  </Button>
                 </>
               )}
               {readOnly && canExport && (

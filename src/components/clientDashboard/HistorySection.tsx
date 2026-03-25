@@ -49,6 +49,7 @@ interface HistoryEntry {
 
 interface HistorySectionProps {
   clientId: string;
+  onRegisterReset?: (fn: () => void) => void;
 }
 
 const categoryIcons: Record<string, React.ReactNode> = {
@@ -81,7 +82,7 @@ const actionIcons: Record<string, React.ReactNode> = {
   download: <Download className="h-3 w-3" />,
 };
 
-export default function HistorySection({ clientId }: HistorySectionProps) {
+export default function HistorySection({ clientId, onRegisterReset }: HistorySectionProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
@@ -89,6 +90,16 @@ export default function HistorySection({ clientId }: HistorySectionProps) {
   useEffect(() => {
     fetchHistory();
   }, [clientId]);
+
+  // Register reset callback for floating back button
+  useEffect(() => {
+    if (onRegisterReset) {
+      onRegisterReset(() => {
+        setExpandedItems(new Set());
+        fetchHistory();
+      });
+    }
+  }, [onRegisterReset]);
 
   const toggleExpanded = (id: string) => {
     const newExpanded = new Set(expandedItems);

@@ -42,30 +42,19 @@ export async function GET(request: NextRequest) {
     // Convert clientId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(clientId);
 
-    // Build query - filter by date if provided
-    const query: any = {
-      client: clientObjectId,
-      'measurements.0': { $exists: true }
-    };
-
-    if (dateParam) {
-      const filterDate = new Date(dateParam);
-      filterDate.setHours(0, 0, 0, 0);
-      const nextDay = new Date(filterDate);
-      nextDay.setDate(nextDay.getDate() + 1);
-      query.date = { $gte: filterDate, $lt: nextDay };
-    }
-
-    // Get journal entries for this client with measurements data
-    const journals = await withCache(
-      `journal:measurements:${JSON.stringify(query)}`,
-      async () => await JournalTracking.find(query).sort({ date: -1 }),
+    // Always fetch ALL measurements entries for this client (for summary + graph)
+    const allJournals = await withCache(
+      `journal:measurements:all:${clientId}`,
+      async () => await JournalTracking.find({
+        client: clientObjectId,
+        'measurements.0': { $exists: true }
+      }).sort({ date: -1 }),
       { ttl: 120000, tags: ['journal'] }
     );
 
     // Flatten all measurement entries with their dates
     const allMeasurements: any[] = [];
-    journals.forEach(journal => {
+    allJournals.forEach(journal => {
       journal.measurements.forEach((entry: any) => {
         allMeasurements.push({
           ...entry.toObject(),
@@ -77,7 +66,7 @@ export async function GET(request: NextRequest) {
     // Sort by date descending
     allMeasurements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // Calculate started with (first entry) and currently at (latest entry)
+    // Calculate started with (first entry) and currently at (latest entry) — always across ALL entries
     const sortedByDateAsc = [...allMeasurements].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     const startedWith = sortedByDateAsc.length > 0 ? {

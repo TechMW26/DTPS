@@ -1,16 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Calendar, Plus, Edit, Trash2, Copy, ArrowLeft, ArrowRight, Utensils, Dumbbell, Eye, FileText, Image as ImageIcon, Video, Search, Loader2, Check, X, AlertTriangle, CreditCard, Clock, RefreshCw, MoreVertical, Repeat2, Pause, Play, Zap, Snowflake } from 'lucide-react';
+import { Calendar, Plus, Edit, Trash2, Copy, ArrowLeft, ArrowRight, Utensils, Dumbbell, Eye, FileText, Image as ImageIcon, Video, Search, Loader2, Check, X, AlertTriangle, CreditCard, Clock, RefreshCw, MoreVertical, Repeat2, Pause, Play, Zap, Snowflake, Save } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
@@ -133,6 +134,7 @@ interface ClientData {
 interface PlanningSectionProps {
   client: ClientData;
   viewOnly?: boolean; // If true, hides create/edit options (for health counselor)
+  onRegisterReset?: (fn: () => void) => void;
 }
 
 // Helper to convert array or string to comma-separated string
@@ -142,7 +144,7 @@ const toCommaString = (val?: string | string[]): string => {
   return val;
 };
 
-export default function PlanningSection({ client, viewOnly = false }: PlanningSectionProps) {
+export default function PlanningSection({ client, viewOnly = false, onRegisterReset }: PlanningSectionProps) {
   // Form states
   const [step, setStep] = useState<'list' | 'form' | 'meals' | 'view'>('list');
   const [planTitle, setPlanTitle] = useState('');
@@ -259,44 +261,157 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
     checkPaymentStatus();
   }, [client._id]);
 
-  // Draft key and auto-save for plan creation/editing
-  const planFormDraftKey = useMemo(() => {
-    return `dietPlan_formDraft_${client._id}_${isEditMode && editingPlan?._id ? editingPlan._id : 'new'}`;
-  }, [client._id, isEditMode, editingPlan?._id]);
+  // ============ DRAFT AUTO-SAVE TO DB ============
+  const [draftPlanId, setDraftPlanId] = useState<string | null>(null); // Tracks the draft plan _id in DB
+  const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const latestMealDataRef = useRef<{ meals: any[]; mealTypes: { name: string; time: string }[] } | null>(null);
+  const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const draftSaveInProgressRef = useRef(false);
+  const draftSaveFailCountRef = useRef(0); // Track consecutive failures for backoff
 
-  const FORM_DRAFT_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+  // Called by DietPlanDashboard on every meal data change
+  const isEditModeRef = useRef(isEditMode);
+  const editingPlanRef = useRef(editingPlan);
+  isEditModeRef.current = isEditMode;
+  editingPlanRef.current = editingPlan;
 
-  // Auto-save form data to localStorage (runs every 2 seconds when data changes)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (typeof window !== 'undefined' && (step === 'form' || step === 'meals') && planTitle.trim()) {
-        try {
-          const formDraftData = {
-            step,
-            planTitle,
-            description,
-            duration,
-            startDate,
-            endDate,
-            primaryGoal,
-            initialMeals,
-            initialMealTypes,
-            selectedTemplate: selectedTemplate ? {
-              _id: selectedTemplate._id,
-              name: selectedTemplate.name
-            } : null,
-            expiresAt: Date.now() + FORM_DRAFT_EXPIRY_MS,
-            lastSaved: new Date().toISOString()
-          };
-          localStorage.setItem(planFormDraftKey, JSON.stringify(formDraftData));
-        } catch (error) {
-          console.error('Failed to save plan form draft:', error);
+  const handleMealDataChange = useCallback((weekPlan: any[], mealTypes: { name: string; time: string }[]) => {
+    latestMealDataRef.current = { meals: weekPlan, mealTypes };
+    // Reset fail count when new data arrives (user is still working)
+    draftSaveFailCountRef.current = 0;
+
+    // Debounce: save 2 seconds after last change (only for new plans or draft edits)
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    if (step === 'meals' && (!isEditModeRef.current || editingPlanRef.current?.status === 'draft')) {
+      autosaveTimerRef.current = setTimeout(() => {
+        saveDraftRef.current?.();
+      }, 2000);
+    }
+  }, [step]);
+
+  // Use a ref for the latest save function to avoid stale closures in setInterval
+  const saveDraftRef = useRef<() => Promise<void>>();
+
+  // Save draft to DB
+  const saveDraftToDB = useCallback(async () => {
+    if (draftSaveInProgressRef.current) return;
+    if (!latestMealDataRef.current) return;
+    if (!planTitle.trim()) return;
+    if (!startDate || !endDate) return;
+
+    // Stop retrying after 3 consecutive failures
+    if (draftSaveFailCountRef.current >= 3) return;
+
+    draftSaveInProgressRef.current = true;
+    setDraftSaveStatus('saving');
+
+    try {
+      const startDateObj = new Date(startDate);
+      const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const mealsData = latestMealDataRef.current.meals;
+      const mealTypesData = latestMealDataRef.current.mealTypes;
+
+      const mealsWithDates = mealsData.map((day: any, index: number) => {
+        const dayDate = addDays(startDateObj, index);
+        const dateOfMonth = dayDate.getDate();
+        const dayName = fullDayNames[dayDate.getDay()];
+        const dateStr = format(dayDate, 'yyyy-MM-dd');
+        return {
+          ...day,
+          date: dateStr,
+          day: `${dateOfMonth} - Day ${index + 1} - ${dayName}`
+        };
+      });
+
+      // Clean mealTypes to only include name and time (strip DB fields like _id)
+      const cleanMealTypes = mealTypesData?.map(mt => ({
+        name: String(mt.name || ''),
+        time: String(mt.time || '12:00 PM')
+      }));
+
+      const payload: any = {
+        name: planTitle,
+        description: description || undefined,
+        startDate,
+        endDate,
+        duration,
+        meals: mealsWithDates,
+        mealTypes: cleanMealTypes,
+        customizations: {
+          targetCalories: selectedTemplate?.targetCalories?.max || 2000,
+          targetMacros: {
+            protein: selectedTemplate?.targetMacros?.protein?.max || 150,
+            carbs: selectedTemplate?.targetMacros?.carbs?.max || 250,
+            fat: selectedTemplate?.targetMacros?.fat?.max || 65
+          }
+        },
+        goals: { primaryGoal: primaryGoal || 'health-improvement' },
+        status: 'draft'
+      };
+
+      if (draftPlanId) {
+        // Update existing draft
+        const res = await fetch(`/api/client-meal-plans/${draftPlanId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          setDraftSaveStatus('saved');
+          draftSaveFailCountRef.current = 0;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          console.error('Draft update failed:', res.status, errData);
+          setDraftSaveStatus('error');
+          draftSaveFailCountRef.current += 1;
+        }
+      } else {
+        // Create new draft
+        payload.clientId = client._id;
+        if (selectedTemplate?._id) payload.templateId = selectedTemplate._id;
+        if (paymentCheck?.purchase?._id) payload.purchaseId = paymentCheck.purchase._id;
+
+        const res = await fetch('/api/client-meal-plans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.mealPlan?._id) {
+            setDraftPlanId(data.mealPlan._id);
+          }
+          setDraftSaveStatus('saved');
+          draftSaveFailCountRef.current = 0;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          console.error('Draft create failed:', res.status, errData);
+          setDraftSaveStatus('error');
+          draftSaveFailCountRef.current += 1;
         }
       }
-    }, 2000);
+    } catch (error) {
+      console.error('Draft auto-save failed:', error);
+      setDraftSaveStatus('error');
+      draftSaveFailCountRef.current += 1;
+    } finally {
+      draftSaveInProgressRef.current = false;
+    }
+  }, [planTitle, description, startDate, endDate, duration, primaryGoal, selectedTemplate, draftPlanId, client._id, paymentCheck]);
 
-    return () => clearTimeout(timer);
-  }, [planTitle, description, duration, startDate, endDate, primaryGoal, initialMeals, initialMealTypes, selectedTemplate, step, planFormDraftKey]);
+  // Keep the ref always pointing to the latest save function
+  saveDraftRef.current = saveDraftToDB;
+
+  // Cleanup autosave timer when leaving meals step
+  useEffect(() => {
+    if (step !== 'meals') {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    }
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [step]);
+  // ============ END DRAFT AUTO-SAVE ============
 
   // Don't auto-restore drafts on mount - this was causing navigation issues
   // Drafts will be restored only when user explicitly clicks "Create New Plan"
@@ -331,6 +446,17 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
   useEffect(() => {
     fetchClientPlans();
   }, [client._id]);
+
+  // Register reset callback for floating back button
+  useEffect(() => {
+    if (onRegisterReset) {
+      onRegisterReset(() => {
+        setStep('list');
+        fetchClientPlans();
+        checkPaymentStatus();
+      });
+    }
+  }, [onRegisterReset]);
 
   // Subscribe to data change events for automatic refresh
   useDataRefresh(
@@ -760,8 +886,8 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
     setStep('meals');
   };
 
-  // Handle saving the complete meal plan
-  const handleSavePlan = async (mealsData: any[], mealTypesData?: { name: string; time: string }[]) => {
+  // Handle publishing the meal plan (makes it active and visible to client)
+  const handlePublishPlan = async (mealsData: any[], mealTypesData?: { name: string; time: string }[]) => {
     try {
       setSaving(true);
 
@@ -784,52 +910,86 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
 
       const finalMealTypes = mealTypesData && mealTypesData.length > 0 ? mealTypesData : initialMealTypes;
 
-      const payload: any = {
-        clientId: client._id,
-        name: planTitle,
-        description,
-        startDate,
-        endDate,
-        duration,
-        meals: mealsWithDates,
-        mealTypes: finalMealTypes,
-        customizations: {
-          targetCalories: selectedTemplate?.targetCalories?.max || 2000,
-          targetMacros: {
-            protein: selectedTemplate?.targetMacros?.protein?.max || 150,
-            carbs: selectedTemplate?.targetMacros?.carbs?.max || 250,
-            fat: selectedTemplate?.targetMacros?.fat?.max || 65
-          }
-        },
-        goals: {
-          primaryGoal
-        },
-        status: 'active'
-      };
+      let data: any;
 
-      // Only include templateId if a template was selected
-      if (selectedTemplate?._id) {
-        payload.templateId = selectedTemplate._id;
+      if (draftPlanId) {
+        // Publish existing draft → update status to active
+        const payload: any = {
+          name: planTitle,
+          description,
+          startDate,
+          endDate,
+          duration,
+          meals: mealsWithDates,
+          mealTypes: finalMealTypes,
+          customizations: {
+            targetCalories: selectedTemplate?.targetCalories?.max || 2000,
+            targetMacros: {
+              protein: selectedTemplate?.targetMacros?.protein?.max || 150,
+              carbs: selectedTemplate?.targetMacros?.carbs?.max || 250,
+              fat: selectedTemplate?.targetMacros?.fat?.max || 65
+            }
+          },
+          goals: { primaryGoal },
+          status: 'active'
+        };
+
+        const res = await fetch(`/api/client-meal-plans/${draftPlanId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('Failed to publish plan:', res.status, errorText);
+          toast.error('Failed to publish diet plan. Server error.');
+          return;
+        }
+        data = await res.json();
+        if (data.success) {
+          data.mealPlan = data.mealPlan || { _id: draftPlanId };
+        }
+      } else {
+        // Create new plan directly as active
+        const payload: any = {
+          clientId: client._id,
+          name: planTitle,
+          description,
+          startDate,
+          endDate,
+          duration,
+          meals: mealsWithDates,
+          mealTypes: finalMealTypes,
+          customizations: {
+            targetCalories: selectedTemplate?.targetCalories?.max || 2000,
+            targetMacros: {
+              protein: selectedTemplate?.targetMacros?.protein?.max || 150,
+              carbs: selectedTemplate?.targetMacros?.carbs?.max || 250,
+              fat: selectedTemplate?.targetMacros?.fat?.max || 65
+            }
+          },
+          goals: { primaryGoal },
+          status: 'active'
+        };
+
+        if (selectedTemplate?._id) payload.templateId = selectedTemplate._id;
+        if (paymentCheck?.purchase?._id) payload.purchaseId = paymentCheck.purchase._id;
+
+        const res = await fetch('/api/client-meal-plans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('Failed to create plan:', res.status, errorText);
+          toast.error('Failed to create diet plan. Server error.');
+          return;
+        }
+        data = await res.json();
       }
-
-      // Include purchaseId for shared freeze tracking across plan phases
-      if (paymentCheck?.purchase?._id) {
-        payload.purchaseId = paymentCheck.purchase._id;
-      }
-
-      const res = await fetch('/api/client-meal-plans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('Failed to create plan:', res.status, errorText);
-        toast.error('Failed to create diet plan. Server error.');
-        return;
-      }
-      const data = await res.json();
 
       if (data.success) {
         // Show payment warning if plan was created without a linked payment
@@ -892,15 +1052,28 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
         fetchClientPlans();
         checkPaymentStatus(); // Refresh payment status
       } else {
-        toast.error(data.error || 'Failed to create diet plan');
+        toast.error(data.error || 'Failed to publish diet plan');
       }
     } catch (error) {
-      console.error('Error saving plan:', error);
-      toast.error('Failed to save diet plan');
+      console.error('Error publishing plan:', error);
+      toast.error('Failed to publish diet plan');
     } finally {
       setSaving(false);
     }
   };
+
+  // Manual draft save (triggered by Save Draft button)
+  const handleManualDraftSave = useCallback(async () => {
+    if (!latestMealDataRef.current) {
+      toast.info('No changes to save');
+      return;
+    }
+    draftSaveFailCountRef.current = 0; // Reset backoff on manual save
+    await saveDraftToDB();
+    if (draftSaveStatus !== 'error') {
+      toast.success('Draft saved successfully');
+    }
+  }, [saveDraftToDB, draftSaveStatus]);
 
   const resetForm = () => {
     setStep('list');
@@ -917,19 +1090,40 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
     setViewingPlan(null);
     setPlanKey(prev => prev + 1); // Reset key to force fresh component
 
-    // Clear localStorage draft to prevent auto-restore on next mount
+    // Reset draft state
+    setDraftPlanId(null);
+    setDraftSaveStatus('idle');
+    latestMealDataRef.current = null;
+  };
+
+  // Delete draft plan state
+  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Delete a draft plan
+  const handleDeleteDraft = async (planId: string) => {
     try {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(`dietPlan_formDraft_${client._id}_new`);
-        if (editingPlan?._id) {
-          localStorage.removeItem(`dietPlan_formDraft_${client._id}_${editingPlan._id}`);
+      setIsDeleting(true);
+      const res = await fetch(`/api/client-meal-plans/${planId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        toast.success('Draft deleted successfully');
+        emitDataChange(DataEventTypes.MEAL_PLAN_DELETED, { planId });
+        fetchClientPlans();
+        // If we're viewing/editing this plan, go back to list
+        if (editingPlan?._id === planId || viewingPlan?._id === planId) {
+          resetForm();
         }
-        if (viewingPlan?._id) {
-          localStorage.removeItem(`dietPlan_formDraft_${client._id}_${viewingPlan._id}`);
-        }
+      } else {
+        toast.error('Failed to delete draft');
       }
-    } catch (e) {
-      // Ignore localStorage errors
+    } catch (error) {
+      console.error('Error deleting draft:', error);
+      toast.error('Failed to delete draft');
+    } finally {
+      setIsDeleting(false);
+      setDeletingPlanId(null);
     }
   };
 
@@ -986,6 +1180,10 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
     setInitialMeals(planMeals);
     setInitialMealTypes(planMealTypes);
     setPlanKey(prev => prev + 1); // Force re-mount
+    // If editing a draft, set draftPlanId so autosave works
+    if (plan.status === 'draft') {
+      setDraftPlanId(plan._id);
+    }
     setStep('meals');
   };
 
@@ -2207,7 +2405,9 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                         ? 'bg-green-100 text-green-800'
                         : viewingPlan.status === 'completed'
                           ? 'bg-blue-100 text-blue-800'
-                          : 'bg-gray-100 text-gray-800'
+                          : viewingPlan.status === 'draft'
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-gray-100 text-gray-800'
                     }>
                       {viewingPlan.status || 'draft'}
                     </Badge>
@@ -2234,6 +2434,39 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                   <Copy className="h-4 w-4 mr-2" />
                   Duplicate
                 </Button>
+                {/* Delete button — only for draft plans */}
+                {viewingPlan.status === 'draft' && (
+                  <AlertDialog open={deletingPlanId === viewingPlan._id} onOpenChange={(open) => { if (!open) setDeletingPlanId(null); }}>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => setDeletingPlanId(viewingPlan._id)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Draft?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete the draft &quot;{viewingPlan.name}&quot;. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-red-600 hover:bg-red-700"
+                          onClick={() => handleDeleteDraft(viewingPlan._id)}
+                          disabled={isDeleting}
+                        >
+                          {isDeleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...</> : 'Delete'}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -2614,25 +2847,64 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                 <Button variant="outline" onClick={() => setStep('form')}>
                   Edit Details
                 </Button>
+                {draftSaveStatus === 'saving' && (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+                  </span>
+                )}
+                {draftSaveStatus === 'saved' && (
+                  <span className="text-xs text-green-600">Saved</span>
+                )}
+                {draftSaveStatus === 'error' && (
+                  <span className="text-xs text-red-600">Save failed</span>
+                )}
+                {/* Save button — always visible */}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (isEditMode && editingPlan?.status !== 'draft') {
+                      // Editing an active/published plan → update it
+                      if (!latestMealDataRef.current) { toast.error('No meal data to save.'); return; }
+                      const { meals, mealTypes } = latestMealDataRef.current;
+                      handleUpdatePlan(meals, mealTypes);
+                    } else {
+                      // New plan or editing a draft → save as draft
+                      handleManualDraftSave();
+                    }
+                  }}
+                  disabled={saving || draftSaveStatus === 'saving'}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </Button>
+                {/* Publish button — always visible */}
                 <Button
                   className="bg-green-600 hover:bg-green-700"
                   onClick={() => {
-                    // Get meals from DietPlanDashboard and save
-                    const mealsContainer = document.querySelector('[data-meals-container]');
-                    // For now, we'll use a ref or callback approach
-                    toast.info('Please use the Save button in the meal editor');
+                    if (!latestMealDataRef.current) {
+                      toast.error('No meal data to publish. Add meals first.');
+                      return;
+                    }
+                    const { meals, mealTypes } = latestMealDataRef.current;
+                    if (isEditMode && editingPlan?.status !== 'draft') {
+                      // Editing an active/published plan → update it
+                      handleUpdatePlan(meals, mealTypes);
+                    } else {
+                      // New plan or editing a draft → publish (make active)
+                      handlePublishPlan(meals, mealTypes);
+                    }
                   }}
                   disabled={saving}
                 >
                   {saving ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
+                      Publishing...
                     </>
                   ) : (
                     <>
                       <Check className="h-4 w-4 mr-2" />
-                      Publish Plan
+                      Publish
                     </>
                   )}
                 </Button>
@@ -2647,12 +2919,13 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
               startDate={isEditMode && editingPlan?.startDate ? format(new Date(editingPlan.startDate), 'yyyy-MM-dd') : startDate}
               initialMeals={isEditMode && editingPlan?.meals ? editingPlan.meals : initialMeals}
               initialMealTypes={isEditMode && editingPlan?.mealTypes ? editingPlan.mealTypes : initialMealTypes}
-              onSavePlan={isEditMode ? handleUpdatePlan : handleSavePlan}
               clientId={client._id}
               clientName={`${client.firstName} ${client.lastName}`}
               clientDietaryRestrictions={toCommaString(client.dietaryRestrictions)}
               clientMedicalConditions={toCommaString(client.medicalConditions)}
               clientAllergies={toCommaString(client.allergies)}
+              onMealDataChange={handleMealDataChange}
+              draftSaveStatus={draftSaveStatus}
             />
           </CardContent>
         </Card>
@@ -3448,10 +3721,7 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                     setInitialMealTypes(DEFAULT_MEAL_TYPES_LIST);
                     setSelectedTemplate(null);
                     setPlanKey(prev => prev + 1);
-                    // Clear any stale drafts
-                    try {
-                      localStorage.removeItem(`dietPlan_formDraft_${client._id}_new`);
-                    } catch (e) { }
+
                     // Set duration based on remaining days
                     if (paymentCheck.remainingDays > 0) {
                       setDuration(Math.min(paymentCheck.remainingDays, 30)); // Max 30 days at a time
@@ -3492,7 +3762,9 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                   key={plan._id}
                   className={`border rounded-lg p-4 transition-colors ${plan.status === 'active'
                     ? 'border-green-300 bg-green-50/50'
-                    : 'border-gray-200 hover:border-blue-300'
+                    : plan.status === 'draft'
+                      ? 'border-orange-300 bg-orange-50/50'
+                      : 'border-gray-200 hover:border-blue-300'
                     }`}
                 >
                   <div className="flex items-start justify-between">
@@ -3509,7 +3781,9 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                                 ? 'bg-blue-100 text-blue-800'
                                 : plan.status === 'paused'
                                   ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-800'
+                                  : plan.status === 'draft'
+                                    ? 'bg-orange-100 text-orange-800'
+                                    : 'bg-gray-100 text-gray-800'
                           }
                         >
                           {plan.status}
@@ -3593,6 +3867,41 @@ export default function PlanningSection({ client, viewOnly = false }: PlanningSe
                                   <Edit className="h-4 w-4" />
                                 </Button>
                               </>
+                            )}
+
+                            {/* Delete button — only for draft plans */}
+                            {plan.status === 'draft' && (
+                              <AlertDialog open={deletingPlanId === plan._id} onOpenChange={(open) => { if (!open) setDeletingPlanId(null); }}>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    title="Delete draft"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => setDeletingPlanId(plan._id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Draft?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will permanently delete the draft &quot;{plan.name}&quot;. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      className="bg-red-600 hover:bg-red-700"
+                                      onClick={() => handleDeleteDraft(plan._id)}
+                                      disabled={isDeleting}
+                                    >
+                                      {isDeleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...</> : 'Delete'}
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             )}
                           </>
                         );

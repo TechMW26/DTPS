@@ -5,6 +5,9 @@ import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { updateClientStatusFromMealPlan } from '@/lib/status/computeClientStatus';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
+import { logHistoryServer } from '@/lib/server/history';
+import { logActivity } from '@/lib/utils/activityLogger';
 
 // GET single meal plan by ID
 export async function GET(
@@ -136,8 +139,11 @@ export async function PUT(
     // Clear cached responses so subsequent GETs return fresh data
     clearCacheByTag('client_meal_plans');
 
+    // Detect if this is a publish action (draft → active)
+    const isPublishing = existingPlan.status === 'draft' && status === 'active';
+
     // Update client status if status or dates changed (could affect active status)
-    if (status || startDate || endDate) {
+    if ((status && status !== 'draft') || startDate || endDate) {
       try {
         const clientId = updatedPlan.clientId?.toString();
         if (clientId) {
@@ -146,13 +152,55 @@ export async function PUT(
         }
       } catch (statusError) {
         console.error('Failed to update client status:', statusError);
-        // Don't fail the request - meal plan was updated successfully
+      }
+    }
+
+    // When publishing (draft → active), send notification and log history
+    if (isPublishing) {
+      const clientId = updatedPlan.clientId?.toString();
+      const planName = updatedPlan.name || 'Diet Plan';
+
+      // Send push notification
+      try {
+        if (clientId) {
+          await sendNotificationToUser(clientId, {
+            title: '📋 New Meal Plan Assigned',
+            body: `You have a new meal plan: "${planName}". Check your plan now!`,
+            data: {
+              type: 'meal_plan',
+              mealPlanId: updatedPlan._id?.toString(),
+              url: '/my-plan'
+            }
+          });
+        }
+      } catch (notificationError) {
+        console.error('Failed to send meal plan notification:', notificationError);
+      }
+
+      // Log history
+      try {
+        if (clientId) {
+          await logHistoryServer({
+            userId: clientId,
+            action: 'assign',
+            category: 'diet',
+            description: `Meal plan published: ${planName}`,
+            performedById: session.user.id,
+            metadata: {
+              mealPlanId: updatedPlan._id,
+              name: planName,
+              status: 'active'
+            }
+          });
+        }
+      } catch (historyError) {
+        console.error('Failed to log history:', historyError);
       }
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Meal plan updated successfully',
+      message: isPublishing ? 'Meal plan published successfully' : 'Meal plan updated successfully',
       mealPlan: updatedPlan
     });
   } catch (error) {

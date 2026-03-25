@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,14 +24,23 @@ interface ProgressSectionProps {
   setActiveSection: (section: string) => void;
   setActiveTab: (tab: string) => void;
   formatDate: (date: string) => string;
+  onRegisterReset?: (fn: () => void) => void;
 }
 
 export default function ProgressSection({
   client,
   setActiveSection,
   setActiveTab,
-  formatDate
+  formatDate,
+  onRegisterReset
 }: ProgressSectionProps) {
+  // Register reset callback for floating back button
+  useEffect(() => {
+    if (onRegisterReset) {
+      onRegisterReset(() => { /* no internal nav state to reset */ });
+    }
+  }, [onRegisterReset]);
+
   if (!client) {
     return (
       <div className="mt-6">

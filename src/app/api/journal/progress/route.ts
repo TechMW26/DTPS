@@ -3,11 +3,66 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import JournalTracking from '@/lib/db/models/JournalTracking';
+import User from '@/lib/db/models/User';
+import LifestyleInfo from '@/lib/db/models/LifestyleInfo';
 import { format } from 'date-fns';
 import { UserRole } from '@/types';
 import mongoose from 'mongoose';
 import { logHistoryServer } from '@/lib/server/history';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+
+// BMI calculation: weight(kg) / (height(m))^2
+function calcBMI(weightKg: number, heightCm: number): number {
+  if (heightCm <= 0 || weightKg <= 0) return 0;
+  const hm = heightCm / 100;
+  return parseFloat((weightKg / (hm * hm)).toFixed(1));
+}
+
+// BMR calculation (Mifflin-St Jeor): 
+//   Male:   10*weight + 6.25*heightCm - 5*age + 5
+//   Female: 10*weight + 6.25*heightCm - 5*age - 161
+function calcBMR(weightKg: number, heightCm: number, age: number, gender: string): number {
+  if (heightCm <= 0 || weightKg <= 0 || age <= 0) return 0;
+  const base = 10 * weightKg + 6.25 * heightCm - 5 * age;
+  return parseFloat((gender === 'female' ? base - 161 : base + 5).toFixed(0));
+}
+
+// Convert feet/inches to cm
+function feetInchToCm(feet: string | number, inches: string | number): number {
+  const f = parseFloat(String(feet)) || 0;
+  const i = parseFloat(String(inches)) || 0;
+  return (f * 12 + i) * 2.54;
+}
+
+// Get age from DOB
+function getAge(dob: Date | string | null): number {
+  if (!dob) return 0;
+  const birth = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age > 0 ? age : 0;
+}
+
+// Fetch client profile data (height, gender, age, starting weight)
+async function getClientProfile(clientObjectId: mongoose.Types.ObjectId) {
+  const [user, lifestyle] = await Promise.all([
+    User.findById(clientObjectId).select('heightFeet heightInch heightCm weightKg weight gender dateOfBirth activityLevel').lean(),
+    LifestyleInfo.findOne({ userId: clientObjectId }).select('heightFeet heightInch heightCm weightKg activityLevel').lean()
+  ]);
+
+  // Merge: prefer LifestyleInfo for measurements, User for demographics
+  const heightFeet = lifestyle?.heightFeet || user?.heightFeet || '0';
+  const heightInch = lifestyle?.heightInch || user?.heightInch || '0';
+  const heightCm = lifestyle?.heightCm ? parseFloat(lifestyle.heightCm) : (user?.heightCm ? parseFloat(user.heightCm as string) : feetInchToCm(heightFeet, heightInch));
+  const weightKg = lifestyle?.weightKg ? parseFloat(lifestyle.weightKg) : (user?.weightKg ? parseFloat(user.weightKg as string) : (user?.weight || 0));
+  const gender = user?.gender || '';
+  const age = getAge(user?.dateOfBirth || null);
+  const activityLevel = lifestyle?.activityLevel || user?.activityLevel || '';
+
+  return { heightCm, weightKg, gender, age, activityLevel, heightFeet, heightInch };
+}
 
 // Helper to check if user has permission to access client data
 const checkPermission = (session: any, clientId?: string): boolean => {
@@ -46,30 +101,27 @@ export async function GET(request: NextRequest) {
     // Convert clientId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(clientId);
 
-    // Build query - filter by date if provided
-    const query: any = {
-      client: clientObjectId,
-      'progress.0': { $exists: true }
-    };
+    // Fetch client profile and journal entries in parallel
+    const [allJournals, clientProfile] = await Promise.all([
+      withCache(
+        `journal:progress:all:${clientId}`,
+        async () => await JournalTracking.find({
+          client: clientObjectId,
+          'progress.0': { $exists: true }
+        }).sort({ date: -1 }),
+        { ttl: 120000, tags: ['journal'] }
+      ),
+      getClientProfile(clientObjectId)
+    ]);
 
-    if (dateParam) {
-      const filterDate = new Date(dateParam);
-      filterDate.setHours(0, 0, 0, 0);
-      const nextDay = new Date(filterDate);
-      nextDay.setDate(nextDay.getDate() + 1);
-      query.date = { $gte: filterDate, $lt: nextDay };
-    }
-
-    // Get journal entries for this client with progress data
-    const journals = await withCache(
-      `journal:progress:${JSON.stringify(query)}`,
-      async () => await JournalTracking.find(query).sort({ date: -1 }),
-      { ttl: 120000, tags: ['journal'] }
-    );
+    // Pre-compute profile-based metrics for seeding
+    const profileWeight = clientProfile.weightKg;
+    const profileBmi = calcBMI(profileWeight, clientProfile.heightCm);
+    const profileBmr = calcBMR(profileWeight, clientProfile.heightCm, clientProfile.age, clientProfile.gender);
 
     // Flatten all progress entries with their dates
     const allProgress: any[] = [];
-    journals.forEach(journal => {
+    allJournals.forEach(journal => {
       journal.progress.forEach((entry: any) => {
         allProgress.push({
           ...entry.toObject(),
@@ -82,6 +134,7 @@ export async function GET(request: NextRequest) {
     allProgress.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // Calculate started with (first entry) and currently at (latest entry)
+    // If no entries exist, use client profile data as starting point
     const sortedByDateAsc = [...allProgress].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     const startedWith = sortedByDateAsc.length > 0 ? {
@@ -89,14 +142,24 @@ export async function GET(request: NextRequest) {
       bmr: sortedByDateAsc[0].bmr,
       bmi: sortedByDateAsc[0].bmi,
       bodyFat: sortedByDateAsc[0].bodyFat
-    } : { weight: 0, bmr: 0, bmi: 0, bodyFat: 0 };
+    } : {
+      weight: profileWeight,
+      bmr: profileBmr,
+      bmi: profileBmi,
+      bodyFat: 0
+    };
 
     const currentlyAt = allProgress.length > 0 ? {
       weight: allProgress[0].weight,
       bmr: allProgress[0].bmr,
       bmi: allProgress[0].bmi,
       bodyFat: allProgress[0].bodyFat
-    } : { weight: 0, bmr: 0, bmi: 0, bodyFat: 0 };
+    } : {
+      weight: profileWeight,
+      bmr: profileBmr,
+      bmi: profileBmi,
+      bodyFat: 0
+    };
 
     const difference = {
       weight: currentlyAt.weight - startedWith.weight,
@@ -113,6 +176,13 @@ export async function GET(request: NextRequest) {
         currentlyAt,
         difference,
         totalEntries: allProgress.length
+      },
+      clientProfile: {
+        heightCm: clientProfile.heightCm,
+        weightKg: clientProfile.weightKg,
+        gender: clientProfile.gender,
+        age: clientProfile.age,
+        activityLevel: clientProfile.activityLevel
       }
     });
 
@@ -149,6 +219,19 @@ export async function POST(request: NextRequest) {
     // Convert userId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(userId);
 
+    // Auto-calculate BMI and BMR if weight provided but they aren't
+    let finalBmi = bmi || 0;
+    let finalBmr = bmr || 0;
+    const finalWeight = weight || 0;
+
+    if (finalWeight > 0 && (!finalBmi || !finalBmr)) {
+      const profile = await getClientProfile(clientObjectId);
+      if (profile.heightCm > 0) {
+        if (!finalBmi) finalBmi = calcBMI(finalWeight, profile.heightCm);
+        if (!finalBmr) finalBmr = calcBMR(finalWeight, profile.heightCm, profile.age, profile.gender);
+      }
+    }
+
     // Find or create journal entry for this date
     let journal = await JournalTracking.findOne({
       client: clientObjectId,
@@ -177,9 +260,9 @@ export async function POST(request: NextRequest) {
 
     // Add new progress entry
     const newProgress = {
-      weight: weight || 0,
-      bmi: bmi || 0,
-      bmr: bmr || 0,
+      weight: finalWeight,
+      bmi: finalBmi,
+      bmr: finalBmr,
       bodyFat: bodyFat || 0,
       dietPlan: dietPlan || '',
       notes: notes || '',
@@ -195,13 +278,13 @@ export async function POST(request: NextRequest) {
       userId: userId,
       action: 'create',
       category: 'journal',
-      description: `Progress logged: Weight ${weight || 0}kg, BMI ${bmi || 0}`,
+      description: `Progress logged: Weight ${finalWeight || 0}kg, BMI ${finalBmi || 0}`,
       performedById: session.user.id,
       metadata: {
         entryType: 'progress',
-        weight: weight || 0,
-        bmi: bmi || 0,
-        bmr: bmr || 0,
+        weight: finalWeight || 0,
+        bmi: finalBmi || 0,
+        bmr: finalBmr || 0,
         bodyFat: bodyFat || 0,
         date: format(progressDate, 'yyyy-MM-dd')
       }

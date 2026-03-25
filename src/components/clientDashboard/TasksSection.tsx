@@ -52,13 +52,15 @@ interface TasksSectionProps {
   clientName: string;
   dietitianEmail?: string;
   userRole?: 'dietitian' | 'health_counselor' | 'admin';
+  onRegisterReset?: (fn: () => void) => void;
 }
 
 export default function TasksSection({
   clientId,
   clientName,
   dietitianEmail,
-  userRole = 'dietitian'
+  userRole = 'dietitian',
+  onRegisterReset
 }: TasksSectionProps) {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -132,6 +134,19 @@ export default function TasksSection({
     fetchTasks();
     fetchAvailableTags();
   }, [fetchTasks, fetchAvailableTags]);
+
+  // Register reset callback for floating back button
+  useEffect(() => {
+    if (onRegisterReset) {
+      onRegisterReset(() => {
+        setIsDialogOpen(false);
+        setIsDetailModalOpen(false);
+        setSelectedTask(null);
+        setFilteredStatus('all');
+        fetchTasks();
+      });
+    }
+  }, [onRegisterReset]);
 
   // Subscribe to real-time tag updates
   useDataRefresh(DataEventTypes.TAGS_UPDATED, fetchAvailableTags, [fetchAvailableTags]);

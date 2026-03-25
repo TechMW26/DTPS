@@ -30,6 +30,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { format, addDays, subDays } from 'date-fns';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ActivitySection from './ActivitySection';
 import CaloriesSection from './CaloriesSection';
 import StepsSection from './StepsSection';
@@ -42,9 +43,10 @@ type ProgressSubTabType = 'progress' | 'bca' | 'measurements' | 'analytical';
 
 interface JournalSectionProps {
   clientId: string;
+  onRegisterReset?: (fn: () => void) => void;
 }
 
-export default function JournalSection({ clientId }: JournalSectionProps) {
+export default function JournalSection({ clientId, onRegisterReset }: JournalSectionProps) {
   const { data: session } = useSession();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [activeMainTab, setActiveMainTab] = useState<MainTabType>('daily');
@@ -53,6 +55,18 @@ export default function JournalSection({ clientId }: JournalSectionProps) {
   
   // Check if the current user is the client themselves (not a dietitian viewing client data)
   const isClient = session?.user?.id === clientId;
+
+  // Register reset callback for floating back button
+  useEffect(() => {
+    if (onRegisterReset) {
+      onRegisterReset(() => {
+        setActiveMainTab('daily');
+        setActiveTab('activity');
+        setSelectedDate(new Date());
+        setCalendarOpen(false);
+      });
+    }
+  }, [onRegisterReset]);
 
   const tabs = [
     { id: 'activity' as TabType, label: 'Activity', icon: Activity, color: 'text-green-500' },
@@ -301,6 +315,7 @@ function ProgressTab({ showAddProgress, setShowAddProgress, clientId, selectedDa
   const [startedWith, setStartedWith] = useState({ weight: 0, bmr: 0, bmi: 0, bodyFat: 0 });
   const [currentlyAt, setCurrentlyAt] = useState({ weight: 0, bmr: 0, bmi: 0, bodyFat: 0 });
   const [difference, setDifference] = useState({ weight: 0, bmr: 0, bmi: 0, bodyFat: 0 });
+  const [clientProfile, setClientProfile] = useState<{ heightCm: number; weightKg: number; gender: string; age: number; activityLevel: string } | null>(null);
   const [newProgress, setNewProgress] = useState({
     weight: '',
     bmi: '',
@@ -314,14 +329,16 @@ function ProgressTab({ showAddProgress, setShowAddProgress, clientId, selectedDa
   const fetchProgress = async () => {
     try {
       setIsLoading(true);
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const res = await fetch(`/api/journal/progress?clientId=${clientId}&date=${dateStr}`);
+      const res = await fetch(`/api/journal/progress?clientId=${clientId}`);
       const data = await res.json();
       if (data.success) {
         setProgressHistory(data.progress);
         setStartedWith(data.summary.startedWith);
         setCurrentlyAt(data.summary.currentlyAt);
         setDifference(data.summary.difference);
+        if (data.clientProfile) {
+          setClientProfile(data.clientProfile);
+        }
       }
     } catch (error) {
       console.error('Error fetching progress:', error);
@@ -335,7 +352,29 @@ function ProgressTab({ showAddProgress, setShowAddProgress, clientId, selectedDa
     fetchProgress();
     // Update date in form when selectedDate changes
     setNewProgress(prev => ({ ...prev, date: format(selectedDate, 'yyyy-MM-dd') }));
-  }, [clientId, selectedDate]);
+  }, [clientId]);
+
+  // Keep the form date in sync with selectedDate
+  useEffect(() => {
+    setNewProgress(prev => ({ ...prev, date: format(selectedDate, 'yyyy-MM-dd') }));
+  }, [selectedDate]);
+
+  // Auto-calculate BMI and BMR when weight changes
+  useEffect(() => {
+    const weight = parseFloat(newProgress.weight);
+    if (!weight || weight <= 0 || !clientProfile) return;
+    const { heightCm, age, gender } = clientProfile;
+    if (heightCm > 0) {
+      const hm = heightCm / 100;
+      const bmi = weight / (hm * hm);
+      setNewProgress(prev => ({ ...prev, bmi: bmi.toFixed(1) }));
+    }
+    if (heightCm > 0 && age > 0) {
+      const base = 10 * weight + 6.25 * heightCm - 5 * age;
+      const bmr = gender === 'female' ? base - 161 : base + 5;
+      setNewProgress(prev => ({ ...prev, bmr: bmr.toFixed(0) }));
+    }
+  }, [newProgress.weight, clientProfile]);
 
   const handleAddProgress = async () => {
     try {
@@ -424,23 +463,27 @@ function ProgressTab({ showAddProgress, setShowAddProgress, clientId, selectedDa
               />
             </div>
             <div>
-              <Label>BMI</Label>
+              <Label>BMI {clientProfile?.heightCm ? <span className="text-xs text-gray-400">(auto)</span> : null}</Label>
               <Input
                 type="number"
                 step="0.1"
                 placeholder="0.0"
                 value={newProgress.bmi}
                 onChange={(e) => setNewProgress({ ...newProgress, bmi: e.target.value })}
+                className={clientProfile?.heightCm && newProgress.weight ? 'bg-gray-50' : ''}
+                readOnly={!!(clientProfile?.heightCm && newProgress.weight)}
               />
             </div>
             <div>
-              <Label>BMR (cal)</Label>
+              <Label>BMR (cal) {clientProfile?.heightCm ? <span className="text-xs text-gray-400">(auto)</span> : null}</Label>
               <Input
                 type="number"
                 step="0.1"
                 placeholder="0.0"
                 value={newProgress.bmr}
                 onChange={(e) => setNewProgress({ ...newProgress, bmr: e.target.value })}
+                className={clientProfile?.heightCm && newProgress.weight ? 'bg-gray-50' : ''}
+                readOnly={!!(clientProfile?.heightCm && newProgress.weight)}
               />
             </div>
             <div>
@@ -582,6 +625,87 @@ function ProgressTab({ showAddProgress, setShowAddProgress, clientId, selectedDa
         </Card>
       </div>
 
+      {/* Progress Trend Charts */}
+      {progressHistory.length >= 2 && (() => {
+        const chartData = [...progressHistory]
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .map(entry => ({
+            date: format(new Date(entry.date), 'MMM d'),
+            weight: entry.weight || 0,
+            bmi: entry.bmi || 0,
+            bmr: entry.bmr || 0,
+            bodyFat: entry.bodyFat || 0,
+          }));
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Weight Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Weight (kg)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="weight" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} name="Weight" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* BMI Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">BMI</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="bmi" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} name="BMI" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* BMR Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">BMR (cal)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="bmr" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name="BMR" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Body Fat Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Body Fat (%)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="bodyFat" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} name="Body Fat" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
+
       {/* Progress History */}
       <div className="w-full">
         <div className="flex items-center justify-between mb-4">
@@ -674,8 +798,7 @@ function BCATab({ clientId, selectedDate }: { clientId: string; selectedDate: Da
   const fetchBCA = async () => {
     try {
       setIsLoading(true);
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const res = await fetch(`/api/journal/bca?clientId=${clientId}&date=${dateStr}`);
+      const res = await fetch(`/api/journal/bca?clientId=${clientId}`);
       const data = await res.json();
       if (data.success) {
         setBcaHistory(data.bca || []);
@@ -717,9 +840,12 @@ function BCATab({ clientId, selectedDate }: { clientId: string; selectedDate: Da
 
   useEffect(() => {
     fetchBCA();
+  }, [clientId]);
+
+  useEffect(() => {
     // Update date in form when selectedDate changes
     setFormData(prev => ({ ...prev, measurementDate: format(selectedDate, 'yyyy-MM-dd') }));
-  }, [clientId, selectedDate]);
+  }, [selectedDate]);
 
   // Auto-calculate BMI when height and weight change
   useEffect(() => {
@@ -738,8 +864,8 @@ function BCATab({ clientId, selectedDate }: { clientId: string; selectedDate: Da
   };
 
   const handleSubmit = async () => {
-    if (!formData.height || !formData.weight) {
-      toast.error('Height and Weight are required');
+    if (!formData.weight) {
+      toast.error('Weight is required');
       return;
     }
 
@@ -834,7 +960,7 @@ function BCATab({ clientId, selectedDate }: { clientId: string; selectedDate: Da
         <h3 className="font-medium text-gray-700 mb-3">BASIC INFO</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <Label className="text-sm text-gray-600">Height (inches) <span className="text-red-500">*</span></Label>
+            <Label className="text-sm text-gray-600">Height (inches) <span className="text-xs text-gray-400">(auto from profile)</span></Label>
             <Input 
               type="number" 
               placeholder="0.0" 
@@ -959,6 +1085,121 @@ function BCATab({ clientId, selectedDate }: { clientId: string; selectedDate: Da
         </Button>
       </div>
 
+      {/* BCA Trend Charts */}
+      {bcaHistory.length >= 2 && (() => {
+        const chartData = [...bcaHistory]
+          .sort((a, b) => new Date(a.measurementDate).getTime() - new Date(b.measurementDate).getTime())
+          .map(entry => ({
+            date: format(new Date(entry.measurementDate), 'MMM d'),
+            weight: entry.weight || 0,
+            bmi: entry.bmi || 0,
+            fatPercentage: entry.fatPercentage || 0,
+            visceralFat: entry.visceralFat || 0,
+            restingMetabolism: entry.restingMetabolism || 0,
+            totalSkeletalMuscle: entry.totalSkeletalMuscle || 0,
+          }));
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            {/* Weight Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Weight (kg)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="weight" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} name="Weight" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Fat % Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Fat %</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="fatPercentage" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} name="Fat %" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* BMI Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">BMI</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="bmi" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} name="BMI" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Visceral Fat Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Visceral Fat</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="visceralFat" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name="Visceral Fat" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Resting Metabolism Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Resting Metabolism (cal)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="restingMetabolism" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} name="Resting Metabolism" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Skeletal Muscle Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Skeletal Muscle (%)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="totalSkeletalMuscle" stroke="#ec4899" strokeWidth={2} dot={{ r: 3 }} name="Skeletal Muscle" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
+
       {/* BCA History */}
       {bcaHistory.length > 0 && (
         <div className="mt-6">
@@ -1013,8 +1254,7 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
   const fetchMeasurements = async () => {
     try {
       setIsLoading(true);
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const res = await fetch(`/api/journal/measurements?clientId=${clientId}&date=${dateStr}`);
+      const res = await fetch(`/api/journal/measurements?clientId=${clientId}`);
       const data = await res.json();
       if (data.success) {
         setMeasurementHistory(data.measurements || []);
@@ -1034,7 +1274,12 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
     fetchMeasurements();
     // Update date in form when selectedDate changes
     setNewMeasurement(prev => ({ ...prev, date: format(selectedDate, 'yyyy-MM-dd') }));
-  }, [clientId, selectedDate]);
+  }, [clientId]);
+
+  // Keep the form date in sync with selectedDate
+  useEffect(() => {
+    setNewMeasurement(prev => ({ ...prev, date: format(selectedDate, 'yyyy-MM-dd') }));
+  }, [selectedDate]);
 
   const handleAddMeasurement = async () => {
     try {
@@ -1334,6 +1579,121 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
           </CardContent>
         </Card>
       </div>
+
+      {/* Measurement Trend Charts */}
+      {measurementHistory.length >= 2 && (() => {
+        const chartData = [...measurementHistory]
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .map(entry => ({
+            date: format(new Date(entry.date), 'MMM d'),
+            arm: entry.arm || 0,
+            waist: entry.waist || 0,
+            abd: entry.abd || 0,
+            chest: entry.chest || 0,
+            hips: entry.hips || 0,
+            thigh: entry.thigh || 0,
+          }));
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Waist Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Waist (cm)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="waist" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} name="Waist" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Abdomen Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Abdomen (cm)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="abd" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name="Abdomen" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Chest Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Chest (cm)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="chest" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} name="Chest" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Arm Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Arm (cm)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="arm" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} name="Arm" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Hips Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Hips (cm)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="hips" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} name="Hips" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Thigh Chart */}
+            <Card>
+              <CardContent className="pt-4 pb-2">
+                <h4 className="text-sm font-medium text-gray-600 mb-3">Thigh (cm)</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="thigh" stroke="#ec4899" strokeWidth={2} dot={{ r: 3 }} name="Thigh" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* Measurement History */}
       <div className="w-full">

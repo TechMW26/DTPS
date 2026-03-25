@@ -66,9 +66,11 @@ export interface PaymentItem {
 export default function PaymentsSection({
   client,
   formatDate,
+  onRegisterReset,
 }: {
   client?: any;
   formatDate?: (dateString?: string) => string;
+  onRegisterReset?: (fn: () => void) => void;
 }) {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
@@ -628,6 +630,16 @@ export default function PaymentsSection({
   useEffect(() => {
     fetchClientPurchases();
   }, [fetchClientPurchases]);
+
+  // Register reset callback for floating back button
+  useEffect(() => {
+    if (onRegisterReset) {
+      onRegisterReset(() => {
+        fetchPaymentLinks();
+        fetchClientPurchases();
+      });
+    }
+  }, [onRegisterReset]);
 
   // Helper function to check if a purchase/plan ends within X days
   const isPlanEndingWithinDays = (purchase: any, days: number): boolean => {
