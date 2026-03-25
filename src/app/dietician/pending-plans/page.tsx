@@ -8,6 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Users,
   AlertTriangle,
   CheckCircle,
@@ -15,7 +22,11 @@ import {
   Phone,
   Loader2,
   Search,
-  RefreshCw
+  RefreshCw,
+  Filter,
+  X,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -68,6 +79,28 @@ export default function PendingPlansPage() {
   const [highCount, setHighCount] = useState(0);
   const [mediumCount, setMediumCount] = useState(0);
 
+  // Filter state
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [urgencyFilter, setUrgencyFilter] = useState('');
+  const [reasonFilter, setReasonFilter] = useState('');
+  const [planNameFilter, setPlanNameFilter] = useState('');
+  const [remainingDaysFilter, setRemainingDaysFilter] = useState('');
+  const [pendingDaysFilter, setPendingDaysFilter] = useState('');
+  const [planDateFrom, setPlanDateFrom] = useState('');
+  const [planDateTo, setPlanDateTo] = useState('');
+
+  const activeFilterCount = [urgencyFilter, reasonFilter, planNameFilter, remainingDaysFilter, pendingDaysFilter, planDateFrom, planDateTo].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setUrgencyFilter('');
+    setReasonFilter('');
+    setPlanNameFilter('');
+    setRemainingDaysFilter('');
+    setPendingDaysFilter('');
+    setPlanDateFrom('');
+    setPlanDateTo('');
+  };
+
   // Fetch pending plans
   const fetchPendingPlans = async () => {
     setLoading(true);
@@ -106,12 +139,67 @@ export default function PendingPlansPage() {
     fetchPendingPlans();
   }, []);
 
-  // Filter plans based on search
-  const filteredPlans = pendingPlans.filter(plan => 
-    plan.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    plan.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    plan.phone.includes(searchQuery)
-  );
+  // Filter plans based on search + filters
+  const filteredPlans = pendingPlans.filter(plan => {
+    // Text search
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = plan.clientName.toLowerCase().includes(q) ||
+        plan.email.toLowerCase().includes(q) ||
+        plan.phone.includes(searchQuery);
+      if (!matchesSearch) return false;
+    }
+
+    // Urgency filter
+    if (urgencyFilter && plan.urgency !== urgencyFilter) return false;
+
+    // Reason filter
+    if (reasonFilter && plan.reason !== reasonFilter) return false;
+
+    // Plan name filter
+    if (planNameFilter) {
+      const pn = planNameFilter.toLowerCase();
+      const matchesPlan =
+        (plan.currentPlanName?.toLowerCase().includes(pn)) ||
+        (plan.purchasedPlanName?.toLowerCase().includes(pn)) ||
+        (plan.previousPlanName?.toLowerCase().includes(pn)) ||
+        (plan.upcomingPlanName?.toLowerCase().includes(pn));
+      if (!matchesPlan) return false;
+    }
+
+    // Remaining days filter
+    if (remainingDaysFilter) {
+      const d = plan.currentPlanRemainingDays;
+      if (remainingDaysFilter === 'expired' && d > 0) return false;
+      if (remainingDaysFilter === '0-3' && (d < 0 || d > 3)) return false;
+      if (remainingDaysFilter === '4+' && d < 4) return false;
+    }
+
+    // Pending days filter
+    if (pendingDaysFilter) {
+      const pd = plan.pendingDaysToCreate;
+      if (pendingDaysFilter === 'high' && pd <= 14) return false;
+      if (pendingDaysFilter === 'medium' && (pd <= 7 || pd > 14)) return false;
+      if (pendingDaysFilter === 'low' && pd > 7) return false;
+    }
+
+    // Plan date range filter
+    if (planDateFrom) {
+      const from = new Date(planDateFrom);
+      const planStart = plan.currentPlanStartDate ? new Date(plan.currentPlanStartDate) :
+        plan.upcomingPlanStartDate ? new Date(plan.upcomingPlanStartDate) : null;
+      if (!planStart || planStart < from) return false;
+    }
+    if (planDateTo) {
+      const to = new Date(planDateTo);
+      to.setHours(23, 59, 59, 999);
+      const planEnd = plan.currentPlanEndDate ? new Date(plan.currentPlanEndDate) :
+        plan.upcomingPlanEndDate ? new Date(plan.upcomingPlanEndDate) : null;
+      if (!planEnd || planEnd > to) return false;
+    }
+
+    return true;
+  });
 
   if (loading) {
     return (
@@ -128,7 +216,7 @@ export default function PendingPlansPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -155,7 +243,7 @@ export default function PendingPlansPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Card className="border-red-200 bg-red-50">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -202,20 +290,132 @@ export default function PendingPlansPage() {
           </Card>
         </div>
 
-        {/* Search */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search clients by name or email..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-          </CardContent>
-        </Card>
+        {/* Search + Filter Toggle */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search clients by name or email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 h-10"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant={filtersOpen ? 'default' : 'outline'}
+            onClick={() => setFiltersOpen(!filtersOpen)}
+            className="h-10 gap-1.5 shrink-0"
+          >
+            <Filter className="h-4 w-4" />
+            Filters
+            {activeFilterCount > 0 && (
+              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1 flex items-center justify-center text-xs rounded-full">
+                {activeFilterCount}
+              </Badge>
+            )}
+            {filtersOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </Button>
+          {activeFilterCount > 0 && (
+            <Button size="sm" variant="ghost" onClick={clearFilters} className="h-10 text-red-600 hover:text-red-700 gap-1 shrink-0">
+              <X className="h-3.5 w-3.5" /> Clear
+            </Button>
+          )}
+        </div>
+
+        {/* Advanced Filters Panel */}
+        {filtersOpen && (
+          <Card className="border-gray-200">
+            <CardContent className="px-4 py-3 space-y-3">
+              {/* Row 1 */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-500">Urgency</label>
+                  <Select value={urgencyFilter} onValueChange={(v) => setUrgencyFilter(v === '_all' ? '' : v)}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all">All</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
+                      <SelectItem value="high">High Priority</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-500">Reason</label>
+                  <Select value={reasonFilter} onValueChange={(v) => setReasonFilter(v === '_all' ? '' : v)}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all">All</SelectItem>
+                      <SelectItem value="no_meal_plan">No Meal Plan</SelectItem>
+                      <SelectItem value="current_ending_soon">Ending Soon</SelectItem>
+                      <SelectItem value="phase_gap">Phase Gap</SelectItem>
+                      <SelectItem value="upcoming_with_pending">Upcoming Pending</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-500">Remaining Days</label>
+                  <Select value={remainingDaysFilter} onValueChange={(v) => setRemainingDaysFilter(v === '_all' ? '' : v)}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Any" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all">Any</SelectItem>
+                      <SelectItem value="expired">Expired</SelectItem>
+                      <SelectItem value="0-3">0–3 days</SelectItem>
+                      <SelectItem value="4+">4+ days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-500">Pending Meal Days</label>
+                  <Select value={pendingDaysFilter} onValueChange={(v) => setPendingDaysFilter(v === '_all' ? '' : v)}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Any" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all">Any</SelectItem>
+                      <SelectItem value="high">High (14+)</SelectItem>
+                      <SelectItem value="medium">Medium (8–14)</SelectItem>
+                      <SelectItem value="low">Low (1–7)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Row 2 */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-2">
+                <div className="col-span-2 md:col-span-1 space-y-1">
+                  <label className="text-xs font-medium text-gray-500">Plan Name</label>
+                  <Input className="h-8 text-sm" placeholder="Search plan..." value={planNameFilter} onChange={(e) => setPlanNameFilter(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-500">Plan Start From</label>
+                  <Input type="date" className="h-8 text-sm" value={planDateFrom} onChange={(e) => setPlanDateFrom(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-500">Plan End To</label>
+                  <Input type="date" className="h-8 text-sm" value={planDateTo} onChange={(e) => setPlanDateTo(e.target.value)} />
+                </div>
+                <div className="flex items-end">
+                  <div className="flex items-center gap-2 w-full">
+                    <Button size="sm" variant="outline" onClick={clearFilters} className="h-8 text-xs">
+                      Reset
+                    </Button>
+                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                      {filteredPlans.length} / {pendingPlans.length}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Pending Plans - Responsive */}
         {filteredPlans.length === 0 ? (
@@ -223,10 +423,10 @@ export default function PendingPlansPage() {
             <CardContent className="text-center py-12">
               <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-700">
-                {searchQuery ? 'No Results Found' : 'No Pending Plans Available'}
+                {searchQuery || activeFilterCount > 0 ? 'No Results Found' : 'No Pending Plans Available'}
               </h3>
               <p className="text-gray-500 mt-2">
-                {searchQuery ? 'No clients match your search criteria.' : 'No pending plans available.'}
+                {searchQuery || activeFilterCount > 0 ? 'No clients match your search or filter criteria.' : 'No pending plans available.'}
               </p>
             </CardContent>
           </Card>

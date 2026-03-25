@@ -5,6 +5,7 @@ import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
+import Message from '@/lib/db/models/Message';
 import { UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
@@ -108,8 +109,82 @@ export async function GET(request: NextRequest) {
     }
     // Admin (without viewAs) can see all clients (no additional filter needed)
 
-    // Support plan name search - find client IDs from payments/meal plans matching plan name
+    // ── Parse all filter params ──
+    const primaryDietitian = searchParams.get('primaryDietitian') || '';
+    const secondaryDietitian = searchParams.get('secondaryDietitian') || '';
+    const tagId = searchParams.get('tagId') || '';
+    const dtAssignedFrom = searchParams.get('dtAssignedFrom') || '';
+    const dtAssignedTo = searchParams.get('dtAssignedTo') || '';
+    const hcAssignedFrom = searchParams.get('hcAssignedFrom') || '';
+    const hcAssignedTo = searchParams.get('hcAssignedTo') || '';
     const planNameSearch = searchParams.get('planName') || '';
+    const planDuration = searchParams.get('planDuration') || ''; // 'ongoing' or 'dateRange'
+    const planDurationFrom = searchParams.get('planDurationFrom') || '';
+    const planDurationTo = searchParams.get('planDurationTo') || '';
+    const planStatus = searchParams.get('planStatus') || ''; // draft|active|completed|paused|cancelled
+    const planShared = searchParams.get('planShared') || ''; // 'yes' or 'no'
+    const lastActivityHCFrom = searchParams.get('lastActivityHCFrom') || '';
+    const lastActivityHCTo = searchParams.get('lastActivityHCTo') || '';
+    const lastActivityDTFrom = searchParams.get('lastActivityDTFrom') || '';
+    const lastActivityDTTo = searchParams.get('lastActivityDTTo') || '';
+
+    // ── Apply user-level filters ──
+    if (primaryDietitian && mongoose.Types.ObjectId.isValid(primaryDietitian)) {
+      query.assignedDietitian = new mongoose.Types.ObjectId(primaryDietitian);
+    }
+    if (secondaryDietitian && mongoose.Types.ObjectId.isValid(secondaryDietitian)) {
+      query.assignedDietitians = new mongoose.Types.ObjectId(secondaryDietitian);
+    }
+    if (tagId && mongoose.Types.ObjectId.isValid(tagId)) {
+      query.tags = new mongoose.Types.ObjectId(tagId);
+    }
+
+    // ── Collect client IDs from cross-collection filters ──
+    // We'll intersect all cross-collection filter results
+    let crossFilterClientIds: mongoose.Types.ObjectId[] | null = null;
+
+    const intersect = (current: mongoose.Types.ObjectId[] | null, ids: mongoose.Types.ObjectId[]): mongoose.Types.ObjectId[] => {
+      if (current === null) return ids;
+      const idSet = new Set(ids.map(id => id.toString()));
+      return current.filter(id => idSet.has(id.toString()));
+    };
+
+    // ── DT Assigned Date filter (clients created/assigned within date range) ──
+    if (dtAssignedFrom || dtAssignedTo) {
+      const dateQuery: any = {};
+      if (dtAssignedFrom) dateQuery.$gte = new Date(dtAssignedFrom);
+      if (dtAssignedTo) {
+        const toDate = new Date(dtAssignedTo);
+        toDate.setHours(23, 59, 59, 999);
+        dateQuery.$lte = toDate;
+      }
+      // Use createdAt as proxy for assignment date (when client was created/added)
+      const dtClients = await User.distinct('_id', {
+        role: UserRole.CLIENT,
+        assignedDietitian: { $exists: true, $ne: null },
+        createdAt: dateQuery,
+      });
+      crossFilterClientIds = intersect(crossFilterClientIds, dtClients);
+    }
+
+    // ── HC Assigned Date filter ──
+    if (hcAssignedFrom || hcAssignedTo) {
+      const dateQuery: any = {};
+      if (hcAssignedFrom) dateQuery.$gte = new Date(hcAssignedFrom);
+      if (hcAssignedTo) {
+        const toDate = new Date(hcAssignedTo);
+        toDate.setHours(23, 59, 59, 999);
+        dateQuery.$lte = toDate;
+      }
+      const hcClients = await User.distinct('_id', {
+        role: UserRole.CLIENT,
+        assignedHealthCounselor: { $exists: true, $ne: null },
+        createdAt: dateQuery,
+      });
+      crossFilterClientIds = intersect(crossFilterClientIds, hcClients);
+    }
+
+    // ── Plan Name filter ──
     let planNameClientIds: mongoose.Types.ObjectId[] = [];
     if (planNameSearch) {
       const [paymentClients, mealPlanClients] = await Promise.all([
@@ -117,14 +192,97 @@ export async function GET(request: NextRequest) {
         ClientMealPlan.distinct('clientId', { name: { $regex: planNameSearch, $options: 'i' } })
       ]);
       planNameClientIds = [...new Set([...paymentClients, ...mealPlanClients])];
-      if (planNameClientIds.length > 0) {
-        query._id = { $in: planNameClientIds };
-      } else {
-        // No matching plans, return empty
+      if (planNameClientIds.length === 0) {
         return NextResponse.json({
           clients: [],
           pagination: { page: 1, limit, total: 0, pages: 0 }
         });
+      }
+      crossFilterClientIds = intersect(crossFilterClientIds, planNameClientIds);
+    }
+
+    // ── Plan Duration filter ──
+    if (planDuration === 'ongoing') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const ongoingClients = await ClientMealPlan.distinct('clientId', {
+        status: 'active',
+        endDate: { $gte: today },
+      });
+      crossFilterClientIds = intersect(crossFilterClientIds, ongoingClients);
+    } else if (planDuration === 'dateRange' && (planDurationFrom || planDurationTo)) {
+      const dateMatch: any = {};
+      if (planDurationFrom) dateMatch.startDate = { $gte: new Date(planDurationFrom) };
+      if (planDurationTo) {
+        const toDate = new Date(planDurationTo);
+        toDate.setHours(23, 59, 59, 999);
+        dateMatch.endDate = { $lte: toDate };
+      }
+      const rangeClients = await ClientMealPlan.distinct('clientId', dateMatch);
+      crossFilterClientIds = intersect(crossFilterClientIds, rangeClients);
+    }
+
+    // ── Plan Status filter ──
+    if (planStatus) {
+      const statusClients = await ClientMealPlan.distinct('clientId', { status: planStatus });
+      crossFilterClientIds = intersect(crossFilterClientIds, statusClients);
+    }
+
+    // ── Plan Shared filter (shared = not draft) ──
+    if (planShared === 'yes') {
+      const sharedClients = await ClientMealPlan.distinct('clientId', { status: { $ne: 'draft' } });
+      crossFilterClientIds = intersect(crossFilterClientIds, sharedClients);
+    } else if (planShared === 'no') {
+      // Clients who only have draft plans OR no plans
+      const sharedClients = await ClientMealPlan.distinct('clientId', { status: { $ne: 'draft' } });
+      const sharedSet = new Set(sharedClients.map((id: any) => id.toString()));
+      const allPlanClients = await ClientMealPlan.distinct('clientId');
+      const draftOnlyClients = allPlanClients.filter((id: any) => !sharedSet.has(id.toString()));
+      crossFilterClientIds = intersect(crossFilterClientIds, draftOnlyClients);
+    }
+
+    // ── Last Activity by HC filter ──
+    if (lastActivityHCFrom || lastActivityHCTo) {
+      const hcStaffIds = await User.distinct('_id', { role: UserRole.HEALTH_COUNSELOR });
+      const msgDateQuery: any = { sender: { $in: hcStaffIds } };
+      if (lastActivityHCFrom) msgDateQuery.createdAt = { ...msgDateQuery.createdAt, $gte: new Date(lastActivityHCFrom) };
+      if (lastActivityHCTo) {
+        const toDate = new Date(lastActivityHCTo);
+        toDate.setHours(23, 59, 59, 999);
+        msgDateQuery.createdAt = { ...msgDateQuery.createdAt, $lte: toDate };
+      }
+      const hcActivityClients = await Message.distinct('receiver', msgDateQuery);
+      crossFilterClientIds = intersect(crossFilterClientIds, hcActivityClients);
+    }
+
+    // ── Last Activity by DT filter ──
+    if (lastActivityDTFrom || lastActivityDTTo) {
+      const dtStaffIds = await User.distinct('_id', { role: UserRole.DIETITIAN });
+      const msgDateQuery: any = { sender: { $in: dtStaffIds } };
+      if (lastActivityDTFrom) msgDateQuery.createdAt = { ...msgDateQuery.createdAt, $gte: new Date(lastActivityDTFrom) };
+      if (lastActivityDTTo) {
+        const toDate = new Date(lastActivityDTTo);
+        toDate.setHours(23, 59, 59, 999);
+        msgDateQuery.createdAt = { ...msgDateQuery.createdAt, $lte: toDate };
+      }
+      const dtActivityClients = await Message.distinct('receiver', msgDateQuery);
+      crossFilterClientIds = intersect(crossFilterClientIds, dtActivityClients);
+    }
+
+    // ── Apply cross-collection filter IDs to main query ──
+    if (crossFilterClientIds !== null) {
+      if (crossFilterClientIds.length === 0) {
+        return NextResponse.json({
+          clients: [],
+          pagination: { page: 1, limit, total: 0, pages: 0 }
+        });
+      }
+      if (query._id?.$in) {
+        // Intersect with existing _id filter
+        const existing = new Set(query._id.$in.map((id: any) => id.toString()));
+        query._id.$in = crossFilterClientIds.filter(id => existing.has(id.toString()));
+      } else {
+        query._id = { $in: crossFilterClientIds };
       }
     }
 
@@ -181,8 +339,8 @@ export async function GET(request: NextRequest) {
         if (statusFilter) {
           andConditions.push({ clientStatus: statusFilter });
         }
-        if (planNameClientIds.length > 0) {
-          andConditions.push({ _id: { $in: planNameClientIds } });
+        if (query._id) {
+          andConditions.push({ _id: query._id });
         }
         query = {
           role: UserRole.CLIENT,
