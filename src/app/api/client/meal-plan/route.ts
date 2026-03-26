@@ -238,7 +238,9 @@ function calculateMealCalories(meal: any): number {
   const foods = meal.foods || meal.items || meal.foodOptions || [];
   if (!Array.isArray(foods)) return 0;
 
-  return foods.reduce((sum: number, food: any) => {
+  // Only count main foods — exclude alternatives (client eats one OR the other, not both)
+  const mainFoods = foods.filter((f: any) => !f.isAlternative);
+  return mainFoods.reduce((sum: number, food: any) => {
     const cal = Number(food.calories) || Number(food.cal) || 0;
     return sum + cal;
   }, 0);
@@ -252,7 +254,9 @@ function calculateMealMacros(meal: any): { calories: number; protein: number; ca
   const foods = meal.foods || meal.items || meal.foodOptions || [];
   if (!Array.isArray(foods)) return result;
 
-  for (const food of foods) {
+  // Only count main foods — exclude alternatives (client eats one OR the other, not both)
+  const mainFoods = foods.filter((f: any) => !f.isAlternative);
+  for (const food of mainFoods) {
     result.calories += Number(food.calories) || Number(food.cal) || 0;
     result.protein += Number(food.protein) || 0;
     result.carbs += Number(food.carbs) || 0;
