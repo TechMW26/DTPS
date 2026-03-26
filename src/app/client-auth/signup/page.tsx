@@ -1,433 +1,467 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { signIn, useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Eye,
-  EyeOff,
-  User,
-  Mail,
-  Lock,
-  Shield,
-  Gift,
-  ArrowLeft,
-  Leaf,
-  Phone
+    User,
+    Mail,
+    Phone
 } from 'lucide-react';
-import { z } from 'zod';
+import { Checkbox } from '@/components/ui/checkbox';
 import { COUNTRY_CODES } from '@/lib/constants/countries';
 
-// Client-specific signup schema with separate first and last name
-const clientSignUpSchema = z.object({
-  firstName: z.string().min(2, 'First name must be at least 2 characters'),
-  lastName: z.string().min(1, 'Last name is required'),
-  email: z.string().email('Please enter a valid email'),
-  phone: z.string().min(10, 'Phone number must be at least 10 digits'),
-  password: z.string().min(4, 'Password must be at least 4 characters'),
-  confirmPassword: z.string(),
-  referralCode: z.string().optional(),
-  agreeToTerms: z.boolean().refine(val => val === true, {
-    message: 'You must agree to the terms and conditions',
-  }),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ['confirmPassword'],
-});
-
-type ClientSignUpInput = z.infer<typeof clientSignUpSchema>;
-
 export default function ClientSignUpPage() {
-  const router = useRouter();
-  const { data: session, status } = useSession();
-  const [isLoading, setIsLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [countryCode, setCountryCode] = useState('+91');
-  const [mounted, setMounted] = useState(false);
+    const router = useRouter();
+    const { data: session, status } = useSession();
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [countryCode, setCountryCode] = useState('+91');
+    const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+    // Form fields
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
+    const [agreeToTerms, setAgreeToTerms] = useState(false);
 
-  // Redirect if already logged in
-  useEffect(() => {
-    if (status === 'authenticated' && session?.user) {
-      if (session.user.role === 'client') {
-        router.replace('/user');
-      } else if (session.user.role === 'admin') {
-        router.replace('/dashboard/admin');
-      } else if (session.user.role === 'dietitian') {
-        router.replace('/dashboard/dietitian');
-      } else if (session.user.role === 'health_counselor') {
-        router.replace('/health-counselor/clients');
-      }
-    }
-  }, [status, session, router]);
+    // OTP step
+    const [step, setStep] = useState<'details' | 'otp'>('details');
+    const [otp, setOtp] = useState(['', '', '', '']);
+    const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+    const [resendTimer, setResendTimer] = useState(0);
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<ClientSignUpInput>({
-    resolver: zodResolver(clientSignUpSchema),
-    defaultValues: {
-      agreeToTerms: false,
-    },
-  });
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
-  const agreeToTerms = watch('agreeToTerms');
-
-  const onSubmit = async (data: ClientSignUpInput) => {
-    setIsLoading(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      // Combine country code with phone number
-      const phoneWithCode = `${countryCode}${data.phone.replace(/\s+/g, '')}`;
-
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
-          phone: phoneWithCode,
-          password: data.password,
-          confirmPassword: data.confirmPassword,
-          referralCode: data.referralCode,
-          role: 'client', // Always set role as client
-          signupContext: 'client'
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Registration failed');
-      }
-
-      setSuccess('Account created successfully! Logging you in...');
-
-      // Auto-login the user after successful registration
-      const signInResult = await signIn('credentials', {
-        email: data.email,
-        password: data.password,
-        loginContext: 'client',
-        redirect: false,
-      });
-
-      if (signInResult?.error) {
-        // If auto-login fails, redirect to login page
-        setError('Account created but auto-login failed. Please sign in manually.');
-        setTimeout(() => {
-          router.push('/client-auth/signin');
-        }, 2000);
-        return;
-      }
-
-      // Directly redirect to onboarding without going through /user
-      // Use window.location for a hard redirect to ensure session is refreshed
-      window.location.href = '/user/onboarding';
-
-    } catch (err) {
-      console.error('Registration error:', err);
-      if (err instanceof Error) {
-        // Handle specific error messages
-        if (err.message.includes('already exists') || err.message.includes('already registered')) {
-          setError(err.message);
-        } else if (err.message.includes('network') || err.message.includes('fetch')) {
-          setError('Network error. Please check your connection and try again.');
-        } else {
-          setError(err.message);
+    // Redirect if already logged in
+    useEffect(() => {
+        if (status === 'authenticated' && session?.user) {
+            if (session.user.role === 'client') {
+                router.replace('/user');
+            } else if (session.user.role === 'admin') {
+                router.replace('/dashboard/admin');
+            } else if (session.user.role === 'dietitian') {
+                router.replace('/dashboard/dietitian');
+            } else if (session.user.role === 'health_counselor') {
+                router.replace('/health-counselor/clients');
+            }
         }
-      } else {
-        setError('An unexpected error occurred. Please try again.');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    }, [status, session, router]);
 
-  // Show loading while checking session
-  if (!mounted || status === 'loading') {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#E06A26] mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+    // Resend timer countdown
+    useEffect(() => {
+        if (resendTimer <= 0) return;
+        const timer = setTimeout(() => setResendTimer((prev) => prev - 1), 1000);
+        return () => clearTimeout(timer);
+    }, [resendTimer]);
 
-  // If already authenticated, redirect effect will run; don't show any intermediate UI.
-  if (status === 'authenticated') return null;
+    const handleOtpChange = (index: number, value: string) => {
+        if (!/^\d*$/.test(value)) return;
+        const next = [...otp];
+        next[index] = value.slice(-1);
+        setOtp(next);
+        if (value && index < 3) {
+            otpRefs.current[index + 1]?.focus();
+        }
+    };
 
-  return (
-    <div className="flex flex-col min-h-screen bg-white md:bg-gray-50">
-      {/* Header - Hidden on larger screens */}
-      <div className="flex items-center justify-center p-4 md:hidden">
+    const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Backspace' && !otp[index] && index > 0) {
+            otpRefs.current[index - 1]?.focus();
+        }
+    };
 
-        <h1 className="text-[#E06A26] font-semibold   text-center text-lg">Sign Up</h1>
+    const validateEmail = (emailStr: string) => {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(emailStr);
+    };
 
-      </div>
+    const sendOtp = async () => {
+        // Validate required fields
+        if (!firstName.trim()) {
+            setError('First name is required.');
+            return;
+        }
+        if (!lastName.trim()) {
+            setError('Last name is required.');
+            return;
+        }
+        if (!phone.trim() || phone.length < 10) {
+            setError('Please enter a valid phone number (at least 10 digits).');
+            return;
+        }
+        // Email is optional, but if provided must be valid
+        if (email.trim() && !validateEmail(email.trim())) {
+            setError('Please enter a valid email address.');
+            return;
+        }
+        if (!agreeToTerms) {
+            setError('You must agree to the Terms of Service and Privacy Policy.');
+            return;
+        }
 
-      {/* Main Content */}
-      <div className="flex flex-col items-center justify-center flex-1 px-4 py-6 overflow-y-auto sm:px-6 md:px-8">
-        {/* Card wrapper for larger screens */}
-        <div className="w-full max-w-md md:bg-white md:rounded-2xl md:shadow-lg md:p-8 lg:p-10">
-          {/* Logo */}
-          <div className="flex items-center justify-center overflow-hidden w-20 h-20 mx-auto rounded-xl sm:w-24 sm:h-24 md:w-28 md:h-28">
-            <img
-              src="/images/dtps-logo.png"
-              alt="DTPS"
-              className="object-cover w-full h-full"
-            />
-          </div>
+        setIsLoading(true);
+        setError('');
 
-          {/* Title */}
-          <div className="w-full mb-4 text-center sm:mb-6">
-            <h2 className="text-xl font-bold text-[#E06A26] sm:text-2xl">Create Account</h2>
-            <p className="mt-1 text-sm text-gray-600 sm:text-base">
-              Track your macros, crush your goals, and join a community of achievers.
-            </p>
-          </div>
+        try {
+            const phoneWithCode = `${countryCode}${phone.replace(/\s+/g, '')}`;
 
-          {/* Form */}
-          <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-3 sm:space-y-4">
-            {error && (
-              <Alert variant="destructive" className="text-red-700 border-red-200 bg-red-50">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+            const response = await fetch('/api/auth/otp/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'signup',
+                    firstName: firstName.trim(),
+                    lastName: lastName.trim(),
+                    email: email.trim() || undefined,
+                    phone: phoneWithCode,
+                }),
+            });
 
-            {success && (
-              <Alert className="text-green-300 border-green-800 bg-green-900/30">
-                <AlertDescription>{success}</AlertDescription>
-              </Alert>
-            )}
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                setError(data.error || 'Failed to send OTP. Please try again.');
+                return;
+            }
 
-            {/* Full Name Input */}
-            {/* First Name Input */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <User className="h-5 w-5 text-[#3AB1A0]" />
-              </div>
-              <Input
-                type="text"
-                placeholder="First Name"
-                {...register('firstName')}
-                className={`h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.firstName ? 'border-red-500' : ''}`}
-              />
-            </div>
-            {errors.firstName && (
-              <p className="-mt-2 text-sm text-red-400">{errors.firstName.message}</p>
-            )}
+            setStep('otp');
+            setOtp(['', '', '', '']);
+            setResendTimer(60);
+            setSuccess('OTP sent to your WhatsApp number.');
+        } catch {
+            setError('Failed to send OTP. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-            {/* Last Name Input */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <User className="h-5 w-5 text-[#3AB1A0]" />
-              </div>
-              <Input
-                type="text"
-                placeholder="Last Name"
-                {...register('lastName')}
-                className={`h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.lastName ? 'border-red-500' : ''}`}
-              />
-            </div>
-            {errors.lastName && (
-              <p className="-mt-2 text-sm text-red-400">{errors.lastName.message}</p>
-            )}
+    const verifyOtpAndCreateUser = async () => {
+        const otpValue = otp.join('');
+        if (otpValue.length !== 4) {
+            setError('Please enter the 4-digit OTP.');
+            return;
+        }
 
-            {/* Email Input */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <Mail className="h-5 w-5 text-[#3AB1A0]" />
-              </div>
-              <Input
-                type="email"
-                placeholder="Email Address"
-                {...register('email')}
-                className={`h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.email ? 'border-red-500' : ''}`}
-              />
-            </div>
-            {errors.email && (
-              <p className="-mt-2 text-sm text-red-400">{errors.email.message}</p>
-            )}
+        setIsLoading(true);
+        setError('');
 
-            {/* Phone Input with Country Code */}
-            <div className="space-y-1">
-              <div className="flex gap-2">
-                <Select value={countryCode} onValueChange={setCountryCode}>
-                  <SelectTrigger className="w-28 h-12 sm:h-14 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {COUNTRY_CODES.map((country) => (
-                      <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
-                        <span className="flex items-center gap-2">
-                          <span>{country.flag}</span>
-                          <span>{country.code}</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="relative flex-1">
-                  <Input
-                    type="tel"
-                    placeholder="Phone Number"
-                    {...register('phone')}
-                    className={`h-12 sm:h-14 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.phone ? 'border-red-500' : ''}`}
-                  />
+        try {
+            const phoneWithCode = `${countryCode}${phone.replace(/\s+/g, '')}`;
+
+            const response = await fetch('/api/auth/otp/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: phoneWithCode,
+                    otp: otpValue,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                setError(data.error || 'OTP verification failed.');
+                return;
+            }
+
+            setSuccess('Account created successfully! Logging you in...');
+
+            // Sign in with the OTP token
+            const signInResult = await signIn('credentials', {
+                email: data.user.email,
+                otpToken: data.token,
+                redirect: false,
+            });
+
+            if (signInResult?.error) {
+                setError('Account created but auto-login failed. Please sign in manually.');
+                setTimeout(() => {
+                    router.push('/client-auth/signin');
+                }, 2000);
+                return;
+            }
+
+            // Redirect based on onboarding status
+            window.location.href = data.redirectUrl || '/user/onboarding';
+        } catch {
+            setError('Verification failed. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const resendOtp = async () => {
+        if (resendTimer > 0) return;
+        await sendOtp();
+    };
+
+    // Show loading while checking session
+    if (!mounted || status === 'loading') {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-white">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#E06A26] mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading...</p>
                 </div>
-              </div>
             </div>
-            {errors.phone && (
-              <p className="-mt-2 text-sm text-red-400">{errors.phone.message}</p>
-            )}
+        );
+    }
 
-            {/* Password Input */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <Lock className="h-5 w-5 text-[#3AB1A0]" />
-              </div>
-              <Input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
-                {...register('password')}
-                className={`h-12 sm:h-14 pl-12 pr-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.password ? 'border-red-500' : ''}`}
-              />
-              <button
-                type="button"
-                className="absolute inset-y-0 right-0 flex items-center pr-4"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? (
-                  <Eye className="w-5 h-5 text-gray-500" />
-                ) : (
-                  <EyeOff className="w-5 h-5 text-gray-500" />
-                )}
-              </button>
-            </div>
-            {errors.password && (
-              <p className="-mt-2 text-sm text-red-400">{errors.password.message}</p>
-            )}
+    // If already authenticated, redirect effect will run; don't show any intermediate UI.
+    if (status === 'authenticated') return null;
 
-            {/* Confirm Password Input */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <Shield className="h-5 w-5 text-[#3AB1A0]" />
-              </div>
-              <Input
-                type={showConfirmPassword ? 'text' : 'password'}
-                placeholder="Confirm Password"
-                {...register('confirmPassword')}
-                className={`h-12 sm:h-14 pl-12 pr-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.confirmPassword ? 'border-red-500' : ''}`}
-              />
-              <button
-                type="button"
-                className="absolute inset-y-0 right-0 flex items-center pr-4"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              >
-                {showConfirmPassword ? (
-                  <Eye className="w-5 h-5 text-gray-500" />
-                ) : (
-                  <EyeOff className="w-5 h-5 text-gray-500" />
-                )}
-              </button>
-            </div>
-            {errors.confirmPassword && (
-              <p className="-mt-2 text-sm text-red-400">{errors.confirmPassword.message}</p>
-            )}
-
-            {/* Referral Code Input */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <Gift className="h-5 w-5 text-[#DB9C6E]" />
-              </div>
-              <Input
-                type="text"
-                placeholder="Referral Code (Optional)"
-                {...register('referralCode')}
-                className="h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
-              />
+    return (
+        <div className="flex flex-col min-h-screen bg-white md:bg-gray-50">
+            {/* Header - Hidden on larger screens */}
+            <div className="flex items-center justify-center p-4 md:hidden">
+                <h1 className="text-[#E06A26] font-semibold text-center text-lg">Sign Up</h1>
             </div>
 
-            {/* Terms Checkbox */}
-            <div className="flex items-start gap-3 py-2">
-              <Checkbox
-                id="terms"
-                checked={agreeToTerms}
-                onCheckedChange={(checked) => setValue('agreeToTerms', checked as boolean)}
-                className="mt-0.5 border-[#3AB1A0] data-[state=checked]:bg-[#3AB1A0] data-[state=checked]:border-[#3AB1A0]"
-              />
-              <label htmlFor="terms" className="text-sm leading-tight text-gray-600">
-                I agree to the{' '}
-                <Link href="/terms" className="text-[#E06A26] hover:underline font-medium">
-                  Terms of Service
-                </Link>{' '}
-                and{' '}
-                <Link href="/privacy" className="text-[#E06A26] hover:underline font-medium">
-                  Privacy Policy
-                </Link>
-                .
-              </label>
+            {/* Main Content */}
+            <div className="flex flex-col items-center justify-center flex-1 px-4 py-6 overflow-y-auto sm:px-6 md:px-8">
+                {/* Card wrapper for larger screens */}
+                <div className="w-full max-w-md md:bg-white md:rounded-2xl md:shadow-lg md:p-8 lg:p-10">
+                    {/* Logo */}
+                    <div className="flex items-center justify-center overflow-hidden w-20 h-20 mx-auto rounded-xl sm:w-24 sm:h-24 md:w-28 md:h-28">
+                        <img
+                            src="/images/dtps-logo.png"
+                            alt="DTPS"
+                            className="object-cover w-full h-full"
+                        />
+                    </div>
+
+                    {/* Title */}
+                    <div className="w-full mb-4 text-center sm:mb-6">
+                        <h2 className="text-xl font-bold text-[#E06A26] sm:text-2xl">Create Account</h2>
+                        <p className="mt-1 text-sm text-gray-600 sm:text-base">
+                            Track your macros, crush your goals, and join a community of achievers.
+                        </p>
+                    </div>
+
+                    {/* Form */}
+                    <div className="w-full space-y-3 sm:space-y-4">
+                        {error && (
+                            <Alert variant="destructive" className="text-red-700 border-red-200 bg-red-50">
+                                <AlertDescription>{error}</AlertDescription>
+                            </Alert>
+                        )}
+
+                        {success && (
+                            <Alert className="text-green-700 border-green-200 bg-green-50">
+                                <AlertDescription>{success}</AlertDescription>
+                            </Alert>
+                        )}
+
+                        {step === 'details' ? (
+                            <>
+                                {/* First Name Input */}
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                                        <User className="h-5 w-5 text-[#3AB1A0]" />
+                                    </div>
+                                    <Input
+                                        type="text"
+                                        placeholder="First Name *"
+                                        value={firstName}
+                                        onChange={(e) => setFirstName(e.target.value)}
+                                        className="h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
+                                    />
+                                </div>
+
+                                {/* Last Name Input */}
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                                        <User className="h-5 w-5 text-[#3AB1A0]" />
+                                    </div>
+                                    <Input
+                                        type="text"
+                                        placeholder="Last Name *"
+                                        value={lastName}
+                                        onChange={(e) => setLastName(e.target.value)}
+                                        className="h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
+                                    />
+                                </div>
+
+                                {/* Phone Input with Country Code - Fixed UI */}
+                                <div className="flex items-center h-12 sm:h-14 bg-[#3AB1A0]/5 border border-[#3AB1A0]/20  rounded-xl overflow-hidden px-2 focus-within:border-[#3AB1A0] focus-within:ring-1 focus-within:ring-[#3AB1A0]">
+
+  {/* Country Select */}
+  <Select value={countryCode} onValueChange={setCountryCode}>
+    <SelectTrigger
+      className="flex items-center gap-1 w-22.5 h-full border-0 bg-transparent px-2 focus:ring-0 focus:outline-none"
+    >
+      <SelectValue />
+    </SelectTrigger>
+
+    <SelectContent className="max-h-60">
+      {COUNTRY_CODES.map((country) => (
+        <SelectItem
+          key={`${country.code}-${country.country}`}
+          value={country.code}
+        >
+          <span className="flex items-center gap-2">
+            <span>{country.flag}</span>
+            <span>{country.code}</span>
+          </span>
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+
+  {/* Divider */}
+  <div className="w-px h-6 bg-[#3AB1A0]/20 mx-2" />
+
+  {/* Phone Icon */}
+  <Phone className="h-5 w-5 text-[#3AB1A0] mr-2 shrink-0" />
+
+  {/* Input */}
+  <Input
+  type="tel"
+  placeholder="WhatsApp Number *"
+  value={phone}
+  onChange={(e) => setPhone(e.target.value)}
+  className="flex-1 h-full border-0 outline-none bg-transparent text-black placeholder:text-gray-400 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none shadow-none"
+/>
+</div>
+
+                                {/* Email Input (Optional) */}
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                                        <Mail className="h-5 w-5 text-[#3AB1A0]" />
+                                    </div>
+                                    <Input
+                                        type="email"
+                                        placeholder="Email Address (Optional)"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
+                                    />
+                                </div>
+
+                                {/* Terms Checkbox */}
+                                <div className="flex items-start gap-3 py-2">
+                                    <Checkbox
+                                        id="terms"
+                                        checked={agreeToTerms}
+                                        onCheckedChange={(checked) => setAgreeToTerms(checked as boolean)}
+                                        className="mt-0.5 border-[#3AB1A0] data-[state=checked]:bg-[#3AB1A0] data-[state=checked]:border-[#3AB1A0]"
+                                    />
+                                    <label htmlFor="terms" className="text-sm leading-tight text-gray-600">
+                                        I agree to the{' '}
+                                        <Link href="/terms" className="text-[#E06A26] hover:underline font-medium">
+                                            Terms of Service
+                                        </Link>{' '}
+                                        and{' '}
+                                        <Link href="/privacy" className="text-[#E06A26] hover:underline font-medium">
+                                            Privacy Policy
+                                        </Link>
+                                        .
+                                    </label>
+                                </div>
+
+                                {/* Sign Up Button */}
+                                <Button
+                                    type="button"
+                                    onClick={sendOtp}
+                                    className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
+                                    disabled={isLoading}
+                                >
+                                    {isLoading ? 'Sending OTP...' : 'Sign Up'}
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                {/* OTP Step */}
+                                <div className="text-center mb-4">
+                                    <p className="text-sm text-gray-600">
+                                        Enter the 4-digit OTP sent to your WhatsApp
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        {countryCode}{phone}
+                                    </p>
+                                </div>
+
+                                {/* OTP Input Boxes */}
+                                <div className="flex justify-center gap-3">
+                                    {otp.map((digit, index) => (
+                                        <Input
+                                            key={index}
+                                            ref={(el) => {
+                                                otpRefs.current[index] = el;
+                                            }}
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={1}
+                                            value={digit}
+                                            onChange={(e) => handleOtpChange(index, e.target.value)}
+                                            onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                                            className="w-14 h-14 sm:w-16 sm:h-16 text-center text-xl font-semibold bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
+                                        />
+                                    ))}
+                                </div>
+
+                                {/* Verify Button */}
+                                <Button
+                                    type="button"
+                                    onClick={verifyOtpAndCreateUser}
+                                    className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
+                                    disabled={isLoading || otp.join('').length !== 4}
+                                >
+                                    {isLoading ? 'Verifying...' : 'Verify & Create Account'}
+                                </Button>
+
+                                {/* Resend OTP */}
+                                <div className="text-center">
+                                    {resendTimer > 0 ? (
+                                        <p className="text-sm text-gray-500">
+                                            Resend OTP in {resendTimer}s
+                                        </p>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={resendOtp}
+                                            className="text-sm text-[#E06A26] font-medium hover:underline"
+                                            disabled={isLoading}
+                                        >
+                                            Resend OTP
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Back to details */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setStep('details');
+                                        setOtp(['', '', '', '']);
+                                        setError('');
+                                        setSuccess('');
+                                    }}
+                                    className="w-full text-sm text-gray-500 hover:text-gray-700"
+                                >
+                                    ← Back to edit details
+                                </button>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Login Link */}
+                    <p className="mt-6 text-center text-gray-600 text-sm sm:text-base sm:mt-8">
+                        Already have an account?{' '}
+                        <Link href="/client-auth/signin" className="text-[#E06A26] font-semibold hover:underline">
+                            Log In
+                        </Link>
+                    </p>
+                </div>
             </div>
-            {errors.agreeToTerms && (
-              <p className="-mt-2 text-sm text-red-400">{errors.agreeToTerms.message}</p>
-            )}
-
-            {/* Sign Up Button */}
-            <Button
-              type="submit"
-              className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-
-                  Creating account...
-                </>
-              ) : (
-                <>
-                  Sign Up
-
-                </>
-              )}
-            </Button>
-          </form>
-
-
-
-          {/* Login Link */}
-          <p className="mt-6 text-center text-gray-600 text-sm sm:text-base sm:mt-8">
-            Already have an account?{' '}
-            <Link href="/client-auth/signin" className="text-[#E06A26] font-semibold hover:underline">
-              Log In
-            </Link>
-          </p>
         </div>
-      </div>
-    </div>
-  );
+    );
 }

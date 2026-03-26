@@ -125,7 +125,8 @@ const userSchema = new Schema({
     type: String,
     trim: true,
     sparse: true,
-    unique: true
+    unique: true,
+    // Phone is required for clients, validated in pre-save hook
   },
   avatar: {
     type: String
@@ -458,6 +459,11 @@ userSchema.index({ firstName: 'text', lastName: 'text', email: 'text' });
 
 // Pre-save hook to auto-generate clientId for new clients
 userSchema.pre('save', async function (next) {
+  // Validate phone is required for clients
+  if (this.role === UserRole.CLIENT && !this.phone) {
+    return next(new Error('Phone number is required for clients'));
+  }
+
   // Only generate clientId for new client users who don't have one
   if (this.isNew && this.role === UserRole.CLIENT && !this.clientId) {
     try {

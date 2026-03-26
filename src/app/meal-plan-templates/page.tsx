@@ -356,7 +356,7 @@ function MealPlanTemplatesPageContent() {
             <Card>
               <CardContent className="p-6">
                 <div className="flex flex-wrap items-center gap-4">
-                  <div className="relative flex-1 min-w-[220px]">
+                  <div className="relative flex-1 min-w-55">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input placeholder="Search plan templates..." value={planSearch} onChange={e => setPlanSearch(e.target.value)} className="pl-10" />
                   </div>
@@ -459,7 +459,7 @@ function MealPlanTemplatesPageContent() {
             <Card>
               <CardContent className="p-6 space-y-4">
                 <div className="flex flex-wrap items-center gap-4">
-                  <div className="relative flex-1 min-w-[220px]">
+                  <div className="relative flex-1 min-w-55">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input placeholder="Search diet templates..." value={dietSearchTerm} onChange={e => setDietSearchTerm(e.target.value)} className="pl-10" />
                   </div>
@@ -598,7 +598,7 @@ function MealPlanTemplatesPageContent() {
 
         {/* Duplicate Template Dialog */}
         <Dialog open={duplicateDialog.open} onOpenChange={(open) => setDuplicateDialog(prev => ({ ...prev, open }))}>
-          <DialogContent className="max-w-sm w-[400px] rounded-xl p-5">
+          <DialogContent className="max-w-sm w-100 rounded-xl p-5">
             <DialogHeader className="space-y-1">
               <DialogTitle className="text-base flex items-center gap-2">
                 <Copy className="h-4 w-4 text-blue-600" />

@@ -10,9 +10,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Eye, EyeOff, Mail, Lock, ArrowLeft, Leaf } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, ArrowLeft, Leaf, Phone, MessageSquare } from 'lucide-react';
 import { signInSchema, SignInInput } from '@/lib/validations/auth';
 import Image from 'next/image';
+
+type LoginMode = 'otp' | 'email';
+type OTPStep = 'phone' | 'verify';
 
 export default function ClientSignInPage() {
   const router = useRouter();
@@ -23,9 +26,26 @@ export default function ClientSignInPage() {
   const [mounted, setMounted] = useState(false);
   const redirectAttemptedRef = useRef(false);
 
+  // OTP login state
+  const [loginMode, setLoginMode] = useState<LoginMode>('otp');
+  const [otpStep, setOtpStep] = useState<OTPStep>('phone');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otp, setOtp] = useState(['', '', '', '']);
+  const [otpSent, setOtpSent] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Resend timer countdown
+  useEffect(() => {
+    if (resendTimer > 0) {
+      const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendTimer]);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -62,6 +82,153 @@ export default function ClientSignInPage() {
   } = useForm<SignInInput>({
     resolver: zodResolver(signInSchema),
   });
+
+  // Handle OTP input change
+  const handleOtpChange = (index: number, value: string) => {
+    if (value.length > 1) {
+      // Handle paste - take only first 4 digits
+      const pastedDigits = value.replace(/\D/g, '').slice(0, 4).split('');
+      const newOtp = [...otp];
+      pastedDigits.forEach((digit, i) => {
+        if (index + i < 4) {
+          newOtp[index + i] = digit;
+        }
+      });
+      setOtp(newOtp);
+      // Focus on next empty input or last input
+      const nextIndex = Math.min(index + pastedDigits.length, 3);
+      otpInputRefs.current[nextIndex]?.focus();
+      return;
+    }
+
+    if (!/^\d*$/.test(value)) return; // Only allow digits
+
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+
+    // Auto-focus next input
+    if (value && index < 3) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  // Handle OTP input keydown
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  // Send OTP
+  const handleSendOtp = async () => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      setError('Please enter a valid 10-digit phone number');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/auth/otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneNumber }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setError(data.error || 'Failed to send OTP. Please try again.');
+        return;
+      }
+
+      setOtpSent(true);
+      setOtpStep('verify');
+      setResendTimer(60); // 60 seconds cooldown
+      setOtp(['', '', '', '']);
+    } catch (err) {
+      console.error('Send OTP error:', err);
+      setError('Failed to send OTP. Please check your connection and try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Verify OTP
+  const handleVerifyOtp = async () => {
+    const otpValue = otp.join('');
+    if (otpValue.length !== 4) {
+      setError('Please enter the complete 4-digit OTP');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneNumber, otp: otpValue }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setError(data.error || 'Invalid OTP. Please try again.');
+        return;
+      }
+
+      // OTP verified - now sign in with the token
+      // We'll use NextAuth credentials provider with a special OTP token
+      const result = await signIn('credentials', {
+        email: data.user.email,
+        otpToken: data.token, // Special token for OTP login
+        loginContext: 'client',
+        redirect: false,
+        callbackUrl: '/user',
+      });
+
+      if (result?.error) {
+        setError('Login failed. Please try again.');
+        return;
+      }
+
+      if (result?.ok) {
+        redirectAttemptedRef.current = true;
+        sessionStorage.setItem('dtps:authRedirectLockUntil', String(Date.now() + 3000));
+        window.location.href = data.redirectUrl || '/user';
+        return;
+      }
+    } catch (err) {
+      console.error('Verify OTP error:', err);
+      setError('Verification failed. Please check your connection and try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Resend OTP
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return;
+    await handleSendOtp();
+  };
+
+  // Switch login mode
+  const switchToEmailLogin = () => {
+    setLoginMode('email');
+    setError('');
+    setOtpStep('phone');
+    setOtpSent(false);
+    setOtp(['', '', '', '']);
+  };
+
+  const switchToOtpLogin = () => {
+    setLoginMode('otp');
+    setError('');
+  };
 
   const onSubmit = async (data: SignInInput) => {
     setIsLoading(true);
@@ -176,94 +343,236 @@ export default function ClientSignInPage() {
             Welcome back! Please enter your details.
           </p>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-4">
-            {error && (
-              <Alert variant="destructive" className="text-red-700 border-red-200 bg-red-50">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+          {error && (
+            <Alert variant="destructive" className="mb-4 text-red-700 border-red-200 bg-red-50">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-            {/* Email Input */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Email</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                  <Mail className="w-5 h-5 text-gray-500" />
-                </div>
-                <Input
-                  type="email"
-                  placeholder="Enter your email"
-                  {...register('email')}
-                  className={`h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.email ? 'border-red-500' : ''}`}
-                />
-              </div>
-              {errors.email && (
-                <p className="text-sm text-red-400">{errors.email.message}</p>
+          {/* OTP Login (Default) */}
+          {loginMode === 'otp' && (
+            <div className="w-full space-y-4">
+              {otpStep === 'phone' && (
+                <>
+                  {/* Phone Input */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">WhatsApp Number</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                        <Phone className="w-5 h-5 text-gray-500" />
+                      </div>
+                      <div className="absolute inset-y-0 left-12 flex items-center pointer-events-none">
+                        <span className="text-gray-500 text-sm">+91</span>
+                      </div>
+                      <Input
+                        type="tel"
+                        placeholder="Enter 10-digit number"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        className="h-12 sm:h-14 pl-20 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
+                        maxLength={10}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                      <MessageSquare className="w-3 h-3" />
+                      OTP will be sent to your WhatsApp
+                    </p>
+                  </div>
+
+                  {/* Send OTP Button */}
+                  <Button
+                    type="button"
+                    onClick={handleSendOtp}
+                    className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
+                    disabled={isLoading || phoneNumber.length !== 10}
+                  >
+                    {isLoading ? 'Sending OTP...' : 'Send OTP'}
+                  </Button>
+                </>
               )}
-            </div>
 
-            {/* Password Input */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Password</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                  <Lock className="w-5 h-5 text-gray-500" />
-                </div>
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  {...register('password')}
-                  className={`h-12 sm:h-14 pl-12 pr-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.password ? 'border-red-500' : ''}`}
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 flex items-center pr-4"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <Eye className="w-5 h-5 text-gray-500" />
-                  ) : (
-                    <EyeOff className="w-5 h-5 text-gray-500" />
-                  )}
-                </button>
-              </div>
-              {errors.password && (
-                <p className="text-sm text-red-400">{errors.password.message}</p>
+              {otpStep === 'verify' && (
+                <>
+                  {/* Back to phone input */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOtpStep('phone');
+                      setError('');
+                    }}
+                    className="flex items-center gap-1 text-gray-500 hover:text-gray-700 text-sm mb-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Change number
+                  </button>
+
+                  <p className="text-center text-gray-600 text-sm mb-4">
+                    Enter the 4-digit OTP sent to
+                    <br />
+                    <span className="font-semibold text-gray-800">+91 {phoneNumber}</span>
+                  </p>
+
+                  {/* OTP Input */}
+                  <div className="flex justify-center gap-3 mb-4">
+                    {otp.map((digit, index) => (
+                      <Input
+                        key={index}
+                        ref={(el) => { otpInputRefs.current[index] = el; }}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={digit}
+                        onChange={(e) => handleOtpChange(index, e.target.value)}
+                        onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                        className="w-14 h-14 text-center text-xl font-bold bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
+                      />
+                    ))}
+                  </div>
+
+                  {/* Resend OTP */}
+                  <div className="text-center mb-4">
+                    {resendTimer > 0 ? (
+                      <p className="text-sm text-gray-500">
+                        Resend OTP in <span className="font-semibold">{resendTimer}s</span>
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResendOtp}
+                        disabled={isLoading}
+                        className="text-[#E06A26] text-sm font-semibold hover:underline"
+                      >
+                        Resend OTP
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Verify OTP Button */}
+                  <Button
+                    type="button"
+                    onClick={handleVerifyOtp}
+                    className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
+                    disabled={isLoading || otp.join('').length !== 4}
+                  >
+                    {isLoading ? 'Verifying...' : 'Verify & Login'}
+                  </Button>
+                </>
               )}
-            </div>
 
-            {/* Forgot Password */}
-            <div className="text-right">
-              <Link
-                href="/client-auth/forget-password"
-                className="text-[#E06A26] text-sm hover:underline"
+              {/* Divider */}
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-4 bg-white text-gray-500">or</span>
+                </div>
+              </div>
+
+              {/* Switch to Email Login */}
+              <button
+                type="button"
+                onClick={switchToEmailLogin}
+                className="w-full h-12 sm:h-14 border-2 border-gray-200 text-gray-700 font-semibold text-base rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
               >
-                Forgot Password?
-              </Link>
+                <Mail className="w-5 h-5" />
+                Login with Email
+              </button>
             </div>
+          )}
 
-            {/* Login Button */}
-            <Button
-              type="submit"
-              className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
+          {/* Email Login (Alternative) */}
+          {loginMode === 'email' && (
+            <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-4">
+              {/* Email Input */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Email</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                    <Mail className="w-5 h-5 text-gray-500" />
+                  </div>
+                  <Input
+                    type="email"
+                    placeholder="Enter your email"
+                    {...register('email')}
+                    className={`h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.email ? 'border-red-500' : ''}`}
+                  />
+                </div>
+                {errors.email && (
+                  <p className="text-sm text-red-400">{errors.email.message}</p>
+                )}
+              </div>
 
-                  Logging in...
-                </>
-              ) : (
-                <>
-                  Log In
+              {/* Password Input */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                    <Lock className="w-5 h-5 text-gray-500" />
+                  </div>
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    {...register('password')}
+                    className={`h-12 sm:h-14 pl-12 pr-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white ${errors.password ? 'border-red-500' : ''}`}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 flex items-center pr-4"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <Eye className="w-5 h-5 text-gray-500" />
+                    ) : (
+                      <EyeOff className="w-5 h-5 text-gray-500" />
+                    )}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="text-sm text-red-400">{errors.password.message}</p>
+                )}
+              </div>
 
-                </>
-              )}
-            </Button>
-          </form>
+              {/* Forgot Password */}
+              <div className="text-right">
+                <Link
+                  href="/client-auth/forget-password"
+                  className="text-[#E06A26] text-sm hover:underline"
+                >
+                  Forgot Password?
+                </Link>
+              </div>
 
+              {/* Login Button */}
+              <Button
+                type="submit"
+                className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Logging in...' : 'Log In'}
+              </Button>
 
+              {/* Divider */}
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-4 bg-white text-gray-500">or</span>
+                </div>
+              </div>
+
+              {/* Switch to OTP Login */}
+              <button
+                type="button"
+                onClick={switchToOtpLogin}
+                className="w-full h-12 sm:h-14 border-2 border-gray-200 text-gray-700 font-semibold text-base rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <MessageSquare className="w-5 h-5" />
+                Login with WhatsApp OTP
+              </button>
+            </form>
+          )}
 
           {/* Sign Up Link */}
           <p className="mt-6 text-center text-gray-500 text-sm sm:text-base sm:mt-8">

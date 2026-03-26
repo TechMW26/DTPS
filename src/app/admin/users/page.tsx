@@ -306,19 +306,28 @@ export default function AdminUsersPage() {
 
   async function handleSave() {
     // Basic validation
-    if (!form.email || !form.firstName || !form.lastName) {
+    const isClientRole = form.role === UserRole.CLIENT;
+
+    // For clients: email is optional, phone is required
+    // For non-clients: email and phone are required
+    if (!isClientRole && !form.email) {
       setError("Please fill required fields: email, first name, last name");
+      return;
+    }
+    if (!form.firstName || !form.lastName) {
+      setError("Please fill required fields: first name, last name");
       return;
     }
     if (!form.phone) {
       setError("Phone number is required");
       return;
     }
-    if (!editing && !form.password) {
-      setError("Password is required when creating a new user");
+    // Password required only for non-client users when creating new
+    if (!editing && !isClientRole && !form.password) {
+      setError("Password is required when creating a new staff user");
       return;
     }
-    if (!editing && form.password !== form.confirmPassword) {
+    if (!editing && !isClientRole && form.password !== form.confirmPassword) {
       setError("Passwords do not match");
       return;
     }
@@ -374,13 +383,20 @@ export default function AdminUsersPage() {
           body: JSON.stringify(body),
         });
       } else {
+        // For clients: add createdByStaff flag, send email only if provided
+        const createBody: any = {
+          ...form,
+          phone: fullPhone,
+          createdByStaff: true, // Flag to indicate admin is creating the user
+        };
+        // Remove email if empty for client users
+        if (form.role === UserRole.CLIENT && !form.email) {
+          delete createBody.email;
+        }
         res = await fetch(`/api/users`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...form,
-            phone: fullPhone,
-          }),
+          body: JSON.stringify(createBody),
         });
       }
       const data = await res.json();
@@ -691,7 +707,10 @@ export default function AdminUsersPage() {
                     <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} placeholder="Enter last name" />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-sm font-medium text-gray-700">Email <span className="text-red-500">*</span></label>
+                    <label className="text-sm font-medium text-gray-700">
+                      Email {form.role !== UserRole.CLIENT && <span className="text-red-500">*</span>}
+                      {form.role === UserRole.CLIENT && <span className="text-gray-500 text-xs ml-1">(Optional)</span>}
+                    </label>
                     <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="user@example.com" />
                   </div>
                   <div className="md:col-span-2">
@@ -748,7 +767,8 @@ export default function AdminUsersPage() {
               {/* Account Tab */}
               <TabsContent value="account" className="space-y-4 mt-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {!editing && (
+                  {/* Password fields: only show for non-client roles when creating new user */}
+                  {!editing && form.role !== UserRole.CLIENT && (
                     <>
                       <div className="md:col-span-2">
                         <label className="text-sm font-medium text-gray-700">Password <span className="text-red-500">*</span></label>
@@ -759,6 +779,14 @@ export default function AdminUsersPage() {
                         <Input type="password" value={form.confirmPassword} onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))} placeholder="Confirm password" />
                       </div>
                     </>
+                  )}
+                  {/* Info message for client creation */}
+                  {!editing && form.role === UserRole.CLIENT && (
+                    <div className="md:col-span-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-sm text-blue-700">
+                        <strong>Note:</strong> Password will be auto-generated. Client can log in using WhatsApp OTP with their phone number.
+                      </p>
+                    </div>
                   )}
                   <div>
                     <label className="text-sm font-medium text-gray-700">Role <span className="text-red-500">*</span></label>

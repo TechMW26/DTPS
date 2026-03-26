@@ -220,16 +220,18 @@ export default function NewClientPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!firstName || !lastName || !email) {
-      setError('Please fill in all required fields');
+    if (!firstName || !lastName || !phone) {
+      setError('Please fill in all required fields (First Name, Last Name, Phone)');
       return;
     }
 
-    // Validate email format
-    const emailValidation = validateEmail(email);
-    if (!emailValidation.isValid) {
-      setError(emailValidation.error || 'Please enter a valid email address');
-      return;
+    // Validate email format only if email is provided
+    if (email) {
+      const emailValidation = validateEmail(email);
+      if (!emailValidation.isValid) {
+        setError(emailValidation.error || 'Please enter a valid email address');
+        return;
+      }
     }
 
     setLoading(true);
@@ -242,10 +244,11 @@ export default function NewClientPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          createdByStaff: true, // Flag to indicate staff is creating client
           firstName,
           lastName,
-          email,
-          phone: phone || undefined,
+          email: email || undefined,
+          phone,
           role: 'client',
           dateOfBirth: dateOfBirth || undefined,
           gender: gender || undefined,
@@ -342,8 +345,8 @@ export default function NewClientPage() {
                 variant={activeSection === 'basic' ? 'default' : 'outline'}
                 onClick={() => setActiveSection('basic')}
                 className={`gap-2 px-4 py-2 rounded-lg font-medium transition-all ${activeSection === 'basic'
-                    ? 'bg-blue-100 text-blue-700 border-blue-300'
-                    : 'hover:bg-slate-100'
+                  ? 'bg-blue-100 text-blue-700 border-blue-300'
+                  : 'hover:bg-slate-100'
                   }`}
               >
                 <User className="h-4 w-4" />
@@ -354,8 +357,8 @@ export default function NewClientPage() {
                 variant={activeSection === 'lifestyle' ? 'default' : 'outline'}
                 onClick={() => setActiveSection('lifestyle')}
                 className={`gap-2 px-4 py-2 rounded-lg font-medium transition-all ${activeSection === 'lifestyle'
-                    ? 'bg-blue-100 text-blue-700 border-blue-300'
-                    : 'hover:bg-slate-100'
+                  ? 'bg-blue-100 text-blue-700 border-blue-300'
+                  : 'hover:bg-slate-100'
                   }`}
               >
                 <Activity className="h-4 w-4" />
@@ -366,8 +369,8 @@ export default function NewClientPage() {
                 variant={activeSection === 'medical' ? 'default' : 'outline'}
                 onClick={() => setActiveSection('medical')}
                 className={`gap-2 px-4 py-2 rounded-lg font-medium transition-all ${activeSection === 'medical'
-                    ? 'bg-blue-100 text-blue-700 border-blue-300'
-                    : 'hover:bg-slate-100'
+                  ? 'bg-blue-100 text-blue-700 border-blue-300'
+                  : 'hover:bg-slate-100'
                   }`}
               >
                 <HeartPulse className="h-4 w-4" />
@@ -378,8 +381,8 @@ export default function NewClientPage() {
                 variant={activeSection === 'recall' ? 'default' : 'outline'}
                 onClick={() => setActiveSection('recall')}
                 className={`gap-2 px-4 py-2 rounded-lg font-medium transition-all ${activeSection === 'recall'
-                    ? 'bg-blue-100 text-blue-700 border-blue-300'
-                    : 'hover:bg-slate-100'
+                  ? 'bg-blue-100 text-blue-700 border-blue-300'
+                  : 'hover:bg-slate-100'
                   }`}
               >
                 <ClipboardList className="h-4 w-4" />

@@ -186,16 +186,18 @@ export default function DietitianNewClientPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!firstName || !lastName || !email) {
-      toast.error('Please fill in all required fields (First Name, Last Name, Email)');
+    if (!firstName || !lastName || !phone) {
+      toast.error('Please fill in all required fields (First Name, Last Name, Phone)');
       return;
     }
 
-    // Validate email format
-    const emailValidation = validateEmail(email);
-    if (!emailValidation.isValid) {
-      toast.error(emailValidation.error || 'Please enter a valid email address');
-      return;
+    // Validate email format only if email is provided
+    if (email) {
+      const emailValidation = validateEmail(email);
+      if (!emailValidation.isValid) {
+        toast.error(emailValidation.error || 'Please enter a valid email address');
+        return;
+      }
     }
 
     setLoading(true);
@@ -208,10 +210,11 @@ export default function DietitianNewClientPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          createdByStaff: true, // Flag to indicate staff is creating client
           firstName,
           lastName,
-          email,
-          phone: phone || undefined,
+          email: email || undefined,
+          phone,
           role: 'client',
           dateOfBirth: dateOfBirth || undefined,
           gender: gender || undefined,

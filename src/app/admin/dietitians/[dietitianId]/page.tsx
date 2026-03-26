@@ -532,7 +532,7 @@ export default function AdminDietitianDetailPage() {
         <Card className="mb-6">
           <CardContent className="pt-6">
             <div className="flex flex-col md:flex-row gap-6">
-              <div className="flex-shrink-0">
+              <div className="shrink-0">
                 <Avatar className="h-24 w-24">
                   <AvatarImage src={dietitian.avatar} />
                   <AvatarFallback className="text-2xl bg-[#3AB1A0] text-white">

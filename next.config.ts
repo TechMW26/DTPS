@@ -113,13 +113,13 @@ const nextConfig: NextConfig = {
         source: '/(admin|dashboard|dietician|health-counselor|messages|appointments|clients|recipes|meal-plans|meal-plan-templates|billing|subscriptions|analytics|profile|settings|revenue-report|user)/:path*',
         headers: noCacheHeaders,
       },
-      // Cache static assets aggressively
-      {
+      // Cache static assets aggressively (production only - don't override in development)
+      ...(process.env.NODE_ENV === 'production' ? [{
         source: '/_next/static/:path*',
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
-      },
+      }] : []),
       {
         source: '/favicon.ico',
         headers: [

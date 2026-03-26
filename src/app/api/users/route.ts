@@ -255,23 +255,35 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { email, password, firstName, lastName, role, phone, bio, experience, consultationFee, specializations, credentials, gender, dateOfBirth, assignedDietitian, assignedHealthCounselor } = body || {};
 
-    if (!email || !password || !firstName || !lastName) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
+    // For clients created by staff, email is optional but phone is required
+    const isClientRole = (role || UserRole.CLIENT) === UserRole.CLIENT;
 
-    if (String(password).length < 4) {
-      return NextResponse.json({ error: 'Password must be at least 4 characters' }, { status: 400 });
+    if (!firstName || !lastName) {
+      return NextResponse.json({ error: 'First name and last name are required' }, { status: 400 });
     }
 
     if (!phone) {
       return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
     }
 
+    // For non-client roles, email and password are still required
+    if (!isClientRole) {
+      if (!email) {
+        return NextResponse.json({ error: 'Email is required for staff accounts' }, { status: 400 });
+      }
+      if (!password || String(password).length < 4) {
+        return NextResponse.json({ error: 'Password must be at least 4 characters' }, { status: 400 });
+      }
+    }
+
     await connectDB();
 
-    const existing = await User.findOne({ email: String(email).toLowerCase() });
-    if (existing) {
-      return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
+    // Check email uniqueness only if email is provided
+    if (email) {
+      const existing = await User.findOne({ email: String(email).toLowerCase() });
+      if (existing) {
+        return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
+      }
     }
 
     // Normalize phone number - remove spaces and dashes
@@ -287,30 +299,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'This phone number is already registered' }, { status: 400 });
     }
 
+    // For clients, auto-generate password if not provided
+    let finalPassword = password;
+    if (isClientRole && !password) {
+      // Generate a random secure password (12 chars)
+      const crypto = require('crypto');
+      finalPassword = crypto.randomBytes(8).toString('hex');
+    }
+
     // Determine assignment based on who is creating the client
+    // Normalize the session role for comparison (handle both string and enum)
+    const sessionRole = String(session.user.role).toLowerCase();
+
     let finalAssignedDietitian = assignedDietitian;
     let finalAssignedHealthCounselor = assignedHealthCounselor;
     let assignedDietitiansList = assignedDietitian ? [assignedDietitian] : [];
     let assignedHealthCounselorsList = assignedHealthCounselor ? [assignedHealthCounselor] : [];
 
-    // If health counselor is creating a client, auto-assign to themselves
-    if (session.user.role === UserRole.HEALTH_COUNSELOR) {
+    // If health counselor is creating a client, auto-assign to themselves as health counselor (not dietitian)
+    if (sessionRole === 'health_counselor') {
       finalAssignedHealthCounselor = session.user.id;
       assignedHealthCounselorsList = [session.user.id];
+      // Clear any dietitian assignment that might have been passed
+      if (!assignedDietitian) {
+        finalAssignedDietitian = undefined;
+        assignedDietitiansList = [];
+      }
     }
-    // If dietitian is creating a client, auto-assign to themselves
-    else if (session.user.role === UserRole.DIETITIAN) {
-      finalAssignedDietitian = finalAssignedDietitian || session.user.id;
-      assignedDietitiansList = [finalAssignedDietitian];
+    // If dietitian is creating a client, auto-assign to themselves as dietitian (not health counselor)
+    else if (sessionRole === 'dietitian') {
+      finalAssignedDietitian = session.user.id;
+      assignedDietitiansList = [session.user.id];
+      // Clear any health counselor assignment that might have been passed
+      if (!assignedHealthCounselor) {
+        finalAssignedHealthCounselor = undefined;
+        assignedHealthCounselorsList = [];
+      }
     }
 
     // Determine createdBy info based on who is creating the user
     let createdByInfo: { userId?: string; role: string } = { role: '' };
-    if (session.user.role === UserRole.ADMIN) {
+    if (sessionRole === 'admin') {
       createdByInfo = { userId: session.user.id, role: 'admin' };
-    } else if (session.user.role === UserRole.DIETITIAN) {
+    } else if (sessionRole === 'dietitian') {
       createdByInfo = { userId: session.user.id, role: 'dietitian' };
-    } else if (session.user.role === UserRole.HEALTH_COUNSELOR) {
+    } else if (sessionRole === 'health_counselor') {
       createdByInfo = { userId: session.user.id, role: 'health_counselor' };
     }
 
@@ -333,8 +366,8 @@ export async function POST(request: NextRequest) {
     }
 
     const user = new User({
-      email: String(email).toLowerCase(),
-      password, // NOTE: comparePassword supports plain text in this codebase; replace with hashing in production
+      email: email ? String(email).toLowerCase() : undefined,
+      password: finalPassword, // Auto-generated for clients, provided for staff
       firstName,
       lastName,
       role: role || UserRole.CLIENT,

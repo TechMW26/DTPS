@@ -7,6 +7,7 @@ import { UserRole } from '@/types';
 import { z } from 'zod';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+import crypto from 'crypto';
 
 // Comprehensive registration schema for API
 // Helper function to normalize phone number with country code
@@ -27,7 +28,8 @@ function normalizePhoneNumber(phone: string, defaultCountryCode: string = '+91')
 
 const registerSchema = z.object({
   signupContext: z.enum(['client', 'staff']).optional(),
-  email: z.string().email('Invalid email address'),
+  createdByStaff: z.boolean().optional(), // Flag to indicate staff is creating a client
+  email: z.string().email('Invalid email address').optional(), // Email optional for staff-created clients
   password: z.string().min(4, 'Password must be at least 4 characters').optional(),
   confirmPassword: z.string().optional(),
   firstName: z.string().min(1, 'First name is required'),
@@ -79,16 +81,18 @@ export async function POST(request: NextRequest) {
     // Get session to check if an authenticated user (dietitian/health counselor) is creating a client
     const session = await getServerSession(authOptions);
 
-    // Check if user already exists by email
-    const existingUser = await User.findOne({
-      email: validatedData.email.toLowerCase()
-    });
+    // Check if user already exists by email (only if email is provided)
+    if (validatedData.email) {
+      const existingUser = await User.findOne({
+        email: validatedData.email.toLowerCase()
+      });
 
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'User with this email already exists' },
-        { status: 400 }
-      );
+      if (existingUser) {
+        return NextResponse.json(
+          { error: 'User with this email already exists' },
+          { status: 400 }
+        );
+      }
     }
 
     // Normalize phone number with country code
@@ -121,19 +125,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Password is always required - no auto-generation
-    if (!validatedData.password) {
-      return NextResponse.json(
-        { error: 'Password is required' },
-        { status: 400 }
-      );
-    }
+    // Determine if this is a staff-created client (email and password not required)
+    const isStaffCreatedClient = validatedData.createdByStaff && validatedData.role === UserRole.CLIENT;
 
-    const finalPassword = validatedData.password;
+    // For self-registration, email and password are required
+    // For staff-created clients, auto-generate password if not provided
+    let finalPassword: string;
+    if (isStaffCreatedClient) {
+      // Auto-generate a random 16-character hex password for staff-created clients
+      finalPassword = validatedData.password || crypto.randomBytes(8).toString('hex');
+    } else {
+      // Self-registration: password is required
+      if (!validatedData.password) {
+        return NextResponse.json(
+          { error: 'Password is required' },
+          { status: 400 }
+        );
+      }
+      // Self-registration: email is required
+      if (!validatedData.email) {
+        return NextResponse.json(
+          { error: 'Email is required' },
+          { status: 400 }
+        );
+      }
+      finalPassword = validatedData.password;
+    }
 
     // Create user data
     const userData: any = {
-      email: validatedData.email.toLowerCase(),
+      email: validatedData.email ? validatedData.email.toLowerCase() : undefined,
       password: finalPassword,
       firstName: validatedData.firstName,
       lastName: validatedData.lastName,
@@ -223,7 +244,7 @@ export async function POST(request: NextRequest) {
     const creatorId = session?.user?.id || user._id.toString();
     const creatorRole = session?.user?.role || 'self';
     const creatorName = session?.user?.name || `${validatedData.firstName} ${validatedData.lastName}`;
-    const creatorEmail = session?.user?.email || validatedData.email;
+    const creatorEmail = session?.user?.email || validatedData.email || `${validatedData.phone}`;
 
     logActivity({
       userId: creatorId,
@@ -232,7 +253,7 @@ export async function POST(request: NextRequest) {
       userEmail: creatorEmail,
       action: 'create_user',
       actionType: 'create',
-      category: 'account',
+      category: 'auth',
       description: session?.user
         ? `Created new ${validatedData.role} account: ${validatedData.firstName} ${validatedData.lastName}`
         : `New ${validatedData.role} registration: ${validatedData.firstName} ${validatedData.lastName}`,

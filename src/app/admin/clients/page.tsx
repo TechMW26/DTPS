@@ -58,7 +58,6 @@ export default function AdminClientsPage() {
 
   const [form, setForm] = useState({
     email: "",
-    password: "",
     firstName: "",
     lastName: "",
     phone: "",
@@ -120,7 +119,7 @@ export default function AdminClientsPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ email: "", password: "", firstName: "", lastName: "", phone: "", gender: "", dateOfBirth: "", assignedDietitian: "" });
+    setForm({ email: "", firstName: "", lastName: "", phone: "", gender: "", dateOfBirth: "", assignedDietitian: "" });
     setOpen(true);
   }
 
@@ -130,8 +129,7 @@ export default function AdminClientsPage() {
       ? u.assignedDietitian
       : u.assignedDietitian?._id || "";
     setForm({
-      email: u.email,
-      password: "",
+      email: u.email || "",
       firstName: u.firstName,
       lastName: u.lastName,
       phone: u.phone || "",
@@ -143,19 +141,17 @@ export default function AdminClientsPage() {
   }
 
   async function handleSave() {
-    // Validate email first
-    const emailValidation = validateEmail(form.email);
-    if (!emailValidation.isValid) {
-      setError(emailValidation.error || 'Invalid email');
-      return;
+    // Validate email only if provided
+    if (form.email) {
+      const emailValidation = validateEmail(form.email);
+      if (!emailValidation.isValid) {
+        setError(emailValidation.error || 'Invalid email');
+        return;
+      }
     }
 
-    if (!form.email || !form.firstName || !form.lastName) {
-      setError("Please fill required fields: email, first name, last name");
-      return;
-    }
-    if (!editing && !form.password) {
-      setError("Password is required when creating a new client");
+    if (!form.firstName || !form.lastName || !form.phone) {
+      setError("Please fill required fields: first name, last name, and phone number");
       return;
     }
 
@@ -164,11 +160,11 @@ export default function AdminClientsPage() {
       setError(null);
       let res: Response;
       const payload: any = {
-        email: form.email,
+        email: form.email || undefined,
         firstName: form.firstName,
         lastName: form.lastName,
         role: UserRole.CLIENT,
-        phone: form.phone || undefined,
+        phone: form.phone,
         gender: form.gender || undefined,
         dateOfBirth: form.dateOfBirth ? new Date(form.dateOfBirth) : undefined,
         assignedDietitian: form.assignedDietitian || undefined,
@@ -184,7 +180,7 @@ export default function AdminClientsPage() {
         res = await fetch(`/api/users`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, password: form.password }),
+          body: JSON.stringify(payload),
         });
       }
 
@@ -446,8 +442,20 @@ export default function AdminClientsPage() {
             </DialogHeader>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm text-gray-600">First Name <span className="text-red-500">*</span></label>
+                <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Last Name <span className="text-red-500">*</span></label>
+                <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} />
+              </div>
               <div className="col-span-2">
-                <label className="text-sm text-gray-600">Email <span className="text-red-500">*</span></label>
+                <label className="text-sm text-gray-600">Phone / WhatsApp <span className="text-red-500">*</span></label>
+                <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+91XXXXXXXXXX" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-sm text-gray-600">Email (Optional)</label>
                 <Input
                   type="email"
                   value={form.email}
@@ -458,24 +466,6 @@ export default function AdminClientsPage() {
                   }}
                   placeholder="client@example.com"
                 />
-              </div>
-              {!editing && (
-                <div className="col-span-2">
-                  <label className="text-sm text-gray-600">Password</label>
-                  <Input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
-                </div>
-              )}
-              <div>
-                <label className="text-sm text-gray-600">First Name</label>
-                <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Last Name</label>
-                <Input value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Phone</label>
-                <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
               </div>
               <div>
                 <label className="text-sm text-gray-600">Gender</label>

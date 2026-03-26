@@ -6,6 +6,7 @@ import User from '@/lib/db/models/User';
 import WooCommerceClient from '@/lib/db/models/WooCommerceClient';
 import { UserRole } from '@/types';
 import { getBaseUrl } from '@/lib/config';
+import { verify } from 'jsonwebtoken';
 
 /**
  * In-memory cache for user active-status checks in the session callback.
@@ -51,14 +52,74 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
-        loginContext: { label: 'Login Context', type: 'text' }
+        loginContext: { label: 'Login Context', type: 'text' },
+        otpToken: { label: 'OTP Token', type: 'text' }
       },
       async authorize(credentials) {
+        const loginContext = (credentials as any)?.loginContext as 'staff' | 'client' | undefined;
+        const otpToken = (credentials as any)?.otpToken as string | undefined;
+
+        // OTP Token Login (WhatsApp OTP)
+        if (otpToken && credentials?.email) {
+          try {
+            const jwtSecret = process.env.NEXTAUTH_SECRET;
+            if (!jwtSecret) {
+              throw new Error('Server configuration error');
+            }
+
+            // Verify the OTP token
+            const decoded = verify(otpToken, jwtSecret) as {
+              userId: string;
+              email: string;
+              name: string;
+              role: string;
+              onboardingCompleted?: boolean;
+            };
+
+            // Verify the email matches
+            if (decoded.email.toLowerCase() !== credentials.email.toLowerCase()) {
+              throw new Error('Invalid token');
+            }
+
+            await connectDB();
+
+            // Fetch fresh user data using userId from token
+            const user = await User.findById(decoded.userId).select(
+              'firstName lastName email role status avatar emailVerified onboardingCompleted'
+            );
+
+            if (!user) {
+              throw new Error('User not found');
+            }
+
+            if (user.status !== 'active') {
+              throw new Error('Your account is not active. Please contact support.');
+            }
+
+            // Update lastLoginAt
+            await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
+
+            return {
+              id: user._id.toString(),
+              email: user.email,
+              name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+              role: user.role,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              avatar: user.avatar,
+              emailVerified: user.emailVerified || true,
+              onboardingCompleted: user.onboardingCompleted
+            };
+          } catch (error) {
+            console.error('OTP token auth error:', error);
+            throw new Error('Invalid or expired OTP session');
+          }
+        }
+
+        // Standard Email/Password Login
         if (!credentials?.email || !credentials?.password) {
           throw new Error('Email and password are required');
         }
-
-        const loginContext = (credentials as any)?.loginContext as 'staff' | 'client' | undefined;
 
         try {
           await connectDB();

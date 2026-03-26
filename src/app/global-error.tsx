@@ -2,6 +2,42 @@
 
 import { useEffect } from "react";
 
+// Reload loop guard constants
+const RELOAD_GUARD_KEY = 'dtps_error_reload_ts';
+const RELOAD_COOLDOWN_MS = 15000; // 15 seconds between reload attempts
+
+/**
+ * Safely check if we should skip reload due to recent attempt
+ * Returns true if we should skip (reload already attempted recently)
+ */
+function shouldSkipReload(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const lastReloadTs = sessionStorage.getItem(RELOAD_GUARD_KEY);
+    if (lastReloadTs) {
+      const elapsed = Date.now() - parseInt(lastReloadTs, 10);
+      if (elapsed < RELOAD_COOLDOWN_MS) {
+        console.warn(`[GlobalError] Skipping reload — last attempt was ${elapsed}ms ago`);
+        return true;
+      }
+    }
+  } catch {
+    // sessionStorage not available
+  }
+  return false;
+}
+
+/**
+ * Record a reload attempt timestamp
+ */
+function recordReloadAttempt(): void {
+  try {
+    sessionStorage.setItem(RELOAD_GUARD_KEY, Date.now().toString());
+  } catch {
+    // Ignore
+  }
+}
+
 export default function GlobalError({
   error,
   reset,
@@ -10,27 +46,46 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log error for debugging
-    console.error('Global error:', error);
+    // === BULLETPROOF ERROR HANDLER ===
+    // Entire body wrapped in try-catch - this component must NEVER throw
+    try {
+      // Log error for debugging
+      console.error('Global error:', error);
 
-    // Auto-recover from chunk load errors (stale deployment)
-    const msg = error?.message || '';
-    if (
-      msg.includes('ChunkLoadError') ||
-      msg.includes('Loading chunk') ||
-      msg.includes('Failed to fetch dynamically imported module')
-    ) {
-      // Clear all dtps caches and force reload
-      if (typeof window !== 'undefined' && 'caches' in window) {
-        caches.keys().then((names) => {
-          Promise.all(names.filter(n => n.startsWith('dtps-')).map(n => caches.delete(n)))
-            .then(() => (window as any).location.reload());
-        }).catch(() => {
-          if (typeof window !== 'undefined') (window as any).location.reload();
-        });
-      } else if (typeof window !== 'undefined') {
-        (window as any).location.reload();
+      // Auto-recover from chunk load errors (stale deployment)
+      const msg = error?.message || '';
+      const isChunkError =
+        msg.includes('ChunkLoadError') ||
+        msg.includes('Loading chunk') ||
+        msg.includes('Failed to fetch dynamically imported module');
+
+      if (isChunkError && typeof window !== 'undefined') {
+        // Check reload guard - prevent infinite loops
+        if (shouldSkipReload()) {
+          return;
+        }
+
+        // Record this reload attempt before proceeding
+        recordReloadAttempt();
+
+        // Clear all dtps caches and force reload
+        if ('caches' in window) {
+          caches.keys()
+            .then((names) => {
+              Promise.all(names.filter(n => n.startsWith('dtps-')).map(n => caches.delete(n)))
+                .then(() => window.location.reload())
+                .catch(() => window.location.reload());
+            })
+            .catch(() => {
+              window.location.reload();
+            });
+        } else {
+          window.location.reload();
+        }
       }
+    } catch (handlerError) {
+      // Error handler itself failed - just log and render fallback UI
+      console.error('[GlobalError] Error handler failed:', handlerError);
     }
   }, [error]);
 

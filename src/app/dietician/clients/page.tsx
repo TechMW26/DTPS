@@ -194,7 +194,6 @@ export default function DieticianClientsPage() {
   const [emailError, setEmailError] = useState('');
   const [createForm, setCreateForm] = useState({
     email: '',
-    password: '',
     firstName: '',
     lastName: '',
     phone: '',
@@ -371,32 +370,32 @@ export default function DieticianClientsPage() {
   };
 
   const handleCreateClient = async () => {
-    // Validate email first
-    const emailValidation = validateEmail(createForm.email);
-    if (!emailValidation.isValid) {
-      setEmailError(emailValidation.error || 'Invalid email');
-      return;
+    // Validate email only if provided
+    if (createForm.email) {
+      const emailValidation = validateEmail(createForm.email);
+      if (!emailValidation.isValid) {
+        setEmailError(emailValidation.error || 'Invalid email');
+        return;
+      }
     }
     setEmailError('');
 
-    if (!createForm.email || !createForm.firstName || !createForm.lastName || !createForm.password) {
-      toast.error('Please fill required fields: email, first name, last name, and password');
+    if (!createForm.firstName || !createForm.lastName || !createForm.phone) {
+      toast.error('Please fill required fields: first name, last name, and phone number');
       return;
     }
 
     try {
       setSaving(true);
       const payload = {
-        email: createForm.email,
-        password: createForm.password,
+        email: createForm.email || undefined,
         firstName: createForm.firstName,
         lastName: createForm.lastName,
-        phone: createForm.phone || undefined,
+        phone: createForm.phone,
         gender: createForm.gender || undefined,
         dateOfBirth: createForm.dateOfBirth ? new Date(createForm.dateOfBirth) : undefined,
         role: 'client',
-        // Auto-assign to the current dietitian
-        assignedDietitian: session?.user?.id || undefined,
+        // Backend will auto-assign to the current dietitian based on session
       };
 
       const res = await fetch('/api/users', {
@@ -414,7 +413,6 @@ export default function DieticianClientsPage() {
       setCreateDialogOpen(false);
       setCreateForm({
         email: '',
-        password: '',
         firstName: '',
         lastName: '',
         phone: '',
@@ -1021,34 +1019,6 @@ export default function DieticianClientsPage() {
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className="text-sm text-gray-600">Email <span className="text-red-500">*</span></label>
-              <Input
-                type="email"
-                value={createForm.email}
-                onChange={e => {
-                  setCreateForm(f => ({ ...f, email: e.target.value }));
-                  if (emailError) {
-                    const validation = validateEmail(e.target.value);
-                    setEmailError(validation.isValid ? '' : validation.error || '');
-                  }
-                }}
-                placeholder="client@example.com"
-                className={emailError ? 'border-red-500' : ''}
-                autoComplete="off"
-              />
-              {emailError && <p className="text-sm text-red-500 mt-1">{emailError}</p>}
-            </div>
-            <div className="col-span-2">
-              <label className="text-sm text-gray-600">Password <span className="text-red-500">*</span></label>
-              <Input
-                type="password"
-                value={createForm.password}
-                onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))}
-                placeholder="Enter password"
-                autoComplete="new-password"
-              />
-            </div>
             <div>
               <label className="text-sm text-gray-600">First Name <span className="text-red-500">*</span></label>
               <Input
@@ -1065,13 +1035,31 @@ export default function DieticianClientsPage() {
                 placeholder="Last name"
               />
             </div>
-            <div>
-              <label className="text-sm text-gray-600">Phone</label>
+            <div className="col-span-2">
+              <label className="text-sm text-gray-600">Phone / WhatsApp <span className="text-red-500">*</span></label>
               <Input
                 value={createForm.phone}
                 onChange={e => setCreateForm(f => ({ ...f, phone: e.target.value }))}
-                placeholder="Phone number"
+                placeholder="+91XXXXXXXXXX"
               />
+            </div>
+            <div className="col-span-2">
+              <label className="text-sm text-gray-600">Email (Optional)</label>
+              <Input
+                type="email"
+                value={createForm.email}
+                onChange={e => {
+                  setCreateForm(f => ({ ...f, email: e.target.value }));
+                  if (emailError) {
+                    const validation = validateEmail(e.target.value);
+                    setEmailError(validation.isValid ? '' : validation.error || '');
+                  }
+                }}
+                placeholder="client@example.com"
+                className={emailError ? 'border-red-500' : ''}
+                autoComplete="off"
+              />
+              {emailError && <p className="text-sm text-red-500 mt-1">{emailError}</p>}
             </div>
             <div>
               <label className="text-sm text-gray-600">Gender</label>

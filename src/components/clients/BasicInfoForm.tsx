@@ -133,8 +133,8 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="email">Email *</Label>
-          <Input id="email" type="email" value={email} onChange={e => onChange('email', e.target.value)} required disabled={disableEmail} />
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" type="email" value={email} onChange={e => onChange('email', e.target.value)} disabled={disableEmail} />
         </div>
 
         <div className="space-y-1.5">
