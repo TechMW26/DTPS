@@ -293,10 +293,22 @@ export async function POST(request: NextRequest) {
       normalizedPhone = '+91' + normalizedPhone;
     }
 
-    // Check if phone number is already registered
-    const existingPhone = await User.findOne({ phone: normalizedPhone });
+    // Extract raw 10-digit phone number for search
+    // DB stores phones in mixed formats (10-digit, +91, 91)
+    const rawPhone = normalizedPhone.replace(/^\+91/, '').replace(/^91/, '');
+
+    // Create phone variations to search (different formats in DB)
+    const phoneVariations = [
+      rawPhone,                           // 9876543210 (most common in DB)
+      normalizedPhone,                    // +919876543210
+      normalizedPhone.replace('+', ''),   // 919876543210
+      '+91' + rawPhone,                   // +919876543210
+    ];
+
+    // Check if phone number is already registered (check all variations)
+    const existingPhone = await User.findOne({ phone: { $in: phoneVariations } });
     if (existingPhone) {
-      return NextResponse.json({ error: 'This phone number is already registered' }, { status: 400 });
+      return NextResponse.json({ error: 'This phone number is already registered with another account' }, { status: 409 });
     }
 
     // For clients, auto-generate password if not provided

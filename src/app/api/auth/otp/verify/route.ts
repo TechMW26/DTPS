@@ -94,6 +94,31 @@ export async function POST(request: NextRequest) {
                 }
             }
 
+            // Extract raw 10-digit phone number for search
+            // DB stores phones in mixed formats (10-digit, +91, 91)
+            const rawPhone = normalizedPhone.replace(/^\+91/, '').replace(/^91/, '');
+
+            // Create phone variations to search (different formats in DB)
+            const phoneVariations = [
+                rawPhone,                           // 9876543210 (most common in DB)
+                normalizedPhone,                    // +919876543210
+                normalizedPhone.replace('+', ''),   // 919876543210
+                '+91' + rawPhone,                   // +919876543210
+            ];
+
+            // Final check - ensure phone number is not already registered (race condition protection)
+            const existingPhoneUser = await User.findOne({
+                phone: { $in: phoneVariations }
+            });
+            if (existingPhoneUser) {
+                // Clean up the OTP record
+                await OTPRecord.deleteOne({ _id: otpRecord._id });
+                return NextResponse.json(
+                    { success: false, error: 'This phone number is already registered with another account. Please sign in instead.' },
+                    { status: 409 }
+                );
+            }
+
             // Generate a random password for the user (they will use OTP to login)
             const randomPassword = crypto.randomBytes(16).toString('hex');
 

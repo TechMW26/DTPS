@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DTPS — Under Maintenance</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Instrument+Sans:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --orange: #ff9500;
+            --orange-lt: #fff1d6;
+            --orange-dk: #cc7600;
+            --mint: #b9f8cf;
+            --mint-lt: #e8fff2;
+            --mint-dk: #0d9e4e;
+            --bg: #fafaf8;
+            --surface: #ffffff;
+            --border: #e8e8e8;
+            --text: #1a1a1a;
+            --muted: #888;
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        body {
+            min-height: 100vh;
+            min-height: 100dvh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Instrument Sans', 'Segoe UI', Roboto, sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* ── TOP GRADIENT BAR ── */
+        .topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--orange), var(--mint));
+            z-index: 100;
+        }
+
+        /* ── SUBTLE NOISE ── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.022'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ── FLOATING BLOBS ── */
+        .blob {
+            position: fixed;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .blob-a {
+            width: clamp(200px, 40vw, 440px);
+            height: clamp(200px, 40vw, 440px);
+            top: -20%;
+            right: -10%;
+            background: var(--orange-lt);
+            animation: drift 18s ease-in-out infinite;
+        }
+
+        .blob-b {
+            width: clamp(140px, 28vw, 300px);
+            height: clamp(140px, 28vw, 300px);
+            bottom: -8%;
+            left: -8%;
+            background: var(--mint-lt);
+            animation: drift 22s ease-in-out infinite reverse;
+        }
+
+        .blob-c {
+            width: clamp(80px, 12vw, 150px);
+            height: clamp(80px, 12vw, 150px);
+            top: 40%;
+            left: 6%;
+            background: var(--orange-lt);
+            opacity: .45;
+            animation: drift 14s ease-in-out infinite 4s;
+        }
+
+        @keyframes drift {
+
+            0%,
+            100% {
+                transform: translateY(0) scale(1);
+            }
+
+            50% {
+                transform: translateY(20px) scale(1.04);
+            }
+        }
+
+        /* ── PAGE WRAPPER ── */
+        .page {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: clamp(4rem, 8vh, 5rem) clamp(1rem, 5vw, 2rem) clamp(2rem, 4vh, 3rem);
+            gap: 0;
+            width: 100%;
+        }
+
+        /* ── STATUS PILL ── */
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px 6px 10px;
+            background: var(--orange-lt);
+            border: 1.5px solid rgba(255, 149, 0, .35);
+            border-radius: 100px;
+            font-size: clamp(11px, 2vw, 13px);
+            font-weight: 500;
+            color: var(--orange-dk);
+            letter-spacing: .04em;
+            animation: fadeUp .6s ease both;
+            white-space: nowrap;
+        }
+
+        .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--orange);
+            flex-shrink: 0;
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 149, 0, .5);
+            }
+
+            50% {
+                box-shadow: 0 0 0 7px rgba(255, 149, 0, 0);
+            }
+        }
+
+        /* ── WORDMARK ── */
+        .wordmark {
+            margin-top: clamp(16px, 3vw, 28px);
+            font-family: 'Syne', Georgia, serif;
+            font-size: clamp(64px, 18vw, 148px);
+            font-weight: 800;
+            letter-spacing: -.02em;
+            line-height: 1;
+            color: var(--text);
+            animation: fadeUp .7s ease .05s both;
+            text-align: center;
+        }
+
+        .wordmark em {
+            font-style: normal;
+            color: var(--orange);
+        }
+
+        /* ── TAGLINE ── */
+        .tagline {
+            margin-top: clamp(4px, 1vw, 8px);
+            font-family: 'Syne', Georgia, serif;
+            font-size: clamp(10px, 2.2vw, 17px);
+            font-weight: 700;
+            letter-spacing: clamp(.12em, 1vw, .22em);
+            text-transform: uppercase;
+            color: var(--muted);
+            animation: fadeUp .7s ease .1s both;
+            text-align: center;
+        }
+
+        /* ── RULE ── */
+        .rule {
+            margin: clamp(18px, 3vw, 28px) 0;
+            width: 52px;
+            height: 3px;
+            background: linear-gradient(90deg, var(--orange), var(--mint));
+            border-radius: 100px;
+            animation: fadeUp .7s ease .15s both;
+        }
+
+        /* ── BODY COPY ── */
+        .body-copy {
+            width: 100%;
+            max-width: min(440px, 90vw);
+            text-align: center;
+            font-size: clamp(14px, 2.5vw, 15.5px);
+            line-height: 1.75;
+            color: #555;
+            animation: fadeUp .7s ease .2s both;
+        }
+
+        .body-copy strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        /* ── CARDS ── */
+        .cards {
+            margin-top: clamp(22px, 4vw, 36px);
+            display: flex;
+            gap: clamp(10px, 2vw, 14px);
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            max-width: min(560px, 96vw);
+            animation: fadeUp .7s ease .28s both;
+        }
+
+        .card {
+            flex: 1 1 clamp(120px, 28vw, 165px);
+            max-width: 165px;
+            padding: clamp(14px, 2.5vw, 20px) clamp(12px, 2vw, 16px);
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: clamp(12px, 2vw, 16px);
+            display: flex;
+            flex-direction: column;
+            gap: clamp(7px, 1.2vw, 10px);
+            transition: transform .22s, box-shadow .22s;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, .07);
+        }
+
+        .card-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .icon-orange {
+            background: var(--orange-lt);
+        }
+
+        .icon-mint {
+            background: var(--mint-lt);
+        }
+
+        .card-title {
+            font-family: 'Syne', Georgia, serif;
+            font-size: clamp(12px, 1.8vw, 13.5px);
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .card-desc {
+            font-size: clamp(11px, 1.6vw, 12.5px);
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        /* ── PROGRESS BAR ── */
+        .progress-wrap {
+            margin-top: clamp(22px, 4vw, 36px);
+            width: 100%;
+            max-width: min(480px, 92vw);
+            animation: fadeUp .7s ease .36s both;
+        }
+
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: clamp(11px, 1.8vw, 12.5px);
+            color: var(--muted);
+            font-weight: 500;
+            margin-bottom: 8px;
+            letter-spacing: .03em;
+        }
+
+        .progress-meta span:last-child {
+            color: var(--orange);
+            font-weight: 600;
+        }
+
+        .bar-track {
+            height: 6px;
+            background: #e8e8e8;
+            border-radius: 100px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 100px;
+            width: 0;
+            background: linear-gradient(90deg, var(--orange), #ffcf6b, var(--mint));
+            animation: grow 3s cubic-bezier(.4, 0, .2, 1) .8s forwards;
+        }
+
+        @keyframes grow {
+            to {
+                width: 68%;
+            }
+        }
+
+        /* ── CHECKLIST ── */
+        .checklist {
+            margin-top: clamp(16px, 2.5vw, 24px);
+            width: 100%;
+            max-width: min(480px, 92vw);
+            display: flex;
+            flex-direction: column;
+            gap: clamp(8px, 1.5vw, 10px);
+            animation: fadeUp .7s ease .44s both;
+        }
+
+        .check-item {
+            display: flex;
+            align-items: center;
+            gap: clamp(8px, 1.5vw, 12px);
+            padding: clamp(10px, 1.8vw, 13px) clamp(12px, 2vw, 16px);
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: clamp(10px, 1.8vw, 12px);
+            font-size: clamp(12.5px, 2vw, 13.5px);
+            font-weight: 500;
+            color: var(--text);
+            min-height: 48px;
+        }
+
+        .check-item.done {
+            border-color: rgba(185, 248, 207, .8);
+            background: var(--mint-lt);
+        }
+
+        .check-item.active {
+            border-color: rgba(255, 149, 0, .45);
+            background: var(--orange-lt);
+        }
+
+        .check-icon {
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .ci-done {
+            background: var(--mint);
+            color: var(--mint-dk);
+        }
+
+        .ci-active {
+            background: var(--orange);
+            color: #fff;
+            animation: ringPulse 1.4s ease-in-out infinite;
+        }
+
+        .ci-wait {
+            background: #e8e8e8;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        @keyframes ringPulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 149, 0, .45);
+            }
+
+            50% {
+                box-shadow: 0 0 0 6px rgba(255, 149, 0, 0);
+            }
+        }
+
+        .step-label {
+            margin-left: auto;
+            font-size: clamp(10px, 1.5vw, 11.5px);
+            font-weight: 400;
+            color: var(--muted);
+            letter-spacing: .04em;
+            white-space: nowrap;
+            padding-left: 6px;
+        }
+
+        .step-label.done-lbl {
+            color: var(--mint-dk);
+        }
+
+        .step-label.active-lbl {
+            color: var(--orange-dk);
+        }
+
+        /* ── FOOTER ── */
+        .footer {
+            margin-top: clamp(28px, 5vw, 44px);
+            font-size: clamp(11px, 1.8vw, 12.5px);
+            color: #bbb;
+            letter-spacing: .04em;
+            text-align: center;
+            animation: fadeUp .7s ease .52s both;
+        }
+
+        .footer a {
+            color: var(--orange);
+            text-decoration: none;
+        }
+
+        /* ── KEYFRAMES ── */
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ════════════════════════════════
+       BREAKPOINTS
+    ════════════════════════════════ */
+
+        /* Large screens (≥1280px) */
+        @media (min-width: 1280px) {
+            .page {
+                padding-top: 5rem;
+                padding-bottom: 3rem;
+            }
+
+            .wordmark {
+                font-size: 148px;
+            }
+        }
+
+        /* Tablets (768px – 1279px) */
+        @media (max-width: 1279px) and (min-width: 768px) {
+            .card {
+                max-width: 155px;
+            }
+        }
+
+        /* Large phones (480px – 767px) */
+        @media (max-width: 767px) {
+            .blob-c {
+                display: none;
+            }
+
+            .cards {
+                max-width: 92vw;
+            }
+
+            .card {
+                flex: 1 1 calc(50% - 8px);
+                max-width: calc(50% - 8px);
+            }
+
+            .card:last-child {
+                flex: 1 1 100%;
+                max-width: 100%;
+                flex-direction: row;
+                align-items: center;
+                gap: 14px;
+            }
+
+            .card:last-child .card-icon {
+                flex-shrink: 0;
+            }
+        }
+
+        /* Small phones (360px – 479px) */
+        @media (max-width: 479px) {
+            .page {
+                padding-left: .9rem;
+                padding-right: .9rem;
+            }
+
+            .wordmark {
+                font-size: clamp(56px, 20vw, 80px);
+            }
+
+            .tagline {
+                letter-spacing: .1em;
+            }
+
+            .cards {
+                flex-direction: column;
+                align-items: stretch;
+                max-width: 100%;
+                gap: 8px;
+            }
+
+            .card {
+                flex: unset;
+                max-width: 100%;
+                flex-direction: row;
+                align-items: center;
+                gap: 14px;
+                padding: 12px 14px;
+            }
+
+            .card .card-icon {
+                flex-shrink: 0;
+            }
+
+            .check-item {
+                font-size: 13px;
+            }
+        }
+
+        /* Very small phones (< 360px) */
+        @media (max-width: 359px) {
+            .wordmark {
+                font-size: 52px;
+            }
+
+            .body-copy {
+                font-size: 13.5px;
+            }
+
+            .step-label {
+                display: none;
+            }
+
+            .page {
+                padding-left: .75rem;
+                padding-right: .75rem;
+            }
+        }
+
+        /* Short screens / landscape phones */
+        @media (max-height: 600px) and (orientation: landscape) {
+            .page {
+                justify-content: flex-start;
+                padding-top: 3.5rem;
+            }
+
+            .wordmark {
+                font-size: clamp(48px, 10vh, 80px);
+                margin-top: 12px;
+            }
+
+            .rule {
+                margin: 14px 0;
+            }
+
+            .cards {
+                margin-top: 14px;
+            }
+
+            .progress-wrap {
+                margin-top: 14px;
+            }
+
+            .checklist {
+                margin-top: 10px;
+            }
+
+            .footer {
+                margin-top: 18px;
+            }
+
+            .blob-b,
+            .blob-c {
+                display: none;
+            }
+        }
+
+        /* Ultra-wide screens */
+        @media (min-width: 1800px) {
+            .page {
+                max-width: 900px;
+                margin: 0 auto;
+            }
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+
+            *,
+            *::before,
+            *::after {
+                animation-duration: .001ms !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="topbar"></div>
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
+    <div class="blob blob-c"></div>
+
+    <div class="page">
+
+        <div class="status-pill">
+            <div class="dot"></div>
+            System under maintenance
+        </div>
+
+        <div class="wordmark">DT<em>PS</em></div>
+        <div class="tagline">Deployment in progress</div>
+        <div class="rule"></div>
+
+        <p class="body-copy">
+            We're pushing <strong>the latest updates</strong> to our servers right now.
+            Everything will be back up and running very soon — thank you for your patience.
+        </p>
+
+        <div class="cards">
+            <div class="card">
+                <div class="card-icon icon-orange">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                        <path d="M3 9h12M9 3l6 6-6 6" stroke="#ff9500" stroke-width="1.8" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="card-title">Pulling updates</div>
+                    <div class="card-desc">Syncing the latest code from our repository.</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-icon icon-mint">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                        <rect x="2" y="3" width="14" height="12" rx="2.5" stroke="#0d9e4e" stroke-width="1.8" />
+                        <path d="M6 8l2.5 2.5L12 7" stroke="#0d9e4e" stroke-width="1.8" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="card-title">Running tests</div>
+                    <div class="card-desc">Verifying all services are healthy before restart.</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-icon icon-orange">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                        <circle cx="9" cy="9" r="6.5" stroke="#ff9500" stroke-width="1.8" />
+                        <path d="M9 5.5v4l2.5 2" stroke="#ff9500" stroke-width="1.8" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="card-title">Almost there</div>
+                    <div class="card-desc">Containers restarting, health checks passing.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="progress-wrap">
+            <div class="progress-meta">
+                <span>Deployment progress</span>
+                <span id="pct-label">0%</span>
+            </div>
+            <div class="bar-track">
+                <div class="bar-fill"></div>
+            </div>
+        </div>
+
+        <div class="checklist">
+            <div class="check-item done">
+                <div class="check-icon ci-done">✓</div>
+                Code pulled from repository
+                <span class="step-label done-lbl">Complete</span>
+            </div>
+            <div class="check-item done">
+                <div class="check-icon ci-done">✓</div>
+                Docker images rebuilt
+                <span class="step-label done-lbl">Complete</span>
+            </div>
+            <div class="check-item active">
+                <div class="check-icon ci-active">↻</div>
+                Containers restarting
+                <span class="step-label active-lbl">In progress</span>
+            </div>
+            <div class="check-item">
+                <div class="check-icon ci-wait">○</div>
+                Health checks
+                <span class="step-label">Pending</span>
+            </div>
+            <div class="check-item">
+                <div class="check-icon ci-wait">○</div>
+                Service restored
+                <span class="step-label">Pending</span>
+            </div>
+        </div>
+
+        <div class="footer">
+            dtps.system &nbsp;·&nbsp; need help? contact <a href="#">support</a>
+        </div>
+
+    </div>
+
+    <script>
+        const target = 68, el = document.getElementById('pct-label');
+        let cur = 0;
+        setTimeout(() => {
+            const iv = setInterval(() => {
+                cur = Math.min(cur + 1, target);
+                el.textContent = cur + '%';
+                if (cur >= target) clearInterval(iv);
+            }, 3000 / target);
+        }, 800);
+    </script>
+</body>
+
+</html>

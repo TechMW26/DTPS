@@ -356,11 +356,11 @@ export default function ClientSignUpPage() {
                                     />
                                     <label htmlFor="terms" className="text-sm leading-tight text-gray-600">
                                         I agree to the{' '}
-                                        <Link href="/terms" className="text-[#E06A26] hover:underline font-medium">
+                                        <Link href="https://dtpoonamsagar.com/terms-and-conditions/" target="_blank" className="text-[#E06A26] hover:underline font-medium">
                                             Terms of Service
                                         </Link>{' '}
                                         and{' '}
-                                        <Link href="/privacy" className="text-[#E06A26] hover:underline font-medium">
+                                        <Link href="https://dtpoonamsagar.com/privacy-policy/" target="_blank" className="text-[#E06A26] hover:underline font-medium">
                                             Privacy Policy
                                         </Link>
                                         .

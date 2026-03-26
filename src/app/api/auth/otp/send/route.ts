@@ -53,8 +53,6 @@ export async function POST(request: NextRequest) {
             '+91' + rawPhone,                   // +919876543210
         ];
 
-        console.log('Searching for phone variations:', phoneVariations, 'mode:', mode);
-
         let userName = 'User';
         let userId: string | undefined;
         let otpPurpose: 'login' | 'signup' = mode === 'signup' ? 'signup' : 'login';
@@ -126,7 +124,6 @@ export async function POST(request: NextRequest) {
             { upsert: true, new: true }
         );
 
-        console.log('OTP stored in DB for phone:', normalizedPhone, 'OTP:', otp);
 
         // Send OTP via AISensy WhatsApp API
         const apiKey = process.env.AISENSY_API_KEY;
@@ -183,8 +180,6 @@ export async function POST(request: NextRequest) {
                     { status: 500 }
                 );
             }
-
-            console.log('OTP sent successfully to:', destination);
 
             return NextResponse.json({
                 success: true,
