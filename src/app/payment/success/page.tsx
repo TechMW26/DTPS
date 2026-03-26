@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDateIST } from '@/lib/utils/formatDateIST';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
@@ -123,18 +124,18 @@ function PaymentSuccessContent() {
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <span className="text-gray-500">Amount Paid:</span>
                     <span className="font-semibold text-right">₹{paymentDetails.finalAmount?.toLocaleString()}</span>
-                    
+
                     {paymentDetails.planName && (
                       <>
                         <span className="text-gray-500">Plan:</span>
                         <span className="font-medium text-right">{paymentDetails.planName}</span>
                       </>
                     )}
-                    
+
                     {paymentDetails.paidAt && (
                       <>
                         <span className="text-gray-500">Date:</span>
-                        <span className="text-right">{new Date(paymentDetails.paidAt).toLocaleDateString()}</span>
+                        <span className="text-right">{formatDateIST(paymentDetails.paidAt)}</span>
                       </>
                     )}
                   </div>

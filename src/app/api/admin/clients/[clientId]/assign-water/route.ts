@@ -10,28 +10,28 @@ import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // Helper to check if client has active meal plan for a given date
 async function hasActiveMealPlan(clientId: string, targetDate: Date): Promise<boolean> {
-    const planStartOfDay = new Date(targetDate);
-    planStartOfDay.setHours(0, 0, 0, 0);
-    const planEndOfDay = new Date(targetDate);
-    planEndOfDay.setHours(23, 59, 59, 999);
-    
-    const activePlan = await withCache(
-      `admin:clients:clientId:assign-water:${JSON.stringify({
-        clientId: clientId,
-        status: 'active',
-        startDate: { $lte: planEndOfDay },
-        endDate: { $gte: planStartOfDay }
+  const planStartOfDay = new Date(targetDate);
+  planStartOfDay.setHours(0, 0, 0, 0);
+  const planEndOfDay = new Date(targetDate);
+  planEndOfDay.setHours(23, 59, 59, 999);
+
+  const activePlan = await withCache(
+    `admin:clients:clientId:assign-water:${JSON.stringify({
+      clientId: clientId,
+      status: 'active',
+      startDate: { $lte: planEndOfDay },
+      endDate: { $gte: planStartOfDay }
     })}`,
-      async () => await ClientMealPlan.findOne({
-        clientId: clientId,
-        status: 'active',
-        startDate: { $lte: planEndOfDay },
-        endDate: { $gte: planStartOfDay }
+    async () => await ClientMealPlan.findOne({
+      clientId: clientId,
+      status: 'active',
+      startDate: { $lte: planEndOfDay },
+      endDate: { $gte: planStartOfDay }
     }),
-      { ttl: 120000, tags: ['admin'] }
-    );
-    
-    return !!activePlan;
+    { ttl: 120000, tags: ['admin'] }
+  );
+
+  return !!activePlan;
 }
 
 // GET - Get assigned water status for a client
@@ -81,13 +81,13 @@ export async function GET(
     // Find journal for the date
     const journal = await withCache(
       `admin:clients:clientId:assign-water:${JSON.stringify({
-      client: clientId,
-      date: { $gte: targetDate, $lt: nextDay }
-    })}`,
+        client: clientId,
+        date: { $gte: targetDate, $lt: nextDay }
+      })}`,
       async () => await JournalTracking.findOne({
-      client: clientId,
-      date: { $gte: targetDate, $lt: nextDay }
-    }),
+        client: clientId,
+        date: { $gte: targetDate, $lt: nextDay }
+      }),
       { ttl: 120000, tags: ['admin'] }
     );
 
@@ -214,7 +214,7 @@ export async function POST(
 
     // Send push notification to client about assigned task
     try {
-      const dateStr = targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const dateStr = targetDate.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' });
       await sendTaskAssignedNotification(clientId, {
         taskType: 'water',
         target: `${amount}ml`,

@@ -77,10 +77,10 @@ export async function POST(
     }
 
     // Check if appointment can be rescheduled (not already cancelled or completed)
-    if (appointment.status === AppointmentStatus.CANCELLED || 
-        appointment.status === AppointmentStatus.COMPLETED) {
-      return NextResponse.json({ 
-        error: `Cannot reschedule a ${appointment.status} appointment` 
+    if (appointment.status === AppointmentStatus.CANCELLED ||
+      appointment.status === AppointmentStatus.COMPLETED) {
+      return NextResponse.json({
+        error: `Cannot reschedule a ${appointment.status} appointment`
       }, { status: 400 });
     }
 
@@ -140,7 +140,7 @@ export async function POST(
     // Update appointment
     appointment.scheduledAt = newScheduledAt;
     appointment.duration = newDuration;
-    
+
     await appointment.save();
 
     // Update meeting link if applicable
@@ -195,7 +195,7 @@ export async function POST(
 
     // Send reschedule emails
     try {
-      const providerRole: 'dietitian' | 'health_counselor' = 
+      const providerRole: 'dietitian' | 'health_counselor' =
         actorRole === 'health_counselor' ? 'health_counselor' : 'dietitian';
 
       const emailData: AppointmentEmailData = {
@@ -218,7 +218,7 @@ export async function POST(
       };
 
       const emailResult = await sendAppointmentRescheduleEmail(emailData);
-      
+
       if (!emailResult.success) {
         console.warn('Some reschedule emails failed:', emailResult.errors);
       }
@@ -230,9 +230,9 @@ export async function POST(
     clearCacheByTag('appointments');
 
     // Log history
-    const rescheduledByLabel = actorRole === 'client' ? 'Client' : 
-                               actorRole === 'dietitian' ? 'Dietitian' :
-                               actorRole === 'health_counselor' ? 'Health Counselor' : 'Admin';
+    const rescheduledByLabel = actorRole === 'client' ? 'Client' :
+      actorRole === 'dietitian' ? 'Dietitian' :
+        actorRole === 'health_counselor' ? 'Health Counselor' : 'Admin';
 
     await logHistoryServer({
       userId: clientId!,
@@ -251,12 +251,13 @@ export async function POST(
 
     // Send real-time notifications
     try {
-      const formattedNewDate = newScheduledAt.toLocaleDateString('en-US', {
+      const formattedNewDate = newScheduledAt.toLocaleDateString('en-IN', {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
       });
 
       const sseManager = SSEManager.getInstance();

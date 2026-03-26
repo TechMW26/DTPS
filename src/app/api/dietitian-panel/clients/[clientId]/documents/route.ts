@@ -144,10 +144,11 @@ export async function GET(
             completions.forEach((completion: any) => {
                 if (completion.imagePath) {
                     const completionDate = new Date(completion.date);
-                    const formattedDate = completionDate.toLocaleDateString('en-US', {
+                    const formattedDate = completionDate.toLocaleDateString('en-IN', {
                         month: 'short',
                         day: 'numeric',
-                        year: 'numeric'
+                        year: 'numeric',
+                        timeZone: 'Asia/Kolkata'
                     });
                     const formattedTime = completionDate.toLocaleTimeString('en-US', {
                         hour: '2-digit',
@@ -223,10 +224,11 @@ export async function GET(
 
                     // Format date for display
                     const dateObj = new Date(extractedDate);
-                    const formattedDate = dateObj.toLocaleDateString('en-US', {
+                    const formattedDate = dateObj.toLocaleDateString('en-IN', {
                         month: 'short',
                         day: 'numeric',
-                        year: 'numeric'
+                        year: 'numeric',
+                        timeZone: 'Asia/Kolkata'
                     });
                     const formattedTime = dateObj.toLocaleTimeString('en-US', {
                         hour: '2-digit',
@@ -300,10 +302,11 @@ export async function GET(
 
                     // Format date for display
                     const dateObj = new Date(extractedDate);
-                    const formattedDate = dateObj.toLocaleDateString('en-US', {
+                    const formattedDate = dateObj.toLocaleDateString('en-IN', {
                         month: 'short',
                         day: 'numeric',
-                        year: 'numeric'
+                        year: 'numeric',
+                        timeZone: 'Asia/Kolkata'
                     });
                     const formattedTime = dateObj.toLocaleTimeString('en-US', {
                         hour: '2-digit',

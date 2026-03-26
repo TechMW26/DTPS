@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { formatDateIST, formatDateTimeIST } from '@/lib/utils/formatDateIST';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -558,7 +559,7 @@ export default function AdminUsersPage() {
                               <span className="text-xs">{statusDisplay.status.label}</span>
                             </Badge>
                           </td>
-                          <td className="p-3 text-sm">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
+                          <td className="p-3 text-sm">{u.createdAt ? formatDateIST(u.createdAt) : '-'}</td>
                           <td className="p-3 flex gap-2 flex-wrap">
                             {u.role === 'client' && (
                               <Button
@@ -855,8 +856,8 @@ export default function AdminUsersPage() {
                     <h4 className="text-sm font-medium text-gray-700 mb-2">Account Information</h4>
                     <div className="text-xs text-gray-500 space-y-1">
                       <p>ID: {editing._id}</p>
-                      <p>Created: {editing.createdAt ? new Date(editing.createdAt).toLocaleString() : 'N/A'}</p>
-                      <p>Updated: {editing.updatedAt ? new Date(editing.updatedAt).toLocaleString() : 'N/A'}</p>
+                      <p>Created: {editing.createdAt ? formatDateTimeIST(editing.createdAt) : 'N/A'}</p>
+                      <p>Updated: {editing.updatedAt ? formatDateTimeIST(editing.updatedAt) : 'N/A'}</p>
                     </div>
                   </div>
                 )}
@@ -953,7 +954,7 @@ export default function AdminUsersPage() {
                     {activity.map((a, idx) => (
                       <li key={idx} className="p-2 border rounded">
                         <div className="font-medium capitalize">{a.kind.replace('_', ' ')}</div>
-                        <div className="text-xs text-gray-500">{new Date(a.at).toLocaleString()}</div>
+                        <div className="text-xs text-gray-500">{formatDateTimeIST(a.at)}</div>
                       </li>
                     ))}
                   </ul>

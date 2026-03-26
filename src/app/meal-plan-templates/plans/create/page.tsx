@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { formatTimeIST } from '@/lib/utils/formatDateIST';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -96,12 +97,12 @@ export default function CreatePlanTemplateBasicPage() {
   }), [name, description, category, duration, difficulty, calMin, calMax, proteinMin, proteinMax, carbMin, carbMax, fatMin, fatMax]);
 
   // Auto-save hook (saves draft every 2 seconds, expires after 24 hours)
-  const { 
-    isSaving, 
-    lastSaved, 
-    hasDraft, 
-    clearDraft, 
-    restoreDraft 
+  const {
+    isSaving,
+    lastSaved,
+    hasDraft,
+    clearDraft,
+    restoreDraft
   } = useMealPlanAutoSave<PlanTemplateFormData>('new-plan-template', formData, {
     debounceMs: 2000,
     enabled: !!session?.user?.id,
@@ -115,7 +116,7 @@ export default function CreatePlanTemplateBasicPage() {
         setName(restored.name || '');
         setDescription(restored.description || '');
         setCategory(restored.category || '');
-        setDuration(restored.duration );
+        setDuration(restored.duration);
         setDifficulty((restored.difficulty as 'beginner' | 'intermediate' | 'advanced') || 'intermediate');
         setCalMin(restored.calMin || 1200);
         setCalMax(restored.calMax || 2500);
@@ -125,10 +126,10 @@ export default function CreatePlanTemplateBasicPage() {
         setCarbMax(restored.carbMax || 300);
         setFatMin(restored.fatMin || 30);
         setFatMax(restored.fatMax || 100);
-        
-        toast.success('Draft restored', { 
+
+        toast.success('Draft restored', {
           description: 'Your previous work has been restored. Draft expires in 24 hours.',
-          duration: 4000 
+          duration: 4000
         });
       }
       setDraftRestored(true);
@@ -181,18 +182,18 @@ export default function CreatePlanTemplateBasicPage() {
   // Load template data into form
   const loadTemplateData = (tmpl: any) => {
     if (!tmpl) return;
-    
+
     setName(tmpl.name || '');
     setDescription(tmpl.description || '');
     setCategory(tmpl.category || '');
     setDuration(Math.min(15, tmpl.duration || 7));
     setDifficulty(tmpl.difficulty || 'intermediate');
-    
+
     if (tmpl.targetCalories) {
       setCalMin(tmpl.targetCalories.min || 1200);
       setCalMax(tmpl.targetCalories.max || 2500);
     }
-    
+
     if (tmpl.targetMacros) {
       setProteinMin(tmpl.targetMacros.protein?.min || 50);
       setProteinMax(tmpl.targetMacros.protein?.max || 150);
@@ -201,7 +202,7 @@ export default function CreatePlanTemplateBasicPage() {
       setFatMin(tmpl.targetMacros.fat?.min || 30);
       setFatMax(tmpl.targetMacros.fat?.max || 100);
     }
-    
+
     setSelectedTemplateId(tmpl._id);
     setShowTemplateDialog(false);
     setSuccess(`Template "${tmpl.name}" loaded successfully!`);
@@ -222,7 +223,7 @@ export default function CreatePlanTemplateBasicPage() {
     try {
       // Build full payload including defaults so validation issues are clearer
       const body = {
-  templateType: 'plan',
+        templateType: 'plan',
         name: name.trim(),
         description: description?.trim() || '',
         category,
@@ -306,7 +307,7 @@ export default function CreatePlanTemplateBasicPage() {
             )}
             {!isSaving && lastSaved && (
               <span className="text-xs text-green-600 dark:text-green-400">
-                Saved {lastSaved.toLocaleTimeString()}
+                Saved {formatTimeIST(lastSaved)}
               </span>
             )}
             {hasDraft && (
@@ -342,7 +343,7 @@ export default function CreatePlanTemplateBasicPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label>Template Name *</Label>
-                <Input value={name} onChange={(e)=>setName(e.target.value)} placeholder="e.g., 7-Day Weight Loss Plan" />
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., 7-Day Weight Loss Plan" />
               </div>
               <div className="space-y-2">
                 <Label>Category *</Label>
@@ -355,7 +356,7 @@ export default function CreatePlanTemplateBasicPage() {
               </div>
               <div className="space-y-2">
                 <Label>Difficulty Level</Label>
-                <Select value={difficulty} onValueChange={(v)=>setDifficulty(v as any)}>
+                <Select value={difficulty} onValueChange={(v) => setDifficulty(v as any)}>
                   <SelectTrigger><SelectValue placeholder="Select difficulty" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="beginner">Beginner</SelectItem>
@@ -368,11 +369,11 @@ export default function CreatePlanTemplateBasicPage() {
 
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea value={description} onChange={(e)=>setDescription(e.target.value)} rows={3} placeholder="Short summary..." />
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Short summary..." />
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={()=>router.back()}><ArrowLeft className="h-4 w-4 mr-2" />Back</Button>
+              <Button variant="outline" onClick={() => router.back()}><ArrowLeft className="h-4 w-4 mr-2" />Back</Button>
               <Button onClick={handleSave} disabled={loading || !name || !category}><Save className="h-4 w-4 mr-2" />{loading ? 'Saving...' : 'Create Template'}</Button>
             </div>
           </CardContent>

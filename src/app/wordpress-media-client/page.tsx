@@ -30,12 +30,12 @@ export default function WordPressMediaPage() {
       setLoading(true);
       setError('');
       const res = await fetch('/api/wordpress/media?per_page=24&page=1');
-      
+
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to fetch media');
       }
-      
+
       const data = await res.json();
       setMedia(data);
     } catch (err: any) {
@@ -48,10 +48,10 @@ export default function WordPressMediaPage() {
 
   const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
     const formData = new FormData(e.currentTarget);
     const file = formData.get('file') as File | null;
-    
+
     if (!file) {
       setError('Please select a file');
       return;
@@ -74,10 +74,10 @@ export default function WordPressMediaPage() {
       }
 
       setMessage(`✅ Successfully uploaded: ${data.title || data.id}`);
-      
+
       // Reset form
       e.currentTarget.reset();
-      
+
       // Refresh media list
       setTimeout(() => {
         fetchMedia();
@@ -170,7 +170,7 @@ export default function WordPressMediaPage() {
                   {m.alt_text ? <div style={{ fontSize: 12, opacity: 0.8 }}>Alt: {m.alt_text}</div> : null}
                   {m.caption ? <div style={{ fontSize: 12, opacity: 0.8 }}>Caption: {m.caption}</div> : null}
                   <div style={{ opacity: 0.7, fontSize: 12, marginTop: 4 }}>
-                    {new Date(m.date).toLocaleString()}
+                    {new Date(m.date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
                   </div>
                   <div style={{ marginTop: 6, fontSize: 11, opacity: 0.6 }}>
                     ID: {m.id} &middot; {m.mime_type}

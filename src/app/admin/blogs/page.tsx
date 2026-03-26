@@ -8,13 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { 
-  Plus, 
-  Edit2, 
-  Trash2, 
-  Loader2, 
-  X, 
-  ImagePlus, 
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  Loader2,
+  X,
+  ImagePlus,
   Eye,
   EyeOff,
   Star,
@@ -123,7 +123,7 @@ function RichTextEditor({ value, onChange, placeholder, rows = 6 }: RichTextEdit
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const selectedText = value.substring(start, end);
-    
+
     let formattedText = '';
     let cursorOffset = 0;
 
@@ -209,7 +209,7 @@ export default function BlogsManagement() {
   const [showInactive, setShowInactive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -236,7 +236,7 @@ export default function BlogsManagement() {
       params.set('showInactive', showInactive.toString());
       if (categoryFilter !== 'all') params.set('category', categoryFilter);
       if (searchQuery) params.set('search', searchQuery);
-      
+
       const response = await fetch(`/api/admin/blogs?${params.toString()}`);
       if (!response.ok) {
         throw new Error('Failed to fetch blogs');
@@ -387,7 +387,7 @@ export default function BlogsManagement() {
           method: 'POST',
           body: submitData,
         });
-        
+
         if (!response.ok) {
           const data = await response.json();
           throw new Error(data.error || 'Failed to create blog');
@@ -431,7 +431,7 @@ export default function BlogsManagement() {
   const handleToggleActive = async (blog: Blog) => {
     try {
       const newStatus = !blog.isActive;
-      
+
       const response = await fetch(`/api/admin/blogs/${blog._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -444,12 +444,12 @@ export default function BlogsManagement() {
       }
 
       const updatedBlog = await response.json();
-      
+
       // Update local state immediately for fast UI feedback
       setBlogs(prev => prev.map(b => b._id === blog._id ? updatedBlog.blog || updatedBlog : b));
-      
+
       toast.success(`Blog ${newStatus ? 'activated' : 'deactivated'} successfully`);
-      
+
       // Emit event for real-time updates
       emitDataChange(DataEventTypes.BLOGS_UPDATED);
     } catch (error: any) {
@@ -489,371 +489,372 @@ export default function BlogsManagement() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString('en-IN', {
       month: 'short',
       day: 'numeric',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata',
     });
   };
 
   return (
     <DashboardLayout>
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Blog Management</h1>
-          <p className="text-gray-500 mt-1">Create and manage blog posts</p>
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Blog Management</h1>
+            <p className="text-gray-500 mt-1">Create and manage blog posts</p>
+          </div>
+          <Button onClick={() => handleOpenDialog()} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Add Blog
+          </Button>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Add Blog
-        </Button>
-      </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Search blogs..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search blogs..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {CATEGORIES.map(cat => (
+                <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowInactive(!showInactive)}
+            className="gap-2"
+          >
+            {showInactive ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {showInactive ? 'Hide Inactive' : 'Show Inactive'}
+          </Button>
         </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-full sm:w-40">
-            <SelectValue placeholder="Category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            {CATEGORIES.map(cat => (
-              <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowInactive(!showInactive)}
-          className="gap-2"
-        >
-          {showInactive ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          {showInactive ? 'Hide Inactive' : 'Show Inactive'}
-        </Button>
-      </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-[#3AB1A0]" />
-        </div>
-      ) : blogs.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <BookOpen className="h-12 w-12 text-gray-400 mb-4" />
-            <p className="text-gray-500 text-lg">No blogs yet</p>
-            <Button onClick={() => handleOpenDialog()} className="mt-4 gap-2">
-              <Plus className="h-4 w-4" />
-              Create Your First Blog
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {blogs.map((blog) => (
-            <Card key={blog._id} className={`overflow-hidden ${!blog.isActive ? 'opacity-60' : ''}`}>
-              <div className="relative aspect-video bg-gray-100">
-                {blog.thumbnailImage || blog.featuredImage ? (
-                  <img
-                    src={blog.thumbnailImage || blog.featuredImage}
-                    alt={blog.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <ImagePlus className="h-8 w-8 text-gray-300" />
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-[#3AB1A0]" />
+          </div>
+        ) : blogs.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <BookOpen className="h-12 w-12 text-gray-400 mb-4" />
+              <p className="text-gray-500 text-lg">No blogs yet</p>
+              <Button onClick={() => handleOpenDialog()} className="mt-4 gap-2">
+                <Plus className="h-4 w-4" />
+                Create Your First Blog
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {blogs.map((blog) => (
+              <Card key={blog._id} className={`overflow-hidden ${!blog.isActive ? 'opacity-60' : ''}`}>
+                <div className="relative aspect-video bg-gray-100">
+                  {blog.thumbnailImage || blog.featuredImage ? (
+                    <img
+                      src={blog.thumbnailImage || blog.featuredImage}
+                      alt={blog.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <ImagePlus className="h-8 w-8 text-gray-300" />
+                    </div>
+                  )}
+                  <div className="absolute top-2 left-2 flex gap-2">
+                    <Badge className={getCategoryColor(blog.category)}>
+                      {blog.category}
+                    </Badge>
+                    {blog.isFeatured && (
+                      <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">
+                        <Star className="h-3 w-3 mr-1 fill-yellow-500" />
+                        Featured
+                      </Badge>
+                    )}
                   </div>
-                )}
-                <div className="absolute top-2 left-2 flex gap-2">
-                  <Badge className={getCategoryColor(blog.category)}>
-                    {blog.category}
-                  </Badge>
-                  {blog.isFeatured && (
-                    <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">
-                      <Star className="h-3 w-3 mr-1 fill-yellow-500" />
-                      Featured
+                  {!blog.isActive && (
+                    <Badge className="absolute top-2 right-2 bg-red-100 text-red-700">
+                      Inactive
                     </Badge>
                   )}
                 </div>
-                {!blog.isActive && (
-                  <Badge className="absolute top-2 right-2 bg-red-100 text-red-700">
-                    Inactive
-                  </Badge>
-                )}
-              </div>
-              <CardContent className="p-4">
-                <h3 className="font-semibold text-gray-900 line-clamp-2 mb-2">
-                  {blog.title}
-                </h3>
-                <p className="text-sm text-gray-500 line-clamp-2 mb-3">
-                  {blog.description}
-                </p>
-                <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
-                  <span className="flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    {blog.author}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {blog.readTime} min
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Eye className="h-3 w-3" />
-                    {blog.views}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-3 border-t">
-                  <span className="text-xs text-gray-400">
-                    {blog.publishedAt ? formatDate(blog.publishedAt) : formatDate(blog.createdAt)}
-                  </span>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleToggleFeatured(blog)}
-                      className="h-8 w-8 p-0"
-                    >
-                      {blog.isFeatured ? (
-                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                      ) : (
-                        <StarOff className="h-4 w-4 text-gray-400" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleToggleActive(blog)}
-                      className="h-8 w-8 p-0"
-                    >
-                      {blog.isActive ? (
-                        <Eye className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <EyeOff className="h-4 w-4 text-gray-400" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenDialog(blog)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Edit2 className="h-4 w-4 text-blue-500" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteBlog(blog._id)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
+                <CardContent className="p-4">
+                  <h3 className="font-semibold text-gray-900 line-clamp-2 mb-2">
+                    {blog.title}
+                  </h3>
+                  <p className="text-sm text-gray-500 line-clamp-2 mb-3">
+                    {blog.description}
+                  </p>
+                  <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
+                    <span className="flex items-center gap-1">
+                      <User className="h-3 w-3" />
+                      {blog.author}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {blog.readTime} min
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Eye className="h-3 w-3" />
+                      {blog.views}
+                    </span>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl w-[90vw] max-h-[90vh] overflow-y-auto mx-auto">
-          <DialogHeader>
-            <DialogTitle className="dark:text-white">
-              {editingBlog ? 'Edit Blog' : 'Create New Blog'}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
-            {/* Left Column */}
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="title">Title *</Label>
-                <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="Enter blog title"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="description">Description * (with formatting)</Label>
-                <RichTextEditor
-                  value={formData.description}
-                  onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
-                  placeholder="Write your blog description here. Use the toolbar for formatting: Bold, Italic, Underline, Headings, Paragraphs, Bullet & Number lists"
-                  rows={10}
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="category">Category *</Label>
-                  <Select 
-                    value={formData.category} 
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map(cat => (
-                        <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="readTime">Read Time (min)</Label>
-                  <Input
-                    id="readTime"
-                    type="number"
-                    min="1"
-                    value={formData.readTime}
-                    onChange={(e) => setFormData(prev => ({ ...prev, readTime: e.target.value }))}
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <Label htmlFor="author">Author *</Label>
-                <Input
-                  id="author"
-                  value={formData.author}
-                  onChange={(e) => setFormData(prev => ({ ...prev, author: e.target.value }))}
-                  placeholder="Author name"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="tags">Tags (comma separated)</Label>
-                <Input
-                  id="tags"
-                  value={formData.tags}
-                  onChange={(e) => setFormData(prev => ({ ...prev, tags: e.target.value }))}
-                  placeholder="nutrition, health, tips"
-                />
-              </div>
-            </div>
-            
-            {/* Right Column */}
-            <div className="space-y-4">
-              <div>
-                <Label>Featured Image *</Label>
-                <div className="mt-2">
-                  {imagePreview ? (
-                    <div className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden">
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                      />
-                      <button
-                        onClick={() => {
-                          setImagePreview(null);
-                          setFormData(prev => ({ ...prev, featuredImage: '' }));
-                        }}
-                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full"
+                  <div className="flex items-center justify-between pt-3 border-t">
+                    <span className="text-xs text-gray-400">
+                      {blog.publishedAt ? formatDate(blog.publishedAt) : formatDate(blog.createdAt)}
+                    </span>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleFeatured(blog)}
+                        className="h-8 w-8 p-0"
                       >
-                        <X className="h-4 w-4" />
-                      </button>
+                        {blog.isFeatured ? (
+                          <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                        ) : (
+                          <StarOff className="h-4 w-4 text-gray-400" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleActive(blog)}
+                        className="h-8 w-8 p-0"
+                      >
+                        {blog.isActive ? (
+                          <Eye className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <EyeOff className="h-4 w-4 text-gray-400" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDialog(blog)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Edit2 className="h-4 w-4 text-blue-500" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteBlog(blog._id)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
                     </div>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                      <ImagePlus className="h-8 w-8 text-gray-400 mb-2" />
-                      <span className="text-sm text-gray-500">Click to upload image</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleImageChange}
-                      />
-                    </label>
-                  )}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="isFeatured"
-                    checked={formData.isFeatured}
-                    onChange={(e) => setFormData(prev => ({ ...prev, isFeatured: e.target.checked }))}
-                    className="h-4 w-4 rounded border-gray-300 text-[#3AB1A0] focus:ring-[#3AB1A0]"
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Create/Edit Dialog */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="max-w-4xl w-[90vw] max-h-[90vh] overflow-y-auto mx-auto">
+            <DialogHeader>
+              <DialogTitle className="dark:text-white">
+                {editingBlog ? 'Edit Blog' : 'Create New Blog'}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
+              {/* Left Column */}
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="title">Title *</Label>
+                  <Input
+                    id="title"
+                    value={formData.title}
+                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Enter blog title"
                   />
-                  <Label htmlFor="isFeatured" className="font-normal">Featured Blog</Label>
                 </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="isActive"
-                    checked={formData.isActive}
-                    onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
-                    className="h-4 w-4 rounded border-gray-300 text-[#3AB1A0] focus:ring-[#3AB1A0]"
+
+                <div>
+                  <Label htmlFor="description">Description * (with formatting)</Label>
+                  <RichTextEditor
+                    value={formData.description}
+                    onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                    placeholder="Write your blog description here. Use the toolbar for formatting: Bold, Italic, Underline, Headings, Paragraphs, Bullet & Number lists"
+                    rows={10}
                   />
-                  <Label htmlFor="isActive" className="font-normal">Active (Published)</Label>
                 </div>
-              </div>
-              
-              <div className="pt-4 border-t">
-                <h4 className="font-medium text-sm text-gray-700 mb-3">SEO Settings (Optional)</h4>
-                <div className="space-y-3">
+
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="metaTitle">Meta Title</Label>
-                    <Input
-                      id="metaTitle"
-                      value={formData.metaTitle}
-                      onChange={(e) => setFormData(prev => ({ ...prev, metaTitle: e.target.value }))}
-                      placeholder="SEO title (max 60 chars)"
-                      maxLength={60}
-                    />
+                    <Label htmlFor="category">Category *</Label>
+                    <Select
+                      value={formData.category}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIES.map(cat => (
+                          <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
-                    <Label htmlFor="metaDescription">Meta Description</Label>
-                    <Textarea
-                      id="metaDescription"
-                      value={formData.metaDescription}
-                      onChange={(e) => setFormData(prev => ({ ...prev, metaDescription: e.target.value }))}
-                      placeholder="SEO description (max 160 chars)"
-                      maxLength={160}
-                      rows={2}
+                    <Label htmlFor="readTime">Read Time (min)</Label>
+                    <Input
+                      id="readTime"
+                      type="number"
+                      min="1"
+                      value={formData.readTime}
+                      onChange={(e) => setFormData(prev => ({ ...prev, readTime: e.target.value }))}
                     />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="author">Author *</Label>
+                  <Input
+                    id="author"
+                    value={formData.author}
+                    onChange={(e) => setFormData(prev => ({ ...prev, author: e.target.value }))}
+                    placeholder="Author name"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="tags">Tags (comma separated)</Label>
+                  <Input
+                    id="tags"
+                    value={formData.tags}
+                    onChange={(e) => setFormData(prev => ({ ...prev, tags: e.target.value }))}
+                    placeholder="nutrition, health, tips"
+                  />
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-4">
+                <div>
+                  <Label>Featured Image *</Label>
+                  <div className="mt-2">
+                    {imagePreview ? (
+                      <div className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden">
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          onClick={() => {
+                            setImagePreview(null);
+                            setFormData(prev => ({ ...prev, featuredImage: '' }));
+                          }}
+                          className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                        <ImagePlus className="h-8 w-8 text-gray-400 mb-2" />
+                        <span className="text-sm text-gray-500">Click to upload image</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleImageChange}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="isFeatured"
+                      checked={formData.isFeatured}
+                      onChange={(e) => setFormData(prev => ({ ...prev, isFeatured: e.target.checked }))}
+                      className="h-4 w-4 rounded border-gray-300 text-[#3AB1A0] focus:ring-[#3AB1A0]"
+                    />
+                    <Label htmlFor="isFeatured" className="font-normal">Featured Blog</Label>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="isActive"
+                      checked={formData.isActive}
+                      onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
+                      className="h-4 w-4 rounded border-gray-300 text-[#3AB1A0] focus:ring-[#3AB1A0]"
+                    />
+                    <Label htmlFor="isActive" className="font-normal">Active (Published)</Label>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <h4 className="font-medium text-sm text-gray-700 mb-3">SEO Settings (Optional)</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="metaTitle">Meta Title</Label>
+                      <Input
+                        id="metaTitle"
+                        value={formData.metaTitle}
+                        onChange={(e) => setFormData(prev => ({ ...prev, metaTitle: e.target.value }))}
+                        placeholder="SEO title (max 60 chars)"
+                        maxLength={60}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="metaDescription">Meta Description</Label>
+                      <Textarea
+                        id="metaDescription"
+                        value={formData.metaDescription}
+                        onChange={(e) => setFormData(prev => ({ ...prev, metaDescription: e.target.value }))}
+                        placeholder="SEO description (max 160 chars)"
+                        maxLength={160}
+                        rows={2}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCloseDialog}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveBlog} disabled={isSaving}>
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                editingBlog ? 'Update Blog' : 'Create Blog'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleCloseDialog}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveBlog} disabled={isSaving}>
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  editingBlog ? 'Update Blog' : 'Create Blog'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </DashboardLayout>
   );
 }

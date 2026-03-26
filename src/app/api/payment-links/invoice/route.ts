@@ -36,8 +36,8 @@ export async function GET(request: NextRequest) {
     const paymentLink = await withCache(
       `payment-links:invoice:${JSON.stringify(paymentLinkId)}`,
       async () => await PaymentLink.findById(paymentLinkId)
-      .populate('client', 'firstName lastName email phone')
-      .populate('dietitian', 'firstName lastName email'),
+        .populate('client', 'firstName lastName email phone')
+        .populate('dietitian', 'firstName lastName email'),
       { ttl: 120000, tags: ['payment_links'] }
     );
 
@@ -48,8 +48,8 @@ export async function GET(request: NextRequest) {
     // Generate invoice data
     const clientName = `${paymentLink.client?.firstName || ''} ${paymentLink.client?.lastName || ''}`.trim() || 'Client';
     const clientEmail = paymentLink.client?.email || '';
-    const dietitianName = paymentLink.dietitian 
-      ? `${paymentLink.dietitian.firstName || ''} ${paymentLink.dietitian.lastName || ''}`.trim() 
+    const dietitianName = paymentLink.dietitian
+      ? `${paymentLink.dietitian.firstName || ''} ${paymentLink.dietitian.lastName || ''}`.trim()
       : undefined;
     const dietitianEmail = paymentLink.dietitian?.email;
 
@@ -57,14 +57,16 @@ export async function GET(request: NextRequest) {
     const invoiceDate = new Date(paymentLink.createdAt).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'long',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata'
     });
-    const paidAt = paymentLink.paidAt 
+    const paidAt = paymentLink.paidAt
       ? new Date(paymentLink.paidAt).toLocaleDateString('en-IN', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric'
-        })
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata'
+      })
       : undefined;
 
     // Generate invoice HTML
@@ -96,7 +98,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Error generating invoice:', error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Failed to generate invoice',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
@@ -125,8 +127,8 @@ export async function POST(request: NextRequest) {
     const paymentLink = await withCache(
       `payment-links:invoice:${JSON.stringify(paymentLinkId)}`,
       async () => await PaymentLink.findById(paymentLinkId)
-      .populate('client', 'firstName lastName email phone')
-      .populate('dietitian', 'firstName lastName email'),
+        .populate('client', 'firstName lastName email phone')
+        .populate('dietitian', 'firstName lastName email'),
       { ttl: 120000, tags: ['payment_links'] }
     );
 
@@ -147,8 +149,8 @@ export async function POST(request: NextRequest) {
 
     // Prepare data
     const clientName = `${paymentLink.client?.firstName || ''} ${paymentLink.client?.lastName || ''}`.trim() || 'Client';
-    const dietitianName = paymentLink.dietitian 
-      ? `${paymentLink.dietitian.firstName || ''} ${paymentLink.dietitian.lastName || ''}`.trim() 
+    const dietitianName = paymentLink.dietitian
+      ? `${paymentLink.dietitian.firstName || ''} ${paymentLink.dietitian.lastName || ''}`.trim()
       : undefined;
     const dietitianEmail = paymentLink.dietitian?.email;
 
@@ -156,14 +158,16 @@ export async function POST(request: NextRequest) {
     const invoiceDate = new Date(paymentLink.createdAt).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'long',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata'
     });
-    const paidAt = paymentLink.paidAt 
+    const paidAt = paymentLink.paidAt
       ? new Date(paymentLink.paidAt).toLocaleDateString('en-IN', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric'
-        })
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata'
+      })
       : undefined;
 
     // Generate email template
@@ -195,7 +199,7 @@ export async function POST(request: NextRequest) {
 
     if (!sent) {
       console.error('[INVOICE] Failed to send invoice email');
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Failed to send invoice email. Please check SMTP configuration.',
         hint: 'Ensure SMTP_HOST, SMTP_USER, SMTP_PASS are configured in .env',
         debug: {
@@ -216,7 +220,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error sending invoice:', error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Failed to send invoice',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });

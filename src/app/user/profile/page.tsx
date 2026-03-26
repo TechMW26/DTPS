@@ -526,7 +526,7 @@ export default function ProfilePage() {
                           <tr key={report.id || report._id || i} className={isDarkMode ? "border-b border-[#2a2a2a] hover:bg-white/5" : "border-b border-gray-100 hover:bg-gray-50"}>
                             <td className={isDarkMode ? "py-3 px-2 text-gray-300" : "py-3 px-2 text-gray-600"}>
                               {(report.createdAt || report.uploadedOn)
-                                ? new Date(report.createdAt || report.uploadedOn || '').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                ? new Date(report.createdAt || report.uploadedOn || '').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
                                 : '-'}
                             </td>
                             <td className="py-3 px-2">

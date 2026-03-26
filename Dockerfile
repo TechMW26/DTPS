@@ -25,6 +25,7 @@ COPY . .
 # Set environment for build
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV TZ=Asia/Kolkata
 
 # Build the application
 RUN npm run build
@@ -38,6 +39,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV TZ=Asia/Kolkata
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \

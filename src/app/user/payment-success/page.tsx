@@ -82,7 +82,7 @@ export default function PaymentSuccessPage() {
       if (response.ok) {
         const data = await response.json();
         setPayment(data.payment);
-        
+
         // Auto-send email receipt
         if (data.payment && !emailSent) {
           sendEmailReceipt(data.payment._id);
@@ -101,7 +101,7 @@ export default function PaymentSuccessPage() {
 
   const sendEmailReceipt = async (id: string) => {
     if (sendingEmail || emailSent) return;
-    
+
     setSendingEmail(true);
     try {
       const response = await fetch('/api/client/send-receipt', {
@@ -123,23 +123,23 @@ export default function PaymentSuccessPage() {
 
   const downloadReceipt = async () => {
     if (!receiptRef.current || downloading) return;
-    
+
     setDownloading(true);
     try {
       // Dynamic import for html2canvas
       const html2canvasModule = await import('html2canvas');
       const html2canvasFn = html2canvasModule.default as (element: HTMLElement, options?: Record<string, unknown>) => Promise<HTMLCanvasElement>;
-      
+
       const canvas = await html2canvasFn(receiptRef.current, {
         backgroundColor: '#ffffff',
         useCORS: true
       });
-      
+
       const link = document.createElement('a');
       link.download = `DTPS-Receipt-${payment?._id?.slice(-8) || 'payment'}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
-      
+
       toast.success('Receipt downloaded!');
     } catch (error) {
       console.error('Error downloading receipt:', error);
@@ -155,7 +155,8 @@ export default function PaymentSuccessPage() {
       month: 'long',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
     });
   };
 

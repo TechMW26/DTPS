@@ -31,13 +31,13 @@ async function fetchMedia(): Promise<{ items: WPMedia[]; total: number }> {
       },
       cache: 'no-store',
     });
-    
+
     if (!res.ok) {
       const text = await res.text();
       console.error('Failed to fetch media:', text);
       throw new Error(text || `Failed to fetch media (${res.status})`);
     }
-    
+
     return res.json();
   } catch (error) {
     console.error('Error fetching media:', error);
@@ -87,10 +87,10 @@ async function uploadAction(formData: FormData) {
     }
 
     const uploaded = JSON.parse(text) as WPMedia;
-    
+
     // Revalidate the page to show new media
     revalidatePath('/wordpress-media');
-    
+
     return { ok: true, message: `Uploaded #${uploaded.id}`, uploaded };
   } catch (e: any) {
     console.error('Upload error:', e);
@@ -140,7 +140,7 @@ export default async function Page() {
                   {m.alt_text ? <div>Alt: {m.alt_text}</div> : null}
                   {m.caption ? <div>Caption: {m.caption}</div> : null}
                   <div style={{ opacity: 0.7, fontSize: 12 }}>
-                    {new Date(m.date).toLocaleString()}
+                    {new Date(m.date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
                   </div>
                   <div style={{ marginTop: 6, fontSize: 12 }}>
                     ID: {m.id} &middot; MIME: {m.mime_type}

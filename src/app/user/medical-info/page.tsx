@@ -345,7 +345,8 @@ export default function MedicalInfoPage() {
     return dateStr ? new Date(dateStr).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata'
     }) : '-';
   };
 

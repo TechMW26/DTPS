@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { formatDateTimeIST } from '@/lib/utils/formatDateIST';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
@@ -360,7 +361,7 @@ export default function AnalyticsPage() {
             <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
             <p className="text-gray-600 mt-1">Business analytics and client data overview</p>
           </div>
-          
+
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger className="w-40">
               <SelectValue />
@@ -409,7 +410,7 @@ export default function AnalyticsPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center space-x-2">
-                
+
                 <span>₹ Total Revenue</span>
               </CardTitle>
             </CardHeader>
@@ -528,10 +529,10 @@ export default function AnalyticsPage() {
                     <XAxis dataKey="month" />
                     <YAxis />
                     <Tooltip formatter={(value) => [`$${value}`, 'Revenue']} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="revenue" 
-                      stroke="#16a34a" 
+                    <Line
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="#16a34a"
                       strokeWidth={3}
                       dot={{ fill: '#16a34a', strokeWidth: 2, r: 6 }}
                     />
@@ -659,7 +660,7 @@ export default function AnalyticsPage() {
                         </span>
                         {dbLastSync && (
                           <span className="text-xs text-blue-600">
-                            Last updated: {new Date(dbLastSync).toLocaleString()}
+                            Last updated: {formatDateTimeIST(dbLastSync)}
                           </span>
                         )}
                       </div>

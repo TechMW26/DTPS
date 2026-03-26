@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import { getDeviceConnector, type DeviceConnector } from '@/lib/fitness/deviceConnectors';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatTimeIST } from '@/lib/utils/formatDateIST';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
+import {
   Activity,
   Smartphone,
   Heart,
@@ -179,7 +180,7 @@ export default function EnhancedFitnessTracker({ className = '', clientOnly = fa
       localStorage.setItem('connected-devices', JSON.stringify([...connectedDevices.filter(d => d.id !== deviceId), connectedDevice]));
 
       setError(''); // Clear any error messages
-      
+
     } catch (err: any) {
       setError(`Failed to connect to ${device.name}. Please try again.`);
     } finally {
@@ -390,29 +391,29 @@ export default function EnhancedFitnessTracker({ className = '', clientOnly = fa
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">Today's Activity</h3>
                 <p className="text-xs text-gray-500">
-                  Last synced: {new Date(fitnessData.lastSync).toLocaleTimeString()}
+                  Last synced: {formatTimeIST(fitnessData.lastSync)}
                 </p>
               </div>
-              
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="text-center p-4 bg-white rounded-xl border border-blue-200 shadow-sm">
                   <Footprints className="h-6 w-6 text-blue-600 mx-auto mb-2" />
                   <p className="text-2xl font-bold text-blue-900">{fitnessData.steps.toLocaleString()}</p>
                   <p className="text-xs text-blue-600">Steps</p>
                 </div>
-                
+
                 <div className="text-center p-4 bg-white rounded-xl border border-orange-200 shadow-sm">
                   <Flame className="h-6 w-6 text-orange-600 mx-auto mb-2" />
                   <p className="text-2xl font-bold text-orange-900">{fitnessData.calories}</p>
                   <p className="text-xs text-orange-600">Calories</p>
                 </div>
-                
+
                 <div className="text-center p-4 bg-white rounded-xl border border-green-200 shadow-sm">
                   <TrendingUp className="h-6 w-6 text-green-600 mx-auto mb-2" />
                   <p className="text-2xl font-bold text-green-900">{formatDistance(fitnessData.distance)}</p>
                   <p className="text-xs text-green-600">Distance</p>
                 </div>
-                
+
                 <div className="text-center p-4 bg-white rounded-xl border border-purple-200 shadow-sm">
                   <Clock className="h-6 w-6 text-purple-600 mx-auto mb-2" />
                   <p className="text-2xl font-bold text-purple-900">{fitnessData.activeMinutes}</p>
@@ -430,7 +431,7 @@ export default function EnhancedFitnessTracker({ className = '', clientOnly = fa
                       <p className="text-xs text-red-600">BPM</p>
                     </div>
                   )}
-                  
+
                   {fitnessData.sleepHours && (
                     <div className="text-center p-3 bg-white rounded-lg border border-indigo-200">
                       <Moon className="h-5 w-5 text-indigo-600 mx-auto mb-1" />
@@ -438,7 +439,7 @@ export default function EnhancedFitnessTracker({ className = '', clientOnly = fa
                       <p className="text-xs text-indigo-600">Sleep</p>
                     </div>
                   )}
-                  
+
                   {fitnessData.vo2Max && (
                     <div className="text-center p-3 bg-white rounded-lg border border-teal-200">
                       <Zap className="h-5 w-5 text-teal-600 mx-auto mb-1" />

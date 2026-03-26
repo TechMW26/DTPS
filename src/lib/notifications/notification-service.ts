@@ -32,7 +32,7 @@ export class NotificationService {
       process.env.NEXT_PUBLIC_ENABLE_SW === 'true'
     ) {
       // Lazy, non-blocking SW registration (production + enabled only)
-      this.initialize().catch(() => {});
+      this.initialize().catch(() => { });
     }
   }
 
@@ -64,7 +64,7 @@ export class NotificationService {
 
     try {
       const permission = await Notification.requestPermission();
-      
+
       return {
         granted: permission === 'granted',
         denied: permission === 'denied',
@@ -231,12 +231,13 @@ export class NotificationService {
     appointmentId?: string
   ): Promise<void> {
     const scheduledDate = new Date(scheduledAt);
-    const formattedDate = scheduledDate.toLocaleDateString('en-US', {
+    const formattedDate = scheduledDate.toLocaleDateString('en-IN', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata'
     });
 
     const titles: Record<string, string> = {
@@ -323,7 +324,7 @@ export class NotificationService {
 
       case 'call':
         // Forward to the app so it can run the actual accept/reject logic (getUserMedia, etc.)
-        try { window.focus(); } catch {}
+        try { window.focus(); } catch { }
         try {
           window.dispatchEvent(new CustomEvent('call-notification-action', {
             detail: { action: action || 'default', notificationData }
@@ -334,7 +335,7 @@ export class NotificationService {
         break;
 
       default:
-        try { window.focus(); } catch {}
+        try { window.focus(); } catch { }
         break;
     }
   }

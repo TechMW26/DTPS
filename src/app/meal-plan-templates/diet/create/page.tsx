@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { formatTimeIST } from '@/lib/utils/formatDateIST';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -530,7 +531,7 @@ export default function CreateDietTemplatePage() {
             )}
             {!isSaving && lastSaved && (
               <span className="text-xs text-gray-500">
-                Saved {new Date(lastSaved).toLocaleTimeString()}
+                Saved {formatTimeIST(lastSaved)}
               </span>
             )}
             <Button variant="outline" size="sm" onClick={handleClearDraft}>

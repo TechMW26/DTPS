@@ -386,7 +386,7 @@ export default function RecipeViewPage() {
                   </div>
                   <div className="flex items-center space-x-1">
                     <Clock className="h-4 w-4" />
-                    <span>Created {new Date(recipe.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                    <span>Created {new Date(recipe.createdAt).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' })}</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <Star className="h-4 w-4 text-yellow-500" />

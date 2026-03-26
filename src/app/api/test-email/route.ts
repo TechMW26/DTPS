@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
         <div style="font-family: Arial, sans-serif; padding: 20px;">
           <h1 style="color: #3AB1A0;">✅ DTPS Email Test Successful</h1>
           <p>This is a test email from your DTPS application.</p>
-          <p><strong>Sent at:</strong> ${new Date().toLocaleString()}</p>
+          <p><strong>Sent at:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
           <hr style="border: 1px solid #eee; margin: 20px 0;">
           <p style="color: #666; font-size: 12px;">
             SMTP Config: ${smtpConfig.host}:${smtpConfig.port}<br>
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
           </p>
         </div>
       `,
-      text: `DTPS Email Test Successful\n\nThis is a test email from your DTPS application.\nSent at: ${new Date().toLocaleString()}`
+      text: `DTPS Email Test Successful\n\nThis is a test email from your DTPS application.\nSent at: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`
     });
 
     if (sent) {

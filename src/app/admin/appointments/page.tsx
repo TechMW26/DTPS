@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import { formatDateIST, formatTimeIST } from '@/lib/utils/formatDateIST';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -84,10 +85,10 @@ export default function AdminAppointmentsPage() {
       params.set('page', String(page));
       if (search.trim()) params.set('search', search.trim());
       if (statusFilter !== 'all') params.set('status', statusFilter);
-      
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-      
+
       const res = await fetch(`/api/appointments?${params.toString()}`, {
         signal: controller.signal,
         cache: 'no-store',
@@ -96,7 +97,7 @@ export default function AdminAppointmentsPage() {
         },
       });
       clearTimeout(timeoutId);
-      
+
       if (!res.ok) {
         // Check if response is HTML (nginx error page)
         const contentType = res.headers.get('content-type') || '';
@@ -106,7 +107,7 @@ export default function AdminAppointmentsPage() {
         const errorText = await res.text();
         throw new Error(errorText || `Request failed with status ${res.status}`);
       }
-      
+
       const data = await res.json();
       setAppointments(data.appointments || []);
       setPages(data.pagination?.pages || 1);
@@ -128,7 +129,7 @@ export default function AdminAppointmentsPage() {
         fetch('/api/users/dietitians', { cache: 'no-store' }),
         fetch('/api/users/clients', { cache: 'no-store' })
       ]);
-      
+
       if (dietitiansRes.ok) {
         const contentType = dietitiansRes.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
@@ -136,7 +137,7 @@ export default function AdminAppointmentsPage() {
           setDietitians(dietitiansData.dietitians || []);
         }
       }
-      
+
       if (clientsRes.ok) {
         const contentType = clientsRes.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
@@ -157,12 +158,12 @@ export default function AdminAppointmentsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bookingData)
       });
-      
+
       if (!response.ok) {
         const error = await response.text();
         throw new Error(error);
       }
-      
+
       toast.success('Appointment booked successfully!');
       setShowBookingDialog(false);
       setBookingData({
@@ -220,9 +221,9 @@ export default function AdminAppointmentsPage() {
         </div>
 
         <div className="flex gap-2">
-          <Input 
-            placeholder="Search appointments..." 
-            value={search} 
+          <Input
+            placeholder="Search appointments..."
+            value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             className="w-64"
           />
@@ -259,8 +260,8 @@ export default function AdminAppointmentsPage() {
             ) : error ? (
               <div className="py-8 flex flex-col items-center justify-center gap-4">
                 <div className="text-red-600 text-sm text-center max-w-md">{error}</div>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => fetchAppointments()}
                   className="flex items-center gap-2"
                 >
@@ -287,10 +288,10 @@ export default function AdminAppointmentsPage() {
                         <td className="p-3">
                           <div className="text-sm">
                             <div className="font-medium">
-                              {new Date(appointment.scheduledAt).toLocaleDateString()}
+                              {formatDateIST(appointment.scheduledAt)}
                             </div>
                             <div className="text-gray-500">
-                              {new Date(appointment.scheduledAt).toLocaleTimeString()}
+                              {formatTimeIST(appointment.scheduledAt)}
                             </div>
                           </div>
                         </td>
@@ -401,7 +402,7 @@ export default function AdminAppointmentsPage() {
             <div className="space-y-4">
               <div>
                 <Label>Dietitian</Label>
-                <Select value={bookingData.dietitianId} onValueChange={(v) => setBookingData({...bookingData, dietitianId: v})}>
+                <Select value={bookingData.dietitianId} onValueChange={(v) => setBookingData({ ...bookingData, dietitianId: v })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select dietitian" />
                   </SelectTrigger>
@@ -417,7 +418,7 @@ export default function AdminAppointmentsPage() {
 
               <div>
                 <Label>Client</Label>
-                <Select value={bookingData.clientId} onValueChange={(v) => setBookingData({...bookingData, clientId: v})}>
+                <Select value={bookingData.clientId} onValueChange={(v) => setBookingData({ ...bookingData, clientId: v })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select client" />
                   </SelectTrigger>
@@ -436,13 +437,13 @@ export default function AdminAppointmentsPage() {
                 <Input
                   type="datetime-local"
                   value={bookingData.scheduledAt}
-                  onChange={(e) => setBookingData({...bookingData, scheduledAt: e.target.value})}
+                  onChange={(e) => setBookingData({ ...bookingData, scheduledAt: e.target.value })}
                 />
               </div>
 
               <div>
                 <Label>Duration (minutes)</Label>
-                <Select value={String(bookingData.duration)} onValueChange={(v) => setBookingData({...bookingData, duration: parseInt(v)})}>
+                <Select value={String(bookingData.duration)} onValueChange={(v) => setBookingData({ ...bookingData, duration: parseInt(v) })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -456,7 +457,7 @@ export default function AdminAppointmentsPage() {
 
               <div>
                 <Label>Type</Label>
-                <Select value={bookingData.type} onValueChange={(v) => setBookingData({...bookingData, type: v})}>
+                <Select value={bookingData.type} onValueChange={(v) => setBookingData({ ...bookingData, type: v })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -472,7 +473,7 @@ export default function AdminAppointmentsPage() {
                 <Label>Notes</Label>
                 <Textarea
                   value={bookingData.notes}
-                  onChange={(e) => setBookingData({...bookingData, notes: e.target.value})}
+                  onChange={(e) => setBookingData({ ...bookingData, notes: e.target.value })}
                   placeholder="Optional notes..."
                 />
               </div>

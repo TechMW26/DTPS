@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { formatDateTimeIST } from '@/lib/utils/formatDateIST';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -358,7 +359,7 @@ export default function AuditLogsPage() {
                     <div className="min-w-0">
                       <span className="text-blue-700 font-medium text-sm">Timestamp:</span>
                       <p className="text-gray-700 text-sm">
-                        {isClient ? new Date(selectedLog.createdAt).toLocaleString() : '—'}
+                        {isClient ? formatDateTimeIST(selectedLog.createdAt) : '—'}
                       </p>
                     </div>
                   </div>

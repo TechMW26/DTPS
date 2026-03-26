@@ -49,11 +49,12 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     if (!dateStr) return '';
     try {
       const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', {
+      return date.toLocaleDateString('en-IN', {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
-        year: 'numeric'
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata',
       });
     } catch (e) {
       return dateStr;

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatDateTimeIST } from '@/lib/utils/formatDateIST';
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -251,7 +252,7 @@ export default function AdminHealthCounselorsPage() {
                         </span>
                       </td>
                       <td className="p-3">{hc.consultationFee ? `₹${hc.consultationFee}` : '-'}</td>
-                      <td className="p-3">{hc.createdAt ? new Date(hc.createdAt).toLocaleString() : '-'}</td>
+                      <td className="p-3">{hc.createdAt ? formatDateTimeIST(hc.createdAt) : '-'}</td>
                       <td className="p-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
                         <Button variant="outline" size="sm" onClick={() => router.push(`/admin/health-counselors/${hc._id}`)}>View</Button>
                         <Button

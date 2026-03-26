@@ -66,7 +66,7 @@ export default function AdminRecipesPage() {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Use relevance sorting when searching
       const sortParam = searchQuery ? 'sortBy=relevance' : 'sortBy=uuid';
       const searchParam = searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : '';
@@ -75,23 +75,23 @@ export default function AdminRecipesPage() {
         { signal: abortControllerRef.current.signal }
       );
       const body = await res.json();
-      
+
       if (!res.ok) {
         throw new Error(body.error || body.details || "Failed to load recipes");
       }
-      
+
       // Ensure recipes are properly displayed even if createdBy is missing
       const recipesData = (body.recipes || []).map((recipe: any) => ({
         ...recipe,
         createdBy: recipe.createdBy || null,
         createdAt: recipe.createdAt || recipe.updatedAt || new Date().toISOString()
       }));
-      
+
       setRecipes(recipesData);
       setTotalRecipes(body.pagination?.total || 0);
       setTotalPages(body.pagination?.pages || 1);
       setCurrentPage(page);
-      
+
       console.log(`Fetched ${recipesData.length} recipes from total ${body.pagination?.total}`);
     } catch (e: any) {
       // Ignore abort errors
@@ -161,7 +161,8 @@ export default function AdminRecipesPage() {
       return date.toLocaleDateString('en-IN', {
         year: 'numeric',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: 'Asia/Kolkata',
       });
     } catch {
       return 'Invalid Date';
@@ -229,7 +230,7 @@ export default function AdminRecipesPage() {
 
         {/* Recipes Table */}
         <Card>
-        
+
           <CardContent>
             {loading ? (
               <div className="flex items-center justify-center py-8">
@@ -278,19 +279,19 @@ export default function AdminRecipesPage() {
                           <span className="text-gray-700">{formatDate(recipe.createdAt)}</span>
                         </td>
                         <td className="p-3">
-                          <span className="text-gray-700">{recipe?.calories ||  '-'}</span>
+                          <span className="text-gray-700">{recipe?.calories || '-'}</span>
                         </td>
                         <td className="p-3">
-                          <span className="text-gray-700">{recipe?.protein ||  '-'}</span>
+                          <span className="text-gray-700">{recipe?.protein || '-'}</span>
                         </td>
                         <td className="p-3">
-                          <span className="text-gray-700">{recipe?.carbs ||  '-'}</span>
+                          <span className="text-gray-700">{recipe?.carbs || '-'}</span>
                         </td>
                         <td className="p-3">
                           <span className="text-gray-700">{recipe?.fat || '-'}</span>
                         </td>
                         <td className="p-3">
-                          <span className="text-gray-700">{recipe?.servingSize  || '-'}</span>
+                          <span className="text-gray-700">{recipe?.servingSize || '-'}</span>
                         </td>
                         <td className="p-3 flex gap-2">
                           <Link

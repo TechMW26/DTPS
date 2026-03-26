@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, use } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { formatTimeIST } from '@/lib/utils/formatDateIST';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,9 +14,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { LoadingPage, LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Plus, 
-  Trash2, 
+import {
+  Plus,
+  Trash2,
   ArrowLeft,
   Save,
   AlertCircle,
@@ -73,13 +74,13 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
   const { id } = use(params);
   const { data: session, status } = useSession();
   const router = useRouter();
-  
+
   const [mealPlan, setMealPlan] = useState<MealPlan | null>(null);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  
+
   // Form state
   const [planName, setPlanName] = useState('');
   const [description, setDescription] = useState('');
@@ -91,7 +92,7 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
   const [targetFat, setTargetFat] = useState('');
   const [meals, setMeals] = useState<MealPlanMeal[]>([]);
   const [planStatus, setPlanStatus] = useState('active');
-  
+
   // Recipe search
   const [recipeSearch, setRecipeSearch] = useState('');
   const [showRecipeSearch, setShowRecipeSearch] = useState(false);
@@ -122,12 +123,12 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
   }), [mealPlan?.client?._id, planName, description, startDate, endDate, targetCalories, targetProtein, targetCarbs, targetFat, meals]);
 
   // Auto-save hook
-  const { 
-    isSaving: isAutoSaving, 
-    lastSaved, 
-    hasDraft, 
-    clearDraft, 
-    restoreDraft 
+  const {
+    isSaving: isAutoSaving,
+    lastSaved,
+    hasDraft,
+    clearDraft,
+    restoreDraft
   } = useMealPlanAutoSave(`edit-meal-plan-${id}`, formData, {
     debounceMs: 2000,
     enabled: !!session?.user?.id && !!mealPlan,
@@ -140,11 +141,11 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
       router.push('/auth/signin');
       return;
     }
-    
+
     const fetchData = async () => {
       try {
         setLoading(true);
-        
+
         // Fetch meal plan
         const mealPlanRes = await fetch(`/api/meals/${id}`);
         if (!mealPlanRes.ok) {
@@ -153,7 +154,7 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
         }
         const mealPlanData = await mealPlanRes.json();
         setMealPlan(mealPlanData);
-        
+
         // Set form values
         setPlanName(mealPlanData.name || '');
         setDescription(mealPlanData.description || '');
@@ -165,14 +166,14 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
         setTargetFat(mealPlanData.targetMacros?.fat?.toString() || '');
         setMeals(mealPlanData.meals || []);
         setPlanStatus(mealPlanData.status || 'active');
-        
+
         // Fetch recipes
         const recipesRes = await fetch('/api/recipes');
         if (recipesRes.ok) {
           const recipesData = await recipesRes.json();
           setRecipes(recipesData.recipes || []);
         }
-        
+
       } catch (err: any) {
         console.error('Error fetching data:', err);
         setError(err.message || 'Failed to load meal plan');
@@ -181,7 +182,7 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
         setLoading(false);
       }
     };
-    
+
     fetchData();
   }, [id, session, status, router]);
 
@@ -199,10 +200,10 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
         setTargetCarbs(restored.targetCarbs || '');
         setTargetFat(restored.targetFat || '');
         setMeals(restored.meals?.length ? restored.meals as any : mealPlan.meals);
-        
-        toast.success('Draft restored', { 
+
+        toast.success('Draft restored', {
           description: 'Your unsaved changes have been restored.',
-          duration: 4000 
+          duration: 4000
         });
       }
       setDraftRestored(true);
@@ -275,10 +276,10 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
       toast.error('Missing required fields');
       return;
     }
-    
+
     setSaving(true);
     setError('');
-    
+
     try {
       const response = await fetch(`/api/meals/${id}`, {
         method: 'PUT',
@@ -303,7 +304,7 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
           status: planStatus
         })
       });
-      
+
       if (response.ok) {
         clearDraft();
         toast.success('Meal plan updated successfully!');
@@ -373,7 +374,7 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
             )}
             {!isAutoSaving && lastSaved && (
               <span className="text-xs text-green-600 dark:text-green-400">
-                Draft saved {lastSaved.toLocaleTimeString()}
+                Draft saved {formatTimeIST(lastSaved)}
               </span>
             )}
             {hasDraft && (
@@ -409,10 +410,10 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label>Plan Name <span className="text-red-500">*</span></Label>
-                <Input 
-                  value={planName} 
-                  onChange={e => setPlanName(e.target.value)} 
-                  placeholder="e.g., Week 1 - Weight Loss Plan" 
+                <Input
+                  value={planName}
+                  onChange={e => setPlanName(e.target.value)}
+                  placeholder="e.g., Week 1 - Weight Loss Plan"
                 />
               </div>
               <div className="space-y-2">
@@ -431,67 +432,67 @@ export default function EditMealPlanPage({ params }: { params: Promise<{ id: str
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label>Start Date <span className="text-red-500">*</span></Label>
-                <Input 
-                  type="date" 
-                  value={startDate} 
-                  onChange={e => setStartDate(e.target.value)} 
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={e => setStartDate(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
                 <Label>End Date <span className="text-red-500">*</span></Label>
-                <Input 
-                  type="date" 
-                  value={endDate} 
-                  onChange={e => setEndDate(e.target.value)} 
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={e => setEndDate(e.target.value)}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea 
-                value={description} 
-                onChange={e => setDescription(e.target.value)} 
-                rows={3} 
-                placeholder="Plan goals and approach..." 
+              <Textarea
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                rows={3}
+                placeholder="Plan goals and approach..."
               />
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label>Target Calories</Label>
-                <Input 
-                  type="number" 
-                  value={targetCalories} 
-                  onChange={e => setTargetCalories(e.target.value)} 
-                  placeholder="1800" 
+                <Input
+                  type="number"
+                  value={targetCalories}
+                  onChange={e => setTargetCalories(e.target.value)}
+                  placeholder="1800"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Protein (g)</Label>
-                <Input 
-                  type="number" 
-                  value={targetProtein} 
-                  onChange={e => setTargetProtein(e.target.value)} 
-                  placeholder="120" 
+                <Input
+                  type="number"
+                  value={targetProtein}
+                  onChange={e => setTargetProtein(e.target.value)}
+                  placeholder="120"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Carbs (g)</Label>
-                <Input 
-                  type="number" 
-                  value={targetCarbs} 
-                  onChange={e => setTargetCarbs(e.target.value)} 
-                  placeholder="200" 
+                <Input
+                  type="number"
+                  value={targetCarbs}
+                  onChange={e => setTargetCarbs(e.target.value)}
+                  placeholder="200"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Fat (g)</Label>
-                <Input 
-                  type="number" 
-                  value={targetFat} 
-                  onChange={e => setTargetFat(e.target.value)} 
-                  placeholder="60" 
+                <Input
+                  type="number"
+                  value={targetFat}
+                  onChange={e => setTargetFat(e.target.value)}
+                  placeholder="60"
                 />
               </div>
             </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { formatDateTimeIST } from '@/lib/utils/formatDateIST';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -796,14 +797,7 @@ export default function SmartPeopleAuditLogsPage() {
                                     <div>
                                         <span className="text-blue-700 font-medium">Date &amp; Time</span>
                                         <p className="text-gray-700">
-                                            {new Date(selectedLog.createdAt).toLocaleString('en-IN', {
-                                                day: '2-digit',
-                                                month: 'short',
-                                                year: 'numeric',
-                                                hour: '2-digit',
-                                                minute: '2-digit',
-                                                hour12: true,
-                                            })}
+                                            {formatDateTimeIST(selectedLog.createdAt)}
                                         </p>
                                     </div>
                                     <div>

@@ -37,7 +37,7 @@ function Calendar({
       captionLayout={captionLayout}
       formatters={{
         formatMonthDropdown: (date) =>
-          date.toLocaleString("default", { month: "short" }),
+          date.toLocaleString("default", { month: "short", timeZone: "Asia/Kolkata" }),
         ...formatters,
       }}
       classNames={{
@@ -190,7 +190,7 @@ function CalendarDayButton({
       ref={ref}
       variant="ghost"
       size="icon"
-      data-day={day.date.toLocaleDateString()}
+      data-day={day.date.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
       data-selected-single={
         modifiers.selected &&
         !modifiers.range_start &&

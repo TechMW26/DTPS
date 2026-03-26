@@ -88,12 +88,13 @@ historySchema.index({ 'performedBy.userId': 1 });
 
 // Virtual for formatted date
 historySchema.virtual('formattedDate').get(function () {
-  return this.createdAt?.toLocaleDateString('en-US', {
+  return this.createdAt?.toLocaleDateString('en-IN', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
   });
 });
 

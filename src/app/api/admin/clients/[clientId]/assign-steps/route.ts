@@ -14,23 +14,23 @@ async function hasActiveMealPlan(clientId: string, targetDate: Date): Promise<bo
     planStartOfDay.setHours(0, 0, 0, 0);
     const planEndOfDay = new Date(targetDate);
     planEndOfDay.setHours(23, 59, 59, 999);
-    
+
     const activePlan = await withCache(
-      `admin:clients:clientId:assign-steps:${JSON.stringify({
-        clientId: clientId,
-        status: 'active',
-        startDate: { $lte: planEndOfDay },
-        endDate: { $gte: planStartOfDay }
-    })}`,
-      async () => await ClientMealPlan.findOne({
-        clientId: clientId,
-        status: 'active',
-        startDate: { $lte: planEndOfDay },
-        endDate: { $gte: planStartOfDay }
-    }),
-      { ttl: 120000, tags: ['admin'] }
+        `admin:clients:clientId:assign-steps:${JSON.stringify({
+            clientId: clientId,
+            status: 'active',
+            startDate: { $lte: planEndOfDay },
+            endDate: { $gte: planStartOfDay }
+        })}`,
+        async () => await ClientMealPlan.findOne({
+            clientId: clientId,
+            status: 'active',
+            startDate: { $lte: planEndOfDay },
+            endDate: { $gte: planStartOfDay }
+        }),
+        { ttl: 120000, tags: ['admin'] }
     );
-    
+
     return !!activePlan;
 }
 
@@ -54,20 +54,20 @@ export async function GET(
 
         // Verify the user is a dietitian/admin/health_counselor
         const currentUser = await withCache(
-      `admin:clients:clientId:assign-steps:${JSON.stringify(session.user.id)}`,
-      async () => await User.findById(session.user.id),
-      { ttl: 120000, tags: ['admin'] }
-    );
+            `admin:clients:clientId:assign-steps:${JSON.stringify(session.user.id)}`,
+            async () => await User.findById(session.user.id),
+            { ttl: 120000, tags: ['admin'] }
+        );
         if (!currentUser || !['admin', 'dietitian', 'health_counselor'].includes(currentUser.role)) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
         }
 
         // Verify the client exists
         const client = await withCache(
-      `admin:clients:clientId:assign-steps:${JSON.stringify(clientId)}`,
-      async () => await User.findById(clientId),
-      { ttl: 120000, tags: ['admin'] }
-    );
+            `admin:clients:clientId:assign-steps:${JSON.stringify(clientId)}`,
+            async () => await User.findById(clientId),
+            { ttl: 120000, tags: ['admin'] }
+        );
         if (!client) {
             return NextResponse.json({ error: "Client not found" }, { status: 404 });
         }
@@ -80,16 +80,16 @@ export async function GET(
 
         // Find journal for the date
         const journal = await withCache(
-      `admin:clients:clientId:assign-steps:${JSON.stringify({
-            client: clientId,
-            date: { $gte: targetDate, $lt: nextDay }
-        })}`,
-      async () => await JournalTracking.findOne({
-            client: clientId,
-            date: { $gte: targetDate, $lt: nextDay }
-        }),
-      { ttl: 120000, tags: ['admin'] }
-    );
+            `admin:clients:clientId:assign-steps:${JSON.stringify({
+                client: clientId,
+                date: { $gte: targetDate, $lt: nextDay }
+            })}`,
+            async () => await JournalTracking.findOne({
+                client: clientId,
+                date: { $gte: targetDate, $lt: nextDay }
+            }),
+            { ttl: 120000, tags: ['admin'] }
+        );
 
         // Calculate current steps
         const currentSteps = journal?.steps?.reduce((sum: number, entry: any) => sum + entry.steps, 0) || 0;
@@ -131,20 +131,20 @@ export async function POST(
 
         // Verify the user is a dietitian/admin/health_counselor
         const currentUser = await withCache(
-      `admin:clients:clientId:assign-steps:${JSON.stringify(session.user.id)}`,
-      async () => await User.findById(session.user.id),
-      { ttl: 120000, tags: ['admin'] }
-    );
+            `admin:clients:clientId:assign-steps:${JSON.stringify(session.user.id)}`,
+            async () => await User.findById(session.user.id),
+            { ttl: 120000, tags: ['admin'] }
+        );
         if (!currentUser || !['admin', 'dietitian', 'health_counselor'].includes(currentUser.role)) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
         }
 
         // Verify the client exists
         const client = await withCache(
-      `admin:clients:clientId:assign-steps:${JSON.stringify(clientId)}`,
-      async () => await User.findById(clientId),
-      { ttl: 120000, tags: ['admin'] }
-    );
+            `admin:clients:clientId:assign-steps:${JSON.stringify(clientId)}`,
+            async () => await User.findById(clientId),
+            { ttl: 120000, tags: ['admin'] }
+        );
         if (!client) {
             return NextResponse.json({ error: "Client not found" }, { status: 404 });
         }
@@ -204,7 +204,7 @@ export async function POST(
 
         // Send push notification to client about assigned task
         try {
-            const dateStr = targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const dateStr = targetDate.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' });
             await sendTaskAssignedNotification(clientId, {
                 taskType: 'steps',
                 target: `${target.toLocaleString()} steps`,
@@ -249,10 +249,10 @@ export async function DELETE(
 
         // Verify the user is a dietitian/admin/health_counselor
         const currentUser = await withCache(
-      `admin:clients:clientId:assign-steps:${JSON.stringify(session.user.id)}`,
-      async () => await User.findById(session.user.id),
-      { ttl: 120000, tags: ['admin'] }
-    );
+            `admin:clients:clientId:assign-steps:${JSON.stringify(session.user.id)}`,
+            async () => await User.findById(session.user.id),
+            { ttl: 120000, tags: ['admin'] }
+        );
         if (!currentUser || !['admin', 'dietitian', 'health_counselor'].includes(currentUser.role)) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
         }

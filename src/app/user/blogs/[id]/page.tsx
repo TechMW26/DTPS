@@ -59,17 +59,18 @@ const getCategoryColor = (category: string) => {
 };
 
 const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-US', {
+  return new Date(dateString).toLocaleDateString('en-IN', {
     month: 'long',
     day: 'numeric',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata'
   });
 };
 
 export default function BlogDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const blogId = resolvedParams.id;
-  
+
   const { isDarkMode } = useTheme();
   const [blog, setBlog] = useState<Blog | null>(null);
   const [relatedBlogs, setRelatedBlogs] = useState<RelatedBlog[]>([]);
@@ -108,7 +109,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
 
   const handleLike = async () => {
     if (!blog) return;
-    
+
     try {
       const action = liked ? 'unlike' : 'like';
       const response = await fetch(`/api/client/blogs/${blog._id}`, {
@@ -116,7 +117,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action })
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setLiked(!liked);
@@ -129,7 +130,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
 
   const handleShare = async () => {
     if (!blog) return;
-    
+
     try {
       if (navigator.share) {
         await navigator.share({
@@ -161,8 +162,8 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
           <ImageOff className={`h-10 w-10 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
         </div>
         <p className={`text-lg font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Blog not found</p>
-        <Link 
-          href="/user/blogs" 
+        <Link
+          href="/user/blogs"
           className="mt-4 px-6 py-2 bg-[#3AB1A0] text-white rounded-full font-medium hover:bg-[#2D8A7C] transition-colors"
         >
           Back to Blogs
@@ -188,25 +189,24 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
             </div>
           )}
           <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-black/30" />
-          
+
           {/* Top Navigation */}
           <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4 pt-8">
-            <Link 
-              href="/user/blogs" 
+            <Link
+              href="/user/blogs"
               className="h-10 w-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg"
             >
               <ArrowLeft className="h-5 w-5 text-gray-700" />
             </Link>
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => setBookmarked(!bookmarked)}
-                className={`h-10 w-10 rounded-full flex items-center justify-center shadow-lg backdrop-blur-sm transition-colors ${
-                  bookmarked ? 'bg-[#E06A26] text-white' : 'bg-white/90 text-gray-700'
-                }`}
+                className={`h-10 w-10 rounded-full flex items-center justify-center shadow-lg backdrop-blur-sm transition-colors ${bookmarked ? 'bg-[#E06A26] text-white' : 'bg-white/90 text-gray-700'
+                  }`}
               >
                 <Bookmark className={`h-5 w-5 ${bookmarked ? 'fill-current' : ''}`} />
               </button>
-              <button 
+              <button
                 onClick={handleShare}
                 className="h-10 w-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg"
               >
@@ -264,7 +264,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
             {blog.tags && blog.tags.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-4">
                 {blog.tags.map((tag, index) => (
-                  <span 
+                  <span
                     key={index}
                     className={`text-xs px-3 py-1 rounded-full ${isDarkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`}
                   >
@@ -276,7 +276,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
 
             {/* Blog Content - only show description if no content or different from content */}
             {blog.content ? (
-              <div 
+              <div
                 className={`mt-6 prose prose-lg max-w-none ${isDarkMode ? 'prose-invert' : ''}`}
                 dangerouslySetInnerHTML={{ __html: blog.content }}
                 style={{
@@ -293,13 +293,12 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
             <div className="flex items-center justify-center mt-8 pt-6 border-t border-gray-100 dark:border-gray-800">
               <button
                 onClick={handleLike}
-                className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all ${
-                  liked 
-                    ? 'bg-red-500 text-white' 
-                    : isDarkMode 
-                      ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' 
+                className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all ${liked
+                    ? 'bg-red-500 text-white'
+                    : isDarkMode
+                      ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                  }`}
               >
                 <Heart className={`h-5 w-5 ${liked ? 'fill-current' : ''}`} />
                 <span>{likesCount} {likesCount === 1 ? 'Like' : 'Likes'}</span>
@@ -317,9 +316,8 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
                     <Link
                       key={related._id}
                       href={`/user/blogs/${related.slug || related._id}`}
-                      className={`flex gap-4 p-3 rounded-xl transition-all ${
-                        isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-gray-50 hover:bg-gray-100'
-                      }`}
+                      className={`flex gap-4 p-3 rounded-xl transition-all ${isDarkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-gray-50 hover:bg-gray-100'
+                        }`}
                     >
                       <div className="w-20 h-20 shrink-0 rounded-lg overflow-hidden bg-gray-200">
                         {related.thumbnailImage ? (
@@ -353,7 +351,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-   
+
       </div>
     </PageTransition>
   );

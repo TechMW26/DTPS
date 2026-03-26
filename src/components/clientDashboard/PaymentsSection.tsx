@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
+import { formatDateIST } from '@/lib/utils/formatDateIST';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -1105,7 +1106,7 @@ export default function PaymentsSection({
                   <tr key={p._id} className="border-t hover:bg-gray-50">
                     {visibleColumns.created && (
                       <td className="p-3 whitespace-nowrap">
-                        {formatDate ? formatDate(p.createdAt) : new Date(p.createdAt).toLocaleDateString()}
+                        {formatDate ? formatDate(p.createdAt) : formatDateIST(p.createdAt)}
                       </td>
                     )}
                     {visibleColumns.customerName && (
@@ -1125,7 +1126,7 @@ export default function PaymentsSection({
                     )}
                     {visibleColumns.expireDate && (
                       <td className="p-3 whitespace-nowrap">
-                        {p.expireDate ? (formatDate ? formatDate(p.expireDate) : new Date(p.expireDate).toLocaleDateString()) : "—"}
+                        {p.expireDate ? (formatDate ? formatDate(p.expireDate) : formatDateIST(p.expireDate)) : "—"}
                       </td>
                     )}
                     {visibleColumns.plan && (
@@ -1166,8 +1167,8 @@ export default function PaymentsSection({
                             return (
                               <div className="text-xs">
                                 <div className="text-green-600 font-medium">
-                                  {startDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                                  {endDate && ` - ${endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
+                                  {startDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}
+                                  {endDate && ` - ${endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}`}
                                 </div>
                               </div>
                             );
@@ -1794,7 +1795,7 @@ export default function PaymentsSection({
                         <code className="text-xs bg-gray-100 px-2 py-1 rounded">{payment.transactionId}</code>
                       </td>
                       <td className="p-3 text-gray-600">
-                        {new Date(payment.paymentDate || payment.createdAt).toLocaleDateString()}
+                        {formatDateIST(payment.paymentDate || payment.createdAt)}
                       </td>
                       <td className="p-3">
                         <span className={`text-xs px-2 py-1 rounded-full capitalize ${payment.status === 'approved' ? 'bg-green-100 text-green-800' :
@@ -1894,13 +1895,13 @@ export default function PaymentsSection({
                     {selectedPurchaseForDates.expectedStartDate && (
                       <div className="flex justify-between">
                         <span>Start:</span>
-                        <span className="font-medium">{new Date(selectedPurchaseForDates.expectedStartDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <span className="font-medium">{new Date(selectedPurchaseForDates.expectedStartDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>
                       </div>
                     )}
                     {selectedPurchaseForDates.expectedEndDate && (
                       <div className="flex justify-between">
                         <span>End:</span>
-                        <span className="font-medium">{new Date(selectedPurchaseForDates.expectedEndDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <span className="font-medium">{new Date(selectedPurchaseForDates.expectedEndDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</span>
                       </div>
                     )}
                   </div>

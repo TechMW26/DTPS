@@ -62,10 +62,11 @@ const getCategoryIcon = (category: string) => {
 };
 
 const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-US', {
+  return new Date(dateString).toLocaleDateString('en-IN', {
     month: 'short',
     day: 'numeric',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata'
   });
 };
 
@@ -126,11 +127,11 @@ export default function BlogsPage() {
   };
 
   const filteredBlogs = blogs.filter((blog) => {
-    const matchesCategory = selectedCategory === 'All' || 
+    const matchesCategory = selectedCategory === 'All' ||
       blog.category.toLowerCase() === selectedCategory.toLowerCase();
     const matchesSearch = blog.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         blog.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         blog.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+      blog.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      blog.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
 
@@ -177,8 +178,8 @@ export default function BlogsPage() {
         <div className={`sticky top-0 z-40 backdrop-blur-sm border-b transition-colors duration-300 ${isDarkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-100'}`}>
           <div className="px-4 py-4">
             <div className="flex items-center gap-3">
-              <Link 
-                href="/user" 
+              <Link
+                href="/user"
                 className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#3AB1A0]/10 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5 text-[#3AB1A0]" />
@@ -200,11 +201,10 @@ export default function BlogsPage() {
                 placeholder="Search articles..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className={`w-full h-12 pl-12 pr-4 rounded-xl placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3AB1A0] transition-all ${
-                  isDarkMode 
-                    ? 'bg-gray-700 text-white' 
+                className={`w-full h-12 pl-12 pr-4 rounded-xl placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3AB1A0] transition-all ${isDarkMode
+                    ? 'bg-gray-700 text-white'
                     : 'bg-gray-100 text-gray-900'
-                }`}
+                  }`}
               />
             </div>
 
@@ -214,13 +214,12 @@ export default function BlogsPage() {
                 <button
                   key={category}
                   onClick={() => setSelectedCategory(category)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                    selectedCategory === category
+                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${selectedCategory === category
                       ? 'bg-linear-to-r from-[#3AB1A0] to-[#2D8A7C] text-white shadow-md'
                       : isDarkMode
                         ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600'
                         : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-                  }`}
+                    }`}
                 >
                   {category !== 'All' && <span className="mr-1">{getCategoryIcon(category)}</span>}
                   {category}
@@ -244,9 +243,8 @@ export default function BlogsPage() {
                 <Link
                   key={blog._id}
                   href={`/user/blogs/${blog.slug || blog._id}`}
-                  className={`block w-72 shrink-0 rounded-2xl shadow-sm overflow-hidden hover:shadow-lg transition-all hover:-translate-y-1 ${
-                    isDarkMode ? 'bg-gray-800' : 'bg-white'
-                  }`}
+                  className={`block w-72 shrink-0 rounded-2xl shadow-sm overflow-hidden hover:shadow-lg transition-all hover:-translate-y-1 ${isDarkMode ? 'bg-gray-800' : 'bg-white'
+                    }`}
                 >
                   <div className="h-36 relative bg-gray-100 overflow-hidden">
                     {blog.thumbnailImage || blog.featuredImage ? (
@@ -263,12 +261,11 @@ export default function BlogsPage() {
                     <span className={`absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full border ${getCategoryColor(blog.category)}`}>
                       {getCategoryIcon(blog.category)} {blog.category.charAt(0).toUpperCase() + blog.category.slice(1)}
                     </span>
-                    <button 
-                      className={`absolute top-3 right-3 h-8 w-8 rounded-full flex items-center justify-center transition-all ${
-                        bookmarkedBlogs.has(blog._id) 
-                          ? 'bg-[#E06A26] text-white' 
+                    <button
+                      className={`absolute top-3 right-3 h-8 w-8 rounded-full flex items-center justify-center transition-all ${bookmarkedBlogs.has(blog._id)
+                          ? 'bg-[#E06A26] text-white'
                           : 'bg-white/90 text-gray-600 hover:bg-white'
-                      }`}
+                        }`}
                       onClick={(e) => toggleBookmark(e, blog._id)}
                     >
                       <Bookmark className={`h-4 w-4 ${bookmarkedBlogs.has(blog._id) ? 'fill-current' : ''}`} />
@@ -309,9 +306,8 @@ export default function BlogsPage() {
               <Link
                 key={blog._id}
                 href={`/user/blogs/${blog.slug || blog._id}`}
-                className={`flex gap-4 rounded-2xl p-3 shadow-sm hover:shadow-md transition-all group ${
-                  isDarkMode ? 'bg-gray-800' : 'bg-white'
-                }`}
+                className={`flex gap-4 rounded-2xl p-3 shadow-sm hover:shadow-md transition-all group ${isDarkMode ? 'bg-gray-800' : 'bg-white'
+                  }`}
               >
                 <div className="w-24 h-24 shrink-0 rounded-xl overflow-hidden bg-gray-100">
                   {blog.thumbnailImage || blog.featuredImage ? (
@@ -330,9 +326,8 @@ export default function BlogsPage() {
                   <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${getCategoryColor(blog.category)} mb-1`}>
                     {blog.category.charAt(0).toUpperCase() + blog.category.slice(1)}
                   </span>
-                  <h3 className={`font-bold text-sm line-clamp-2 group-hover:text-[#3AB1A0] transition-colors ${
-                    isDarkMode ? 'text-white' : 'text-gray-900'
-                  }`}>{blog.title}</h3>
+                  <h3 className={`font-bold text-sm line-clamp-2 group-hover:text-[#3AB1A0] transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'
+                    }`}>{blog.title}</h3>
                   <div className="flex items-center gap-3 mt-2">
                     <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                       {formatDate(blog.publishedAt || blog.createdAt)}
@@ -347,12 +342,11 @@ export default function BlogsPage() {
                     </div>
                   </div>
                 </div>
-                <button 
-                  className={`self-start p-2 rounded-full transition-all ${
-                    bookmarkedBlogs.has(blog._id) 
-                      ? 'text-[#E06A26]' 
+                <button
+                  className={`self-start p-2 rounded-full transition-all ${bookmarkedBlogs.has(blog._id)
+                      ? 'text-[#E06A26]'
                       : isDarkMode ? 'text-gray-600 hover:text-gray-400' : 'text-gray-300 hover:text-gray-500'
-                  }`}
+                    }`}
                   onClick={(e) => toggleBookmark(e, blog._id)}
                 >
                   <Bookmark className={`h-4 w-4 ${bookmarkedBlogs.has(blog._id) ? 'fill-current' : ''}`} />
@@ -372,7 +366,7 @@ export default function BlogsPage() {
           )}
         </div>
 
-       
+
       </div>
     </PageTransition>
   );

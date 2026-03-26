@@ -58,19 +58,20 @@ export async function POST(request: NextRequest) {
     const clientName = `${paymentLink.client?.firstName || ''} ${paymentLink.client?.lastName || ''}`.trim() || 'Valued Client';
 
     // Prepare dietitian name
-    const dietitianName = paymentLink.dietitian 
-      ? `${paymentLink.dietitian.firstName || ''} ${paymentLink.dietitian.lastName || ''}`.trim() 
+    const dietitianName = paymentLink.dietitian
+      ? `${paymentLink.dietitian.firstName || ''} ${paymentLink.dietitian.lastName || ''}`.trim()
       : undefined;
 
     // Format expire date
-    const expireDate = paymentLink.expireDate 
+    const expireDate = paymentLink.expireDate
       ? new Date(paymentLink.expireDate).toLocaleDateString('en-IN', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        })
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
+      })
       : undefined;
 
     // Generate email template
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     if (!sent) {
       console.error('[PAYMENT_REMINDER] Failed to send reminder email');
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Failed to send email. Please check SMTP configuration.',
         hint: 'Ensure SMTP_HOST, SMTP_USER, SMTP_PASS are configured in .env',
         debug: {
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error sending payment reminder:', error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Failed to send payment reminder',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });

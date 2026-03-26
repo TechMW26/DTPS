@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
       const idx = 5 - i;
       const monthStart = new Date(today.getFullYear(), today.getMonth() - idx, 1);
       const monthEnd = new Date(today.getFullYear(), today.getMonth() - idx + 1, 0);
-      return { monthStart, monthEnd, label: monthStart.toLocaleDateString('en-US', { month: 'short' }) };
+      return { monthStart, monthEnd, label: monthStart.toLocaleDateString('en-IN', { month: 'short', timeZone: 'Asia/Kolkata' }) };
     });
 
     const monthResults = await Promise.all(

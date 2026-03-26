@@ -116,10 +116,11 @@ export default function MealPlanTemplateViewPage() {
     category.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr).toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'Asia/Kolkata',
     });
   };
 

@@ -10,10 +10,10 @@ import { logHistoryServer } from '@/lib/server/history';
 import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { SSEManager } from '@/lib/realtime/sse-manager';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
-import { 
-  sendAppointmentCancellationEmail, 
-  sendAppointmentRescheduleEmail, 
-  AppointmentEmailData 
+import {
+  sendAppointmentCancellationEmail,
+  sendAppointmentRescheduleEmail,
+  AppointmentEmailData
 } from '@/lib/services/appointmentEmail';
 
 // Helper function to get actor role from user role
@@ -41,10 +41,10 @@ export async function GET(
     const appointment = await withCache(
       `appointments:id:${JSON.stringify(id)}`,
       async () => await Appointment.findById(id)
-      .populate('dietitian', 'firstName lastName email avatar')
-      .populate('client', 'firstName lastName email avatar')
-      .populate('createdBy', 'firstName lastName role')
-      .select('+lifecycleHistory +cancelledBy +rescheduledBy'),
+        .populate('dietitian', 'firstName lastName email avatar')
+        .populate('client', 'firstName lastName email avatar')
+        .populate('createdBy', 'firstName lastName role')
+        .select('+lifecycleHistory +cancelledBy +rescheduledBy'),
       { ttl: 60000, tags: ['appointments'] }
     );
 
@@ -59,9 +59,9 @@ export async function GET(
     const dietitianId = (appointment.dietitian as any)._id?.toString() || (appointment.dietitian as any).toString();
     const clientId = (appointment.client as any)._id?.toString() || (appointment.client as any).toString();
     const userId = session.user.id;
-    
+
     let hasAccess = false;
-    
+
     if (session.user.role === UserRole.ADMIN) {
       hasAccess = true;
     } else if (dietitianId === userId || clientId === userId) {
@@ -69,10 +69,10 @@ export async function GET(
     } else if ((session.user.role as string) === UserRole.HEALTH_COUNSELOR || (session.user.role as string) === 'health_counselor') {
       // HC can access appointments for their assigned clients
       const client = await withCache(
-      `appointments:id:${JSON.stringify(clientId)}`,
-      async () => await User.findById(clientId),
-      { ttl: 60000, tags: ['appointments'] }
-    );
+        `appointments:id:${JSON.stringify(clientId)}`,
+        async () => await User.findById(clientId),
+        { ttl: 60000, tags: ['appointments'] }
+      );
       if (client?.assignedHealthCounselor?.toString() === userId) {
         hasAccess = true;
       }
@@ -121,17 +121,17 @@ export async function PUT(
     }
 
 
-    
+
     // Check if user can update this appointment
     // Admin can update any, dietitian and HC can update appointments they created
     // Clients can only cancel their own appointments (change status to cancelled)
     let canUpdate = false;
     let isClientCancelling = false;
-    
+
     const clientId = appointment.client?.toString();
     const dietitianId = appointment.dietitian?.toString();
     const userRole = session.user.role as string;
-    
+
     if (userRole === UserRole.ADMIN || userRole === 'admin') {
       canUpdate = true;
     } else if (userRole === UserRole.DIETITIAN || userRole === 'dietitian') {
@@ -157,7 +157,7 @@ export async function PUT(
         isClientCancelling = true;
       }
     }
-    
+
     if (!canUpdate) {
       return NextResponse.json({ error: 'You do not have permission to edit this appointment' }, { status: 403 });
     }
@@ -228,7 +228,7 @@ export async function PUT(
         performedByRole: actorRole,
         performedByName: actorName,
         timestamp: new Date(),
-        details: { 
+        details: {
           previousScheduledAt,
           newScheduledAt: new Date(body.scheduledAt),
           previousDuration: appointment.duration,
@@ -264,7 +264,7 @@ export async function PUT(
     // Populate and return updated appointment
     await appointment.populate('dietitian', 'firstName lastName email avatar');
     await appointment.populate('client', 'firstName lastName email avatar');
-    
+
     // Get populated data for emails and notifications
     const dietitianData = appointment.dietitian as any;
     const clientData = appointment.client as any;
@@ -274,7 +274,7 @@ export async function PUT(
     // Send cancellation emails if the appointment was cancelled
     if (isBeingCancelled) {
       try {
-        const providerRole: 'dietitian' | 'health_counselor' = 
+        const providerRole: 'dietitian' | 'health_counselor' =
           actorRole === 'health_counselor' ? 'health_counselor' : 'dietitian';
 
         const emailData: AppointmentEmailData = {
@@ -297,7 +297,7 @@ export async function PUT(
         };
 
         const emailResult = await sendAppointmentCancellationEmail(emailData);
-        
+
         if (!emailResult.success) {
           console.warn('Some cancellation emails failed:', emailResult.errors);
         }
@@ -309,7 +309,7 @@ export async function PUT(
     // Send reschedule emails if the appointment was rescheduled
     if (isRescheduling && !isBeingCancelled) {
       try {
-        const providerRole: 'dietitian' | 'health_counselor' = 
+        const providerRole: 'dietitian' | 'health_counselor' =
           actorRole === 'health_counselor' ? 'health_counselor' : 'dietitian';
 
         const emailData: AppointmentEmailData = {
@@ -332,7 +332,7 @@ export async function PUT(
         };
 
         const emailResult = await sendAppointmentRescheduleEmail(emailData);
-        
+
         if (!emailResult.success) {
           console.warn('Some reschedule emails failed:', emailResult.errors);
         }
@@ -395,23 +395,24 @@ export async function PUT(
     // Send notifications if appointment was cancelled
     if (isBeingCancelled) {
       try {
-        const formattedDate = new Date(appointment.scheduledAt).toLocaleDateString('en-US', {
+        const formattedDate = new Date(appointment.scheduledAt).toLocaleDateString('en-IN', {
           weekday: 'short',
           month: 'short',
           day: 'numeric',
           hour: 'numeric',
-          minute: '2-digit'
+          minute: '2-digit',
+          timeZone: 'Asia/Kolkata'
         });
 
         const sseManager = SSEManager.getInstance();
-        const cancelledByLabel = actorRole === 'client' ? 'Client' : 
-                                 actorRole === 'dietitian' ? 'Dietitian' :
-                                 actorRole === 'health_counselor' ? 'Health Counselor' : 'Admin';
+        const cancelledByLabel = actorRole === 'client' ? 'Client' :
+          actorRole === 'dietitian' ? 'Dietitian' :
+            actorRole === 'health_counselor' ? 'Health Counselor' : 'Admin';
 
         if (isClientCancelling) {
           // Client cancelled - notify dietitian/health counselor
           const clientName = `${clientData?.firstName || ''} ${clientData?.lastName || ''}`.trim() || 'Client';
-          
+
           // Send push notification to dietitian
           if (dietitianIdStr) {
             await sendNotificationToUser(dietitianIdStr, {
@@ -445,7 +446,7 @@ export async function PUT(
         } else {
           // Staff cancelled - notify client
           const staffName = `${dietitianData?.firstName || ''} ${dietitianData?.lastName || ''}`.trim() || 'Your dietitian';
-          
+
           // Send push notification to client
           if (clientIdStr) {
             await sendNotificationToUser(clientIdStr, {
@@ -486,18 +487,19 @@ export async function PUT(
     // Send notifications if appointment was rescheduled
     if (isRescheduling && !isBeingCancelled) {
       try {
-        const formattedNewDate = new Date(appointment.scheduledAt).toLocaleDateString('en-US', {
+        const formattedNewDate = new Date(appointment.scheduledAt).toLocaleDateString('en-IN', {
           weekday: 'short',
           month: 'short',
           day: 'numeric',
           hour: 'numeric',
-          minute: '2-digit'
+          minute: '2-digit',
+          timeZone: 'Asia/Kolkata'
         });
 
         const sseManager = SSEManager.getInstance();
-        const rescheduledByLabel = actorRole === 'client' ? 'Client' : 
-                                   actorRole === 'dietitian' ? 'Dietitian' :
-                                   actorRole === 'health_counselor' ? 'Health Counselor' : 'Admin';
+        const rescheduledByLabel = actorRole === 'client' ? 'Client' :
+          actorRole === 'dietitian' ? 'Dietitian' :
+            actorRole === 'health_counselor' ? 'Health Counselor' : 'Admin';
 
         // Notify client if rescheduled by staff
         if (actorRole !== 'client' && clientIdStr) {
@@ -601,11 +603,11 @@ export async function DELETE(
     // Clients can cancel their own appointments
     let canCancel = false;
     let isClientCancellingDelete = false;
-    
+
     const clientIdDelete = appointment.client?.toString();
     const dietitianIdDelete = appointment.dietitian?.toString();
     const userRoleDelete = session.user.role as string;
-    
+
     if (userRoleDelete === UserRole.ADMIN || userRoleDelete === 'admin') {
       canCancel = true;
     } else if (userRoleDelete === UserRole.DIETITIAN || userRoleDelete === 'dietitian') {
@@ -710,7 +712,7 @@ export async function DELETE(
 
     // Send cancellation emails
     try {
-      const providerRoleEmail: 'dietitian' | 'health_counselor' = 
+      const providerRoleEmail: 'dietitian' | 'health_counselor' =
         actorRoleDelete === 'health_counselor' ? 'health_counselor' : 'dietitian';
 
       const emailData: AppointmentEmailData = {
@@ -732,7 +734,7 @@ export async function DELETE(
       };
 
       const emailResult = await sendAppointmentCancellationEmail(emailData);
-      
+
       if (!emailResult.success) {
         console.warn('Some cancellation emails failed:', emailResult.errors);
       }
@@ -741,9 +743,9 @@ export async function DELETE(
     }
 
     // Log history for appointment cancellation
-    const cancelledByLabel = actorRoleDelete === 'client' ? 'Client' : 
-                             actorRoleDelete === 'dietitian' ? 'Dietitian' :
-                             actorRoleDelete === 'health_counselor' ? 'Health Counselor' : 'Admin';
+    const cancelledByLabel = actorRoleDelete === 'client' ? 'Client' :
+      actorRoleDelete === 'dietitian' ? 'Dietitian' :
+        actorRoleDelete === 'health_counselor' ? 'Health Counselor' : 'Admin';
 
     await logHistoryServer({
       userId: appointment.client.toString(),
@@ -762,12 +764,13 @@ export async function DELETE(
 
     // Send cancellation notifications
     try {
-      const formattedDate = new Date(appointment.scheduledAt).toLocaleDateString('en-US', {
+      const formattedDate = new Date(appointment.scheduledAt).toLocaleDateString('en-IN', {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
       });
 
       const sseManager = SSEManager.getInstance();
@@ -870,7 +873,7 @@ export async function DELETE(
       // Don't fail the request if notification fails
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: 'Appointment cancelled successfully',
       cancelledBy: {
         role: actorRoleDelete,

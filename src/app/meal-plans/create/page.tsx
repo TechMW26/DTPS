@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { formatTimeIST } from '@/lib/utils/formatDateIST';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -627,7 +628,7 @@ function CreateMealPlanPageContent() {
             )}
             {!isSaving && lastSaved && (
               <span className="text-xs text-green-600 dark:text-green-400">
-                Saved {lastSaved.toLocaleTimeString()}
+                Saved {formatTimeIST(lastSaved)}
               </span>
             )}
             {hasDraft && (

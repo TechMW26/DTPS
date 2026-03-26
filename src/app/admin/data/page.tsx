@@ -10,6 +10,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { formatDateIST, formatDateTimeIST } from '@/lib/utils/formatDateIST';
 import {
   Upload,
   Download,
@@ -217,18 +218,18 @@ const MODEL_ICONS: Record<string, React.ElementType> = {
 
 export default function DataManagementPage() {
   const router = useRouter();
-  
+
   // State - default to 'export' since import redirects to another page
   const [activeSection, setActiveSection] = useState<ActiveSection>('export');
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
-  
+
   // Export state
   const [selectedExportModel, setSelectedExportModel] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
   const [exporting, setExporting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  
+
   // Update state
   const [selectedUpdateModel, setSelectedUpdateModel] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -255,9 +256,9 @@ export default function DataManagementPage() {
     errors: Array<{ id: string; error: string }>;
   } | null>(null);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
-  const [bulkUpdatePreview, setBulkUpdatePreview] = useState<Array<{ uuid: string; [key: string]: any }>>([]);
+  const [bulkUpdatePreview, setBulkUpdatePreview] = useState<Array<{ uuid: string;[key: string]: any }>>([]);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Error Modal state
   const [errorModal, setErrorModal] = useState<{
     show: boolean;
@@ -269,7 +270,7 @@ export default function DataManagementPage() {
   // Lazy loading state
   const { visibleIndices: visibleTableRows, observeElement: observeTableRow } = useLazyLoad(0.3);
   const [visibleExportModels, setVisibleExportModels] = useState<Set<string>>(new Set());
-  
+
   // API abort controllers
   const searchAbortRef = useRef<AbortController | null>(null);
   const detailsAbortRef = useRef<AbortController | null>(null);
@@ -280,7 +281,7 @@ export default function DataManagementPage() {
   // Fetch models on mount
   useEffect(() => {
     fetchModels();
-    
+
     // Cleanup abort controllers on unmount
     return () => {
       if (searchAbortRef.current) searchAbortRef.current.abort();
@@ -296,7 +297,7 @@ export default function DataManagementPage() {
   }, [debouncedSearchQuery, selectedUpdateModel]);
 
   // Memoized selected model
-  const currentModel = useMemo(() => 
+  const currentModel = useMemo(() =>
     models.find(m => m.name === selectedUpdateModel),
     [models, selectedUpdateModel]
   );
@@ -330,7 +331,7 @@ export default function DataManagementPage() {
     try {
       const url = `/api/admin/data/export?model=${modelName}&format=${exportFormat}&download=true`;
       const res = await fetch(url);
-      
+
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.message || 'Export failed');
@@ -396,22 +397,22 @@ export default function DataManagementPage() {
   // Search records with lazy loading
   const searchRecords = useCallback(async (modelName: string, query: string = '', page: number = 1) => {
     setLoading(true);
-    
+
     // Cancel previous request
     if (searchAbortRef.current) {
       searchAbortRef.current.abort();
     }
-    
+
     // Create new abort controller
     searchAbortRef.current = new AbortController();
-    
+
     try {
       const res = await fetch(
         `/api/admin/data/records?model=${modelName}&search=${encodeURIComponent(query)}&page=${page}&limit=20`,
         { signal: searchAbortRef.current.signal }
       );
       const data = await res.json();
-      
+
       if (data.success) {
         setSearchResults(data.records);
         setPagination(data.pagination);
@@ -432,21 +433,21 @@ export default function DataManagementPage() {
   // Fetch single record with related data and lazy abort control
   const fetchRecordDetails = async (modelName: string, recordId: string) => {
     setLoading(true);
-    
+
     // Cancel previous request
     if (detailsAbortRef.current) {
       detailsAbortRef.current.abort();
     }
-    
+
     // Create new abort controller
     detailsAbortRef.current = new AbortController();
-    
+
     try {
       const res = await fetch(`/api/admin/data/records?model=${modelName}&id=${recordId}`, {
         signal: detailsAbortRef.current.signal
       });
       const data = await res.json();
-      
+
       if (data.success) {
         setSelectedRecord(data.record);
         setRelatedData(data.relatedData || null);
@@ -467,7 +468,7 @@ export default function DataManagementPage() {
   // Save record changes
   const saveRecordChanges = async () => {
     if (!selectedUpdateModel || !selectedRecord || !editingRecord) return;
-    
+
     setSaving(true);
     try {
       const res = await fetch('/api/admin/data/records', {
@@ -479,9 +480,9 @@ export default function DataManagementPage() {
           data: editingRecord
         })
       });
-      
+
       const data = await res.json();
-      
+
       if (data.success) {
         toast.success('Record updated successfully!');
         setSelectedRecord(data.record);
@@ -508,11 +509,11 @@ export default function DataManagementPage() {
   const parseCSV = (csvText: string): Array<Record<string, any>> => {
     const lines = csvText.split('\n').filter(line => line.trim());
     if (lines.length < 2) return [];
-    
+
     // Parse header row - handle both comma and tab delimiters
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
     const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
-    
+
     // Parse data rows
     const data: Array<Record<string, any>> = [];
     for (let i = 1; i < lines.length; i++) {
@@ -545,10 +546,10 @@ export default function DataManagementPage() {
     const result: string[] = [];
     let current = '';
     let inQuotes = false;
-    
+
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
-      if (char === '"' && (i === 0 || line[i-1] !== '\\')) {
+      if (char === '"' && (i === 0 || line[i - 1] !== '\\')) {
         inQuotes = !inQuotes;
       } else if (char === delimiter && !inQuotes) {
         result.push(current);
@@ -562,9 +563,9 @@ export default function DataManagementPage() {
   };
 
   // Parse file for bulk update (xlsx, xls, csv, json)
-  const parseUploadedFile = async (file: File): Promise<Array<{ _id: string; [key: string]: any }>> => {
+  const parseUploadedFile = async (file: File): Promise<Array<{ _id: string;[key: string]: any }>> => {
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    
+
     // JSON files
     if (fileExtension === 'json') {
       try {
@@ -575,7 +576,7 @@ export default function DataManagementPage() {
         throw new Error(`Invalid JSON format: ${e.message}`);
       }
     }
-    
+
     // CSV files - parse manually
     if (fileExtension === 'csv') {
       try {
@@ -584,27 +585,27 @@ export default function DataManagementPage() {
         if (data.length === 0) {
           throw new Error('No data found in CSV file');
         }
-        return data as Array<{ _id: string; [key: string]: any }>;
+        return data as Array<{ _id: string;[key: string]: any }>;
       } catch (e: any) {
         throw new Error(`Failed to parse CSV: ${e.message}`);
       }
     }
-    
+
     // For Excel files (xlsx, xls), use exceljs library
     if (fileExtension === 'xlsx' || fileExtension === 'xls') {
       try {
         // Dynamic import of exceljs library
         const ExcelJS = await import('exceljs');
-        
+
         const buffer = await file.arrayBuffer();
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(buffer);
-        
+
         const worksheet = workbook.worksheets[0];
         if (!worksheet) {
           throw new Error('No sheets found in Excel file');
         }
-        
+
         // Get headers from first row
         const headerRow = worksheet.getRow(1);
         const headers: string[] = [];
@@ -613,10 +614,10 @@ export default function DataManagementPage() {
         });
 
         // Parse data rows
-        const jsonData: Array<{ _id: string; [key: string]: any }> = [];
+        const jsonData: Array<{ _id: string;[key: string]: any }> = [];
         worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
           if (rowNumber === 1) return; // Skip header row
-          
+
           const rowData: Record<string, any> = {};
           row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
             const header = headers[colNumber - 1];
@@ -630,13 +631,13 @@ export default function DataManagementPage() {
               rowData[header] = value ?? '';
             }
           });
-          jsonData.push(rowData as { _id: string; [key: string]: any });
+          jsonData.push(rowData as { _id: string;[key: string]: any });
         });
-        
+
         if (!jsonData || jsonData.length === 0) {
           throw new Error('No data found in Excel sheet');
         }
-        
+
         return jsonData;
       } catch (e: any) {
         // If exceljs library fails, provide helpful error
@@ -646,7 +647,7 @@ export default function DataManagementPage() {
         throw new Error(`Failed to parse Excel file: ${e.message}`);
       }
     }
-    
+
     throw new Error(`Unsupported file format: ${fileExtension}`);
   };
 
@@ -654,12 +655,12 @@ export default function DataManagementPage() {
   const handleBulkFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
 
     const validExtensions = ['xlsx', 'xls', 'csv', 'json'];
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    
-    
+
+
     if (!fileExtension || !validExtensions.includes(fileExtension)) {
       setErrorModal({
         show: true,
@@ -691,14 +692,14 @@ export default function DataManagementPage() {
       });
       return;
     }
-    
+
     setBulkUpdateFile(file);
     setBulkUpdateResult(null);
     setBulkUpdateLoading(true);
-    
+
     try {
       const data = await parseUploadedFile(file);
-      
+
       if (!data || data.length === 0) {
         setErrorModal({
           show: true,
@@ -715,12 +716,12 @@ export default function DataManagementPage() {
         setBulkUpdateLoading(false);
         return;
       }
-      
+
       // Validate that each row has uuid field (UUID is the ONLY identifier)
       const validData = data.filter(row => {
         return row.uuid && String(row.uuid).trim() !== '';
       });
-      
+
       if (validData.length === 0) {
         const availableFields = data[0] ? Object.keys(data[0]) : [];
         setErrorModal({
@@ -738,11 +739,11 @@ export default function DataManagementPage() {
         setBulkUpdateLoading(false);
         return;
       }
-      
+
       // Normalize uuid field
       const normalizedData = validData.map(row => {
         const uuidValue = String(row.uuid).trim();
-        
+
         // Create new object with uuid
         const cleanRow: Record<string, any> = {};
         for (const [key, value] of Object.entries(row)) {
@@ -750,14 +751,14 @@ export default function DataManagementPage() {
             cleanRow[key] = value;
           }
         }
-        
+
         return {
           ...cleanRow,
           uuid: uuidValue
-        } as { uuid: string; [key: string]: any };
+        } as { uuid: string;[key: string]: any };
       });
-      
-      setBulkUpdatePreview(normalizedData as Array<{ uuid: string; [key: string]: any }>);
+
+      setBulkUpdatePreview(normalizedData as Array<{ uuid: string;[key: string]: any }>);
       setShowBulkUpdateModal(true);
       toast.success(`✅ Loaded ${normalizedData.length} records for preview`);
     } catch (error: any) {
@@ -778,7 +779,7 @@ export default function DataManagementPage() {
     } finally {
       setBulkUpdateLoading(false);
     }
-    
+
     // Reset the input
     if (bulkFileInputRef.current) {
       bulkFileInputRef.current.value = '';
@@ -791,10 +792,10 @@ export default function DataManagementPage() {
       toast.error('No data to update');
       return;
     }
-    
+
     setBulkUpdateLoading(true);
     setBulkUpdateResult(null);
-    
+
     try {
       const res = await fetch('/api/admin/data/bulk-update', {
         method: 'PUT',
@@ -804,9 +805,9 @@ export default function DataManagementPage() {
           records: bulkUpdatePreview
         })
       });
-      
+
       const data = await res.json();
-      
+
       if (data.success) {
         setBulkUpdateResult({
           success: true,
@@ -815,7 +816,7 @@ export default function DataManagementPage() {
           errors: data.errors || []
         });
         toast.success(`Successfully updated ${data.updated} records!`);
-        
+
         // Refresh the search results
         if (searchResults.length > 0) {
           searchRecords(selectedUpdateModel, searchQuery, pagination.page);
@@ -855,7 +856,7 @@ export default function DataManagementPage() {
     if (value === null || value === undefined) return '-';
     if (type === 'Date') {
       try {
-        return new Date(value).toLocaleString();
+        return formatDateTimeIST(value);
       } catch {
         return String(value);
       }
@@ -924,11 +925,10 @@ export default function DataManagementPage() {
         {/* Export Section */}
         <button
           onClick={() => handleSectionChange('export')}
-          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 font-medium ${
-            activeSection === 'export'
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 font-medium ${activeSection === 'export'
               ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
               : 'text-gray-700 dark:text-gray-300 hover:bg-teal-100 dark:hover:bg-teal-900/20'
-          }`}
+            }`}
         >
           <Download className="w-5 h-5 flex-shrink-0" />
           <div className="text-left flex-1">
@@ -943,11 +943,10 @@ export default function DataManagementPage() {
         {/* Updates Section */}
         <button
           onClick={() => handleSectionChange('updates')}
-          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 font-medium ${
-            activeSection === 'updates'
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 font-medium ${activeSection === 'updates'
               ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
               : 'text-gray-700 dark:text-gray-300 hover:bg-teal-100 dark:hover:bg-teal-900/20'
-          }`}
+            }`}
         >
           <Edit3 className="w-5 h-5 flex-shrink-0" />
           <div className="text-left flex-1">
@@ -1018,22 +1017,20 @@ export default function DataManagementPage() {
         <div className="flex gap-3">
           <button
             onClick={() => setExportFormat('csv')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${
-              exportFormat === 'csv'
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${exportFormat === 'csv'
                 ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
                 : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400'
-            }`}
+              }`}
           >
             <Table className="w-5 h-5" />
             CSV Format
           </button>
           <button
             onClick={() => setExportFormat('json')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${
-              exportFormat === 'json'
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${exportFormat === 'json'
                 ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
                 : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400'
-            }`}
+              }`}
           >
             <FileJson className="w-5 h-5" />
             JSON Format
@@ -1066,108 +1063,104 @@ export default function DataManagementPage() {
                     observer.observe(el);
                   }
                 }}
-                className={`bg-white dark:bg-gray-800 border-2 rounded-xl p-6 transition-all ${
-                  selectedExportModel === model.name
+                className={`bg-white dark:bg-gray-800 border-2 rounded-xl p-6 transition-all ${selectedExportModel === model.name
                     ? 'border-teal-500 shadow-xl shadow-teal-500/20'
                     : 'border-gray-200 dark:border-gray-700 hover:border-teal-400 dark:hover:border-teal-600'
-                }`}
+                  }`}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className={`p-3 rounded-lg ${
-                      selectedExportModel === model.name
+                    <div className={`p-3 rounded-lg ${selectedExportModel === model.name
                         ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white'
                         : 'bg-teal-100 dark:bg-teal-900/30'
-                    }`}>
+                      }`}>
                       {isVisible ? getModelIcon(model.name) : <Database className="w-5 h-5 text-gray-400 animate-pulse" />}
                     </div>
-                  <div>
-                    <p className="font-bold text-gray-900 dark:text-white text-lg">{model.displayName}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{model.name}</p>
+                    <div>
+                      <p className="font-bold text-gray-900 dark:text-white text-lg">{model.displayName}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{model.name}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {isVisible ? (
-                <>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
-                    {model.description}
-                  </p>
+                {isVisible ? (
+                  <>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
+                      {model.description}
+                    </p>
 
-                  <div className="grid grid-cols-2 gap-4 mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
-                      <p className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1">Fields</p>
-                      <p className="text-xl font-bold text-orange-600">{model.fieldCount}</p>
+                    <div className="grid grid-cols-2 gap-4 mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
+                        <p className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1">Fields</p>
+                        <p className="text-xl font-bold text-orange-600">{model.fieldCount}</p>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
+                        <p className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1">Records</p>
+                        <p className="text-xl font-bold text-orange-600">{model.documentCount.toLocaleString()}</p>
+                      </div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
-                      <p className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1">Records</p>
-                      <p className="text-xl font-bold text-orange-600">{model.documentCount.toLocaleString()}</p>
-                    </div>
-                  </div>
 
-                  <button
-                    onClick={() => handleExport(model.name)}
-                    disabled={exporting || syncing}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors ${
-                      exporting || syncing
-                        ? 'bg-teal-400 text-white cursor-wait'
-                        : model.documentCount === 0
-                        ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 hover:bg-teal-200 dark:hover:bg-teal-900/50'
-                        : 'bg-[#3AB1A0] hover:bg-[#2A9A8B] text-white'
-                    }`}
-                  >
-                    {exporting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Exporting...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-4 h-4" />
-                        Download {exportFormat.toUpperCase()}
-                      </>
-                    )}
-                  </button>
-
-                  {/* Sync button for Payment model */}
-                  {model.name === 'Payment' && (
                     <button
-                      onClick={handleSyncPaymentStatus}
-                      disabled={syncing || exporting}
-                      className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors mt-3 ${
-                        syncing || exporting
-                          ? 'bg-orange-400 text-white cursor-wait'
-                          : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
-                      }`}
+                      onClick={() => handleExport(model.name)}
+                      disabled={exporting || syncing}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors ${exporting || syncing
+                          ? 'bg-teal-400 text-white cursor-wait'
+                          : model.documentCount === 0
+                            ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 hover:bg-teal-200 dark:hover:bg-teal-900/50'
+                            : 'bg-[#3AB1A0] hover:bg-[#2A9A8B] text-white'
+                        }`}
                     >
-                      {syncing ? (
+                      {exporting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          Syncing...
+                          Exporting...
                         </>
                       ) : (
                         <>
-                          <RefreshCw className="w-4 h-4" />
-                          Sync Payment Status
+                          <Download className="w-4 h-4" />
+                          Download {exportFormat.toUpperCase()}
                         </>
                       )}
                     </button>
-                  )}
 
-                  {model.documentCount === 0 && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
-                      ℹ️ No records to export
-                    </p>
-                  )}
-                </>
-              ) : (
-                <div className="space-y-4 animate-pulse">
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-                  <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                </div>
-              )}
-            </div>
+                    {/* Sync button for Payment model */}
+                    {model.name === 'Payment' && (
+                      <button
+                        onClick={handleSyncPaymentStatus}
+                        disabled={syncing || exporting}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors mt-3 ${syncing || exporting
+                            ? 'bg-orange-400 text-white cursor-wait'
+                            : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
+                          }`}
+                      >
+                        {syncing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Syncing...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-4 h-4" />
+                            Sync Payment Status
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {model.documentCount === 0 && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
+                        ℹ️ No records to export
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-4 animate-pulse">
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                    <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -1251,7 +1244,7 @@ export default function DataManagementPage() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                    {(selectedRecord as any).firstName 
+                    {(selectedRecord as any).firstName
                       ? `${(selectedRecord as any).firstName} ${(selectedRecord as any).lastName || ''}`
                       : (selectedRecord as any).planName || (selectedRecord as any).name || (selectedRecord as any).email || selectedRecord._id}
                   </h2>
@@ -1332,11 +1325,10 @@ export default function DataManagementPage() {
                           <option value="false">✗ No</option>
                         </select>
                         <div className="flex items-center gap-2 pt-1">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            editingRecord[field.path] === true || editingRecord[field.path] === 'true'
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${editingRecord[field.path] === true || editingRecord[field.path] === 'true'
                               ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                               : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                          }`}>
+                            }`}>
                             {editingRecord[field.path] === true || editingRecord[field.path] === 'true' ? '✓ Yes' : '✗ No'}
                           </span>
                         </div>
@@ -1432,7 +1424,7 @@ export default function DataManagementPage() {
                             <td className="px-4 py-2">
                               <StatusBadge status={payment.status || ''} />
                             </td>
-                            <td className="px-4 py-2">{payment.createdAt ? new Date(payment.createdAt).toLocaleDateString() : '-'}</td>
+                            <td className="px-4 py-2">{payment.createdAt ? formatDateIST(payment.createdAt) : '-'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1464,7 +1456,7 @@ export default function DataManagementPage() {
                             <td className="px-4 py-2">
                               <StatusBadge status={apt.status || ''} />
                             </td>
-                            <td className="px-4 py-2">{apt.date ? new Date(apt.date).toLocaleDateString() : '-'}</td>
+                            <td className="px-4 py-2">{apt.date ? formatDateIST(apt.date) : '-'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1540,11 +1532,10 @@ export default function DataManagementPage() {
                   />
                   <label
                     htmlFor="bulk-update-file"
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium cursor-pointer transition-all shadow-md hover:shadow-lg ${
-                      bulkUpdateLoading 
-                        ? 'bg-gray-400 cursor-wait' 
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium cursor-pointer transition-all shadow-md hover:shadow-lg ${bulkUpdateLoading
+                        ? 'bg-gray-400 cursor-wait'
                         : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
-                    } text-white`}
+                      } text-white`}
                   >
                     {bulkUpdateLoading ? (
                       <>
@@ -1613,8 +1604,8 @@ export default function DataManagementPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {searchResults.map((record, index) => (
-                      <tr 
-                        key={record._id} 
+                      <tr
+                        key={record._id}
                         ref={(el) => observeTableRow(index, el)}
                         className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
                       >
@@ -1713,15 +1704,15 @@ export default function DataManagementPage() {
   // Render Bulk Update Modal
   const renderBulkUpdateModal = () => {
     if (!showBulkUpdateModal) return null;
-    
+
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center">
         {/* Backdrop */}
-        <div 
+        <div
           className="absolute inset-0 bg-black/60 backdrop-blur-sm"
           onClick={closeBulkUpdateModal}
         />
-        
+
         {/* Modal */}
         <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden m-4">
           {/* Header */}
@@ -1742,16 +1733,15 @@ export default function DataManagementPage() {
               <X className="w-5 h-5 text-white" />
             </button>
           </div>
-          
+
           {/* Content */}
           <div className="p-6 overflow-y-auto max-h-[60vh]">
             {/* Result Summary */}
             {bulkUpdateResult && (
-              <div className={`mb-6 p-4 rounded-xl border-2 ${
-                bulkUpdateResult.success 
+              <div className={`mb-6 p-4 rounded-xl border-2 ${bulkUpdateResult.success
                   ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
                   : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
-              }`}>
+                }`}>
                 <div className="flex items-center gap-3 mb-3">
                   {bulkUpdateResult.success ? (
                     <CheckCircle className="w-6 h-6 text-green-600" />
@@ -1789,7 +1779,7 @@ export default function DataManagementPage() {
                 )}
               </div>
             )}
-            
+
             {/* Preview Table */}
             <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
               <div className="bg-gray-50 dark:bg-gray-700 px-4 py-3 border-b border-gray-200 dark:border-gray-600">
@@ -1842,7 +1832,7 @@ export default function DataManagementPage() {
                 </div>
               )}
             </div>
-            
+
             {/* Fields to Update */}
             {bulkUpdatePreview[0] && (
               <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
@@ -1859,7 +1849,7 @@ export default function DataManagementPage() {
               </div>
             )}
           </div>
-          
+
           {/* Footer */}
           <div className="bg-gray-50 dark:bg-gray-700/50 px-6 py-4 border-t border-gray-200 dark:border-gray-600 flex items-center justify-between">
             <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -1901,15 +1891,15 @@ export default function DataManagementPage() {
   // Render Error Modal
   const renderErrorModal = () => {
     if (!errorModal.show) return null;
-    
+
     return (
       <div className="fixed inset-0 z-[110] flex items-center justify-center">
         {/* Backdrop */}
-        <div 
+        <div
           className="absolute inset-0 bg-black/60 backdrop-blur-sm"
           onClick={() => setErrorModal({ show: false, title: '', message: '' })}
         />
-        
+
         {/* Modal */}
         <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden m-4 animate-in fade-in zoom-in duration-200">
           {/* Header */}
@@ -1925,7 +1915,7 @@ export default function DataManagementPage() {
               <X className="w-5 h-5 text-white" />
             </button>
           </div>
-          
+
           {/* Content */}
           <div className="p-6">
             {/* Main Message */}
@@ -1934,19 +1924,18 @@ export default function DataManagementPage() {
                 {errorModal.message}
               </p>
             </div>
-            
+
             {/* Details */}
             {errorModal.details && errorModal.details.length > 0 && (
               <div className="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl p-4 max-h-60 overflow-y-auto">
                 <div className="space-y-1">
                   {errorModal.details.map((detail, idx) => (
-                    <p 
-                      key={idx} 
-                      className={`text-sm ${
-                        detail.startsWith('•') 
-                          ? 'text-gray-600 dark:text-gray-400 pl-2 font-mono' 
+                    <p
+                      key={idx}
+                      className={`text-sm ${detail.startsWith('•')
+                          ? 'text-gray-600 dark:text-gray-400 pl-2 font-mono'
                           : 'text-gray-800 dark:text-gray-200 font-semibold mt-2'
-                      }`}
+                        }`}
                     >
                       {detail}
                     </p>
@@ -1954,7 +1943,7 @@ export default function DataManagementPage() {
                 </div>
               </div>
             )}
-            
+
             {/* Help tip */}
             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
               <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -1962,7 +1951,7 @@ export default function DataManagementPage() {
               </p>
             </div>
           </div>
-          
+
           {/* Footer */}
           <div className="bg-gray-50 dark:bg-gray-700/50 px-6 py-4 border-t border-gray-200 dark:border-gray-600">
             <button
@@ -1981,10 +1970,10 @@ export default function DataManagementPage() {
     <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Error Modal */}
       {renderErrorModal()}
-      
+
       {/* Bulk Update Modal */}
       {renderBulkUpdateModal()}
-      
+
       {/* Sidebar - Fixed */}
       <div className="fixed left-0 top-0 h-screen w-64 z-50">
         {renderSidebar()}

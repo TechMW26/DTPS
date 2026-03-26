@@ -36,11 +36,11 @@ export default function BasicInfoDashboard({ data, onEdit }: BasicInfoDashboardP
   const computedIdeal = hMeters > 0 ? (parseFloat(computedCm || '0') - 100).toFixed(1) : data.idealWeightKg;
 
   const formattedDOB = data.dateOfBirth
-    ? new Date(data.dateOfBirth).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    ? new Date(data.dateOfBirth).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
     : '—';
 
   const formattedAnniversary = data.anniversary
-    ? new Date(data.anniversary).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    ? new Date(data.anniversary).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
     : '—';
 
   const phoneDisplay = data.phone || '—';

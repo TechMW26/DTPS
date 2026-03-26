@@ -35,7 +35,7 @@ interface PaymentLinkDetails {
 export default function ManualPaymentPage() {
   const params = useParams();
   const id = params.id as string;
-  
+
   const [loading, setLoading] = useState(true);
   const [paymentLink, setPaymentLink] = useState<PaymentLinkDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +81,7 @@ export default function ManualPaymentPage() {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
+      timeZone: 'Asia/Kolkata',
     });
   };
 
@@ -126,16 +127,15 @@ export default function ManualPaymentPage() {
         </div>
 
         <Card className="shadow-xl border-0 overflow-hidden">
-          <div className={`px-6 py-4 flex items-center justify-between border-b ${
-            isPaid ? 'bg-green-100 text-green-800' :
-            isExpired ? 'bg-red-100 text-red-800' :
-            isCancelled ? 'bg-gray-100 text-gray-800' :
-            'bg-yellow-100 text-yellow-800'
-          }`}>
+          <div className={`px-6 py-4 flex items-center justify-between border-b ${isPaid ? 'bg-green-100 text-green-800' :
+              isExpired ? 'bg-red-100 text-red-800' :
+                isCancelled ? 'bg-gray-100 text-gray-800' :
+                  'bg-yellow-100 text-yellow-800'
+            }`}>
             <div className="flex items-center gap-2">
               {isPaid ? <CheckCircle className="h-5 w-5" /> :
-               isExpired || isCancelled ? <XCircle className="h-5 w-5" /> :
-               <Clock className="h-5 w-5" />}
+                isExpired || isCancelled ? <XCircle className="h-5 w-5" /> :
+                  <Clock className="h-5 w-5" />}
               <span className="font-semibold capitalize">{paymentLink.status}</span>
             </div>
             {paymentLink.expireDate && isPending && (
@@ -181,21 +181,21 @@ export default function ManualPaymentPage() {
                 <span>Amount</span>
                 <span>₹{paymentLink.amount.toLocaleString('en-IN')}</span>
               </div>
-              
+
               {paymentLink.tax > 0 && (
                 <div className="flex justify-between text-gray-600">
                   <span>Tax ({paymentLink.tax}%)</span>
                   <span>+₹{((paymentLink.amount * paymentLink.tax) / 100).toLocaleString('en-IN')}</span>
                 </div>
               )}
-              
+
               {paymentLink.discount > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span>Discount ({paymentLink.discount}%)</span>
                   <span>-₹{((paymentLink.amount * paymentLink.discount) / 100).toLocaleString('en-IN')}</span>
                 </div>
               )}
-              
+
               <div className="flex justify-between pt-3 border-t border-dashed">
                 <span className="text-lg font-semibold text-gray-900">Total</span>
                 <span className="text-2xl font-bold text-purple-600">
@@ -212,7 +212,7 @@ export default function ManualPaymentPage() {
 
             <div className="pt-4">
               {isPending && hasRazorpayLink && (
-                <Button 
+                <Button
                   onClick={handlePayNow}
                   className="w-full h-14 text-lg font-semibold bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                 >

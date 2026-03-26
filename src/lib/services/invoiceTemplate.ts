@@ -68,6 +68,7 @@ export function formatInvoiceDate(date: Date | string): string {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
+        timeZone: 'Asia/Kolkata',
     });
 }
 

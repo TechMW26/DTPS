@@ -26,7 +26,7 @@ import {
   Bell
 } from 'lucide-react';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { formatDateIST, formatShortDateIST, formatDateTimeIST } from '@/lib/utils/formatDateIST';
 import { useRealtime } from '@/hooks/useRealtime';
 import { useNotifications } from '@/hooks/useNotifications';
 import { toast } from 'sonner';
@@ -37,33 +37,33 @@ interface PendingPlan {
   clientName: string;
   phone: string;
   email: string;
-  
+
   // Current plan info
   currentPlanName: string | null;
   currentPlanStartDate: string | null;
   currentPlanEndDate: string | null;
   currentPlanRemainingDays: number;
-  
+
   // Previous plan info
   previousPlanName: string | null;
   previousPlanEndDate?: string | null;
-  
+
   // Upcoming plan info
   upcomingPlanName?: string | null;
   upcomingPlanStartDate?: string | null;
   upcomingPlanEndDate?: string | null;
   daysUntilStart?: number;
-  
+
   // Purchase info
   purchasedPlanName: string;
   totalPurchasedDays: number;
   totalMealPlanDays: number;
   pendingDaysToCreate: number;
-  
+
   // Expected dates
   expectedStartDate?: string;
   expectedEndDate?: string;
-  
+
   // Status
   reason: 'no_meal_plan' | 'current_ending_soon' | 'phase_gap' | 'upcoming_with_pending';
   reasonText: string;
@@ -106,7 +106,7 @@ export default function DietitianDashboard() {
 
   // Real-time appointment notifications
   const { showAppointmentNotification } = useNotifications();
-  
+
   // Handle real-time events (appointment bookings)
   const handleRealtimeMessage = useCallback((event: { type: string; data: string }) => {
     if (event.type === 'appointment_booked') {
@@ -116,12 +116,12 @@ export default function DietitianDashboard() {
         toast.success(
           `New appointment booked by ${data.client?.firstName} ${data.client?.lastName}`,
           {
-            description: `Scheduled for ${new Date(data.scheduledAt).toLocaleString()}`,
+            description: `Scheduled for ${formatDateTimeIST(data.scheduledAt)}`,
             duration: 6000,
             icon: <Bell className="h-4 w-4 text-green-500" />,
           }
         );
-        
+
         // Show browser notification
         showAppointmentNotification(
           `${data.client?.firstName} ${data.client?.lastName}`,
@@ -322,8 +322,8 @@ export default function DietitianDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-            
-              
+
+
               {/* <Button asChild className="w-full bg-green-600 hover:bg-green-700">
                 <Link href="/dietician/clients/new">
                   <Plus className="h-4 w-4 mr-2" />
@@ -336,7 +336,7 @@ export default function DietitianDashboard() {
                   View My Clients
                 </Link>
               </Button>
-               <Button asChild variant="outline" className="w-full">
+              <Button asChild variant="outline" className="w-full">
                 <Link href="/meal-plan-templates/plans/create">
                   <Plus className="h-4 w-4 mr-2" />
                   Create Plan Plan
@@ -407,7 +407,7 @@ export default function DietitianDashboard() {
                     <p className="text-sm text-gray-600">No appointments scheduled for today</p>
                   </div>
                 )}
-                
+
                 <Button variant="outline" className="w-full mt-4" asChild>
                   <Link href="/appointments">View All Appointments</Link>
                 </Button>
@@ -440,7 +440,7 @@ export default function DietitianDashboard() {
                         <p className="font-medium">{client.name}</p>
                         <p className="text-sm text-gray-600">{client.email}</p>
                         {client.joinedDate && (
-                          <p className="text-xs text-gray-400 mt-1">Joined {format(new Date(client.joinedDate), 'dd MMM yyyy')}</p>
+                          <p className="text-xs text-gray-400 mt-1">Joined {formatDateIST(client.joinedDate)}</p>
                         )}
                       </div>
                       <Button variant="outline" size="sm" asChild>
@@ -456,7 +456,7 @@ export default function DietitianDashboard() {
                     <p className="text-sm text-gray-600">No recent clients</p>
                   </div>
                 )}
-                
+
                 <Button variant="outline" className="w-full mt-4" asChild>
                   <Link href="/dietician/clients">View All Clients</Link>
                 </Button>
@@ -536,16 +536,16 @@ export default function DietitianDashboard() {
                             <td className="px-3 py-3 text-center">
                               <Badge className={
                                 payment.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                payment.status === 'failed' ? 'bg-red-100 text-red-800' :
-                                'bg-gray-100 text-gray-800'
+                                  payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                    payment.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                      'bg-gray-100 text-gray-800'
                               }>
                                 {payment.status}
                               </Badge>
                             </td>
                             <td className="px-3 py-3">
                               <span className="text-gray-600 text-xs">
-                                {payment.createdAt ? format(new Date(payment.createdAt), 'dd MMM yyyy') : 'N/A'}
+                                {payment.createdAt ? formatDateIST(payment.createdAt) : 'N/A'}
                               </span>
                             </td>
                           </tr>
@@ -644,11 +644,11 @@ export default function DietitianDashboard() {
       {showPendingPlans && (
         <>
           {/* Overlay */}
-          <div 
+          <div
             className="fixed inset-0 bg-black/40 z-40 transition-opacity"
             onClick={() => setShowPendingPlans(false)}
           />
-          
+
           {/* Right Side Panel */}
           <div className="fixed right-0 top-0 h-full w-full max-w-5xl bg-gray-50 shadow-2xl z-50 overflow-hidden flex flex-col animate-slide-in-right">
             {/* Header - Website themed green gradient */}
@@ -734,15 +734,14 @@ export default function DietitianDashboard() {
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {pendingPlans.map((plan) => (
-                          <tr 
-                            key={plan.clientId} 
-                            className={`hover:bg-gray-50 transition-colors ${
-                              plan.urgency === 'critical' ? 'bg-red-50/50' : 
-                              plan.urgency === 'high' ? 'bg-amber-50/50' : ''
-                            }`}
+                          <tr
+                            key={plan.clientId}
+                            className={`hover:bg-gray-50 transition-colors ${plan.urgency === 'critical' ? 'bg-red-50/50' :
+                                plan.urgency === 'high' ? 'bg-amber-50/50' : ''
+                              }`}
                           >
                             <td className="px-3 py-3">
-                              <Link 
+                              <Link
                                 href={`/dietician/clients/${plan.clientId}`}
                                 className="text-blue-600 hover:underline font-medium text-xs"
                               >
@@ -770,7 +769,7 @@ export default function DietitianDashboard() {
                                   </p>
                                   {plan.previousPlanEndDate && (
                                     <p className="text-xs text-gray-400">
-                                      Ended: {format(new Date(plan.previousPlanEndDate), 'dd MMM')}
+                                      Ended: {formatShortDateIST(plan.previousPlanEndDate)}
                                     </p>
                                   )}
                                 </div>
@@ -809,21 +808,21 @@ export default function DietitianDashboard() {
                               {plan.currentPlanStartDate && plan.currentPlanEndDate ? (
                                 <div className="text-xs">
                                   <p className="text-gray-600 font-medium">
-                                    {format(new Date(plan.currentPlanStartDate), 'dd MMM')}
+                                    {formatShortDateIST(plan.currentPlanStartDate)}
                                   </p>
                                   <p className="text-gray-400">to</p>
                                   <p className="text-gray-600 font-medium">
-                                    {format(new Date(plan.currentPlanEndDate), 'dd MMM yyyy')}
+                                    {formatDateIST(plan.currentPlanEndDate)}
                                   </p>
                                 </div>
                               ) : plan.upcomingPlanStartDate && plan.upcomingPlanEndDate ? (
                                 <div className="text-xs">
                                   <p className="text-blue-600 font-medium">
-                                    {format(new Date(plan.upcomingPlanStartDate), 'dd MMM')}
+                                    {formatShortDateIST(plan.upcomingPlanStartDate)}
                                   </p>
                                   <p className="text-gray-400">to</p>
                                   <p className="text-blue-600 font-medium">
-                                    {format(new Date(plan.upcomingPlanEndDate), 'dd MMM yyyy')}
+                                    {formatDateIST(plan.upcomingPlanEndDate)}
                                   </p>
                                   <Badge className="bg-blue-100 text-blue-700 text-xs mt-1">Upcoming</Badge>
                                 </div>
@@ -836,11 +835,11 @@ export default function DietitianDashboard() {
                               {plan.expectedStartDate && plan.expectedEndDate ? (
                                 <div className="text-xs">
                                   <p className="text-amber-600 font-medium">
-                                    {format(new Date(plan.expectedStartDate), 'dd MMM')}
+                                    {formatShortDateIST(plan.expectedStartDate)}
                                   </p>
                                   <p className="text-gray-400">to</p>
                                   <p className="text-amber-600 font-medium">
-                                    {format(new Date(plan.expectedEndDate), 'dd MMM yyyy')}
+                                    {formatDateIST(plan.expectedEndDate)}
                                   </p>
                                 </div>
                               ) : (
@@ -850,11 +849,10 @@ export default function DietitianDashboard() {
                             {/* Remaining Days - Days left until current plan ends */}
                             <td className="px-3 py-3 text-center">
                               {plan.currentPlanRemainingDays > 0 ? (
-                                <Badge className={`${
-                                  plan.currentPlanRemainingDays <= 2 ? 'bg-red-500 text-white' :
-                                  plan.currentPlanRemainingDays <= 4 ? 'bg-amber-500 text-white' :
-                                  'bg-green-500 text-white'
-                                }`}>
+                                <Badge className={`${plan.currentPlanRemainingDays <= 2 ? 'bg-red-500 text-white' :
+                                    plan.currentPlanRemainingDays <= 4 ? 'bg-amber-500 text-white' :
+                                      'bg-green-500 text-white'
+                                  }`}>
                                   {plan.currentPlanRemainingDays} days left
                                 </Badge>
                               ) : (
@@ -866,11 +864,10 @@ export default function DietitianDashboard() {
                             {/* Pending Meal Days - Days that need meal plans created */}
                             <td className="px-3 py-3 text-center">
                               <div>
-                                <Badge className={`${
-                                  plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
-                                  plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
-                                  'bg-teal-500 text-white'
-                                }`}>
+                                <Badge className={`${plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
+                                    plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
+                                      'bg-teal-500 text-white'
+                                  }`}>
                                   {plan.pendingDaysToCreate} days pending
                                 </Badge>
                                 <p className="text-xs text-gray-400 mt-1">

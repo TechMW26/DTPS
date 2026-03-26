@@ -1,5 +1,9 @@
 import mongoose from 'mongoose';
 
+// Global plugin — MUST be imported BEFORE any model files so the plugin
+// is registered before schemas are compiled.
+import './plugins/istDatePlugin';
+
 // Import all models to register their schemas before any operations
 // Core models
 import './models/User';

@@ -450,73 +450,73 @@ export async function POST(request: NextRequest) {
 
     // Skip history logging, notifications, and client status update for drafts
     if (!isDraft) {
-    // Log history for meal plan assignment
-    await logHistoryServer({
-      userId: validatedData.clientId,
-      action: 'assign',
-      category: 'diet',
-      description: `Meal plan assigned: ${validatedData.name} (${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()})`,
-      performedById: session.user.id,
-      metadata: {
-        mealPlanId: clientMealPlan._id,
-        name: validatedData.name,
-        templateId: validatedData.templateId,
-        startDate: validatedData.startDate,
-        endDate: validatedData.endDate,
-        status: clientMealPlan.status
-      }
-    });
-
-    // Log activity for audit trail
-    const roleMap: Record<string, 'admin' | 'dietitian' | 'health_counselor' | 'client'> = {
-      admin: 'admin',
-      dietitian: 'dietitian',
-      health_counselor: 'health_counselor',
-    };
-    logActivity({
-      userId: session.user.id,
-      userRole: roleMap[userRole as string] || 'admin',
-      userName: session.user.name || session.user.email || '',
-      userEmail: session.user.email || '',
-      action: 'Assigned Meal Plan',
-      actionType: 'create',
-      category: 'meal_plan',
-      description: `Assigned meal plan "${validatedData.name}" to client ${client.firstName || ''} ${client.lastName || ''} (${client.email}).`,
-      targetUserId: validatedData.clientId,
-      targetUserName: `${client.firstName || ''} ${client.lastName || ''} (${client.email})`,
-      resourceId: clientMealPlan._id?.toString(),
-      resourceType: 'ClientMealPlan',
-      resourceName: validatedData.name,
-      details: {
-        startDate: validatedData.startDate,
-        endDate: validatedData.endDate,
-        templateId: validatedData.templateId,
-      },
-    }).catch(() => { });
-
-    // Send push notification to client about new meal plan
-    try {
-      await sendNotificationToUser(validatedData.clientId, {
-        title: '📋 New Meal Plan Assigned',
-        body: `You have a new meal plan: "${validatedData.name}". Check your plan now!`,
-        data: {
-          type: 'meal_plan',
-          mealPlanId: clientMealPlan._id?.toString(),
-          url: '/my-plan'
+      // Log history for meal plan assignment
+      await logHistoryServer({
+        userId: validatedData.clientId,
+        action: 'assign',
+        category: 'diet',
+        description: `Meal plan assigned: ${validatedData.name} (${startDate.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} - ${endDate.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })})`,
+        performedById: session.user.id,
+        metadata: {
+          mealPlanId: clientMealPlan._id,
+          name: validatedData.name,
+          templateId: validatedData.templateId,
+          startDate: validatedData.startDate,
+          endDate: validatedData.endDate,
+          status: clientMealPlan.status
         }
       });
-    } catch (notificationError) {
-      console.error('Failed to send meal plan notification:', notificationError);
-    }
 
-    // Update client status based on the new meal plan
-    try {
-      const newStatus = await updateClientStatusFromMealPlan(validatedData.clientId);
-      console.log(`[ClientMealPlan] Client ${validatedData.clientId} status updated to: ${newStatus}`);
-    } catch (statusError) {
-      console.error('Failed to update client status:', statusError);
-      // Don't fail the request - meal plan was created successfully
-    }
+      // Log activity for audit trail
+      const roleMap: Record<string, 'admin' | 'dietitian' | 'health_counselor' | 'client'> = {
+        admin: 'admin',
+        dietitian: 'dietitian',
+        health_counselor: 'health_counselor',
+      };
+      logActivity({
+        userId: session.user.id,
+        userRole: roleMap[userRole as string] || 'admin',
+        userName: session.user.name || session.user.email || '',
+        userEmail: session.user.email || '',
+        action: 'Assigned Meal Plan',
+        actionType: 'create',
+        category: 'meal_plan',
+        description: `Assigned meal plan "${validatedData.name}" to client ${client.firstName || ''} ${client.lastName || ''} (${client.email}).`,
+        targetUserId: validatedData.clientId,
+        targetUserName: `${client.firstName || ''} ${client.lastName || ''} (${client.email})`,
+        resourceId: clientMealPlan._id?.toString(),
+        resourceType: 'ClientMealPlan',
+        resourceName: validatedData.name,
+        details: {
+          startDate: validatedData.startDate,
+          endDate: validatedData.endDate,
+          templateId: validatedData.templateId,
+        },
+      }).catch(() => { });
+
+      // Send push notification to client about new meal plan
+      try {
+        await sendNotificationToUser(validatedData.clientId, {
+          title: '📋 New Meal Plan Assigned',
+          body: `You have a new meal plan: "${validatedData.name}". Check your plan now!`,
+          data: {
+            type: 'meal_plan',
+            mealPlanId: clientMealPlan._id?.toString(),
+            url: '/my-plan'
+          }
+        });
+      } catch (notificationError) {
+        console.error('Failed to send meal plan notification:', notificationError);
+      }
+
+      // Update client status based on the new meal plan
+      try {
+        const newStatus = await updateClientStatusFromMealPlan(validatedData.clientId);
+        console.log(`[ClientMealPlan] Client ${validatedData.clientId} status updated to: ${newStatus}`);
+      } catch (statusError) {
+        console.error('Failed to update client status:', statusError);
+        // Don't fail the request - meal plan was created successfully
+      }
     } // end !isDraft block
 
     return NextResponse.json({

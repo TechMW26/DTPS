@@ -238,10 +238,11 @@ export default function DietTemplateViewPage() {
     category.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr).toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'Asia/Kolkata',
     });
   };
 
@@ -501,7 +502,7 @@ export default function DietTemplateViewPage() {
                           {day.day || `Day ${index + 1}`}
                           {day.date && (
                             <span className="ml-2 opacity-80 text-[10px] font-medium">
-                              {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                              {new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' })}
                             </span>
                           )}
                         </Button>
@@ -518,11 +519,12 @@ export default function DietTemplateViewPage() {
                               <span className="font-bold text-gray-800">{template.meals[selectedDay].day || `Day ${selectedDay + 1}`}</span>
                               {template.meals[selectedDay].date && (
                                 <Badge className="text-xs font-bold bg-emerald-100 text-emerald-800 border-0 ml-2">
-                                  📅 {new Date(template.meals[selectedDay].date).toLocaleDateString('en-US', {
+                                  📅 {new Date(template.meals[selectedDay].date).toLocaleDateString('en-IN', {
                                     weekday: 'long',
                                     month: 'long',
                                     day: 'numeric',
-                                    year: 'numeric'
+                                    year: 'numeric',
+                                    timeZone: 'Asia/Kolkata',
                                   })}
                                 </Badge>
                               )}

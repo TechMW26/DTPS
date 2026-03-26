@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
         ]
       }).select('_id').lean();
       const assignedClientIds = assignedClients.map(c => c._id);
-      
+
       // Dietitian can see appointments they created OR for their assigned clients
       query.$or = [
         { dietitian: session.user.id },
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
         assignedHealthCounselor: userObjectId
       }).select('_id').lean();
       const assignedClientIds = assignedClients.map(c => c._id);
-      
+
       // Health counselor can see appointments for their assigned clients
       if (assignedClientIds.length > 0) {
         query.client = { $in: assignedClientIds };
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
 
     // Generate cache key based on user and query params
     const cacheKey = `appointments:${session.user.id}:${session.user.role}:${clientId || ''}:${status || ''}:${date || ''}:${search || ''}:${dietitianId || ''}:${page}:${limit}:${includeAll}`;
-    
+
     const { appointments, total } = await withCache(
       cacheKey,
       async () => {
@@ -214,12 +214,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    let { 
-      dietitianId, 
-      clientId, 
-      scheduledAt, 
-      duration, 
-      type, 
+    let {
+      dietitianId,
+      clientId,
+      scheduledAt,
+      duration,
+      type,
       notes,
       appointmentTypeId,
       appointmentModeId,
@@ -227,9 +227,9 @@ export async function POST(request: NextRequest) {
       location
     } = body;
 
-    console.log('[Appointment POST] Request body:', JSON.stringify({ 
-      dietitianId, clientId, scheduledAt, duration, type, 
-      appointmentTypeId, appointmentModeId, modeName, location 
+    console.log('[Appointment POST] Request body:', JSON.stringify({
+      dietitianId, clientId, scheduledAt, duration, type,
+      appointmentTypeId, appointmentModeId, modeName, location
     }, null, 2));
 
     await connectDB();
@@ -254,24 +254,24 @@ export async function POST(request: NextRequest) {
     const currentUserId = session.user.id?.toString();
 
     // ====== STRICT ROLE-BASED VALIDATION ======
-    
+
     // For Dietitians: can only book for clients assigned to them
     if (session.user.role === UserRole.DIETITIAN) {
       const assignedDietitianId = client.assignedDietitian?.toString();
-      const assignedDietitians = Array.isArray(client.assignedDietitians) 
-        ? client.assignedDietitians.map((d: any) => d.toString()) 
+      const assignedDietitians = Array.isArray(client.assignedDietitians)
+        ? client.assignedDietitians.map((d: any) => d.toString())
         : [];
-      
-      const isAssigned = assignedDietitianId === currentUserId || 
-                         assignedDietitians.includes(currentUserId);
-      
+
+      const isAssigned = assignedDietitianId === currentUserId ||
+        assignedDietitians.includes(currentUserId);
+
       if (!isAssigned) {
         return NextResponse.json(
           { error: 'You can only book appointments for clients assigned to you' },
           { status: 403 }
         );
       }
-      
+
       // Dietitians can only book appointments where they are the provider
       if (dietitianId !== currentUserId) {
         return NextResponse.json(
@@ -280,11 +280,11 @@ export async function POST(request: NextRequest) {
         );
       }
     }
-    
+
     // For Health Counselors: can only book for clients assigned to them
     if (session.user.role === UserRole.HEALTH_COUNSELOR) {
       const assignedHCId = client.assignedHealthCounselor?.toString();
-      
+
       // Allow booking if HC is assigned to this client
       // If no HC is assigned yet, auto-assign this HC to the client
       if (!assignedHCId) {
@@ -299,7 +299,7 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      
+
       // Health counselors can only book appointments where they are the provider
       if (dietitianId !== currentUserId) {
         return NextResponse.json(
@@ -308,7 +308,7 @@ export async function POST(request: NextRequest) {
         );
       }
     }
-    
+
     // For Clients: they cannot create appointments via this API
     if (session.user.role === UserRole.CLIENT) {
       return NextResponse.json(
@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    
+
     // Admin: no restrictions on client/provider selection
 
     // Map common type values to valid enum values
@@ -385,7 +385,7 @@ export async function POST(request: NextRequest) {
     let appointmentTypeName = type;
     let appointmentModeName = modeName || '';
     let appointmentDuration = typeof duration === 'number' ? duration : parseInt(duration) || 60;
-    
+
     if (appointmentTypeId) {
       const appointmentTypeDoc = await AppointmentType.findById(appointmentTypeId);
       if (appointmentTypeDoc) {
@@ -393,7 +393,7 @@ export async function POST(request: NextRequest) {
         appointmentDuration = appointmentTypeDoc.duration || appointmentDuration;
       }
     }
-    
+
     if (appointmentModeId) {
       const appointmentModeDoc = await AppointmentMode.findById(appointmentModeId);
       if (appointmentModeDoc) {
@@ -460,9 +460,9 @@ export async function POST(request: NextRequest) {
 
     // Generate meeting link if the appointment mode requires it
     let generatedMeetingLink: string | undefined;
-    
+
     console.log('[Appointment POST] Checking meeting link requirement for mode:', appointmentModeName);
-    
+
     if (appointmentModeName && requiresMeetingLink(appointmentModeName)) {
       console.log('[Appointment POST] Mode requires meeting link, generating...');
       try {
@@ -479,17 +479,17 @@ export async function POST(request: NextRequest) {
           ]
         });
 
-        console.log('[Appointment POST] Meeting link result:', { 
-          success: meetingResult.success, 
+        console.log('[Appointment POST] Meeting link result:', {
+          success: meetingResult.success,
           meetingLink: meetingResult.meetingLink,
           provider: meetingResult.meetingDetails?.provider,
-          error: meetingResult.error 
+          error: meetingResult.error
         });
 
         if (meetingResult.success && meetingResult.meetingLink) {
           generatedMeetingLink = meetingResult.meetingLink;
           appointment.meetingLink = meetingResult.meetingLink;
-          
+
           if (meetingResult.meetingDetails) {
             if (meetingResult.meetingDetails.provider === 'zoom') {
               appointment.zoomMeeting = {
@@ -537,9 +537,9 @@ export async function POST(request: NextRequest) {
 
     // Send appointment confirmation emails
     try {
-      const providerRole: 'dietitian' | 'health_counselor' = 
-        (session.user.role as string) === UserRole.HEALTH_COUNSELOR || (session.user.role as string) === 'health_counselor' 
-          ? 'health_counselor' 
+      const providerRole: 'dietitian' | 'health_counselor' =
+        (session.user.role as string) === UserRole.HEALTH_COUNSELOR || (session.user.role as string) === 'health_counselor'
+          ? 'health_counselor'
           : 'dietitian';
 
       const emailData: AppointmentEmailData = {
@@ -559,7 +559,7 @@ export async function POST(request: NextRequest) {
       };
 
       const emailResult = await sendAppointmentConfirmationEmail(emailData);
-      
+
       // Track email sent status in the appointment
       appointment.emailsSent = {
         confirmation: {
@@ -618,7 +618,7 @@ export async function POST(request: NextRequest) {
       userId: clientId,
       action: 'create',
       category: 'appointment',
-      description: `Appointment scheduled with ${dietitian.firstName} ${dietitian.lastName} on ${new Date(scheduledAt).toLocaleString()}`,
+      description: `Appointment scheduled with ${dietitian.firstName} ${dietitian.lastName} on ${new Date(scheduledAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
       performedById: session.user.id,
       metadata: {
         appointmentId: appointment._id,
@@ -640,7 +640,7 @@ export async function POST(request: NextRequest) {
       action: 'Booked Appointment',
       actionType: 'create',
       category: 'appointment',
-      description: `Booked appointment with ${dietitian.firstName} ${dietitian.lastName} for ${client.firstName} ${client.lastName} on ${new Date(scheduledAt).toLocaleDateString()}`,
+      description: `Booked appointment with ${dietitian.firstName} ${dietitian.lastName} for ${client.firstName} ${client.lastName} on ${new Date(scheduledAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
       targetUserId: clientId,
       targetUserName: `${client.firstName} ${client.lastName}`,
       resourceId: appointment._id.toString(),
@@ -664,7 +664,7 @@ export async function POST(request: NextRequest) {
         type: appointment.type,
         timestamp: Date.now()
       });
-      
+
       // Also notify the client if someone else booked for them
       if (session.user.id !== clientId) {
         sseManager.sendToUser(clientId, 'appointment_booked', {
@@ -688,12 +688,13 @@ export async function POST(request: NextRequest) {
 
     // Send push notifications for the appointment
     try {
-      const formattedDate = new Date(scheduledAt).toLocaleDateString('en-US', {
+      const formattedDate = new Date(scheduledAt).toLocaleDateString('en-IN', {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
       });
 
       // Send push notification to dietitian

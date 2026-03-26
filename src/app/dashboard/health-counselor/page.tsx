@@ -25,7 +25,8 @@ import {
   Utensils
 } from 'lucide-react';
 import Link from 'next/link';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+import { formatDateTimeIST, formatTimeIST } from '@/lib/utils/formatDateIST';
 import { useRealtime } from '@/hooks/useRealtime';
 import { useNotifications } from '@/hooks/useNotifications';
 import { toast } from 'sonner';
@@ -94,7 +95,7 @@ export default function HealthCounselorDashboard() {
 
   // Real-time appointment notifications
   const { showAppointmentNotification } = useNotifications();
-  
+
   // Handle real-time events (appointment bookings)
   const handleRealtimeMessage = useCallback((event: { type: string; data: string }) => {
     if (event.type === 'appointment_booked') {
@@ -104,12 +105,12 @@ export default function HealthCounselorDashboard() {
         toast.success(
           `New appointment booked by ${data.client?.firstName} ${data.client?.lastName}`,
           {
-            description: `Scheduled for ${new Date(data.scheduledAt).toLocaleString()}`,
+            description: `Scheduled for ${formatDateTimeIST(data.scheduledAt)}`,
             duration: 6000,
             icon: <Bell className="h-4 w-4 text-green-500" />,
           }
         );
-        
+
         // Show browser notification
         showAppointmentNotification(
           `${data.client?.firstName} ${data.client?.lastName}`,
@@ -273,8 +274,8 @@ export default function HealthCounselorDashboard() {
                       <span>{stats.activePercentage || 0}% Active</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-green-500 h-2 rounded-full transition-all duration-500" 
+                      <div
+                        className="bg-green-500 h-2 rounded-full transition-all duration-500"
                         style={{ width: `${stats.activePercentage || 0}%` }}
                       ></div>
                     </div>
@@ -370,7 +371,7 @@ export default function HealthCounselorDashboard() {
                             {appointment.client?.firstName} {appointment.client?.lastName}
                           </p>
                           <p className="text-sm text-gray-500">
-                            {format(new Date(appointment.scheduledAt), 'h:mm a')} • {appointment.duration} min
+                            {formatTimeIST(appointment.scheduledAt)} • {appointment.duration} min
                           </p>
                         </div>
                       </div>
