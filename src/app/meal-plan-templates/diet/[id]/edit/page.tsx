@@ -433,6 +433,11 @@ export default function EditDietTemplatePage() {
                   initialMealTypes={mealTypes}
                   clientDietaryRestrictions={selectedRestrictions?.join(', ') || ''}
                   onBack={() => setActiveTab('details')}
+                  onMealDataChange={(weekPlan, newMealTypes) => {
+                    // Sync meal changes to state for auto-save
+                    setMeals(weekPlan);
+                    if (newMealTypes) setMealTypes(newMealTypes);
+                  }}
                   onSavePlan={(weekPlan, newMealTypes) => {
                     setMeals(weekPlan);
                     if (newMealTypes) setMealTypes(newMealTypes);

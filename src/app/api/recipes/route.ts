@@ -146,10 +146,88 @@ export async function GET(request: NextRequest) {
       query.difficulty = difficulty;
     }
 
-    // Filter by dietary restrictions
+    // Filter by dietary restrictions (INCLUSION - recipes must HAVE these restrictions)
     if (dietaryRestrictions) {
       const restrictions = dietaryRestrictions.split(',');
       query.dietaryRestrictions = { $in: restrictions };
+    }
+
+    // Filter by excluding dietary restrictions (EXCLUSION - for client food database filtering)
+    // This is used when a diet template has restrictions like "Vegetarian" - we exclude non-vegetarian recipes
+    const excludeDietaryRestrictions = searchParams.get('excludeDietaryRestrictions');
+    if (excludeDietaryRestrictions) {
+      const excludeRestrictions = excludeDietaryRestrictions.split(',').map(r => r.trim().toLowerCase());
+      const excludeConditions: any[] = [];
+
+      // Vegetarian: exclude non-vegetarian recipes AND recipes with eggs, chicken, meat, fish
+      if (excludeRestrictions.includes('vegetarian')) {
+        excludeConditions.push({ dietaryRestrictions: { $nin: ['Non-Vegetarian', 'non-vegetarian', 'Non Vegetarian'] } });
+        // Also exclude recipes with egg allergen or egg/chicken/meat in name
+        excludeConditions.push({ allergens: { $nin: ['egg', 'Egg', 'eggs', 'Eggs'] } });
+        // Exclude recipes with egg, chicken, mutton, fish, meat in name (case-insensitive regex)
+        excludeConditions.push({ name: { $not: { $regex: /egg|chicken|mutton|fish|meat|prawn|shrimp|crab|lobster|lamb|pork|beef|bacon|ham|sausage/i } } });
+      }
+
+      // Non-Vegetarian: no exclusion needed (they can eat everything)
+
+      // Vegan: exclude non-vegan (dairy, eggs, meat, fish, honey)
+      if (excludeRestrictions.includes('vegan')) {
+        excludeConditions.push({ dietaryRestrictions: { $nin: ['Non-Vegetarian', 'non-vegetarian', 'Non Vegetarian'] } });
+        excludeConditions.push({ allergens: { $nin: ['dairy', 'Dairy', 'egg', 'Egg', 'eggs', 'Eggs', 'milk', 'Milk', 'honey', 'Honey'] } });
+        // Exclude by name too
+        excludeConditions.push({ name: { $not: { $regex: /egg|chicken|mutton|fish|meat|prawn|shrimp|crab|lobster|lamb|pork|beef|bacon|ham|sausage|milk|cheese|paneer|curd|yogurt|butter|ghee|cream|honey/i } } });
+      }
+
+      // Gluten-Free: exclude recipes with gluten
+      if (excludeRestrictions.includes('gluten-free') || excludeRestrictions.includes('gluten free')) {
+        excludeConditions.push({ allergens: { $nin: ['gluten', 'Gluten', 'wheat', 'Wheat'] } });
+      }
+
+      // Dairy-Free: exclude recipes with dairy
+      if (excludeRestrictions.includes('dairy-free') || excludeRestrictions.includes('dairy free')) {
+        excludeConditions.push({ allergens: { $nin: ['dairy', 'Dairy', 'milk', 'Milk', 'lactose', 'Lactose'] } });
+      }
+
+      // Egg-Free: exclude recipes with eggs
+      if (excludeRestrictions.includes('egg-free') || excludeRestrictions.includes('egg free')) {
+        excludeConditions.push({ allergens: { $nin: ['egg', 'Egg', 'eggs', 'Eggs'] } });
+      }
+
+      // Nut-Free: exclude recipes with nuts
+      if (excludeRestrictions.includes('nut-free') || excludeRestrictions.includes('nut free')) {
+        excludeConditions.push({ allergens: { $nin: ['nut', 'Nut', 'nuts', 'Nuts', 'peanut', 'Peanut', 'almond', 'Almond', 'cashew', 'Cashew', 'walnut', 'Walnut'] } });
+      }
+
+      // Soy-Free: exclude recipes with soy
+      if (excludeRestrictions.includes('soy-free') || excludeRestrictions.includes('soy free')) {
+        excludeConditions.push({ allergens: { $nin: ['soy', 'Soy', 'soya', 'Soya'] } });
+      }
+
+      // Keto: exclude high-carb recipes (rely on tags/restrictions for now)
+      if (excludeRestrictions.includes('keto')) {
+        // Could add: excludeConditions.push({ 'nutrition.carbs': { $lte: 20 } });
+      }
+
+      // Diabetic Friendly: exclude recipes contraindicated for diabetes
+      if (excludeRestrictions.includes('diabetic friendly') || excludeRestrictions.includes('diabetic-friendly')) {
+        excludeConditions.push({ medicalContraindications: { $nin: ['diabetes', 'Diabetes', 'diabetic', 'Diabetic', 'high sugar', 'High Sugar'] } });
+      }
+
+      // Apply all exclusion conditions
+      if (excludeConditions.length > 0) {
+        query.$and = query.$and || [];
+        query.$and.push(...excludeConditions);
+      }
+    }
+
+    // Filter by excluding allergens (for client allergies)
+    const excludeAllergens = searchParams.get('excludeAllergens');
+    if (excludeAllergens) {
+      const allergens = excludeAllergens.split(',').map(a => a.trim());
+      // Create case-insensitive allergen exclusion
+      const allergenVariants = allergens.flatMap(a => [a, a.toLowerCase(), a.charAt(0).toUpperCase() + a.slice(1).toLowerCase()]);
+      query.$and = query.$and || [];
+      query.$and.push({ allergens: { $nin: allergenVariants } });
     }
 
     // Filter by max calories

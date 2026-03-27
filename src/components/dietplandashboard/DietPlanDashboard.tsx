@@ -323,7 +323,7 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
 
   // Notify parent of meal data changes so it can handle DB draft saving
   useEffect(() => {
-    if (readOnly || !onMealDataChange) return;
+    if (readOnly) return;
 
     const currentDataStr = JSON.stringify({ weekPlan, mealTypeConfigs });
 
@@ -338,8 +338,17 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
     }
 
     previousDataRef.current = currentDataStr;
-    onMealDataChange(weekPlan, mealTypeConfigs);
-  }, [weekPlan, mealTypeConfigs, readOnly, onMealDataChange]);
+
+    // Call onMealDataChange if provided (full callback with mealTypes)
+    if (onMealDataChange) {
+      onMealDataChange(weekPlan, mealTypeConfigs);
+    }
+
+    // Also call onSave if provided (simpler callback for diet template create page auto-save)
+    if (onSave) {
+      onSave(weekPlan);
+    }
+  }, [weekPlan, mealTypeConfigs, readOnly, onMealDataChange, onSave]);
 
   // Cleanup on unmount
   useEffect(() => {

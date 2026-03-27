@@ -693,9 +693,10 @@ export default function CreateDietTemplatePage() {
                 initialMealTypes={mealTypesData}
                 clientDietaryRestrictions={template.dietaryRestrictions?.join(', ') || ''}
                 onBack={() => setCurrentStep(2)}
-                onSave={(weekPlan) => {
-                  // Sync weekPlan changes to parent for draft auto-save
+                onMealDataChange={(weekPlan, mealTypes) => {
+                  // Sync both weekPlan and mealTypes changes to parent for draft auto-save
                   setWeekPlanData(weekPlan);
+                  if (mealTypes) setMealTypesData(mealTypes);
                 }}
                 onSavePlan={(weekPlan, mealTypes) => {
                   setWeekPlanData(weekPlan);

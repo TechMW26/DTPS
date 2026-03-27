@@ -142,7 +142,7 @@ export function FoodDatabasePanel({
       .map(item => item.recipe);
   }, []);
 
-  // Fetch recipes from the database (fetch all once, then filter locally)
+  // Fetch recipes from the database (with server-side filtering for dietary restrictions)
   useEffect(() => {
     const fetchRecipes = async () => {
       if (!isOpen) return;
@@ -153,6 +153,16 @@ export function FoodDatabasePanel({
         params.append('limit', '0'); // Fetch ALL recipes (0 = no limit)
         if (categoryFilter && categoryFilter !== 'all') {
           params.append('category', categoryFilter);
+        }
+
+        // Pass dietary restrictions to API for server-side filtering
+        if (clientDietaryArr.length > 0) {
+          params.append('excludeDietaryRestrictions', clientDietaryArr.join(','));
+        }
+
+        // Pass allergens to API for server-side filtering
+        if (clientAllergyArr.length > 0) {
+          params.append('excludeAllergens', clientAllergyArr.join(','));
         }
 
         const response = await fetch(`/api/recipes?${params.toString()}`);
@@ -166,7 +176,7 @@ export function FoodDatabasePanel({
             if (typeof val === 'string' && val.trim()) return [val];
             return [];
           };
-          // Filter recipes based on client restrictions
+          // Additional client-side filtering for edge cases not handled by API
           const filteredRecipes = recipes.filter((recipe: any) => {
             const recipeAllergens: string[] = toArray(recipe.allergens).map((a: string) => String(a).toLowerCase().trim());
             const recipeDietary: string[] = toArray(recipe.dietaryRestrictions).map((d: string) => String(d).toLowerCase().trim());
@@ -188,28 +198,47 @@ export function FoodDatabasePanel({
             // Filter recipes based on selected dietary restrictions
             // Recipes should be COMPATIBLE with the selected restrictions
             if (clientDietaryArr.length > 0) {
-              // VEGETARIAN restriction: hide recipes tagged as non-vegetarian
+              // VEGETARIAN restriction: hide recipes with eggs, chicken, meat, fish
               if (clientDietaryArr.includes('vegetarian')) {
+                // Exclude non-vegetarian tagged recipes
                 if (recipeDietary.includes('non-vegetarian') || recipeDietary.includes('nonvegetarian')) {
                   return false;
                 }
-              }
-
-              // NON-VEGETARIAN restriction: hide recipes tagged as non-vegetarian
-              if (clientDietaryArr.includes('non-vegetarian')) {
-                if (recipeDietary.includes('non-vegetarian')) {
+                // Exclude recipes with egg allergen
+                if (recipeAllergens.includes('egg') || recipeAllergens.includes('eggs')) {
+                  return false;
+                }
+                // Exclude recipes with egg/chicken/meat/fish in name or ingredients
+                const nonVegKeywords = ['egg', 'chicken', 'mutton', 'fish', 'meat', 'prawn', 'shrimp', 'crab', 'lobster', 'lamb', 'pork', 'beef', 'bacon', 'ham', 'sausage', 'keema', 'biryani chicken', 'tandoori chicken'];
+                const recipeName = (recipe.name || '').toLowerCase();
+                if (nonVegKeywords.some(keyword => recipeName.includes(keyword))) {
+                  return false;
+                }
+                if (recipeIngredients.some((ing: string) => nonVegKeywords.some(keyword => ing.includes(keyword)))) {
                   return false;
                 }
               }
 
+              // NON-VEGETARIAN restriction: no filtering needed (they can eat everything)
+
               // VEGAN restriction: exclude non-vegan recipes (those with dairy, eggs, meat, fish, honey)
               if (clientDietaryArr.includes('vegan')) {
+                // Exclude non-vegetarian tagged recipes
+                if (recipeDietary.includes('non-vegetarian') || recipeDietary.includes('nonvegetarian')) {
+                  return false;
+                }
+                // Exclude recipes with non-vegan allergens
                 const nonVeganAllergens = ['dairy', 'egg', 'eggs', 'milk', 'cheese', 'meat', 'fish', 'seafood', 'honey'];
-                const hasNonVegan = nonVeganAllergens.some(allergen =>
-                  recipeAllergens.some((ra: string) => ra.includes(allergen)) ||
-                  recipeIngredients.some((ing: string) => ing.includes(allergen))
-                );
-                if (hasNonVegan || recipeDietary.includes('non-vegetarian')) {
+                if (nonVeganAllergens.some(allergen => recipeAllergens.some((ra: string) => ra.includes(allergen)))) {
+                  return false;
+                }
+                // Exclude recipes with non-vegan keywords in name or ingredients
+                const nonVeganKeywords = ['egg', 'chicken', 'mutton', 'fish', 'meat', 'prawn', 'shrimp', 'crab', 'lobster', 'lamb', 'pork', 'beef', 'bacon', 'ham', 'sausage', 'milk', 'cheese', 'paneer', 'curd', 'yogurt', 'butter', 'ghee', 'cream', 'honey', 'raita'];
+                const recipeName = (recipe.name || '').toLowerCase();
+                if (nonVeganKeywords.some(keyword => recipeName.includes(keyword))) {
+                  return false;
+                }
+                if (recipeIngredients.some((ing: string) => nonVeganKeywords.some(keyword => ing.includes(keyword)))) {
                   return false;
                 }
               }
