@@ -76,6 +76,7 @@ import ImageLightbox from '@/components/ui/image-lightbox';
 
 interface ClientData {
   _id: string;
+  clientId?: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -1774,6 +1775,12 @@ export default function ClientDetailPage() {
                           <span className="uppercase">{client?.gender}</span>
                           <span className="text-gray-400">|</span>
                           <span>{calculateAge(client?.dateOfBirth)} yrs</span>
+                          {client?.clientId && (
+                            <>
+                              <span className="text-gray-400">|</span>
+                              <span className="font-medium text-blue-600">{client.clientId}</span>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-500">

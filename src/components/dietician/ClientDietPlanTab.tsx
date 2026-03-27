@@ -123,12 +123,6 @@ export default function ClientDietPlanTab({ clientId, client }: ClientDietPlanTa
             <p className="text-gray-600 mb-4">
               Create a personalized diet plan for this client
             </p>
-            <Button asChild className="cursor-pointer">
-              <Link href={`/meal-plans/create?clientId=${clientId}`}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create First Diet Plan
-              </Link>
-            </Button>
           </CardContent>
         </Card>
       ) : (

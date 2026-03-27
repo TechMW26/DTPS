@@ -236,7 +236,7 @@ export default function DieticianClientsPage() {
     const fetchFilterOptions = async () => {
       try {
         const [dtRes, tagRes] = await Promise.all([
-          fetch('/api/users/dietitians'),
+          fetch('/api/users/dietitians?excludeHealthCounselors=true'),
           fetch('/api/tags'),
         ]);
         if (dtRes.ok) {
@@ -619,6 +619,7 @@ export default function DieticianClientsPage() {
                     <SelectContent>
                       <SelectItem value="_all">Any</SelectItem>
                       <SelectItem value="ongoing">Ongoing Plans</SelectItem>
+                      <SelectItem value="freeze">Freeze</SelectItem>
                       <SelectItem value="dateRange">Date Range</SelectItem>
                     </SelectContent>
                   </Select>
@@ -649,6 +650,7 @@ export default function DieticianClientsPage() {
                       <SelectItem value="_all">Any</SelectItem>
                       <SelectItem value="yes">Shared</SelectItem>
                       <SelectItem value="no">Not Shared</SelectItem>
+                      <SelectItem value="general">General</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

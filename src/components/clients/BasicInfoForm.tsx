@@ -143,15 +143,17 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
             <Select
               value={(() => {
                 if (!phone) return '+91';
-                // Match country codes: +91, +1, +44, +971, +65, +61, +49, +33
-                const match = phone.match(/^\+(91|1|44|971|65|61|49|33)/);
+                // Match country codes: +91, +1, +44, +971, +65, +61, +49, +33 (order by length desc for proper matching)
+                const match = phone.match(/^\+(971|91|44|65|61|49|33|1)/);
                 return match ? `+${match[1]}` : '+91';
               })()}
               onValueChange={(code) => {
                 if (disablePhone) return;
-                // Extract just the number part (remove any existing country code)
-                const currentNumber = phone?.replace(/^\+\d{1,3}[\s-]?/, '').trim() || '';
-                onChange('phone', `${code} ${currentNumber}`);
+                // Extract just the number part using specific country code patterns
+                const codeMatch = phone?.match(/^\+(971|91|44|65|61|49|33|1)/);
+                const currentCode = codeMatch ? `+${codeMatch[1]}` : '';
+                const currentNumber = currentCode ? phone?.replace(currentCode, '').replace(/^[\s-]?/, '').trim() : phone?.trim() || '';
+                onChange('phone', `${code}${currentNumber}`);
               }}
               disabled={disablePhone}
             >
@@ -174,17 +176,21 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
               className="flex-1"
               value={(() => {
                 if (!phone) return '';
-                // Remove country code prefix (+XX or +XXX) and any space/dash after it
-                return phone.replace(/^\+\d{1,3}[\s-]?/, '').trim();
+                // Remove specific country code prefix and any space/dash after it
+                const codeMatch = phone.match(/^\+(971|91|44|65|61|49|33|1)/);
+                if (codeMatch) {
+                  return phone.replace(`+${codeMatch[1]}`, '').replace(/^[\s-]?/, '').trim();
+                }
+                return phone.trim();
               })()}
               onChange={e => {
                 if (disablePhone) return;
                 // Extract country code from current phone or default to +91
-                const match = phone?.match(/^\+(91|1|44|971|65|61|49|33)/);
+                const match = phone?.match(/^\+(971|91|44|65|61|49|33|1)/);
                 const code = match ? `+${match[1]}` : '+91';
-                onChange('phone', `${code} ${e.target.value}`);
+                onChange('phone', `${code}${e.target.value}`);
               }}
-              placeholder="90000 00000"
+              placeholder="9000000000"
               required
               disabled={disablePhone}
             />
@@ -224,10 +230,16 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
             <Label htmlFor="altPhone">Alternative Phone Number</Label>
             <div className="flex gap-2">
               <Select
-                value={altPhone?.startsWith('+91') ? '+91' : altPhone?.startsWith('+1') ? '+1' : altPhone?.startsWith('+44') ? '+44' : altPhone?.startsWith('+971') ? '+971' : '+91'}
+                value={(() => {
+                  if (!altPhone) return '+91';
+                  const match = altPhone.match(/^\+(971|91|44|65|61|49|33|1)/);
+                  return match ? `+${match[1]}` : '+91';
+                })()}
                 onValueChange={(code) => {
-                  const currentNumber = altPhone?.replace(/^\+\d+\s*/, '') || '';
-                  onChange('altPhone', `${code} ${currentNumber}`);
+                  const codeMatch = altPhone?.match(/^\+(971|91|44|65|61|49|33|1)/);
+                  const currentCode = codeMatch ? `+${codeMatch[1]}` : '';
+                  const currentNumber = currentCode ? altPhone?.replace(currentCode, '').replace(/^[\s-]?/, '').trim() : altPhone?.trim() || '';
+                  onChange('altPhone', `${code}${currentNumber}`);
                 }}
               >
                 <SelectTrigger className="w-25">
@@ -247,12 +259,20 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
               <Input
                 id="altPhone"
                 className="flex-1"
-                value={altPhone?.replace(/^\+\d+\s*/, '') || ''}
+                value={(() => {
+                  if (!altPhone) return '';
+                  const codeMatch = altPhone.match(/^\+(971|91|44|65|61|49|33|1)/);
+                  if (codeMatch) {
+                    return altPhone.replace(`+${codeMatch[1]}`, '').replace(/^[\s-]?/, '').trim();
+                  }
+                  return altPhone.trim();
+                })()}
                 onChange={e => {
-                  const code = altPhone?.match(/^\+\d+/)?.[0] || '+91';
-                  onChange('altPhone', `${code} ${e.target.value}`);
+                  const match = altPhone?.match(/^\+(971|91|44|65|61|49|33|1)/);
+                  const code = match ? `+${match[1]}` : '+91';
+                  onChange('altPhone', `${code}${e.target.value}`);
                 }}
-                placeholder="90000 00000"
+                placeholder="9000000000"
               />
             </div>
           </div>

@@ -19,6 +19,9 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
+    const { searchParams } = new URL(request.url);
+    const dietitianFilterId = searchParams.get('dietitianId');
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -41,11 +44,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Admin can filter by specific dietitian
+    if (session.user.role === UserRole.ADMIN && dietitianFilterId) {
+      clientQuery.$or = [
+        { assignedDietitian: dietitianFilterId },
+        { assignedDietitians: dietitianFilterId }
+      ];
+    }
+
     // Get all clients
     const clients = await withCache(
       `dashboard:pending-plans:${JSON.stringify(clientQuery)}`,
       async () => await User.find(clientQuery)
-        .select('_id firstName lastName email phone')
+        .select('_id firstName lastName email phone clientId assignedDietitian assignedDietitians')
       ,
       { ttl: 120000, tags: ['dashboard'] }
     );
@@ -161,6 +172,8 @@ export async function GET(request: NextRequest) {
       if (clientMealPlans.length === 0) {
         pendingPlans.push({
           clientId: (client as any)._id,
+          displayClientId: (client as any).clientId || null,
+          assignedDietitianId: (client as any).assignedDietitian?.toString() || null,
           clientName: `${(client as any).firstName} ${(client as any).lastName}`,
           phone: (client as any).phone || 'N/A',
           email: (client as any).email,
@@ -219,6 +232,8 @@ export async function GET(request: NextRequest) {
 
             pendingPlans.push({
               clientId: (client as any)._id,
+              displayClientId: (client as any).clientId || null,
+              assignedDietitianId: (client as any).assignedDietitian?.toString() || null,
               clientName: `${(client as any).firstName} ${(client as any).lastName}`,
               phone: (client as any).phone || 'N/A',
               email: (client as any).email,
@@ -261,6 +276,8 @@ export async function GET(request: NextRequest) {
         if (daysSinceLastPlan >= 0 && daysSinceLastPlan <= 7 && upcomingPlans.length === 0) {
           pendingPlans.push({
             clientId: (client as any)._id,
+            displayClientId: (client as any).clientId || null,
+            assignedDietitianId: (client as any).assignedDietitian?.toString() || null,
             clientName: `${(client as any).firstName} ${(client as any).lastName}`,
             phone: (client as any).phone || 'N/A',
             email: (client as any).email,
@@ -331,6 +348,8 @@ export async function GET(request: NextRequest) {
 
           pendingPlans.push({
             clientId: (client as any)._id,
+            displayClientId: (client as any).clientId || null,
+            assignedDietitianId: (client as any).assignedDietitian?.toString() || null,
             clientName: `${(client as any).firstName} ${(client as any).lastName}`,
             phone: (client as any).phone || 'N/A',
             email: (client as any).email,

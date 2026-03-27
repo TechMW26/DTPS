@@ -170,11 +170,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const [notesDialogDayIndex, setNotesDialogDayIndex] = useState<number | null>(null);
   const [notesDialogValue, setNotesDialogValue] = useState('');
   // Recipe search state for Find & Replace
-  const [recipes, setRecipes] = useState<{ _id: string; name: string }[]>([]);
+  const [recipes, setRecipes] = useState<{ _id: string; name: string; nutrition?: { calories: number; protein: number; carbs: number; fat: number }; servings?: string | number }[]>([]);
   const [findRecipeSearch, setFindRecipeSearch] = useState('');
   const [findRecipeId, setFindRecipeId] = useState('');
   const [replaceRecipeSearch, setReplaceRecipeSearch] = useState('');
   const [replaceRecipeId, setReplaceRecipeId] = useState('');
+  const [replaceRecipeNutrition, setReplaceRecipeNutrition] = useState<{ cal: string; protein: string; carbs: string; fats: string; unit: string } | null>(null);
   const [replaceAction, setReplaceAction] = useState<'replace' | 'delete'>('replace');
   // Search filter for dropdowns
   const [findSearchFilter, setFindSearchFilter] = useState('');
@@ -223,7 +224,18 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         .then(res => res.json())
         .then(data => {
           if (data.recipes) {
-            setRecipes(data.recipes.map((r: any) => ({ _id: r._id, name: r.name })));
+            setRecipes(data.recipes.map((r: any) => ({
+              _id: r._id,
+              name: r.name,
+              // API returns flatNutrition or top-level nutrition fields
+              nutrition: r.flatNutrition || r.nutrition || {
+                calories: r.calories || 0,
+                protein: r.protein || 0,
+                carbs: r.carbs || 0,
+                fat: r.fat || 0
+              },
+              servings: r.servings
+            })));
           }
         })
         .catch(err => console.error('Failed to fetch recipes:', err));
@@ -956,12 +968,26 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
             opt.label = '';
           });
         } else {
-          // Replace matching food options
-          meal.foodOptions = meal.foodOptions.map(opt =>
-            isMatch(opt)
-              ? { ...opt, food: replaceValue, recipeUuid: replaceRecipeId || opt.recipeUuid }
-              : opt
-          );
+          // Replace matching food options with name and nutrition
+          meal.foodOptions = meal.foodOptions.map(opt => {
+            if (isMatch(opt)) {
+              const updatedOpt = {
+                ...opt,
+                food: replaceValue,
+                recipeUuid: replaceRecipeId || opt.recipeUuid
+              };
+              // Update nutrition if we have it from the selected recipe
+              if (replaceRecipeNutrition) {
+                updatedOpt.cal = replaceRecipeNutrition.cal;
+                updatedOpt.protein = replaceRecipeNutrition.protein;
+                updatedOpt.carbs = replaceRecipeNutrition.carbs;
+                updatedOpt.fats = replaceRecipeNutrition.fats;
+                updatedOpt.unit = replaceRecipeNutrition.unit;
+              }
+              return updatedOpt;
+            }
+            return opt;
+          });
         }
       });
     });
@@ -980,6 +1006,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     setFindRecipeId('');
     setReplaceRecipeSearch('');
     setReplaceRecipeId('');
+    setReplaceRecipeNutrition(null);
     setReplaceAction('replace');
     setFindSearchFilter('');
     setReplaceSearchFilter('');
@@ -2538,6 +2565,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                           setReplaceRecipeSearch('');
                           setReplaceRecipeId('');
                           setReplaceFoodValue('');
+                          setReplaceRecipeNutrition(null);
                         }
                       }}
                       onFocus={() => setShowReplaceDropdown(true)}
@@ -2566,10 +2594,28 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                 setReplaceRecipeId(r._id);
                                 setReplaceSearchFilter(r.name);
                                 setReplaceFoodValue('');
+                                // Store nutrition data from selected recipe
+                                if (r.nutrition) {
+                                  const servingsStr = typeof r.servings === 'number' ? `${r.servings} serving` : (r.servings || '1 serving');
+                                  setReplaceRecipeNutrition({
+                                    cal: String(r.nutrition.calories || 0),
+                                    protein: String(r.nutrition.protein || 0),
+                                    carbs: String(r.nutrition.carbs || 0),
+                                    fats: String(r.nutrition.fat || 0),
+                                    unit: servingsStr
+                                  });
+                                } else {
+                                  setReplaceRecipeNutrition(null);
+                                }
                                 setShowReplaceDropdown(false);
                               }}
                             >
                               <span className="text-blue-600">🍽️</span> {r.name}
+                              {r.nutrition && (
+                                <span className="text-[10px] text-gray-400 ml-2">
+                                  ({r.nutrition.calories} cal)
+                                </span>
+                              )}
                             </div>
                           ))
                         }
@@ -2588,6 +2634,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                             setReplaceFoodValue(replaceSearchFilter);
                             setReplaceRecipeSearch('');
                             setReplaceRecipeId('');
+                            setReplaceRecipeNutrition(null);
                             setShowReplaceDropdown(false);
                           }}
                         >
@@ -2600,13 +2647,21 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                   {/* Show selected replace value */}
                   {(replaceRecipeSearch || replaceFoodValue) && (
                     <div className="text-xs text-blue-700 bg-blue-100 p-2 rounded border border-blue-200 flex items-center justify-between">
-                      <span><strong>Replacing with:</strong> {replaceRecipeSearch || replaceFoodValue}</span>
+                      <span>
+                        <strong>Replacing with:</strong> {replaceRecipeSearch || replaceFoodValue}
+                        {replaceRecipeNutrition && (
+                          <span className="text-[10px] text-blue-500 ml-2">
+                            ({replaceRecipeNutrition.cal} cal, P:{replaceRecipeNutrition.protein}g, C:{replaceRecipeNutrition.carbs}g, F:{replaceRecipeNutrition.fats}g)
+                          </span>
+                        )}
+                      </span>
                       <button
                         onClick={() => {
                           setReplaceRecipeSearch('');
                           setReplaceRecipeId('');
                           setReplaceFoodValue('');
                           setReplaceSearchFilter('');
+                          setReplaceRecipeNutrition(null);
                         }}
                         className="text-red-500 hover:text-red-700 ml-2"
                       >

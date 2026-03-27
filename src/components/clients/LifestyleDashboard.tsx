@@ -31,8 +31,8 @@ function TagList({ items, color = 'gray' }: { items: string[]; color?: string })
   if (!items.length) return <span className="text-sm text-gray-400">None</span>;
   return (
     <div className="flex flex-wrap gap-1.5">
-      {items.map(item => (
-        <Badge key={item} variant="secondary" className={`${cls} text-xs font-medium`}>{item}</Badge>
+      {items.map((item, index) => (
+        <Badge key={`${item}-${index}`} variant="secondary" className={`${cls} text-xs font-medium`}>{item}</Badge>
       ))}
     </div>
   );

@@ -20,13 +20,16 @@ export async function GET(request: NextRequest) {
     const includeAvailability = searchParams.get('includeAvailability') === 'true';
     const search = searchParams.get('search');
     const specialization = searchParams.get('specialization');
+    const excludeHealthCounselors = searchParams.get('excludeHealthCounselors') === 'true';
 
     // Check if admin role
     const isAdmin = session.user.role?.toLowerCase()?.includes('admin');
 
-    // Build query - include both dietitians and health counselors
+    // Build query - include dietitians only or both dietitians and health counselors
     let query: any = {
-      role: { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
+      role: excludeHealthCounselors
+        ? UserRole.DIETITIAN
+        : { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
     };
 
     // Admin always sees ALL dietitians regardless of status
@@ -51,7 +54,9 @@ export async function GET(request: NextRequest) {
       } else {
         // If no assigned dietitian, show all active dietitians
         query = {
-          role: { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
+          role: excludeHealthCounselors
+            ? UserRole.DIETITIAN
+            : { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
           status: 'active'
         };
       }

@@ -4054,15 +4054,6 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                   : `Create a personalized diet plan for ${client.firstName} ${client.lastName}`
                 }
               </p>
-              {!viewOnly && (
-                <Button
-                  className="bg-blue-600 hover:bg-blue-700"
-                  onClick={() => setStep('form')}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First Diet Plan
-                </Button>
-              )}
             </div>
           )}
         </CardContent>

@@ -33,36 +33,38 @@ import { format } from 'date-fns';
 
 interface PendingPlan {
   clientId: string;
+  displayClientId?: string;
+  assignedDietitianId?: string;
   clientName: string;
   phone: string;
   email: string;
-  
+
   // Current plan info
   currentPlanName: string | null;
   currentPlanStartDate: string | null;
   currentPlanEndDate: string | null;
   currentPlanRemainingDays: number;
-  
+
   // Previous plan info
   previousPlanName: string | null;
   previousPlanEndDate?: string | null;
-  
+
   // Upcoming plan info
   upcomingPlanName?: string | null;
   upcomingPlanStartDate?: string | null;
   upcomingPlanEndDate?: string | null;
   daysUntilStart?: number;
-  
+
   // Purchase info
   purchasedPlanName: string;
   totalPurchasedDays: number;
   totalMealPlanDays: number;
   pendingDaysToCreate: number;
-  
+
   // Expected dates
   expectedStartDate?: string;
   expectedEndDate?: string;
-  
+
   // Status
   reason: 'no_meal_plan' | 'current_ending_soon' | 'phase_gap' | 'upcoming_with_pending';
   reasonText: string;
@@ -88,8 +90,10 @@ export default function PendingPlansPage() {
   const [pendingDaysFilter, setPendingDaysFilter] = useState('');
   const [planDateFrom, setPlanDateFrom] = useState('');
   const [planDateTo, setPlanDateTo] = useState('');
+  const [dietitianFilter, setDietitianFilter] = useState('');
+  const [dietitians, setDietitians] = useState<Array<{ _id: string; firstName: string; lastName: string }>>([])
 
-  const activeFilterCount = [urgencyFilter, reasonFilter, planNameFilter, remainingDaysFilter, pendingDaysFilter, planDateFrom, planDateTo].filter(Boolean).length;
+  const activeFilterCount = [urgencyFilter, reasonFilter, planNameFilter, remainingDaysFilter, pendingDaysFilter, planDateFrom, planDateTo, dietitianFilter].filter(Boolean).length;
 
   const clearFilters = () => {
     setUrgencyFilter('');
@@ -99,6 +103,7 @@ export default function PendingPlansPage() {
     setPendingDaysFilter('');
     setPlanDateFrom('');
     setPlanDateTo('');
+    setDietitianFilter('');
   };
 
   // Fetch pending plans
@@ -137,6 +142,22 @@ export default function PendingPlansPage() {
 
   useEffect(() => {
     fetchPendingPlans();
+  }, []);
+
+  // Fetch dietitians for filter
+  useEffect(() => {
+    const fetchDietitians = async () => {
+      try {
+        const response = await fetch('/api/users/dietitians?excludeHealthCounselors=true');
+        if (response.ok) {
+          const data = await response.json();
+          setDietitians(data.dietitians || []);
+        }
+      } catch (error) {
+        console.error('Error fetching dietitians:', error);
+      }
+    };
+    fetchDietitians();
   }, []);
 
   // Filter plans based on search + filters
@@ -182,6 +203,9 @@ export default function PendingPlansPage() {
       if (pendingDaysFilter === 'medium' && (pd <= 7 || pd > 14)) return false;
       if (pendingDaysFilter === 'low' && pd > 7) return false;
     }
+
+    // Dietitian filter
+    if (dietitianFilter && plan.assignedDietitianId !== dietitianFilter) return false;
 
     // Plan date range filter
     if (planDateFrom) {
@@ -230,8 +254,8 @@ export default function PendingPlansPage() {
               <Users className="h-4 w-4 mr-1" />
               {pendingPlans.length} Clients
             </Badge>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={fetchPendingPlans}
               className="gap-2"
@@ -389,8 +413,24 @@ export default function PendingPlansPage() {
               </div>
 
               {/* Row 2 */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-2">
-                <div className="col-span-2 md:col-span-1 space-y-1">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-x-3 gap-y-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-500">Dietitian</label>
+                  <Select value={dietitianFilter} onValueChange={(v) => setDietitianFilter(v === '_all' ? '' : v)}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="All Dietitians" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all">All Dietitians</SelectItem>
+                      {dietitians.map(dt => (
+                        <SelectItem key={dt._id} value={dt._id}>
+                          {dt.firstName} {dt.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
                   <label className="text-xs font-medium text-gray-500">Plan Name</label>
                   <Input className="h-8 text-sm" placeholder="Search plan..." value={planNameFilter} onChange={(e) => setPlanNameFilter(e.target.value)} />
                 </div>
@@ -435,35 +475,33 @@ export default function PendingPlansPage() {
             {/* Mobile Cards View */}
             <div className="lg:hidden space-y-4">
               {filteredPlans.map((plan) => (
-                <Card 
+                <Card
                   key={plan.clientId}
-                  className={`${
-                    plan.urgency === 'critical' ? 'border-red-300 bg-red-50/50' : 
-                    plan.urgency === 'high' ? 'border-amber-300 bg-amber-50/50' : 
-                    'border-gray-200'
-                  }`}
+                  className={`${plan.urgency === 'critical' ? 'border-red-300 bg-red-50/50' :
+                      plan.urgency === 'high' ? 'border-amber-300 bg-amber-50/50' :
+                        'border-gray-200'
+                    }`}
                 >
                   <CardContent className="p-4">
                     {/* Header with ID and Priority Badge */}
                     <div className="flex items-center justify-between mb-3">
-                      <Link 
+                      <Link
                         href={`/dietician/clients/${plan.clientId}`}
                         className="text-blue-600 hover:underline font-medium text-sm"
                       >
-                        P-{plan.clientId.toString().slice(-4).toUpperCase()}
+                        {plan.displayClientId || `C-${plan.clientId.toString().slice(-4).toUpperCase()}`}
                       </Link>
-                      <Badge className={`text-xs font-semibold ${
-                        plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0 
+                      <Badge className={`text-xs font-semibold ${plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0
                           ? 'bg-red-600 text-white border border-red-700' :
-                        plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
-                          ? 'bg-orange-500 text-white border border-orange-600' :
-                          'bg-yellow-500 text-gray-900 border border-yellow-600'
-                      }`}>
-                        {plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0 
+                          plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
+                            ? 'bg-orange-500 text-white border border-orange-600' :
+                            'bg-yellow-500 text-gray-900 border border-yellow-600'
+                        }`}>
+                        {plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0
                           ? '🔴 Critical' :
-                        plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
-                          ? '🟠 High Priority' :
-                          '🟡 Medium Priority'}
+                          plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
+                            ? '🟠 High Priority' :
+                            '🟡 Medium Priority'}
                       </Badge>
                     </div>
 
@@ -491,21 +529,19 @@ export default function PendingPlansPage() {
                       </div>
                       <div>
                         <p className="text-gray-500 font-medium">Remaining</p>
-                        <Badge className={`text-xs font-semibold ${
-                          plan.currentPlanRemainingDays <= 0 ? 'bg-red-600 text-white' :
-                          plan.currentPlanRemainingDays <= 3 ? 'bg-orange-500 text-white' :
-                          'bg-yellow-500 text-gray-900'
-                        }`}>
+                        <Badge className={`text-xs font-semibold ${plan.currentPlanRemainingDays <= 0 ? 'bg-red-600 text-white' :
+                            plan.currentPlanRemainingDays <= 3 ? 'bg-orange-500 text-white' :
+                              'bg-yellow-500 text-gray-900'
+                          }`}>
                           {plan.currentPlanRemainingDays <= 0 ? 'Expired' : `${plan.currentPlanRemainingDays} days`}
                         </Badge>
                       </div>
                       <div>
                         <p className="text-gray-500 font-medium">Pending Days</p>
-                        <Badge className={`text-xs ${
-                          plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
-                          plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
-                          'bg-teal-500 text-white'
-                        }`}>
+                        <Badge className={`text-xs ${plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
+                            plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
+                              'bg-teal-500 text-white'
+                          }`}>
                           {plan.pendingDaysToCreate} days
                         </Badge>
                       </div>
@@ -561,19 +597,18 @@ export default function PendingPlansPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {filteredPlans.map((plan) => (
-                        <tr 
-                          key={plan.clientId} 
-                          className={`hover:bg-gray-50 transition-colors ${
-                            plan.urgency === 'critical' ? 'bg-red-50/50' : 
-                            plan.urgency === 'high' ? 'bg-amber-50/50' : ''
-                          }`}
+                        <tr
+                          key={plan.clientId}
+                          className={`hover:bg-gray-50 transition-colors ${plan.urgency === 'critical' ? 'bg-red-50/50' :
+                              plan.urgency === 'high' ? 'bg-amber-50/50' : ''
+                            }`}
                         >
                           <td className="px-4 py-3">
-                            <Link 
+                            <Link
                               href={`/dietician/clients/${plan.clientId}`}
                               className="text-blue-600 hover:underline font-medium text-xs"
                             >
-                              P-{plan.clientId.toString().slice(-4).toUpperCase()}
+                              {plan.displayClientId || `C-${plan.clientId.toString().slice(-4).toUpperCase()}`}
                             </Link>
                           </td>
                           <td className="px-4 py-3">
@@ -676,28 +711,26 @@ export default function PendingPlansPage() {
                           </td>
                           {/* Remaining Days */}
                           <td className="px-4 py-3 text-center">
-                            <Badge className={`font-semibold ${
-                              plan.currentPlanRemainingDays <= 0 
+                            <Badge className={`font-semibold ${plan.currentPlanRemainingDays <= 0
                                 ? 'bg-red-600 text-white border border-red-700' :
-                              plan.currentPlanRemainingDays <= 3 
-                                ? 'bg-orange-500 text-white border border-orange-600' :
-                                'bg-yellow-500 text-gray-900 border border-yellow-600'
-                            }`}>
-                              {plan.currentPlanRemainingDays <= 0 
-                                ? '🔴 Expired' 
-                                : plan.currentPlanRemainingDays <= 3 
-                                  ? `🟠 ${plan.currentPlanRemainingDays} days left` 
+                                plan.currentPlanRemainingDays <= 3
+                                  ? 'bg-orange-500 text-white border border-orange-600' :
+                                  'bg-yellow-500 text-gray-900 border border-yellow-600'
+                              }`}>
+                              {plan.currentPlanRemainingDays <= 0
+                                ? '🔴 Expired'
+                                : plan.currentPlanRemainingDays <= 3
+                                  ? `🟠 ${plan.currentPlanRemainingDays} days left`
                                   : `🟡 ${plan.currentPlanRemainingDays} days left`}
                             </Badge>
                           </td>
                           {/* Pending Meal Days */}
                           <td className="px-4 py-3 text-center">
                             <div>
-                              <Badge className={`${
-                                plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
-                                plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
-                                'bg-teal-500 text-white'
-                              }`}>
+                              <Badge className={`${plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
+                                  plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
+                                    'bg-teal-500 text-white'
+                                }`}>
                                 {plan.pendingDaysToCreate} days pending
                               </Badge>
                               <p className="text-xs text-gray-400 mt-1">

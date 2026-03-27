@@ -31,7 +31,7 @@ interface FormsSectionProps {
   handleDeleteRecallEntry?: (entryId: string) => Promise<void>;
   loading: boolean;
   clientId?: string;
-  userRole?: 'client' | 'dietitian';
+  userRole?: 'client' | 'dietitian' | 'health_counselor' | 'admin';
   onRegisterReset?: (fn: () => void) => void;
 }
 
@@ -114,10 +114,10 @@ export default function FormsSection({
           </DialogHeader>
           <div className="flex flex-wrap gap-2 py-4">
             {getUnfilledForms().map(form => (
-              <Button 
+              <Button
                 key={form.tab}
-                variant="outline" 
-                size="sm" 
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setShowUnfilledPopup(false);
                   setActiveTab(form.tab);
@@ -141,7 +141,7 @@ export default function FormsSection({
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex w-full gap-2 sm:gap-3 bg-slate-100 p-1.5 rounded-xl h-auto flex-wrap sm:flex-nowrap">
-          <TabsTrigger 
+          <TabsTrigger
             value="basic-details"
             className={`flex-1 min-w-30 flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs sm:text-sm font-medium transition-all
               data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-md
@@ -152,7 +152,7 @@ export default function FormsSection({
             <span>Basic Details</span>
             {!isBasicInfoFilled && <span className="text-amber-500">⚠️</span>}
           </TabsTrigger>
-          <TabsTrigger 
+          <TabsTrigger
             value="medical-info"
             className={`flex-1 min-w-25 flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs sm:text-sm font-medium transition-all
               data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-md
@@ -163,7 +163,7 @@ export default function FormsSection({
             <span>Medical</span>
             {!isMedicalFilled && <span className="text-amber-500">⚠️</span>}
           </TabsTrigger>
-          <TabsTrigger 
+          <TabsTrigger
             value="lifestyle"
             className={`flex-1 min-w-25 flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs sm:text-sm font-medium transition-all
               data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-md
@@ -174,7 +174,7 @@ export default function FormsSection({
             <span>Lifestyle</span>
             {!isLifestyleFilled && <span className="text-amber-500">⚠️</span>}
           </TabsTrigger>
-          <TabsTrigger 
+          <TabsTrigger
             value="recall"
             className={`flex-1 min-w-20 flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs sm:text-sm font-medium transition-all
               data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-md
@@ -198,8 +198,8 @@ export default function FormsSection({
                 setEditingTab(prev => ({ ...prev, 'basic-details': false }));
               }}
               loading={loading}
-              disableEmail
-              disablePhone
+              disableEmail={userRole === 'client'}
+              disablePhone={userRole === 'client'}
             />
           ) : (
             <BasicInfoDashboard data={basicInfo} onEdit={() => setEditingTab(prev => ({ ...prev, 'basic-details': true }))} />

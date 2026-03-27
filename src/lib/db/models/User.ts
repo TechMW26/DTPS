@@ -70,10 +70,10 @@ const fcmTokenSchema = new Schema({
 const userSchema = new Schema({
   email: {
     type: String,
-    required: true,
+    required: false,
     lowercase: true,
     trim: true,
-    unique: true
+    sparse: true
   },
   dtps_id: {
     type: String,
@@ -448,7 +448,7 @@ userSchema.index({ assignedDietitian: 1 });
 userSchema.index({ assignedDietitians: 1 });
 userSchema.index({ clientStatus: 1 }); // For filtering by status
 userSchema.index({ createdAt: -1 }); // For sorting by newest
-userSchema.index({ email: 1 }, { unique: true }); // Unique email lookup
+userSchema.index({ email: 1 }, { unique: true, sparse: true }); // Unique email lookup (sparse allows null)
 userSchema.index({ phone: 1 }, { unique: true, sparse: true }); // Unique phone (sparse allows null)
 // Compound indexes for common queries in admin panel
 userSchema.index({ role: 1, clientStatus: 1 });
