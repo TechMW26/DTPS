@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, UtensilsCrossed, ListTodo, BarChart3, User } from 'lucide-react';
+import { Home, UtensilsCrossed, ListTodo, BarChart3, MessageCircle, User } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function BottomNavBar() {
@@ -19,9 +19,11 @@ export default function BottomNavBar() {
   const navItems = [
     { href: '/user', icon: Home, label: 'Home' },
     { href: '/user/plan', icon: UtensilsCrossed, label: 'Meal' },
+       { href: '/user/messages', icon: MessageCircle, label: 'Messages' },
     { href: '/user/tasks', icon: ListTodo, label: 'Tasks' },
     { href: '/user/progress', icon: BarChart3, label: 'Progress' },
-    { href: '/user/profile', icon: User, label: 'Profile' },
+ 
+  
   ];
 
   return (
