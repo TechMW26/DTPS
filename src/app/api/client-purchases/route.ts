@@ -3,7 +3,31 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import dbConnect from '@/lib/db/connect';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
+import PaymentLink from '@/lib/db/models/PaymentLink';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+
+const getPaidPurchaseQuery = () => ({
+  $or: [
+    { paymentStatus: 'paid' },
+    { status: { $in: ['paid', 'completed', 'active'] } }
+  ]
+});
+
+const isPurchaseActiveForPlanning = (purchase: any, now: Date): boolean => {
+  const remainingDays = Math.max(0, (purchase.durationDays || 0) - (purchase.daysUsed || 0));
+  if (remainingDays <= 0) return false;
+
+  // If expected end date is explicitly set, honor it for active-window checks.
+  if (purchase.expectedEndDate) {
+    const end = new Date(purchase.expectedEndDate);
+    end.setHours(23, 59, 59, 999);
+    return end >= now;
+  }
+
+  // If expected dates are not set yet, treat the paid purchase as active for planning
+  // as long as allocation remains.
+  return true;
+};
 
 // GET - Fetch client purchases (now from UnifiedPayment)
 export async function GET(request: NextRequest) {
@@ -21,9 +45,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const activeOnly = searchParams.get('activeOnly') === 'true';
 
-    const query: any = {
-      paymentStatus: 'paid' // Only show paid purchases
-    };
+    const query: any = getPaidPurchaseQuery();
 
     // Filter by client
     if (clientId) {
@@ -35,10 +57,81 @@ export async function GET(request: NextRequest) {
       query.status = status;
     }
 
-    // Filter active purchases (not expired)
-    if (activeOnly) {
-      query.status = { $in: ['paid', 'completed'] };
-      query.endDate = { $gte: new Date() };
+    // Backfill any missing UnifiedPayment records for paid payment links (client-specific)
+    if (clientId) {
+      const paidLinks = await PaymentLink.find({
+        client: clientId,
+        status: 'paid',
+        durationDays: { $exists: true, $gt: 0 }
+      })
+        .select('_id client dietitian servicePlanId amount tax discount finalAmount currency planName planCategory duration durationDays paidAt paymentMethod transactionId payerEmail payerPhone razorpayPaymentLinkId razorpayPaymentId razorpayOrderId')
+        .sort({ paidAt: -1, createdAt: -1 });
+
+      if (paidLinks.length > 0) {
+        const linkIds = paidLinks.map((l: any) => l._id);
+        const existing = await UnifiedPayment.find({
+          client: clientId,
+          paymentLink: { $in: linkIds }
+        }).select('paymentLink');
+
+        const existingLinkIds = new Set(existing.map((p: any) => String(p.paymentLink)));
+
+        for (const link of paidLinks) {
+          if (existingLinkIds.has(String(link._id))) continue;
+
+          const startDate = link.paidAt ? new Date(link.paidAt) : new Date();
+          const endDate = new Date(startDate);
+          endDate.setDate(endDate.getDate() + (link.durationDays || 0));
+
+          try {
+            await UnifiedPayment.syncRazorpayPayment(
+              {
+                paymentLink: link._id,
+                paymentLinkId: link.razorpayPaymentLinkId || undefined,
+                paymentId: link.razorpayPaymentId || undefined,
+                orderId: link.razorpayOrderId || undefined,
+                transactionId: link.transactionId || undefined,
+                client: link.client
+              },
+              {
+                client: link.client,
+                dietitian: link.dietitian,
+                servicePlan: link.servicePlanId,
+                paymentLink: link._id,
+                paymentType: 'service_plan',
+                planName: link.planName || 'Service Plan',
+                planCategory: link.planCategory || 'general-wellness',
+                durationDays: link.durationDays || 0,
+                durationLabel: link.duration || `${link.durationDays || 0} Days`,
+                baseAmount: link.amount,
+                discountPercent: link.discount || 0,
+                taxPercent: link.tax || 0,
+                finalAmount: link.finalAmount,
+                currency: link.currency || 'INR',
+                status: 'paid',
+                paymentStatus: 'paid',
+                paymentMethod: link.paymentMethod || 'razorpay',
+                razorpayPaymentLinkId: link.razorpayPaymentLinkId,
+                razorpayPaymentId: link.razorpayPaymentId,
+                razorpayOrderId: link.razorpayOrderId,
+                transactionId: link.transactionId || link.razorpayPaymentId || link.razorpayPaymentLinkId,
+                payerEmail: link.payerEmail,
+                payerPhone: link.payerPhone,
+                purchaseDate: startDate,
+                startDate,
+                endDate,
+                expectedStartDate: startDate,
+                expectedEndDate: endDate,
+                paidAt: link.paidAt || startDate,
+                mealPlanCreated: false,
+                daysUsed: 0
+              }
+            );
+          } catch (syncErr) {
+            console.error('Failed to backfill UnifiedPayment for paid link:', link._id, syncErr);
+          }
+        }
+      }
     }
 
     const purchases = await withCache(
@@ -81,10 +174,15 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const now = new Date();
+    const filteredPurchases = activeOnly
+      ? purchasesWithInfo.filter((purchase: any) => isPurchaseActiveForPlanning(purchase, now))
+      : purchasesWithInfo;
+
     return NextResponse.json({
       success: true,
-      purchases: purchasesWithInfo,
-      total: purchases.length
+      purchases: filteredPurchases,
+      total: filteredPurchases.length
     });
   } catch (error) {
     console.error('Error fetching client purchases:', error);

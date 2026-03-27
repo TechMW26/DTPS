@@ -55,6 +55,38 @@ const clientMealPlanSchema = z.object({
   status: z.enum(['draft', 'active', 'completed', 'paused', 'cancelled']).optional()
 });
 
+// Robustly detect publishable meal content across supported meal data shapes
+const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
+  if (!Array.isArray(meals) || meals.length === 0) return false;
+
+  return meals.some((day: any) => {
+    const dayMeals = day?.meals;
+    if (!dayMeals || typeof dayMeals !== 'object') return false;
+
+    return Object.values(dayMeals).some((meal: any) => {
+      if (!meal) return false;
+      const foodOptions = Array.isArray(meal.foodOptions) ? meal.foodOptions : [];
+      if (foodOptions.length === 0) return false;
+
+      return foodOptions.some((option: any) => {
+        if (!option) return false;
+
+        if (typeof option.food === 'string' && option.food.trim().length > 0) return true;
+
+        if (Array.isArray(option.foods)) {
+          return option.foods.some((f: any) =>
+            !!f &&
+            ((typeof f.food === 'string' && f.food.trim().length > 0) ||
+              (typeof f.name === 'string' && f.name.trim().length > 0))
+          );
+        }
+
+        return false;
+      });
+    });
+  });
+};
+
 // GET /api/client-meal-plans - Get client meal plans
 export async function GET(request: NextRequest) {
   try {
@@ -354,6 +386,14 @@ export async function POST(request: NextRequest) {
 
     // Check for overlapping active meal plans for the same client (skip for drafts)
     if (!isDraft) {
+      const resolvedMeals = validatedData.meals || (template && templateType === 'diet' ? template.meals : []);
+      if (!hasPublishableMealData(resolvedMeals)) {
+        return NextResponse.json({
+          error: 'Invalid meal data',
+          message: 'Cannot publish plan without at least one meal slot containing food items'
+        }, { status: 400 });
+      }
+
       const overlappingPlan = await ClientMealPlan.findOne({
         clientId: validatedData.clientId,
         status: 'active',

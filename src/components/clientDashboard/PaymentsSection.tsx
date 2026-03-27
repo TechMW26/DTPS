@@ -580,6 +580,13 @@ export default function PaymentsSection({
   const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [expectedDateError, setExpectedDateError] = useState<string | null>(null);
 
+  const toIdString = (value: any) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && value._id) return String(value._id);
+    return String(value);
+  };
+
   // Platform options
   const platformOptions = [
     { value: 'upi', label: 'UPI' },
@@ -610,7 +617,7 @@ export default function PaymentsSection({
     if (!client?._id) return;
     setLoadingPurchases(true);
     try {
-      const response = await fetch(`/api/client-purchases?clientId=${client._id}&activeOnly=true`);
+      const response = await fetch(`/api/client-purchases?clientId=${client._id}`);
       const data = await response.json();
       if (data.success) {
         setClientPurchases(data.purchases || []);
@@ -710,32 +717,34 @@ export default function PaymentsSection({
 
     // Find the corresponding ClientPurchase for this payment
     const purchase = clientPurchases.find(p =>
-      p.paymentLink?._id === payment._id ||
-      p.paymentLink === payment._id
+      toIdString(p.paymentLink) === toIdString(payment._id)
     );
 
     if (purchase) {
       openExpectedDatesModal(purchase);
     } else {
-      // If no purchase found, try to fetch it
+      // If no purchase found, try a forced sync + fresh purchase fetch
       try {
-        const response = await fetch(`/api/client-purchases?clientId=${client._id}&activeOnly=true`);
+        await fetch(`/api/client-purchases/check?clientId=${client._id}&forceSync=true`);
+
+        const response = await fetch(`/api/client-purchases?clientId=${client._id}`);
         const data = await response.json();
         if (data.success && data.purchases?.length > 0) {
-          // Find purchase matching this payment
           const matchingPurchase = data.purchases.find((p: any) =>
+            toIdString(p.paymentLink) === toIdString(payment._id)
+          ) || data.purchases.find((p: any) =>
             p.planName === payment.planName &&
-            p.durationDays === payment.durationDays
+            Number(p.durationDays || 0) === Number(payment.durationDays || 0)
           );
+
           if (matchingPurchase) {
             setClientPurchases(data.purchases);
             openExpectedDatesModal(matchingPurchase);
-          } else {
-            toast.error('No active purchase found for this payment. The purchase may have expired.');
+            return;
           }
-        } else {
-          toast.error('No active purchase found for this payment');
         }
+
+        toast.error('No purchase record found for this payment yet. Please sync payment status and try again.');
       } catch (error) {
         console.error('Error fetching purchases:', error);
         toast.error('Failed to load purchase details');
@@ -1158,8 +1167,7 @@ export default function PaymentsSection({
 
                           // Find the purchase for this payment - ONLY match by paymentLink ID to avoid confusion
                           const purchase = clientPurchases.find(pur =>
-                            pur.paymentLink?._id === p._id ||
-                            pur.paymentLink === p._id
+                            toIdString(pur.paymentLink) === toIdString(p._id)
                           );
                           if (purchase?.expectedStartDate) {
                             const startDate = new Date(purchase.expectedStartDate);
@@ -1173,6 +1181,19 @@ export default function PaymentsSection({
                               </div>
                             );
                           }
+
+                          if (canEditExpectedDates) {
+                            return (
+                              <button
+                                type="button"
+                                className="text-xs text-orange-600 hover:text-orange-700 hover:underline"
+                                onClick={() => openExpectedDatesModalForPayment(p)}
+                              >
+                                Not set
+                              </button>
+                            );
+                          }
+
                           return <span className="text-xs text-orange-500">Not set</span>;
                         })()}
                       </td>

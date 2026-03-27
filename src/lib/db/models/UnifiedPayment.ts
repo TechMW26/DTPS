@@ -939,6 +939,30 @@ unifiedPaymentSchema.statics.syncRazorpayPayment = async function (
       }
     }
 
+    // Always auto-hydrate expected dates for paid payments if they are missing.
+    if (
+      payment.paymentStatus === 'paid' ||
+      payment.status === 'paid' ||
+      payment.status === 'completed' ||
+      payment.status === 'active'
+    ) {
+      const inferredStart = payment.startDate || payment.paidAt || payment.purchaseDate;
+
+      if (!payment.expectedStartDate && inferredStart) {
+        payment.expectedStartDate = inferredStart;
+      }
+
+      if (!payment.expectedEndDate) {
+        if (payment.endDate) {
+          payment.expectedEndDate = payment.endDate;
+        } else if (inferredStart && payment.durationDays) {
+          const expectedEndDate = new Date(inferredStart);
+          expectedEndDate.setDate(expectedEndDate.getDate() + payment.durationDays);
+          payment.expectedEndDate = expectedEndDate;
+        }
+      }
+    }
+
     return payment.save();
   }
 
@@ -1009,7 +1033,9 @@ unifiedPaymentSchema.statics.syncRazorpayPayment = async function (
     // Dates
     ...(razorpayData.paidAt && { paidAt: razorpayData.paidAt }),
     ...(razorpayData.startDate && { startDate: razorpayData.startDate }),
-    ...(razorpayData.endDate && { endDate: razorpayData.endDate })
+    ...(razorpayData.endDate && { endDate: razorpayData.endDate }),
+    ...(razorpayData.expectedStartDate && { expectedStartDate: razorpayData.expectedStartDate }),
+    ...(razorpayData.expectedEndDate && { expectedEndDate: razorpayData.expectedEndDate })
   });
 
   return newPayment.save();
@@ -1069,6 +1095,30 @@ unifiedPaymentSchema.pre('save', async function (next) {
     // Set default duration label
     if (!this.durationLabel && this.durationDays) {
       this.durationLabel = `${this.durationDays} Days`;
+    }
+
+    // Safety net: for paid purchases, ensure expected dates always exist.
+    if (
+      this.paymentStatus === 'paid' ||
+      this.status === 'paid' ||
+      this.status === 'completed' ||
+      this.status === 'active'
+    ) {
+      const inferredStartDate = this.startDate || this.paidAt || this.purchaseDate;
+
+      if (!this.expectedStartDate && inferredStartDate) {
+        this.expectedStartDate = inferredStartDate;
+      }
+
+      if (!this.expectedEndDate) {
+        if (this.endDate) {
+          this.expectedEndDate = this.endDate;
+        } else if (inferredStartDate && this.durationDays) {
+          const expectedEndDate = new Date(inferredStartDate);
+          expectedEndDate.setDate(expectedEndDate.getDate() + this.durationDays);
+          this.expectedEndDate = expectedEndDate;
+        }
+      }
     }
 
     next();

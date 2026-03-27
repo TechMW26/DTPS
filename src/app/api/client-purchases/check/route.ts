@@ -14,9 +14,9 @@ import { computeClientStatus } from '@/lib/status/computeClientStatus';
 // Initialize Razorpay for syncing payment status
 const razorpay = process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
   ? new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
-    })
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  })
   : null;
 
 // Helper function to update client status based on payments + plans
@@ -111,7 +111,7 @@ async function createUnifiedPaymentFromLink(paymentLink: any): Promise<string | 
         daysUsed: 0
       }
     );
-    
+
     return unifiedPayment._id.toString();
   } catch (error) {
     console.error('Error creating UnifiedPayment record:', error);
@@ -123,24 +123,24 @@ async function createUnifiedPaymentFromLink(paymentLink: any): Promise<string | 
 async function syncPaymentLinkWithRazorpay(paymentLink: any): Promise<boolean> {
   if (!razorpay || !paymentLink.razorpayPaymentLinkId) return false;
   if (paymentLink.status === 'paid') return true;
-  
+
   try {
     const razorpayLink: any = await razorpay.paymentLink.fetch(paymentLink.razorpayPaymentLinkId);
-    
+
     if (razorpayLink.status === 'paid') {
       paymentLink.status = 'paid';
-      paymentLink.paidAt = razorpayLink.paid_at 
-        ? new Date(razorpayLink.paid_at * 1000) 
+      paymentLink.paidAt = razorpayLink.paid_at
+        ? new Date(razorpayLink.paid_at * 1000)
         : new Date();
-      
+
       if (razorpayLink.payments?.length > 0) {
         const latestPayment = razorpayLink.payments[razorpayLink.payments.length - 1];
         paymentLink.razorpayPaymentId = latestPayment.payment_id;
       }
-      
+
       await paymentLink.save();
       await createUnifiedPaymentFromLink(paymentLink);
-      
+
       return true;
     }
   } catch (error) {
@@ -149,11 +149,27 @@ async function syncPaymentLinkWithRazorpay(paymentLink: any): Promise<boolean> {
   return false;
 }
 
+function isPurchaseEligibleForPlanning(purchase: any, now: Date): boolean {
+  const remainingDays = Math.max(0, (purchase.durationDays || 0) - (purchase.daysUsed || 0));
+  if (remainingDays <= 0) return false;
+
+  // If expected end date exists, enforce date-window validation.
+  if (purchase.expectedEndDate) {
+    const expectedEnd = new Date(purchase.expectedEndDate);
+    expectedEnd.setHours(23, 59, 59, 999);
+    return expectedEnd >= now;
+  }
+
+  // If expected dates are not set yet, keep purchase eligible for planning
+  // as long as remaining allocation exists.
+  return true;
+}
+
 // GET - Check if client has active paid plan and can create meal plan
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -195,21 +211,27 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Find ALL client's active purchases (UnifiedPayment) that haven't expired
-    const allActivePurchases = await UnifiedPayment.find({
+    // Find ALL paid purchases for this client, then compute active eligibility in-memory
+    const allPaidPurchases = await UnifiedPayment.find({
       client: clientId,
-      status: { $in: ['paid', 'completed'] },
-      paymentStatus: 'paid',
-      endDate: { $gte: new Date() }
+      $or: [
+        { paymentStatus: 'paid' },
+        { status: { $in: ['paid', 'completed', 'active'] } }
+      ]
     })
-    .populate('servicePlan', 'name category')
-    .sort({ createdAt: 1 });
+      .populate('servicePlan', 'name category')
+      .sort({ createdAt: 1 });
+
+    const now = new Date();
+    const allActivePurchases = allPaidPurchases.filter((purchase: any) =>
+      isPurchaseEligibleForPlanning(purchase, now)
+    );
 
     // Find partially used purchase
-    const partiallyUsedPurchase = allActivePurchases.find(p => 
+    const partiallyUsedPurchase = allActivePurchases.find(p =>
       (p.daysUsed || 0) > 0 && (p.durationDays - (p.daysUsed || 0)) > 0
     ) || null;
-    
+
     // Find unstarted purchases
     const unstartedPurchases = allActivePurchases
       .filter(p => (p.daysUsed || 0) === 0 && (p.durationDays - (p.daysUsed || 0)) > 0)
@@ -225,7 +247,7 @@ export async function GET(request: NextRequest) {
     let activePurchase: any = partiallyUsedPurchase || (unstartedPurchases.length > 0 ? unstartedPurchases[0] : null);
 
     if (!activePurchase) {
-      activePurchase = allActivePurchases.find(p => 
+      activePurchase = allActivePurchases.find(p =>
         (p.durationDays - (p.daysUsed || 0)) > 0
       ) || null;
     }
@@ -250,13 +272,12 @@ export async function GET(request: NextRequest) {
 
       if (paidPaymentLink) {
         await createUnifiedPaymentFromLink(paidPaymentLink);
-        
+
         const existingPayment = await UnifiedPayment.findOne({
           paymentLink: paidPaymentLink._id
         }).populate('servicePlan', 'name category');
 
-        if (existingPayment && existingPayment.status === 'paid' && 
-            existingPayment.endDate && new Date(existingPayment.endDate) >= new Date()) {
+        if (existingPayment && isPurchaseEligibleForPlanning(existingPayment, now)) {
           activePurchase = existingPayment;
         }
       }
@@ -264,8 +285,8 @@ export async function GET(request: NextRequest) {
 
     if (!activePurchase) {
       const updatedClientStatus = await updateClientStatusBasedOnMealPlan(clientId);
-      
-      return NextResponse.json({ 
+
+      return NextResponse.json({
         success: true,
         hasPaidPlan: false,
         canCreateMealPlan: false,
@@ -302,7 +323,7 @@ export async function GET(request: NextRequest) {
 
     const updatedClientStatus = await updateClientStatusBasedOnMealPlan(clientId);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       hasPaidPlan: true,
       canCreateMealPlan: canCreate,
@@ -353,7 +374,7 @@ export async function GET(request: NextRequest) {
         parentPurchaseId: p.parentPaymentId || null,
         createdAt: p.createdAt
       })),
-      message: canCreate 
+      message: canCreate
         ? `Client has ${remainingDays} days remaining (${totalDaysUsed}/${totalPurchasedDays} days used) in their ${activePurchase.planName} plan.${purchasesNeedingPlan.length > 1 ? ` (${purchasesNeedingPlan.length} purchases need meal plans)` : ''}`
         : remainingDays === 0
           ? `All ${totalPurchasedDays} days have been used. Client needs to purchase a new plan.`

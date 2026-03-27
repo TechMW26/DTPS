@@ -9,6 +9,37 @@ import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { logHistoryServer } from '@/lib/server/history';
 import { logActivity } from '@/lib/utils/activityLogger';
 
+const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
+  if (!Array.isArray(meals) || meals.length === 0) return false;
+
+  return meals.some((day: any) => {
+    const dayMeals = day?.meals;
+    if (!dayMeals || typeof dayMeals !== 'object') return false;
+
+    return Object.values(dayMeals).some((meal: any) => {
+      if (!meal) return false;
+      const foodOptions = Array.isArray(meal.foodOptions) ? meal.foodOptions : [];
+      if (foodOptions.length === 0) return false;
+
+      return foodOptions.some((option: any) => {
+        if (!option) return false;
+
+        if (typeof option.food === 'string' && option.food.trim().length > 0) return true;
+
+        if (Array.isArray(option.foods)) {
+          return option.foods.some((f: any) =>
+            !!f &&
+            ((typeof f.food === 'string' && f.food.trim().length > 0) ||
+              (typeof f.name === 'string' && f.name.trim().length > 0))
+          );
+        }
+
+        return false;
+      });
+    });
+  });
+};
+
 // GET single meal plan by ID
 export async function GET(
   request: NextRequest,
@@ -102,6 +133,18 @@ export async function PUT(
 
     // Build update object — only include fields explicitly provided
     const updateData: Record<string, any> = {};
+    const resultingStatus = status !== undefined ? status : existingPlan.status;
+    const resultingMeals = Array.isArray(meals) ? meals : existingPlan.meals;
+
+    if (resultingStatus === 'active' && !hasPublishableMealData(resultingMeals)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Cannot publish plan without at least one meal slot containing food items'
+        },
+        { status: 400 }
+      );
+    }
 
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;

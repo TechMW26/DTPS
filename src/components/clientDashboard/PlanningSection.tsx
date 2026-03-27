@@ -144,6 +144,41 @@ const toCommaString = (val?: string | string[]): string => {
   return val;
 };
 
+// Robustly detect if at least one meal slot contains food data
+const hasMealContent = (meals: any[] | null | undefined): boolean => {
+  if (!Array.isArray(meals) || meals.length === 0) return false;
+
+  return meals.some((day: any) => {
+    const dayMeals = day?.meals;
+    if (!dayMeals || typeof dayMeals !== 'object') return false;
+
+    return Object.values(dayMeals).some((meal: any) => {
+      if (!meal) return false;
+
+      const foodOptions = Array.isArray(meal.foodOptions) ? meal.foodOptions : [];
+      if (foodOptions.length === 0) return false;
+
+      return foodOptions.some((option: any) => {
+        if (!option) return false;
+
+        // Primary single-food fields
+        if (typeof option.food === 'string' && option.food.trim().length > 0) return true;
+
+        // Multi-food stacked format
+        if (Array.isArray(option.foods)) {
+          return option.foods.some((f: any) =>
+            !!f &&
+            ((typeof f.food === 'string' && f.food.trim().length > 0) ||
+              (typeof f.name === 'string' && f.name.trim().length > 0))
+          );
+        }
+
+        return false;
+      });
+    });
+  });
+};
+
 export default function PlanningSection({ client, viewOnly = false, onRegisterReset }: PlanningSectionProps) {
   // Form states
   const [step, setStep] = useState<'list' | 'form' | 'meals' | 'view'>('list');
@@ -290,7 +325,33 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   }, [step]);
 
   // Use a ref for the latest save function to avoid stale closures in setInterval
-  const saveDraftRef = useRef<() => Promise<void>>();
+  const saveDraftRef = useRef<(() => Promise<void>) | undefined>(undefined);
+
+  // Resolve current meal payload from latest callback data, then fallback to loaded plan/template data
+  const resolveCurrentMealPayload = useCallback(() => {
+    if (latestMealDataRef.current?.meals?.length) {
+      return latestMealDataRef.current;
+    }
+
+    const fallbackMeals =
+      (editingPlan?.meals && Array.isArray(editingPlan.meals) && editingPlan.meals.length > 0
+        ? editingPlan.meals
+        : initialMeals) || [];
+
+    if (!Array.isArray(fallbackMeals) || fallbackMeals.length === 0) {
+      return null;
+    }
+
+    const fallbackMealTypes =
+      (editingPlan?.mealTypes && Array.isArray(editingPlan.mealTypes) && editingPlan.mealTypes.length > 0
+        ? editingPlan.mealTypes
+        : initialMealTypes) || DEFAULT_MEAL_TYPES_LIST;
+
+    return {
+      meals: fallbackMeals,
+      mealTypes: fallbackMealTypes
+    };
+  }, [editingPlan, initialMeals, initialMealTypes]);
 
   // Save draft to DB
   const saveDraftToDB = useCallback(async () => {
@@ -891,6 +952,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     try {
       setSaving(true);
 
+      if (!hasMealContent(mealsData)) {
+        toast.error('No meal data to publish. Add meals first.');
+        return;
+      }
+
       // Calculate proper dates for each day based on startDate
       const startDateObj = new Date(startDate);
       const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1179,6 +1245,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     setPrimaryGoal(plan.goals?.primaryGoal || 'health-improvement');
     setInitialMeals(planMeals);
     setInitialMealTypes(planMealTypes);
+    latestMealDataRef.current = { meals: planMeals, mealTypes: planMealTypes };
     setPlanKey(prev => prev + 1); // Force re-mount
     // If editing a draft, set draftPlanId so autosave works
     if (plan.status === 'draft') {
@@ -2862,10 +2929,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                 <Button
                   variant="outline"
                   onClick={() => {
+                    const currentMealPayload = resolveCurrentMealPayload();
+
                     if (isEditMode && editingPlan?.status !== 'draft') {
                       // Editing an active/published plan → update it
-                      if (!latestMealDataRef.current) { toast.error('No meal data to save.'); return; }
-                      const { meals, mealTypes } = latestMealDataRef.current;
+                      if (!currentMealPayload) { toast.error('No meal data to save.'); return; }
+                      const { meals, mealTypes } = currentMealPayload;
                       handleUpdatePlan(meals, mealTypes);
                     } else {
                       // New plan or editing a draft → save as draft
@@ -2881,11 +2950,14 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                 <Button
                   className="bg-green-600 hover:bg-green-700"
                   onClick={() => {
-                    if (!latestMealDataRef.current) {
+                    const currentMealPayload = resolveCurrentMealPayload();
+
+                    if (!currentMealPayload || !hasMealContent(currentMealPayload.meals)) {
                       toast.error('No meal data to publish. Add meals first.');
                       return;
                     }
-                    const { meals, mealTypes } = latestMealDataRef.current;
+
+                    const { meals, mealTypes } = currentMealPayload;
                     if (isEditMode && editingPlan?.status !== 'draft') {
                       // Editing an active/published plan → update it
                       handleUpdatePlan(meals, mealTypes);
