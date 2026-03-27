@@ -80,19 +80,15 @@ export async function GET(request: NextRequest) {
         }
         // Staff-to-staff communication is allowed
       } else if (sessionRole === 'client') {
-        // Client can only message their assigned staff
+        // Client can ONLY message their PRIMARY assigned dietitian
         const currentUser = await User.findById(session.user.id)
-          .select('assignedDietitian assignedDietitians assignedHealthCounselor')
+          .select('assignedDietitian')
           .lean();
 
-        const assignedIds = [
-          ...(currentUser as any)?.assignedDietitian ? [(currentUser as any).assignedDietitian.toString()] : [],
-          ...((currentUser as any)?.assignedDietitians?.map((d: any) => d.toString()) || []),
-          ...(currentUser as any)?.assignedHealthCounselor ? [(currentUser as any).assignedHealthCounselor.toString()] : []
-        ];
+        const primaryDietitian = (currentUser as any)?.assignedDietitian?.toString();
 
-        if (!assignedIds.includes(conversationWith)) {
-          return NextResponse.json({ error: 'You can only message your assigned staff' }, { status: 403 });
+        if (!primaryDietitian || primaryDietitian !== conversationWith) {
+          return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
         }
       }
       // Admin has no restrictions
@@ -219,19 +215,15 @@ export async function POST(request: NextRequest) {
         }
       }
     } else if (sessionRole === 'client') {
-      // Client can only message their assigned staff
+      // Client can ONLY message their PRIMARY assigned dietitian
       const currentUser = await User.findById(session.user.id)
-        .select('assignedDietitian assignedDietitians assignedHealthCounselor')
+        .select('assignedDietitian')
         .lean();
 
-      const assignedIds = [
-        ...(currentUser as any)?.assignedDietitian ? [(currentUser as any).assignedDietitian.toString()] : [],
-        ...((currentUser as any)?.assignedDietitians?.map((d: any) => d.toString()) || []),
-        ...(currentUser as any)?.assignedHealthCounselor ? [(currentUser as any).assignedHealthCounselor.toString()] : []
-      ];
+      const primaryDietitian = (currentUser as any)?.assignedDietitian?.toString();
 
-      if (!assignedIds.includes(validatedData.recipientId)) {
-        return NextResponse.json({ error: 'You can only message your assigned staff' }, { status: 403 });
+      if (!primaryDietitian || primaryDietitian !== validatedData.recipientId) {
+        return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
       }
     }
     // Admin has no restrictions

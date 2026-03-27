@@ -134,6 +134,21 @@ interface Client {
     firstName: string;
     lastName: string;
   };
+  assignedDietitians?: Array<{
+    _id: string;
+    firstName: string;
+    lastName: string;
+  }>;
+  assignedHealthCounselor?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+  };
+  assignedHealthCounselors?: Array<{
+    _id: string;
+    firstName: string;
+    lastName: string;
+  }>;
   createdBy?: {
     userId?: {
       _id: string;
@@ -463,6 +478,21 @@ export default function DieticianClientsPage() {
     }
   };
 
+  const getStaffLines = (staff?: Array<{ firstName: string; lastName: string }>) => {
+    if (!staff || staff.length === 0) return [];
+
+    const names = staff
+      .map((person) => `${person.firstName || ''} ${person.lastName || ''}`.trim())
+      .filter(Boolean);
+
+    const lines: string[] = [];
+    for (let i = 0; i < names.length; i += 3) {
+      lines.push(names.slice(i, i + 3).join(', '));
+    }
+
+    return lines;
+  };
+
   return (
     <DashboardLayout>
       <div className="p-6 space-y-4">
@@ -766,7 +796,8 @@ export default function DieticianClientsPage() {
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Plan Start</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Plan End</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Last Diet</TableHead>
-                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Assigned Dietitian</TableHead>
+                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3 min-w-65">Dietitians</TableHead>
+                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3 min-w-65">Health Counselors</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Created By</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Joined</TableHead>
                         {canAssign && (
@@ -777,7 +808,7 @@ export default function DieticianClientsPage() {
                     <TableBody>
                       {filteredClients.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={canAssign ? 14 : 13} className="text-center py-12 text-gray-500">
+                          <TableCell colSpan={canAssign ? 15 : 14} className="text-center py-12 text-gray-500">
                             No clients found
                           </TableCell>
                         </TableRow>
@@ -849,14 +880,67 @@ export default function DieticianClientsPage() {
                               {client.mealPlanEndDate ? formatDate(client.mealPlanEndDate) : (client.programEnd ? formatDate(client.programEnd) : '-')}
                             </TableCell>
                             <TableCell className="px-3 text-sm whitespace-nowrap">{client.lastDiet || '-'}</TableCell>
-                            <TableCell className="px-3 text-sm whitespace-nowrap">
-                              {client.assignedDietitian ? (
-                                <span className="text-blue-600 font-medium">
-                                  Dt. {client.assignedDietitian.firstName} {client.assignedDietitian.lastName}
-                                </span>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
+                            <TableCell className="px-3 text-sm min-w-65 align-top">
+                              <div className="space-y-0.5">
+                                {/* Primary Dietitian */}
+                                {client.assignedDietitian ? (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs bg-teal-600 text-white px-1 py-0.5 rounded font-medium">P</span>
+                                    <span className="text-blue-600 font-medium">
+                                      {client.assignedDietitian.firstName} {client.assignedDietitian.lastName}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">No primary</span>
+                                )}
+                                {/* Secondary Dietitians */}
+                                {(() => {
+                                  const secondaryDietitianLines = getStaffLines(client.assignedDietitians);
+                                  if (secondaryDietitianLines.length === 0) return null;
+
+                                  return (
+                                    <div className="flex items-start gap-1">
+                                      <span className="text-xs bg-teal-100 text-teal-700 px-1 py-0.5 rounded font-medium mt-0.5">S</span>
+                                      <div className="text-xs text-gray-600 leading-4">
+                                        {secondaryDietitianLines.map((line, idx) => (
+                                          <div key={`dt-line-${client._id}-${idx}`}>{line}</div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </TableCell>
+                            <TableCell className="px-3 text-sm min-w-65 align-top">
+                              <div className="space-y-0.5">
+                                {/* Primary Health Counselor */}
+                                {client.assignedHealthCounselor ? (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs bg-orange-600 text-white px-1 py-0.5 rounded font-medium">P</span>
+                                    <span className="text-orange-600 font-medium">
+                                      {client.assignedHealthCounselor.firstName} {client.assignedHealthCounselor.lastName}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">No primary</span>
+                                )}
+                                {/* Secondary Health Counselors */}
+                                {(() => {
+                                  const secondaryHealthCounselorLines = getStaffLines(client.assignedHealthCounselors);
+                                  if (secondaryHealthCounselorLines.length === 0) return null;
+
+                                  return (
+                                    <div className="flex items-start gap-1">
+                                      <span className="text-xs bg-orange-100 text-orange-700 px-1 py-0.5 rounded font-medium mt-0.5">S</span>
+                                      <div className="text-xs text-gray-600 leading-4">
+                                        {secondaryHealthCounselorLines.map((line, idx) => (
+                                          <div key={`hc-line-${client._id}-${idx}`}>{line}</div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
                             </TableCell>
                             <TableCell className="px-3 text-sm">
                               {client.createdBy?.role ? (

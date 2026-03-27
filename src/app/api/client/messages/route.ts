@@ -26,6 +26,19 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const page = parseInt(searchParams.get('page') || '1');
 
+    // Validate client can only chat with their primary dietitian
+    if (conversationWith) {
+      const currentUser = await User.findById(session.user.id)
+        .select('assignedDietitian')
+        .lean();
+
+      const primaryDietitian = (currentUser as any)?.assignedDietitian?.toString();
+
+      if (!primaryDietitian || primaryDietitian !== conversationWith) {
+        return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
+      }
+    }
+
     let query: any = {};
 
     if (conversationWith) {
@@ -116,6 +129,17 @@ export async function POST(request: NextRequest) {
         { error: 'Recipient ID and content are required' },
         { status: 400 }
       );
+    }
+
+    // Validate client can only message their primary dietitian
+    const currentUser = await User.findById(session.user.id)
+      .select('assignedDietitian')
+      .lean();
+
+    const primaryDietitian = (currentUser as any)?.assignedDietitian?.toString();
+
+    if (!primaryDietitian || primaryDietitian !== recipientId) {
+      return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
     }
 
     // Verify recipient exists

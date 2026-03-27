@@ -147,7 +147,8 @@ export async function GET(request: NextRequest) {
           { firstName: { $regex: search, $options: 'i' } },
           { lastName: { $regex: search, $options: 'i' } },
           { email: { $regex: search, $options: 'i' } },
-          { phone: { $regex: search, $options: 'i' } }
+          { phone: { $regex: search, $options: 'i' } },
+          { clientId: { $regex: search, $options: 'i' } }
         ]
       };
 

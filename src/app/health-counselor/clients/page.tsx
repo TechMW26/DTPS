@@ -91,6 +91,16 @@ interface Client {
     firstName: string;
     lastName: string;
   }>;
+  assignedHealthCounselor?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+  };
+  assignedHealthCounselors?: Array<{
+    _id: string;
+    firstName: string;
+    lastName: string;
+  }>;
   createdBy?: {
     userId?: {
       _id: string;
@@ -537,7 +547,8 @@ export default function HealthCounselorClientsPage() {
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Phone</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Email</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Created By</TableHead>
-                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Assigned Dietitian</TableHead>
+                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Dietitians</TableHead>
+                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Health Counselors</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Tags</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Status</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Start</TableHead>
@@ -552,7 +563,7 @@ export default function HealthCounselorClientsPage() {
                     <TableBody>
                       {clients.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={canAssign ? 14 : 13} className="text-center py-12 text-gray-500">
+                          <TableCell colSpan={canAssign ? 15 : 14} className="text-center py-12 text-gray-500">
                             No clients found
                           </TableCell>
                         </TableRow>
@@ -635,33 +646,56 @@ export default function HealthCounselorClientsPage() {
                               )}
                             </TableCell>
                             <TableCell className="px-3">
-                              {(() => {
-                                // Check singular first
-                                if (client.assignedDietitian?.firstName || client.assignedDietitian?.lastName) {
-                                  return (
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-sm font-medium text-gray-900">
-                                        Dt. {client.assignedDietitian.firstName} {client.assignedDietitian.lastName}
+                              <div className="space-y-0.5">
+                                {/* Primary Dietitian */}
+                                {client.assignedDietitian?.firstName || client.assignedDietitian?.lastName ? (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs bg-teal-600 text-white px-1 py-0.5 rounded font-medium">P</span>
+                                    <span className="text-sm font-medium text-gray-900">
+                                      {client.assignedDietitian.firstName} {client.assignedDietitian.lastName}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">No primary</span>
+                                )}
+                                {/* Secondary Dietitians */}
+                                {client.assignedDietitians && client.assignedDietitians.length > 0 && (
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-xs bg-teal-100 text-teal-700 px-1 py-0.5 rounded font-medium">S</span>
+                                    {client.assignedDietitians.filter(d => d?.firstName || d?.lastName).map((d, idx, arr) => (
+                                      <span key={d._id} className="text-xs text-gray-600">
+                                        {d.firstName} {d.lastName}{idx < arr.length - 1 ? ',' : ''}
                                       </span>
-                                    </div>
-                                  );
-                                }
-                                // Check plural array
-                                if (client.assignedDietitians && client.assignedDietitians.length > 0) {
-                                  const dietitians = client.assignedDietitians.filter(d => d?.firstName || d?.lastName);
-                                  if (dietitians.length > 0) {
-                                    return (
-                                      <div className="flex flex-col gap-1">
-                                        <span className="text-sm font-medium text-gray-900">
-                                          Dt. {dietitians[0].firstName} {dietitians[0].lastName}
-                                          {dietitians.length > 1 && <span className="text-xs text-gray-500"> +{dietitians.length - 1}</span>}
-                                        </span>
-                                      </div>
-                                    );
-                                  }
-                                }
-                                return <span className="text-sm text-gray-500">Not Assigned</span>;
-                              })()}
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="px-3">
+                              <div className="space-y-0.5">
+                                {/* Primary Health Counselor */}
+                                {client.assignedHealthCounselor?.firstName || client.assignedHealthCounselor?.lastName ? (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs bg-orange-600 text-white px-1 py-0.5 rounded font-medium">P</span>
+                                    <span className="text-sm font-medium text-gray-900">
+                                      {client.assignedHealthCounselor.firstName} {client.assignedHealthCounselor.lastName}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">No primary</span>
+                                )}
+                                {/* Secondary Health Counselors */}
+                                {client.assignedHealthCounselors && client.assignedHealthCounselors.length > 0 && (
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-xs bg-orange-100 text-orange-700 px-1 py-0.5 rounded font-medium">S</span>
+                                    {client.assignedHealthCounselors.filter(hc => hc?.firstName || hc?.lastName).map((hc, idx, arr) => (
+                                      <span key={hc._id} className="text-xs text-gray-600">
+                                        {hc.firstName} {hc.lastName}{idx < arr.length - 1 ? ',' : ''}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className="px-3">
                               {client.tags && client.tags.length > 0 ? (

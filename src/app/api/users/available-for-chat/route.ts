@@ -79,21 +79,16 @@ export async function GET(request: NextRequest) {
     };
 
     if (sessionRole === 'client') {
-      // Clients can ONLY chat with their assigned dietitians
+      // Clients can ONLY chat with their PRIMARY dietitian
       const currentUser = await User.findById(session.user.id)
-        .select('assignedDietitian assignedDietitians assignedHealthCounselor')
+        .select('assignedDietitian')
         .lean() as any;
-      
-      if (currentUser?.assignedDietitians && currentUser.assignedDietitians.length > 0) {
-        query.$or.push({ _id: { $in: currentUser.assignedDietitians } });
-      } else if (currentUser?.assignedDietitian) {
+
+      if (currentUser?.assignedDietitian) {
         query.$or.push({ _id: currentUser.assignedDietitian });
       }
-      if (currentUser?.assignedHealthCounselor) {
-        query.$or.push({ _id: currentUser.assignedHealthCounselor });
-      }
-      
-      // If no assigned staff, client cannot start new chats
+
+      // If no assigned primary dietitian, client cannot start new chats
       if (query.$or.length === 0) {
         return NextResponse.json({ users: [], total: 0 });
       }
@@ -139,66 +134,66 @@ export async function GET(request: NextRequest) {
     const users = await withCache(
       `users:available-for-chat:${JSON.stringify(query)}`,
       async () => await User.find(query)
-      .select('firstName lastName email avatar role assignedDietitian clientStatus')
-      .sort({ firstName: 1, lastName: 1 })
-      .limit(limit),
+        .select('firstName lastName email avatar role assignedDietitian clientStatus')
+        .sort({ firstName: 1, lastName: 1 })
+        .limit(limit),
       { ttl: 120000, tags: ['users'] }
     );
 
     // Get existing conversations to mark users we already have conversations with
     const existingConversations = await withCache(
       `users:available-for-chat:${JSON.stringify([
-      {
-        $match: {
-          $or: [
-            { sender: session.user.id },
-            { receiver: session.user.id }
-          ]
-        }
-      },
-      {
-        $addFields: {
-          conversationWith: {
-            $cond: {
-              if: { $eq: ['$sender', session.user.id] },
-              then: '$receiver',
-              else: '$sender'
+        {
+          $match: {
+            $or: [
+              { sender: session.user.id },
+              { receiver: session.user.id }
+            ]
+          }
+        },
+        {
+          $addFields: {
+            conversationWith: {
+              $cond: {
+                if: { $eq: ['$sender', session.user.id] },
+                then: '$receiver',
+                else: '$sender'
+              }
             }
           }
+        },
+        {
+          $group: {
+            _id: '$conversationWith'
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$conversationWith'
-        }
-      }
-    ])}`,
+      ])}`,
       async () => await Message.aggregate([
-      {
-        $match: {
-          $or: [
-            { sender: session.user.id },
-            { receiver: session.user.id }
-          ]
-        }
-      },
-      {
-        $addFields: {
-          conversationWith: {
-            $cond: {
-              if: { $eq: ['$sender', session.user.id] },
-              then: '$receiver',
-              else: '$sender'
+        {
+          $match: {
+            $or: [
+              { sender: session.user.id },
+              { receiver: session.user.id }
+            ]
+          }
+        },
+        {
+          $addFields: {
+            conversationWith: {
+              $cond: {
+                if: { $eq: ['$sender', session.user.id] },
+                then: '$receiver',
+                else: '$sender'
+              }
             }
           }
+        },
+        {
+          $group: {
+            _id: '$conversationWith'
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$conversationWith'
-        }
-      }
-    ]),
+      ]),
       { ttl: 120000, tags: ['users'] }
     );
 

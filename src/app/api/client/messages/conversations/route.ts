@@ -95,12 +95,12 @@ export async function GET(request: NextRequest) {
     // If no conversations exist, get assigned dietitian as potential conversation
     if (conversations.length === 0) {
       const client = await User.findById(session.user.id)
-        .select('assignedDietitian assignedDietitians')
-        .populate('assignedDietitian', 'firstName lastName avatar role')
-        .populate('assignedDietitians', 'firstName lastName avatar role');
+        .select('assignedDietitian')
+        .populate('assignedDietitian', 'firstName lastName avatar role');
 
       const dietitians: any[] = [];
-      
+
+      // Only show PRIMARY dietitian, not all assigned dietitians
       if (client?.assignedDietitian) {
         dietitians.push({
           _id: client.assignedDietitian._id,
@@ -114,25 +114,6 @@ export async function GET(request: NextRequest) {
           lastMessage: null,
           unreadCount: 0
         });
-      }
-
-      if (client?.assignedDietitians && Array.isArray(client.assignedDietitians)) {
-        for (const dietitian of client.assignedDietitians) {
-          if (!dietitians.find(d => d._id.toString() === dietitian._id.toString())) {
-            dietitians.push({
-              _id: dietitian._id,
-              user: {
-                _id: dietitian._id,
-                firstName: dietitian.firstName,
-                lastName: dietitian.lastName,
-                avatar: dietitian.avatar,
-                role: dietitian.role
-              },
-              lastMessage: null,
-              unreadCount: 0
-            });
-          }
-        }
       }
 
       return NextResponse.json({ conversations: dietitians });

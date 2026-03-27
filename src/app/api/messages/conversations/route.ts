@@ -118,50 +118,47 @@ export async function GET(request: NextRequest) {
     let currentUserAssignments: any = null;
     if (sessionRole === 'client') {
       currentUserAssignments = await User.findById(session.user.id)
-        .select('assignedDietitian assignedDietitians')
+        .select('assignedDietitian')
         .lean();
     }
 
     const conversationList = conversations.map((conv: any) => {
-        const user = userMap.get(conv._id.toString());
-        if (!user) {
-          return null;
-        }
-
-        // For clients, only show conversations with their assigned dietitians
-        if (sessionRole === 'client' && currentUserAssignments) {
-          const assignedIds = [
-            ...(currentUserAssignments?.assignedDietitian ? [currentUserAssignments.assignedDietitian.toString()] : []),
-            ...(currentUserAssignments?.assignedDietitians?.map((d: any) => d.toString()) || [])
-          ];
-          if (assignedIds.length > 0 && !assignedIds.includes(user._id.toString())) {
-            return null; // Skip conversations with non-assigned dietitians
-          }
-        }
-
-        // For dietitians/HC, only show conversations with their assigned clients
-        if (sessionRole === 'dietitian' || sessionRole === 'health_counselor') {
-          if (user.role === 'client') {
-            const isAssignedAsDietitian = 
-              user.assignedDietitian?.toString() === session.user.id ||
-              user.assignedDietitians?.some((d: any) => d.toString() === session.user.id);
-            const isAssignedAsHealthCounselor = user.assignedHealthCounselor?.toString() === session.user.id;
-            
-            if (!isAssignedAsDietitian && !isAssignedAsHealthCounselor) {
-              return null; // Skip conversations with non-assigned clients
-            }
-          }
-        }
-
-        return {
-          user: {
-            ...user,
-            _id: user._id.toString()
-          },
-          lastMessage: conv.lastMessage,
-          unreadCount: conv.unreadCount
-        };
+      const user = userMap.get(conv._id.toString());
+      if (!user) {
+        return null;
       }
+
+      // For clients, only show conversations with their PRIMARY assigned dietitian
+      if (sessionRole === 'client' && currentUserAssignments) {
+        const primaryDietitianId = (currentUserAssignments?.assignedDietitian)?.toString();
+        if (!primaryDietitianId || user._id.toString() !== primaryDietitianId) {
+          return null; // Skip conversations with anyone who is not the primary dietitian
+        }
+      }
+
+      // For dietitians/HC, only show conversations with their assigned clients
+      if (sessionRole === 'dietitian' || sessionRole === 'health_counselor') {
+        if (user.role === 'client') {
+          const isAssignedAsDietitian =
+            user.assignedDietitian?.toString() === session.user.id ||
+            user.assignedDietitians?.some((d: any) => d.toString() === session.user.id);
+          const isAssignedAsHealthCounselor = user.assignedHealthCounselor?.toString() === session.user.id;
+
+          if (!isAssignedAsDietitian && !isAssignedAsHealthCounselor) {
+            return null; // Skip conversations with non-assigned clients
+          }
+        }
+      }
+
+      return {
+        user: {
+          ...user,
+          _id: user._id.toString()
+        },
+        lastMessage: conv.lastMessage,
+        unreadCount: conv.unreadCount
+      };
+    }
     );
 
     // Filter out null entries (users not found or not assigned)

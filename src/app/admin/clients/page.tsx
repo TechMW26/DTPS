@@ -14,6 +14,7 @@ import { validateEmail } from "@/lib/validations/auth";
 
 interface Client {
   _id: string;
+  clientId?: string; // Sequential client ID (C-1, C-2, etc.)
   email: string;
   firstName: string;
   lastName: string;
@@ -26,12 +27,24 @@ interface Client {
     lastName: string;
     email: string;
   };
+  assignedDietitians?: Array<{
+    _id: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+  }>;
   assignedHealthCounselor?: string | {
     _id: string;
     firstName: string;
     lastName: string;
     email: string;
   };
+  assignedHealthCounselors?: Array<{
+    _id: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+  }>;
   status: string;
 }
 
@@ -298,8 +311,8 @@ export default function AdminClientsPage() {
                       <th className="text-left p-3">Email</th>
                       <th className="text-left p-3">Phone</th>
                       <th className="text-left p-3">Gender</th>
-                      <th className="text-left p-3">Assigned Dietitian</th>
-                      <th className="text-left p-3">Assigned Health Counselor</th>
+                      <th className="text-left p-3">Dietitians (Primary + Secondary)</th>
+                      <th className="text-left p-3">Health Counselors (Primary + Secondary)</th>
                       <th className="text-left p-3">Actions</th>
                     </tr>
                   </thead>
@@ -310,7 +323,7 @@ export default function AdminClientsPage() {
                           <div className="flex items-center gap-2">
                             <span>{u.firstName} {u.lastName}</span>
                             <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
-                              {getClientId(u._id)}
+                              {u.clientId || getClientId(u._id)}
                             </span>
                           </div>
                         </td>
@@ -318,48 +331,84 @@ export default function AdminClientsPage() {
                         <td className="p-3">{u.phone || '-'}</td>
                         <td className="p-3 capitalize">{u.gender || '-'}</td>
                         <td className="p-3">
-                          {u.assignedDietitian ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-900">
-                                {typeof u.assignedDietitian === 'string'
-                                  ? (dietitians.find(d => d._id === u.assignedDietitian)?.firstName + ' ' + (dietitians.find(d => d._id === u.assignedDietitian)?.lastName || ''))
-                                  : `${u.assignedDietitian.firstName} ${u.assignedDietitian.lastName}`
-                                }
-                              </span>
-                              <span className="text-xs bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded font-medium">
-                                {getDietitianId(typeof u.assignedDietitian === 'string' ? u.assignedDietitian : u.assignedDietitian._id)}
-                              </span>
-                              <Button variant="ghost" size="sm" onClick={() => openAssignDialog(u, 'dietitian')} className="h-6 px-2 text-xs">
-                                Change
+                          <div className="space-y-1">
+                            {/* Primary Dietitian */}
+                            {u.assignedDietitian ? (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs bg-teal-600 text-white px-1.5 py-0.5 rounded font-medium">Primary</span>
+                                <span className="text-sm font-medium text-gray-900">
+                                  {typeof u.assignedDietitian === 'string'
+                                    ? (dietitians.find(d => d._id === u.assignedDietitian)?.firstName + ' ' + (dietitians.find(d => d._id === u.assignedDietitian)?.lastName || ''))
+                                    : `${u.assignedDietitian.firstName} ${u.assignedDietitian.lastName}`
+                                  }
+                                </span>
+                                <span className="text-xs bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded font-medium">
+                                  {getDietitianId(typeof u.assignedDietitian === 'string' ? u.assignedDietitian : u.assignedDietitian._id)}
+                                </span>
+                                <Button variant="ghost" size="sm" onClick={() => openAssignDialog(u, 'dietitian')} className="h-6 px-2 text-xs">
+                                  Change
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button variant="outline" size="sm" onClick={() => openAssignDialog(u, 'dietitian')} className="h-7 px-3 text-xs">
+                                Assign Dietitian
                               </Button>
-                            </div>
-                          ) : (
-                            <Button variant="outline" size="sm" onClick={() => openAssignDialog(u, 'dietitian')} className="h-7 px-3 text-xs">
-                              Assign Dietitian
-                            </Button>
-                          )}
+                            )}
+                            {/* Secondary Dietitians */}
+                            {u.assignedDietitians && u.assignedDietitians.length > 0 && (
+                              <div className="flex items-center gap-2 flex-wrap ml-2">
+                                <span className="text-xs bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded font-medium">Secondary</span>
+                                {u.assignedDietitians.map((d) => (
+                                  <span key={d._id} className="text-sm text-gray-700">
+                                    {d.firstName} {d.lastName}
+                                    <span className="text-xs bg-gray-100 text-gray-600 px-1 py-0.5 rounded ml-1">
+                                      {getDietitianId(d._id)}
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3">
-                          {u.assignedHealthCounselor ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-900">
-                                {typeof u.assignedHealthCounselor === 'string'
-                                  ? (healthCounselors.find(hc => hc._id === u.assignedHealthCounselor)?.firstName + ' ' + (healthCounselors.find(hc => hc._id === u.assignedHealthCounselor)?.lastName || ''))
-                                  : `${u.assignedHealthCounselor.firstName} ${u.assignedHealthCounselor.lastName}`
-                                }
-                              </span>
-                              <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">
-                                {getHealthCounselorId(typeof u.assignedHealthCounselor === 'string' ? u.assignedHealthCounselor : u.assignedHealthCounselor._id)}
-                              </span>
-                              <Button variant="ghost" size="sm" onClick={() => openAssignDialog(u, 'healthCounselor')} className="h-6 px-2 text-xs">
-                                Change
+                          <div className="space-y-1">
+                            {/* Primary Health Counselor */}
+                            {u.assignedHealthCounselor ? (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs bg-orange-600 text-white px-1.5 py-0.5 rounded font-medium">Primary</span>
+                                <span className="text-sm font-medium text-gray-900">
+                                  {typeof u.assignedHealthCounselor === 'string'
+                                    ? (healthCounselors.find(hc => hc._id === u.assignedHealthCounselor)?.firstName + ' ' + (healthCounselors.find(hc => hc._id === u.assignedHealthCounselor)?.lastName || ''))
+                                    : `${u.assignedHealthCounselor.firstName} ${u.assignedHealthCounselor.lastName}`
+                                  }
+                                </span>
+                                <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">
+                                  {getHealthCounselorId(typeof u.assignedHealthCounselor === 'string' ? u.assignedHealthCounselor : u.assignedHealthCounselor._id)}
+                                </span>
+                                <Button variant="ghost" size="sm" onClick={() => openAssignDialog(u, 'healthCounselor')} className="h-6 px-2 text-xs">
+                                  Change
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button variant="outline" size="sm" onClick={() => openAssignDialog(u, 'healthCounselor')} className="h-7 px-3 text-xs">
+                                Assign HC
                               </Button>
-                            </div>
-                          ) : (
-                            <Button variant="outline" size="sm" onClick={() => openAssignDialog(u, 'healthCounselor')} className="h-7 px-3 text-xs">
-                              Assign HC
-                            </Button>
-                          )}
+                            )}
+                            {/* Secondary Health Counselors */}
+                            {u.assignedHealthCounselors && u.assignedHealthCounselors.length > 0 && (
+                              <div className="flex items-center gap-2 flex-wrap ml-2">
+                                <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">Secondary</span>
+                                {u.assignedHealthCounselors.map((hc) => (
+                                  <span key={hc._id} className="text-sm text-gray-700">
+                                    {hc.firstName} {hc.lastName}
+                                    <span className="text-xs bg-gray-100 text-gray-600 px-1 py-0.5 rounded ml-1">
+                                      {getHealthCounselorId(hc._id)}
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3 flex gap-2">
                           <Button variant="outline" size="sm" onClick={() => openEdit(u)}>Edit</Button>
