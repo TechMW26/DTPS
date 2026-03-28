@@ -9,7 +9,7 @@ import Stripe from 'stripe';
 import { logHistoryServer } from '@/lib/server/history';
 import { logActivity, logPaymentFailure } from '@/lib/utils/activityLogger';
 import { clearCacheByTag } from '@/lib/api/utils';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2025-08-27.basil',
@@ -180,12 +180,11 @@ export async function POST(request: NextRequest) {
 
     // Best-effort realtime notify involved users.
     try {
-      const sse = SSEManager.getInstance();
       const notifyUserIds = new Set<string>([
         String(payment.client),
         payment.dietitian ? String(payment.dietitian) : '',
       ].filter(Boolean));
-      sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+      socketManager.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
         paymentId: String(payment._id),
         status: payment.status,
         createdAt: payment.createdAt,
@@ -236,12 +235,11 @@ export async function PUT(request: NextRequest) {
 
     // Best-effort realtime notify involved users.
     try {
-      const sse = SSEManager.getInstance();
       const notifyUserIds = new Set<string>([
         payment.client ? String(payment.client) : '',
         payment.dietitian ? String(payment.dietitian) : '',
       ].filter(Boolean));
-      sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+      socketManager.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
         paymentId: String(payment._id),
         status: payment.status,
         paidAt: payment.paidAt,

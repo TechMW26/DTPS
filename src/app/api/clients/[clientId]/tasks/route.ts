@@ -6,7 +6,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/config';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 export async function GET(
   req: NextRequest,
@@ -128,7 +128,6 @@ export async function POST(
 
     // Real-time update for dashboards currently open
     try {
-      const sseManager = SSEManager.getInstance();
       const sessionUser = session.user as unknown as { id?: string; _id?: string };
       const creatorId = String(sessionUser?.id || sessionUser?._id || '');
       const payload = {
@@ -138,9 +137,9 @@ export async function POST(
       };
 
       if (creatorId) {
-        sseManager.sendToUser(creatorId, 'task_created', payload);
+        socketManager.sendToUser(creatorId, 'task_created', payload);
       }
-      sseManager.sendToUser(String(clientId), 'task_created', payload);
+      socketManager.sendToUser(String(clientId), 'task_created', payload);
     } catch (sseError) {
       console.error('Failed to send task SSE notification:', sseError);
       // Don't fail the request if SSE notification fails

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/db/connection";
 import User from "@/lib/db/models/User";
-import { SSEManager } from "@/lib/realtime/sse-manager";
+import { socketManager } from "@/lib/realtime/socket-manager";
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { getClientStatusInfo } from '@/lib/status/computeClientStatus';
 import { logActivity } from '@/lib/utils/activityLogger';
@@ -210,8 +210,7 @@ export async function PUT(request: Request) {
     // Send SSE update if BMI was recalculated
     if (isWeightOrHeightUpdated && user.bmi) {
       try {
-        const sseManager = SSEManager.getInstance();
-        sseManager.sendToUser(session.user.id, 'bmi_update', {
+        socketManager.sendToUser(session.user.id, 'bmi_update', {
           weightKg: user.weightKg || '',
           heightCm: user.heightCm || '',
           bmi: user.bmi || '',

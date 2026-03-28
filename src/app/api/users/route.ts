@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
 import { UserRole, ClientStatus } from '@/types';
-import { adminSSEManager } from '@/lib/realtime/admin-sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { computeClientStatus } from '@/lib/status/computeClientStatus';
@@ -433,7 +433,7 @@ export async function POST(request: NextRequest) {
         ]
       });
 
-      adminSSEManager.broadcastClientUpdate('client_added', {
+      socketManager.broadcastClientUpdate('client_added', {
         client: user.toObject(),
         stats: {
           total,

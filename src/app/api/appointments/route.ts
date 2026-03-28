@@ -10,7 +10,7 @@ import { syncAppointmentToCalendars } from '@/lib/services/googleCalendar';
 import { UserRole, AppointmentStatus, AppointmentActorRole } from '@/types';
 import { logHistoryServer } from '@/lib/server/history';
 import { logActivity, logApiError } from '@/lib/utils/activityLogger';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import mongoose from 'mongoose';
@@ -650,8 +650,7 @@ export async function POST(request: NextRequest) {
 
     // Send real-time notification to dietitian about new booking
     try {
-      const sseManager = SSEManager.getInstance();
-      sseManager.sendToUser(dietitianId, 'appointment_booked', {
+      socketManager.sendToUser(dietitianId, 'appointment_booked', {
         appointmentId: appointment._id,
         client: {
           _id: client._id,
@@ -667,7 +666,7 @@ export async function POST(request: NextRequest) {
 
       // Also notify the client if someone else booked for them
       if (session.user.id !== clientId) {
-        sseManager.sendToUser(clientId, 'appointment_booked', {
+        socketManager.sendToUser(clientId, 'appointment_booked', {
           appointmentId: appointment._id,
           dietitian: {
             _id: dietitian._id,

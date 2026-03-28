@@ -6,7 +6,7 @@ import User from '@/lib/db/models/User';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { UserRole } from '@/types';
 import { logActivity } from '@/lib/utils/activityLogger';
-import { adminSSEManager } from '@/lib/realtime/admin-sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
 
 // PATCH /api/admin/clients/[clientId]/assign - Assign/Add dietitian to client
@@ -326,7 +326,7 @@ export async function PATCH(
       ]
     });
 
-    adminSSEManager.broadcastClientUpdate('client_updated', {
+    socketManager.broadcastClientUpdate('client_updated', {
       client: updatedClient.toObject(),
       action: assignAction,
       stats: {

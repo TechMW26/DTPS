@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import Message from '@/lib/db/models/Message';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 // PUT /api/messages/[messageId]/status - Update message status
 export async function PUT(
@@ -54,8 +54,7 @@ export async function PUT(
      .populate('receiver', 'firstName lastName avatar');
 
     // Send real-time notification to sender
-    const sseManager = SSEManager.getInstance();
-    sseManager.sendToUser(message.sender.toString(), 'message_status_update', {
+    socketManager.sendToUser(message.sender.toString(), 'message_status_update', {
       messageId,
       status,
       timestamp: Date.now()
@@ -108,8 +107,7 @@ export async function PATCH(request: NextRequest) {
     );
 
     // Send real-time notification to sender
-    const sseManager = SSEManager.getInstance();
-    sseManager.sendToUser(conversationWith, 'conversation_read', {
+    socketManager.sendToUser(conversationWith, 'conversation_read', {
       readBy: session.user.id,
       timestamp: Date.now(),
       count: result.modifiedCount

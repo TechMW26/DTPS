@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_NO_WARNINGS=1 next dev",
+    "dev": "NODE_NO_WARNINGS=1 node server.js",
     "build": "next build",
-    "start": "NODE_NO_WARNINGS=1 next start",
+    "start": "NODE_NO_WARNINGS=1 node server.js",
     "lint": "eslint",
-    "export": "next build && next export"
+    "export": "next build && next export",
+    "test": "jest",
+    "test:socket": "jest tests/integration/socket --coverage",
+    "test:socket:ci": "jest tests/integration/socket --coverage --ci"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.10.0",
@@ -80,6 +83,7 @@
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/html2canvas": "^0.5.35",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/nodemailer": "^7.0.4",
     "@types/react": "^19",
@@ -88,6 +92,9 @@
     "@types/xlsx": "^0.0.35",
     "eslint": "^9",
     "eslint-config-next": "15.5.0",
+    "jest": "^30.3.0",
+    "jest-junit": "^16.0.0",
+    "mongodb-memory-server": "^11.0.1",
     "tailwindcss": "^4",
     "typescript": "5.9.3"
   },

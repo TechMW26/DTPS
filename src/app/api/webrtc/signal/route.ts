@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 // POST /api/webrtc/signal - Handle WebRTC signaling
 export async function POST(request: NextRequest) {
@@ -61,7 +61,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Get SSE manager instance
-    const sseManager = SSEManager.getInstance();
 
     // Route the signal to the appropriate recipient
     switch (type) {
@@ -69,7 +68,7 @@ export async function POST(request: NextRequest) {
       case 'video':
       case 'call-offer': // Support legacy call-offer type
         // Incoming call offer
-        sseManager.sendToUser(actualReceiverId, 'incoming_call', {
+        socketManager.sendToUser(actualReceiverId, 'incoming_call', {
           callId,
           callerId: session.user.id,
           callerName: `${session.user.firstName} ${session.user.lastName}`,
@@ -82,7 +81,7 @@ export async function POST(request: NextRequest) {
 
       case 'call_accepted':
         // Call was accepted
-        sseManager.sendToUser(callerId, 'call_accepted', {
+        socketManager.sendToUser(callerId, 'call_accepted', {
           callId,
           acceptedBy: session.user.id,
           answer,
@@ -92,7 +91,7 @@ export async function POST(request: NextRequest) {
 
       case 'call_rejected':
         // Call was rejected
-        sseManager.sendToUser(callerId, 'call_rejected', {
+        socketManager.sendToUser(callerId, 'call_rejected', {
           callId,
           rejectedBy: session.user.id,
           timestamp: Date.now()
@@ -102,7 +101,7 @@ export async function POST(request: NextRequest) {
       case 'call_ended':
         // Call was ended
         const targetUserId = callerId === session.user.id ? actualReceiverId : callerId;
-        sseManager.sendToUser(targetUserId, 'call_ended', {
+        socketManager.sendToUser(targetUserId, 'call_ended', {
           callId,
           endedBy: session.user.id,
           timestamp: Date.now()
@@ -112,7 +111,7 @@ export async function POST(request: NextRequest) {
       case 'ice_candidate':
         // ICE candidate exchange
         const targetForIce = callerId === session.user.id ? actualReceiverId : callerId;
-        sseManager.sendToUser(targetForIce, 'ice_candidate', {
+        socketManager.sendToUser(targetForIce, 'ice_candidate', {
           callId,
           iceCandidate,
           from: session.user.id,
@@ -121,7 +120,7 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'missed_call':
-        sseManager.sendToUser(actualReceiverId, 'missed_call', {
+        socketManager.sendToUser(actualReceiverId, 'missed_call', {
           callId,
           fromUserId: session.user.id,
           fromName: `${session.user.firstName ?? ''} ${session.user.lastName ?? ''}`.trim() || undefined,

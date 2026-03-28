@@ -4,8 +4,8 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import Message from '@/lib/db/models/Message';
 import { Notification } from '@/lib/db/models';
-import { SSEManager } from '@/lib/realtime/sse-manager';
-import { broadcastUnreadCounts } from '../../client/unread-counts/stream/route';
+import { socketManager } from '@/lib/realtime/socket-manager';
+import { broadcastUnreadCounts } from '@/lib/realtime/broadcast-counts';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // PUT /api/messages/status - Update message status
@@ -23,10 +23,10 @@ export async function PUT(request: NextRequest) {
     if (messageId) {
       // Update specific message status
       const message = await withCache(
-      `messages:status:${JSON.stringify(messageId)}`,
-      async () => await Message.findById(messageId),
-      { ttl: 30000, tags: ['messages'] }
-    );
+        `messages:status:${JSON.stringify(messageId)}`,
+        async () => await Message.findById(messageId),
+        { ttl: 30000, tags: ['messages'] }
+      );
       if (!message) {
         return NextResponse.json({ error: 'Message not found' }, { status: 404 });
       }
@@ -52,8 +52,7 @@ export async function PUT(request: NextRequest) {
       }
 
       // Send real-time notification to sender
-      const sseManager = SSEManager.getInstance();
-      sseManager.sendToUser(message.sender.toString(), 'message_status_update', {
+      socketManager.sendToUser(message.sender.toString(), 'message_status_update', {
         messageId: message._id,
         status: updatedMessage.status,
         timestamp: Date.now()
@@ -69,8 +68,7 @@ export async function PUT(request: NextRequest) {
       );
 
       // Send real-time notification to sender
-      const sseManager = SSEManager.getInstance();
-      sseManager.sendToUser(conversationWith, 'conversation_read', {
+      socketManager.sendToUser(conversationWith, 'conversation_read', {
         readBy: session.user.id,
         timestamp: Date.now(),
         messagesCount: result.modifiedCount
@@ -81,20 +79,20 @@ export async function PUT(request: NextRequest) {
         Notification.countDocuments({ userId: session.user.id, read: false }),
         Message.countDocuments({ receiver: session.user.id, isRead: false })
       ]);
-      
+
       broadcastUnreadCounts(session.user.id, {
         notifications: notificationCount,
         messages: messageCount
       });
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: 'Conversation marked as read',
         updatedCount: result.modifiedCount
       });
 
     } else {
-      return NextResponse.json({ 
-        error: 'Either messageId or conversationWith is required' 
+      return NextResponse.json({
+        error: 'Either messageId or conversationWith is required'
       }, { status: 400 });
     }
 
@@ -119,8 +117,8 @@ export async function GET(request: NextRequest) {
     const conversationWith = searchParams.get('conversationWith');
 
     if (!conversationWith) {
-      return NextResponse.json({ 
-        error: 'conversationWith parameter is required' 
+      return NextResponse.json({
+        error: 'conversationWith parameter is required'
       }, { status: 400 });
     }
 
@@ -129,37 +127,37 @@ export async function GET(request: NextRequest) {
     // Get delivery status for messages in conversation
     const statusCounts = await withCache(
       `messages:status:${JSON.stringify([
-      {
-        $match: {
-          $or: [
-            { sender: session.user.id, receiver: conversationWith },
-            { sender: conversationWith, receiver: session.user.id }
-          ]
+        {
+          $match: {
+            $or: [
+              { sender: session.user.id, receiver: conversationWith },
+              { sender: conversationWith, receiver: session.user.id }
+            ]
+          }
+        },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 }
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
-      }
-    ])}`,
+      ])}`,
       async () => await Message.aggregate([
-      {
-        $match: {
-          $or: [
-            { sender: session.user.id, receiver: conversationWith },
-            { sender: conversationWith, receiver: session.user.id }
-          ]
+        {
+          $match: {
+            $or: [
+              { sender: session.user.id, receiver: conversationWith },
+              { sender: conversationWith, receiver: session.user.id }
+            ]
+          }
+        },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 }
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
-      }
-    ]),
+      ]),
       { ttl: 30000, tags: ['messages'] }
     );
 
@@ -173,15 +171,15 @@ export async function GET(request: NextRequest) {
     // Get last seen timestamps
     const lastReadMessage = await withCache(
       `messages:status:${JSON.stringify({
-      sender: conversationWith,
-      receiver: session.user.id,
-      isRead: true
-    })}`,
+        sender: conversationWith,
+        receiver: session.user.id,
+        isRead: true
+      })}`,
       async () => await Message.findOne({
-      sender: conversationWith,
-      receiver: session.user.id,
-      isRead: true
-    }).sort({ readAt: -1 }),
+        sender: conversationWith,
+        receiver: session.user.id,
+        isRead: true
+      }).sort({ readAt: -1 }),
       { ttl: 30000, tags: ['messages'] }
     );
 

@@ -9,7 +9,6 @@ import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { PaymentStatus, PaymentType, UserRole } from '@/types';
 import { computeClientStatus } from '@/lib/status/computeClientStatus';
 //
-import { SSEManager } from '@/lib/realtime/sse-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
 import { emitPaymentUpdate, emitPaymentLinkUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';

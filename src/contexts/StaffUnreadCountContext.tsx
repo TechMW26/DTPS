@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { useSession } from 'next-auth/react';
+import { socketClient } from '@/lib/realtime/socket-client';
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 
 interface UnreadCounts {
   messages: number;
@@ -19,139 +21,62 @@ interface StaffUnreadCountProviderProps {
   children: ReactNode;
 }
 
-// Exponential backoff configuration
-const INITIAL_DELAY = 1000;
-const MAX_DELAY = 30000;
-const MAX_RETRIES = 10;
-const BACKOFF_MULTIPLIER = 2;
-
-function calculateBackoff(attempt: number): number {
-  const delay = INITIAL_DELAY * Math.pow(BACKOFF_MULTIPLIER, attempt);
-  const jitter = Math.random() * 0.3 * delay;
-  return Math.min(delay + jitter, MAX_DELAY);
-}
-
 export function StaffUnreadCountProvider({ children }: StaffUnreadCountProviderProps) {
   const { data: session, status } = useSession();
   const [counts, setCounts] = useState<UnreadCounts>({ messages: 0 });
   const [isConnected, setIsConnected] = useState(false);
-  const reconnectAttemptsRef = useRef(0);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isConnectingRef = useRef(false);
+  const unsubRef = useRef<(() => void) | null>(null);
 
   const role = session?.user?.role;
   const isStaffRole = role === 'admin' || role === 'dietitian' || role === 'health_counselor';
 
-  // Connect to SSE stream for unread counts with resilient reconnection
+  // Subscribe to Socket.io staff unread-count events
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user || !isStaffRole) {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
+      unsubRef.current?.();
+      unsubRef.current = null;
       setIsConnected(false);
       return;
     }
 
-    const connect = () => {
-      if (isConnectingRef.current) return;
-      isConnectingRef.current = true;
+    // Clean up previous listener
+    unsubRef.current?.();
 
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
+    const unsub = socketClient.on(SOCKET_EVENTS.STAFF_UNREAD_COUNTS, (data: any) => {
+      setCounts({
+        messages: data.messages || 0,
+      });
+    });
 
-      // Clean up existing connection
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
+    unsubRef.current = unsub;
 
-      const es = new EventSource('/api/staff/unread-counts/stream');
-      eventSourceRef.current = es;
+    // Track socket connection state
+    const unsubConnect = socketClient.on('connect', () => setIsConnected(true));
+    const unsubDisconnect = socketClient.on('disconnect', () => setIsConnected(false));
+    setIsConnected(socketClient.connected);
 
-      es.onopen = () => {
-        console.log('[StaffUnreadCountProvider] SSE connected');
-        setIsConnected(true);
-        reconnectAttemptsRef.current = 0; // Reset on successful connection
-        isConnectingRef.current = false;
-      };
-
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setCounts({
-            messages: data.messages || 0
-          });
-        } catch (error) {
-          // Ignore heartbeat or malformed messages
-        }
-      };
-
-      es.onerror = () => {
-        isConnectingRef.current = false;
-        setIsConnected(false);
-        es.close();
-        eventSourceRef.current = null;
-
-        // Do not reconnect if browser is offline; wait for online event
-        if (!navigator.onLine) {
-          return;
-        }
-
-        // Implement exponential backoff for reconnection
-        if (reconnectAttemptsRef.current < MAX_RETRIES) {
-          const delay = calculateBackoff(reconnectAttemptsRef.current);
-          console.log(`[StaffUnreadCountProvider] Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttemptsRef.current + 1}/${MAX_RETRIES})`);
-
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectAttemptsRef.current++;
-            connect();
-          }, delay);
-        } else {
-          console.warn('[StaffUnreadCountProvider] Max retries exceeded, stopping reconnection');
-        }
-      };
-    };
-
-    connect();
-
-    // Handle visibility change - reconnect when tab becomes visible
+    // Handle visibility change — refresh counts when tab becomes visible
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && !eventSourceRef.current) {
-        console.log('[StaffUnreadCountProvider] Tab visible, reconnecting...');
-        reconnectAttemptsRef.current = 0;
-        connect();
+      if (document.visibilityState === 'visible') {
+        refreshCounts();
       }
     };
 
-    // Handle online event - reconnect when network is restored
+    // Handle online event — refresh counts when network is restored
     const handleOnline = () => {
-      console.log('[StaffUnreadCountProvider] Network online, reconnecting...');
-      reconnectAttemptsRef.current = 0;
-      connect();
+      refreshCounts();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleOnline);
 
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      unsub();
+      unsubConnect();
+      unsubDisconnect();
+      unsubRef.current = null;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
-      isConnectingRef.current = false;
       setIsConnected(false);
     };
   }, [status, session?.user?.id, isStaffRole]);

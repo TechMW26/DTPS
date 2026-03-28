@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // BMI Calculation Helper
@@ -142,8 +142,7 @@ export async function PUT(request: NextRequest) {
     
     // Send SSE update to the user for real-time BMI display
     try {
-      const sseManager = SSEManager.getInstance();
-      sseManager.sendToUser(session.user.id, 'bmi_update', {
+      socketManager.sendToUser(session.user.id, 'bmi_update', {
         ...responseData,
         timestamp: Date.now()
       });

@@ -7,7 +7,6 @@ import { PaymentStatus, PaymentType } from '@/types';
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { clearCacheByTag } from '@/lib/api/utils';
-import { SSEManager } from '@/lib/realtime/sse-manager';
 import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
 import { emitPaymentUpdate, emitPaymentLinkUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';
 

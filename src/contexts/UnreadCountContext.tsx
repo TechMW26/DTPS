@@ -1,7 +1,9 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { useSession } from 'next-auth/react';
+import { socketClient } from '@/lib/realtime/socket-client';
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 
 interface UnreadCounts {
   notifications: number;
@@ -24,75 +26,36 @@ export function UnreadCountProvider({ children }: UnreadCountProviderProps) {
   const { data: session, status } = useSession();
   const [counts, setCounts] = useState<UnreadCounts>({ notifications: 0, messages: 0 });
   const [isConnected, setIsConnected] = useState(false);
-  const [eventSource, setEventSource] = useState<EventSource | null>(null);
+  const unsubRef = useRef<(() => void) | null>(null);
 
-  // Connect to SSE stream
+  // Subscribe to Socket.io unread-count events
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user) {
       return;
     }
 
-    let es: EventSource | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 5;
+    // Clean up previous listener
+    unsubRef.current?.();
 
-    const connect = () => {
-      if (es) {
-        es.close();
-      }
+    const unsub = socketClient.on(SOCKET_EVENTS.UNREAD_COUNTS, (data: any) => {
+      setCounts({
+        notifications: data.notifications || 0,
+        messages: data.messages || 0,
+      });
+    });
 
-      es = new EventSource('/api/client/unread-counts/stream');
-      setEventSource(es);
+    unsubRef.current = unsub;
 
-      es.onopen = () => {
-        console.log('[UnreadCountProvider] SSE connected');
-        setIsConnected(true);
-        reconnectAttempts = 0;
-      };
-
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[UnreadCountProvider] Received SSE update:', data);
-          setCounts({
-            notifications: data.notifications || 0,
-            messages: data.messages || 0
-          });
-        } catch (error) {
-          console.error('[UnreadCountProvider] Error parsing SSE data:', error);
-        }
-      };
-
-      es.onerror = () => {
-        // SSE errors are common during development/reconnects - don't log as error
-        // Just silently attempt reconnection
-        setIsConnected(false);
-        es?.close();
-
-        // Reconnect with exponential backoff
-        if (reconnectAttempts < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-          reconnectTimeout = setTimeout(() => {
-            reconnectAttempts++;
-            connect();
-          }, delay);
-        } else {
-          console.log('[UnreadCountProvider] Max reconnect attempts reached, using polling fallback');
-        }
-      };
-    };
-
-    connect();
+    // Track socket connection state
+    const unsubConnect = socketClient.on('connect', () => setIsConnected(true));
+    const unsubDisconnect = socketClient.on('disconnect', () => setIsConnected(false));
+    setIsConnected(socketClient.connected);
 
     return () => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-      if (es) {
-        es.close();
-      }
-      setEventSource(null);
+      unsub();
+      unsubConnect();
+      unsubDisconnect();
+      unsubRef.current = null;
       setIsConnected(false);
     };
   }, [status, session?.user]);
@@ -101,7 +64,7 @@ export function UnreadCountProvider({ children }: UnreadCountProviderProps) {
   const refreshCounts = useCallback(async () => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       const response = await fetch('/api/client/unread-counts/refresh', {
         method: 'POST',
@@ -123,7 +86,6 @@ export function UnreadCountProvider({ children }: UnreadCountProviderProps) {
         console.warn('[UnreadCountProvider] API returned non-ok status:', response.status);
       }
     } catch (error) {
-      // More specific error handling
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
           console.warn('[UnreadCountProvider] Refresh request timeout');
@@ -136,10 +98,9 @@ export function UnreadCountProvider({ children }: UnreadCountProviderProps) {
     }
   }, []);
 
-  // Initial fetch when SSE is not connected yet
+  // Initial fetch when socket is not connected yet
   useEffect(() => {
     if (status === 'authenticated' && !isConnected) {
-      // Fetch initial counts
       refreshCounts();
     }
   }, [status, isConnected, refreshCounts]);

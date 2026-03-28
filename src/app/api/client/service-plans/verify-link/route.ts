@@ -7,7 +7,7 @@ import PaymentLink from '@/lib/db/models/PaymentLink';
 ///
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
 ///
@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
 
         try {
           const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-          const sse = SSEManager.getInstance();
           const notifyUserIds = new Set<string>([
             ...admins.map(a => String(a._id)),
             session.user.id,
@@ -63,7 +62,7 @@ export async function POST(request: NextRequest) {
           if (existingPayment.dietitian) {
             notifyUserIds.add(String(existingPayment.dietitian));
           }
-          sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+          socketManager.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
             paymentId: String(existingPayment._id),
             status: 'paid',
             paidAt: new Date().toISOString(),
@@ -145,13 +144,12 @@ export async function POST(request: NextRequest) {
 
       try {
         const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-        const sse = SSEManager.getInstance();
         const notifyUserIds = new Set<string>([
           ...admins.map(a => String(a._id)),
           session.user.id,
           String(paymentLink.dietitian),
         ]);
-        sse.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
+        socketManager.sendToUsers(Array.from(notifyUserIds), 'payment_updated', {
           paymentId: unifiedPayment ? String(unifiedPayment._id) : '',
           paymentLinkId: String(paymentLink._id),
           status: 'paid',

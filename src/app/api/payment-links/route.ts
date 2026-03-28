@@ -10,7 +10,7 @@ import Razorpay from 'razorpay';
 import { getPaymentCallbackUrl } from '@/lib/config';
 import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 // Helper function to sanitize phone number for Razorpay (must be 8-14 chars)
 function sanitizePhoneForRazorpay(phone: string | undefined | null): string | undefined {
@@ -357,7 +357,6 @@ export async function POST(request: NextRequest) {
       const adminUsers = await User.find({ role: UserRole.ADMIN }).select('_id');
       const adminIds = adminUsers.map((u: any) => u._id.toString());
 
-      const sseManager = SSEManager.getInstance();
       const recipientIds = Array.from(
         new Set([
           ...adminIds,
@@ -367,7 +366,7 @@ export async function POST(request: NextRequest) {
       );
 
       for (const recipientId of recipientIds) {
-        sseManager.sendToUser(recipientId, 'payment_link_updated', {
+        socketManager.sendToUser(recipientId, 'payment_link_updated', {
           action: 'created',
           id: paymentLink._id.toString(),
           clientId: validatedData.clientId,
@@ -482,7 +481,6 @@ export async function DELETE(request: NextRequest) {
       const adminUsers = await User.find({ role: UserRole.ADMIN }).select('_id');
       const adminIds = adminUsers.map((u: any) => u._id.toString());
 
-      const sseManager = SSEManager.getInstance();
       const recipientIds = Array.from(
         new Set([
           ...adminIds,
@@ -492,7 +490,7 @@ export async function DELETE(request: NextRequest) {
       );
 
       for (const recipientId of recipientIds) {
-        sseManager.sendToUser(recipientId, 'payment_link_updated', {
+        socketManager.sendToUser(recipientId, 'payment_link_updated', {
           action: 'cancelled',
           id: paymentLink._id.toString(),
         });

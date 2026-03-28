@@ -8,7 +8,7 @@ import { updateCalendarEvent } from '@/lib/services/googleCalendar';
 import { UserRole, AppointmentStatus, AppointmentActorRole } from '@/types';
 import { logHistoryServer } from '@/lib/server/history';
 import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { sendAppointmentRescheduleEmail, AppointmentEmailData } from '@/lib/services/appointmentEmail';
 import { updateMeetingLink } from '@/lib/services/meetingLink';
@@ -260,7 +260,6 @@ export async function POST(
         timeZone: 'Asia/Kolkata'
       });
 
-      const sseManager = SSEManager.getInstance();
       const dietitianIdStr = dietitianData?._id?.toString() || dietitianId;
       const clientIdStr = clientData?._id?.toString() || clientId;
 
@@ -278,7 +277,7 @@ export async function POST(
           clickAction: `/user/appointments`,
         });
 
-        sseManager.sendToUser(clientIdStr, 'appointment_rescheduled', {
+        socketManager.sendToUser(clientIdStr, 'appointment_rescheduled', {
           appointmentId: appointment._id,
           rescheduledBy: actorRole,
           rescheduledByLabel,
@@ -304,7 +303,7 @@ export async function POST(
           clickAction: `/appointments`,
         });
 
-        sseManager.sendToUser(dietitianIdStr, 'appointment_rescheduled', {
+        socketManager.sendToUser(dietitianIdStr, 'appointment_rescheduled', {
           appointmentId: appointment._id,
           rescheduledBy: actorRole,
           rescheduledByLabel,

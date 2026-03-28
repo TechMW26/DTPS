@@ -6,8 +6,8 @@ import Message from '@/lib/db/models/Message';
 import User from '@/lib/db/models/User';
 import { Notification } from '@/lib/db/models';
 import mongoose from 'mongoose';
-import { broadcastUnreadCounts } from '../unread-counts/stream/route';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { broadcastUnreadCounts } from '@/lib/realtime/broadcast-counts';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { sendNewMessageNotification } from '@/lib/notifications/notificationService';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
         { isRead: true, readAt: new Date() }
       );
 
-      // Broadcast SSE update for unread counts
+      // Broadcast socket update for unread counts
       const [notificationCount, messageCount] = await Promise.all([
         Notification.countDocuments({ userId: session.user.id, read: false }),
         Message.countDocuments({ receiver: session.user.id, isRead: false })
@@ -172,20 +172,19 @@ export async function POST(request: NextRequest) {
     await message.populate('sender', 'firstName lastName avatar role');
     await message.populate('receiver', 'firstName lastName avatar role');
 
-    // Send real-time notification to BOTH sender and recipient via SSE
-    const sseManager = SSEManager.getInstance();
+    // Send real-time notification to BOTH sender and recipient via Socket.io
     const msgJson = message.toJSON();
     const ts = Date.now();
 
     // Send to recipient — from their perspective the conversation is with the sender
-    sseManager.sendToUser(recipientId, 'new_message', {
+    socketManager.sendToUser(recipientId, 'new_message', {
       message: msgJson,
       conversationWith: session.user.id,
       timestamp: ts
     });
 
     // Send to sender — from their perspective the conversation is with the recipient
-    sseManager.sendToUser(session.user.id, 'new_message', {
+    socketManager.sendToUser(session.user.id, 'new_message', {
       message: msgJson,
       conversationWith: recipientId,
       timestamp: ts
@@ -209,7 +208,7 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send push notification:', notifError);
     }
 
-    // Broadcast SSE update for recipient's unread counts
+    // Broadcast socket update for recipient's unread counts
     const recipientMessageCount = await Message.countDocuments({ receiver: recipientId, isRead: false });
     const recipientNotificationCount = await Notification.countDocuments({ userId: recipientId, read: false });
     broadcastUnreadCounts(recipientId, {
@@ -232,7 +231,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Helper function to get conversations list (not exported as route handler)
-async function getConversations(userId: string) {
+export async function getConversations(userId: string) {
   const conversations = await withCache(
     `client:messages:${JSON.stringify([
       {

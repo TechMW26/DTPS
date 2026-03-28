@@ -17,17 +17,12 @@ export { stableApi, StableApiError, type StableApiOptions } from './api-client';
 export { versionManager, type VersionInfo } from './version-sync';
 export { sessionKeepAlive, type SessionKeepAliveOptions } from './session-keepalive';
 export { draftManager, type DraftData } from './draft-manager';
-export { 
-  getCacheControlHeaders, 
-  getNoCacheHeaders, 
+export {
+  getCacheControlHeaders,
+  getNoCacheHeaders,
   getStaticCacheHeaders,
   createApiResponse,
   createErrorResponse,
-  type CacheStrategy 
+  type CacheStrategy
 } from './cache-control';
-export { 
-  ProductionSSEManager, 
-  getSSEManager, 
-  type SSEConnectionInfo, 
-  type SSERateLimitConfig 
-} from './sse-manager';
+

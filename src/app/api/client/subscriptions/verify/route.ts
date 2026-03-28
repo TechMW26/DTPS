@@ -5,7 +5,6 @@ import connectDB from '@/lib/db/connection';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
-import { SSEManager } from '@/lib/realtime/sse-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
 import { emitPaymentUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';

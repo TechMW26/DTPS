@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import Notification from '@/lib/db/models/Notification';
 import Message from '@/lib/db/models/Message';
-import { broadcastUnreadCounts } from '../unread-counts/stream/route';
+import { broadcastUnreadCounts } from '@/lib/realtime/broadcast-counts';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // GET /api/client/notifications - Get all notifications for the current user
@@ -97,9 +97,9 @@ export async function POST(request: NextRequest) {
     } else if (notificationIds && notificationIds.length > 0) {
       // Mark specific notifications as read
       await Notification.updateMany(
-        { 
+        {
           _id: { $in: notificationIds },
-          userId: session.user.id 
+          userId: session.user.id
         },
         { read: true }
       );
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       receiver: session.user.id,
       isRead: false
     });
-    
+
     broadcastUnreadCounts(session.user.id, {
       notifications: unreadCount,
       messages: messageCount
@@ -152,9 +152,9 @@ export async function DELETE(request: NextRequest) {
     if (deleteAll) {
       await Notification.deleteMany({ userId: session.user.id });
     } else if (notificationId) {
-      await Notification.deleteOne({ 
+      await Notification.deleteOne({
         _id: notificationId,
-        userId: session.user.id 
+        userId: session.user.id
       });
     }
 

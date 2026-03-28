@@ -5,7 +5,7 @@ import connectDB from '@/lib/db/connection';
 import Message from '@/lib/db/models/Message';
 import User from '@/lib/db/models/User';
 import { z } from 'zod';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { sendNewMessageNotification } from '@/lib/notifications/notificationService';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { logHistoryServer } from '@/lib/server/history';
@@ -134,7 +134,6 @@ export async function POST(request: NextRequest) {
       .select('firstName lastName avatar')
       .lean();
 
-    const sseManager = SSEManager.getInstance();
     const senderName = `${(sender as any)?.firstName || ''} ${(sender as any)?.lastName || ''}`.trim();
 
     // Send real-time notifications and push for each recipient
@@ -161,9 +160,9 @@ export async function POST(request: NextRequest) {
         };
 
         // Send SSE to recipient
-        sseManager.sendToUser(recipientId, 'new_message', messagePayload);
+        socketManager.sendToUser(recipientId, 'new_message', messagePayload);
         // Send SSE to sender (multi-device sync)
-        sseManager.sendToUser(session.user.id, 'new_message', messagePayload);
+        socketManager.sendToUser(session.user.id, 'new_message', messagePayload);
 
         // Clear cache
         clearCacheByTag(`messages:${recipientId}`);

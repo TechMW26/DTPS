@@ -27,14 +27,14 @@ export async function GET(request: NextRequest) {
       const user = await User.findById(session.user.id)
         .select('status isActive')
         .lean() as any;
-      
+
       if (!user) {
         return NextResponse.json({ type: 'ok' });
       }
 
       // Check if account is deactivated or suspended
       const accountStatus = user.status?.toLowerCase() || 'active';
-      
+
       if (accountStatus === 'suspended') {
         return NextResponse.json({ type: 'suspended' });
       }
@@ -42,47 +42,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ type: 'ok' });
     }
 
-    // --- SSE mode: keep-alive stream (legacy) ---
-    const encoder = new TextEncoder();
-    let isClosed = false;
-
-    const customReadable = new ReadableStream({
-      async start(controller) {
-        try {
-          // Send initial connection message
-          controller.enqueue(encoder.encode('data: {"type":"connected"}\n\n'));
-
-          // Keep connection alive with heartbeat
-          const heartbeat = setInterval(() => {
-            if (!isClosed) {
-              controller.enqueue(encoder.encode(': heartbeat\n\n'));
-            } else {
-              clearInterval(heartbeat);
-              controller.close();
-            }
-          }, 30000); // Every 30 seconds
-
-          // Listen for abort signal
-          request.signal.addEventListener('abort', () => {
-            isClosed = true;
-            clearInterval(heartbeat);
-            controller.close();
-          });
-        } catch (error) {
-          console.error('SSE error:', error);
-          controller.close();
-        }
-      },
-    });
-
-    return new NextResponse(customReadable, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no', // Disable buffering for streaming
-      },
-    });
+    // No SSE mode needed — only polling is used by the client hook
+    return NextResponse.json({ type: 'ok' });
   } catch (error) {
     console.error('Error in logout notification:', error);
     return NextResponse.json(

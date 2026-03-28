@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 // In-memory store for active connections (in production, use Redis)
 const activeConnections = new Map<string, any>();
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
       if (callData) {
         callData.status = type.replace('call-', '');
         callData.updatedAt = new Date().toISOString();
-        
+
         if (type === 'call-end' || type === 'call-reject') {
           // Clean up after a delay
           setTimeout(() => {
@@ -58,20 +59,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send signal to target user via SSE (direct, no HTTP hop)
+    // Send signal to target user via Socket.io
     try {
-      const { SSEManager } = await import('@/lib/realtime/sse-manager');
-      const sse = SSEManager.getInstance();
-      sse.sendToUser(toUserId, 'webrtc-signal', signalPayload);
-    } catch (sseError) {
-      console.error('❌ SSE delivery error:', sseError);
-      return NextResponse.json({ error: 'Failed to deliver signal via SSE' }, { status: 500 });
+      socketManager.sendToUser(toUserId, 'webrtc-signal', signalPayload);
+    } catch (socketError) {
+      console.error('❌ Socket delivery error:', socketError);
+      return NextResponse.json({ error: 'Failed to deliver signal' }, { status: 500 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: `Signal ${type} sent successfully`,
-      callId 
+      callId
     });
 
   } catch (error) {
@@ -92,7 +91,7 @@ export async function GET(request: NextRequest) {
     }
 
     const activeCalls = Array.from(activeConnections.values());
-    
+
     return NextResponse.json({
       activeCalls,
       count: activeCalls.length

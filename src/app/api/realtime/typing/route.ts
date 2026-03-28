@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { typingManager } from '@/lib/realtime/online-status';
 
 export async function POST(request: NextRequest) {
@@ -17,7 +17,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Receiver ID is required' }, { status: 400 });
     }
 
-    const sseManager = SSEManager.getInstance();
     const eventType = isTyping ? 'typing_start' : 'typing_stop';
 
     // Update typing manager
@@ -35,7 +34,7 @@ export async function POST(request: NextRequest) {
       : `${session.user.firstName} ${session.user.lastName}`;
 
     // Send typing indicator to the receiver
-    sseManager.sendToUser(receiverId, eventType, {
+    socketManager.sendToUser(receiverId, eventType, {
       userId: session.user.id,
       userName: displayName,
       userRole: displayRole,

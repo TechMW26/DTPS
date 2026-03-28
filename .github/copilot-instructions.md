@@ -44,14 +44,18 @@
 ## UI & component patterns
 - **shadcn/ui** primitives in `src/components/ui/` (35+ components). Add new ones with the shadcn CLI.
 - **Feature components** organized by domain: `src/components/admin/`, `client/`, `chat/`, `recipes/`, `payments/`, etc.
-- **Providers** nest in this order in `src/app/layout.tsx`: `SessionProvider → GlobalFetchInterceptor → ThemeProvider → PushNotificationProvider → ClientAppLayout → {children} → Toaster`.
+- **Providers** nest in this order in `src/app/layout.tsx`: `SessionProvider → SocketProvider → GlobalFetchInterceptor → ThemeProvider → PushNotificationProvider → ClientAppLayout → {children} → Toaster`.
 - **Toasts:** Use `sonner` (`<Toaster />` from `src/components/ui/sonner`).
 - **Class merging:** Always use `cn()` from `@/lib/utils` (clsx + tailwind-merge).
 - **Contexts** in `src/contexts/`: `ThemeContext`, `UnreadCountContext`, `StaffUnreadCountContext`, `StabilityContext`. Each exports a `use{X}` hook.
 
 ## Realtime & messaging
-- **SSE** via `src/lib/realtime/sse-manager.ts` (server singleton on `globalThis`) and `useSSE` / `useSSEConnection` hooks (client singleton with exponential backoff 1s → 30s, 15 retries). Prefer SSE over polling for live features.
-- Unread counts use a dedicated SSE stream at `/api/realtime/unread-count/stream`.
+- **Socket.io** for all real-time communication. Server: `src/lib/realtime/socket-manager.ts` (singleton on `globalThis.__socketManager`, lazy-init from `globalThis.__socketIO`). Client: `src/lib/realtime/socket-client.ts` (singleton with exponential backoff 1s → 30s, 15 retries). Shared event constants in `src/lib/realtime/socket-events.ts`.
+- Custom server entry: `server.js` (project root) creates HTTP server + Socket.io, passes HTTP to Next.js handler. Auth middleware on Socket.io decodes NextAuth JWT from cookie.
+- Room architecture: `user:<userId>` for personal events, `role:<role>` for role-based broadcasts.
+- React context: `SocketProvider` in `src/contexts/SocketContext.tsx` wraps the app.
+- `useRealtime()` hook in `src/hooks/useRealtime.ts` provides `{isConnected, onlineUsers, connectionError, connect, disconnect, sendTyping, forceReconnect}`.
+- Unread counts delivered via socket events (`UNREAD_COUNTS`, `STAFF_UNREAD_COUNTS`), consumed by `UnreadCountContext` and `StaffUnreadCountContext`.
 
 ## File uploads & images
 - Upload component: `src/components/ui/file-upload.tsx` — drag-and-drop, typed by purpose (`avatar`, `medical-report`, `recipe-image`, etc.), POSTs `FormData` to `/api/upload`.

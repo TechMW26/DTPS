@@ -8,6 +8,7 @@ import PushNotificationProvider from '@/components/providers/PushNotificationPro
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import ServiceWorkerProvider from '@/components/providers/ServiceWorkerProvider';
 import GlobalFetchInterceptor from '@/components/providers/GlobalFetchInterceptor';
+import { SocketProvider } from '@/contexts/SocketContext';
 
 interface ProvidersProps {
     children: ReactNode;
@@ -18,14 +19,16 @@ export function Providers({ children }: ProvidersProps) {
         <SessionProvider>
             <ServiceWorkerProvider />
             <GlobalFetchInterceptor />
-            <ThemeProvider>
-                <PushNotificationProvider autoRegister={true}>
-                    <ClientAppLayout>
-                        {children}
-                    </ClientAppLayout>
-                </PushNotificationProvider>
-                <Toaster />
-            </ThemeProvider>
+            <SocketProvider>
+                <ThemeProvider>
+                    <PushNotificationProvider autoRegister={true}>
+                        <ClientAppLayout>
+                            {children}
+                        </ClientAppLayout>
+                    </PushNotificationProvider>
+                    <Toaster />
+                </ThemeProvider>
+            </SocketProvider>
         </SessionProvider>
     );
 }

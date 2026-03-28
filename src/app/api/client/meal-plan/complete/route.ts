@@ -8,7 +8,7 @@ import { parseISO, startOfDay, isToday } from 'date-fns';
 import { getImageKit } from '@/lib/imagekit';
 import { compressImageServer } from '@/lib/imageCompressionServer';
 import { MEAL_TYPE_KEYS, normalizeMealType, type MealTypeKey } from '@/lib/mealConfig';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { logActivity } from '@/lib/utils/activityLogger';
 
 // Map camelCase meal types to canonical UPPERCASE keys
@@ -221,8 +221,7 @@ export async function POST(request: NextRequest) {
 
     // Emit real-time event to notify the client (and other tabs/devices)
     try {
-      const sseManager = SSEManager.getInstance();
-      sseManager.sendToUser(session.user.id, 'meal_completion_updated', {
+      socketManager.sendToUser(session.user.id, 'meal_completion_updated', {
         type: 'meal_completion_updated',
         mealPlanId: mealPlan._id,
         date: requestedDate,

@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import Message from '@/lib/db/models/Message';
 import { Notification } from '@/lib/db/models';
-import { broadcastUnreadCounts } from '../stream/route';
+import { broadcastUnreadCounts } from '@/lib/realtime/broadcast-counts';
 
 /**
  * POST /api/client/unread-counts/refresh

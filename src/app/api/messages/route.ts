@@ -5,7 +5,7 @@ import connectDB from '@/lib/db/connection';
 import Message from '@/lib/db/models/Message';
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { createMessageWebhook } from '@/lib/webhooks/webhook-manager';
 import { z } from 'zod';
 import { logHistoryServer } from '@/lib/server/history';
@@ -136,9 +136,9 @@ export async function GET(request: NextRequest) {
         { isRead: true, readAt: new Date() }
       );
 
-      // Broadcast SSE update for staff unread counts
+      // Broadcast socket update for staff unread counts
       try {
-        const { broadcastStaffUnreadCounts } = await import('@/app/api/staff/unread-counts/stream/route');
+        const { broadcastStaffUnreadCounts } = await import('@/lib/realtime/broadcast-counts');
         const messageCount = await Message.countDocuments({
           receiver: session.user.id,
           isRead: false
@@ -251,19 +251,18 @@ export async function POST(request: NextRequest) {
     await message.populate('receiver', 'firstName lastName avatar');
 
     // Send real-time notification to BOTH sender and recipient
-    const sseManager = SSEManager.getInstance();
     const msgJson = message.toJSON();
     const ts = Date.now();
 
     // Send to recipient — from their perspective the conversation is with the sender
-    sseManager.sendToUser(validatedData.recipientId, 'new_message', {
+    socketManager.sendToUser(validatedData.recipientId, 'new_message', {
       message: msgJson,
       conversationWith: session.user.id,
       timestamp: ts
     });
 
     // Send to sender — from their perspective the conversation is with the recipient
-    sseManager.sendToUser(session.user.id, 'new_message', {
+    socketManager.sendToUser(session.user.id, 'new_message', {
       message: msgJson,
       conversationWith: validatedData.recipientId,
       timestamp: ts

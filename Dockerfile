@@ -49,6 +49,8 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# Replace the default Next.js standalone server with our custom one (Socket.io)
+COPY --from=builder /app/server.js ./server.js
 
 # Set proper ownership
 RUN chown -R nextjs:nodejs /app

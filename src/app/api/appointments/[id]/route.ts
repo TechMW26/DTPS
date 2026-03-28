@@ -8,7 +8,7 @@ import { removeAppointmentFromCalendars, updateCalendarEvent } from '@/lib/servi
 import { UserRole, AppointmentStatus, AppointmentActorRole } from '@/types';
 import { logHistoryServer } from '@/lib/server/history';
 import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import {
   sendAppointmentCancellationEmail,
@@ -404,7 +404,6 @@ export async function PUT(
           timeZone: 'Asia/Kolkata'
         });
 
-        const sseManager = SSEManager.getInstance();
         const cancelledByLabel = actorRole === 'client' ? 'Client' :
           actorRole === 'dietitian' ? 'Dietitian' :
             actorRole === 'health_counselor' ? 'Health Counselor' : 'Admin';
@@ -429,7 +428,7 @@ export async function PUT(
             });
 
             // Send SSE notification
-            sseManager.sendToUser(dietitianIdStr, 'appointment_cancelled', {
+            socketManager.sendToUser(dietitianIdStr, 'appointment_cancelled', {
               appointmentId: appointment._id,
               cancelledBy: actorRole,
               cancelledByLabel,
@@ -463,7 +462,7 @@ export async function PUT(
             });
 
             // Send SSE notification
-            sseManager.sendToUser(clientIdStr, 'appointment_cancelled', {
+            socketManager.sendToUser(clientIdStr, 'appointment_cancelled', {
               appointmentId: appointment._id,
               cancelledBy: actorRole,
               cancelledByLabel,
@@ -496,7 +495,6 @@ export async function PUT(
           timeZone: 'Asia/Kolkata'
         });
 
-        const sseManager = SSEManager.getInstance();
         const rescheduledByLabel = actorRole === 'client' ? 'Client' :
           actorRole === 'dietitian' ? 'Dietitian' :
             actorRole === 'health_counselor' ? 'Health Counselor' : 'Admin';
@@ -515,7 +513,7 @@ export async function PUT(
             clickAction: `/user/appointments`,
           });
 
-          sseManager.sendToUser(clientIdStr, 'appointment_rescheduled', {
+          socketManager.sendToUser(clientIdStr, 'appointment_rescheduled', {
             appointmentId: appointment._id,
             rescheduledBy: actorRole,
             rescheduledByLabel,
@@ -541,7 +539,7 @@ export async function PUT(
             clickAction: `/appointments`,
           });
 
-          sseManager.sendToUser(dietitianIdStr, 'appointment_rescheduled', {
+          socketManager.sendToUser(dietitianIdStr, 'appointment_rescheduled', {
             appointmentId: appointment._id,
             rescheduledBy: actorRole,
             rescheduledByLabel,
@@ -773,7 +771,6 @@ export async function DELETE(
         timeZone: 'Asia/Kolkata'
       });
 
-      const sseManager = SSEManager.getInstance();
       const dietitianName = dietitian ? `${dietitian.firstName || ''} ${dietitian.lastName || ''}`.trim() : 'Your dietitian';
       const clientName = client ? `${client.firstName || ''} ${client.lastName || ''}`.trim() : 'Client';
 
@@ -793,7 +790,7 @@ export async function DELETE(
             clickAction: `/appointments`,
           });
 
-          sseManager.sendToUser(appointment.dietitian.toString(), 'appointment_cancelled', {
+          socketManager.sendToUser(appointment.dietitian.toString(), 'appointment_cancelled', {
             appointmentId: appointment._id,
             cancelledBy: actorRoleDelete,
             cancelledByLabel,
@@ -823,7 +820,7 @@ export async function DELETE(
             clickAction: `/user/appointments`,
           });
 
-          sseManager.sendToUser(appointment.client.toString(), 'appointment_cancelled', {
+          socketManager.sendToUser(appointment.client.toString(), 'appointment_cancelled', {
             appointmentId: appointment._id,
             cancelledBy: actorRoleDelete,
             cancelledByLabel,
@@ -853,7 +850,7 @@ export async function DELETE(
             clickAction: `/appointments`,
           });
 
-          sseManager.sendToUser(appointment.dietitian.toString(), 'appointment_cancelled', {
+          socketManager.sendToUser(appointment.dietitian.toString(), 'appointment_cancelled', {
             appointmentId: appointment._id,
             cancelledBy: actorRoleDelete,
             cancelledByLabel,

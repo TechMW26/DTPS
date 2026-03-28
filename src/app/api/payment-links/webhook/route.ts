@@ -6,7 +6,6 @@ import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { clearCacheByTag } from '@/lib/api/utils';
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
-import { SSEManager } from '@/lib/realtime/sse-manager';
 import { emitPaymentUpdate, emitPaymentLinkUpdate, clearPaymentCaches } from '@/lib/realtime/payment-notify';
 
 // Razorpay webhook secret

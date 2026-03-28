@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/db/connection';
 import Message from '@/lib/db/models/Message';
-import { broadcastStaffUnreadCounts } from '../stream/route';
+import { broadcastStaffUnreadCounts } from '@/lib/realtime/broadcast-counts';
 
 /**
  * POST /api/staff/unread-counts/refresh

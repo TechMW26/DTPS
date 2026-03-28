@@ -9,7 +9,7 @@ import User from '@/lib/db/models/User';
 import { getImageKit } from '@/lib/imagekit';
 import { compressImageServer } from '@/lib/imageCompressionServer';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 // GET - List other platform payments
 export async function GET(request: NextRequest) {
@@ -173,12 +173,11 @@ export async function POST(request: NextRequest) {
     // Notify admins (and creator) for real-time list updates.
     try {
       const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-      const sse = SSEManager.getInstance();
       const notifyUserIds = new Set<string>([
         ...admins.map(a => String(a._id)),
         String(session.user.id),
       ]);
-      sse.sendToUsers(Array.from(notifyUserIds), 'other_platform_payment_updated', {
+      socketManager.sendToUsers(Array.from(notifyUserIds), 'other_platform_payment_updated', {
         paymentId: String(otherPlatformPayment._id),
         status: otherPlatformPayment.status,
         createdAt: otherPlatformPayment.createdAt,

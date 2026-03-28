@@ -1,14 +1,14 @@
 /**
  * Payment Real-Time Notification Helper
  *
- * Centralizes SSE notification logic for payment events.
+ * Centralizes real-time notification logic for payment events.
  * Ensures ALL relevant users (admin, client, dietitian, health counselor)
  * are notified within ~3 seconds of a payment status change.
  */
 
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
 
 /**
@@ -77,8 +77,7 @@ export async function emitPaymentUpdate(
         }
         // Deduplicate
         const uniqueIds = [...new Set(userIds)];
-        const sse = SSEManager.getInstance();
-        sse.sendToUsers(uniqueIds, 'payment_updated', {
+        socketManager.sendToUsers(uniqueIds, 'payment_updated', {
             ...data,
             timestamp: Date.now(),
         });
@@ -103,8 +102,7 @@ export async function emitPaymentLinkUpdate(
             });
         }
         const uniqueIds = [...new Set(userIds)];
-        const sse = SSEManager.getInstance();
-        sse.sendToUsers(uniqueIds, 'payment_link_updated', {
+        socketManager.sendToUsers(uniqueIds, 'payment_link_updated', {
             ...data,
             timestamp: Date.now(),
         });

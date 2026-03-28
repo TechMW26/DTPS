@@ -6,7 +6,7 @@ import User from '@/lib/db/models/User';
 import { checkPermission } from '@/lib/permissions/check';
 import { PermissionKey } from '@/lib/db/models/Permission';
 import { UserRole } from '@/types';
-import { adminSSEManager } from '@/lib/realtime/admin-sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
 
 // PATCH /api/clients/[clientId]/assign - Assign dietitian/health counselor to client
@@ -217,16 +217,14 @@ export async function PATCH(
             .populate('assignedHealthCounselors', 'firstName lastName email avatar')
             .lean();
 
-        // Emit SSE update
+        // Emit Socket.io update
         try {
-            if (adminSSEManager) {
-                adminSSEManager.broadcastClientUpdate('client_updated', {
-                    clientId,
-                    action: 'assignment_updated'
-                });
-            }
-        } catch (sseError) {
-            console.error('Error emitting SSE:', sseError);
+            socketManager.broadcastClientUpdate('client_updated', {
+                clientId,
+                action: 'assignment_updated'
+            });
+        } catch (socketError) {
+            console.error('Error emitting socket event:', socketError);
         }
 
         // Clear cache

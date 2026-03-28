@@ -8,7 +8,7 @@ import PaymentLink from '@/lib/db/models/PaymentLink';
 import { PaymentStatus, PaymentType, UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import User from '@/lib/db/models/User';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 // GET - Get single payment details
 export async function GET(
@@ -153,8 +153,7 @@ export async function PUT(
     // Notify online admins so their list updates in real-time.
     try {
       const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-      const sse = SSEManager.getInstance();
-      sse.sendToUsers(
+      socketManager.sendToUsers(
         admins.map(a => String(a._id)),
         'other_platform_payment_updated',
         {
@@ -221,8 +220,7 @@ export async function DELETE(
 
     try {
       const admins = await User.find({ role: UserRole.ADMIN }).select('_id');
-      const sse = SSEManager.getInstance();
-      sse.sendToUsers(
+      socketManager.sendToUsers(
         admins.map(a => String(a._id)),
         'other_platform_payment_updated',
         { paymentId: id, status: 'deleted' }

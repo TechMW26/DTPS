@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import { SSEManager } from '@/lib/realtime/sse-manager';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,10 +16,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing userId or event' }, { status: 400 });
     }
 
-    const sse = SSEManager.getInstance();
-
     // Send to a single user (can be extended to multiple)
-    sse.sendToUser(userId, event, {
+    socketManager.sendToUser(userId, event, {
       ...data,
       from: session.user.id,
       timestamp: Date.now(),

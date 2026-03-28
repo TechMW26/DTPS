@@ -154,8 +154,7 @@ export default function AdminAllClientsPage() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // SSE connection ref
-  const eventSourceRef = useRef<EventSource | null>(null);
+
 
   // Assignment dialog state
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
