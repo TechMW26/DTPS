@@ -21,7 +21,7 @@ const port = parseInt(process.env.PORT || '3000', 10);
 
 // ── Build allowed CORS origins ────────────────────────────────────────
 function getAllowedOrigins() {
-    const origins = new Set(['http://localhost:3000']);
+    const origins = new Set(['https://dtps.tech', 'https://www.dtps.tech']);
     const envUrl = process.env.NEXTAUTH_URL;
     if (envUrl) {
         origins.add(envUrl.replace(/\/+$/, ''));
