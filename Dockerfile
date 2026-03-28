@@ -34,36 +34,33 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Set environment
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV TZ=Asia/Kolkata
 
-# Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy necessary files from builder
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-# Replace the default Next.js standalone server with our custom one (Socket.io)
 COPY --from=builder /app/server.js ./server.js
 
-# Set proper ownership
+# ✅ ADD THIS LINE — copy socket.io and its dependencies
+COPY --from=deps /app/node_modules/socket.io ./node_modules/socket.io
+COPY --from=deps /app/node_modules/engine.io ./node_modules/engine.io
+COPY --from=deps /app/node_modules/ws ./node_modules/ws
+COPY --from=deps /app/node_modules/cors ./node_modules/cors
+
 RUN chown -R nextjs:nodejs /app
 
-# Switch to non-root user
 USER nextjs
 
-# Expose port
 EXPOSE 3000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
-# Start the application
 CMD ["node", "server.js"]
