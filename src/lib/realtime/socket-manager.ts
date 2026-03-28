@@ -69,8 +69,12 @@ class SocketManager {
 
         const io = globalThis.__socketIO;
         if (!io) {
-            // server.js hasn't started yet — this is fine during build / import time
+            console.warn('[SocketManager] globalThis.__socketIO not found — server.js may not have created it yet');
             return;
+        }
+
+        if (!NEXTAUTH_SECRET) {
+            console.error('[SocketManager] NEXTAUTH_SECRET is not set — all socket auth will fail!');
         }
 
         this.io = io;
@@ -81,6 +85,7 @@ class SocketManager {
             try {
                 const token = await this.extractToken(socket);
                 if (!token || !token.sub) {
+                    console.warn('[SocketManager] Auth rejected — no valid token found in handshake cookies');
                     return next(new Error('Authentication required'));
                 }
 
@@ -101,6 +106,8 @@ class SocketManager {
         this.io.on('connection', (socket: Socket) => {
             const userId = (socket as any).userId as string;
             const userRole = (socket as any).userRole as string;
+
+            console.log(`[SocketManager] User connected: ${userId} (${userRole}) [${socket.id}]`);
 
             // Join user-specific + role rooms
             socket.join(userRoom(userId));
@@ -153,7 +160,8 @@ class SocketManager {
             });
 
             // ── Disconnect handler ───────────────────────────────────────
-            socket.on('disconnect', () => {
+            socket.on('disconnect', (reason) => {
+                console.log(`[SocketManager] User disconnected: ${userId} [${socket.id}] reason=${reason}`);
                 const userSet = this.userSockets.get(userId);
                 if (userSet) {
                     userSet.delete(socket.id);

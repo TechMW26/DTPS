@@ -15,5 +15,20 @@ export async function register() {
     } catch {
       // Silently ignore — connection will be established on first request
     }
+
+    // Eagerly initialize SocketManager so auth middleware and connection
+    // handlers are attached BEFORE the server starts accepting connections.
+    // globalThis.__socketIO is set by server.js BEFORE app.prepare() runs.
+    try {
+      const { socketManager } = await import("@/lib/realtime/socket-manager");
+      const io = socketManager.getIO();
+      if (io) {
+        console.log('[Instrumentation] SocketManager initialized — auth middleware + connection handlers attached');
+      } else {
+        console.warn('[Instrumentation] SocketManager: globalThis.__socketIO not available yet');
+      }
+    } catch (err) {
+      console.warn('[Instrumentation] SocketManager init failed:', err);
+    }
   }
 }

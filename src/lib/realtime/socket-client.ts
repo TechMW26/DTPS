@@ -78,6 +78,7 @@ class SocketClient {
         });
 
         this.socket.on('connect', () => {
+            console.log('[SocketClient] Connected, socketId:', this.socket?.id);
             this._connected = true;
             this.retryCount = 0;
             if (this.retryTimer) {
@@ -87,6 +88,7 @@ class SocketClient {
         });
 
         this.socket.on('disconnect', (reason) => {
+            console.log('[SocketClient] Disconnected, reason:', reason);
             this._connected = false;
 
             // If the server forcefully disconnected, don't auto-reconnect
@@ -95,7 +97,8 @@ class SocketClient {
             this.scheduleReconnect();
         });
 
-        this.socket.on('connect_error', () => {
+        this.socket.on('connect_error', (err) => {
+            console.error('[SocketClient] Connection error:', err.message);
             this._connected = false;
             this.scheduleReconnect();
         });
