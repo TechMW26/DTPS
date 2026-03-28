@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="51" failures="0" errors="0" time="35.681">
+  <testsuite name="tests/integration/socket/client-messages-route-branches.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:19:36" time="7.439" tests="11">
+    <testcase classname="Client messages route branch coverage" name="returns paginated conversation history with populated sender and receiver details" time="0.882">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="returns 401 for unauthenticated GET requests" time="0.005">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="returns 403 when a client requests history with someone other than their primary dietitian" time="0.765">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="returns all messages for the current user when no conversation filter is provided" time="0.788">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="returns 400 when POST is missing recipient or content" time="0.51">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="returns 401 for unauthenticated POST requests" time="0.002">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="returns 403 when a client tries to message a non-primary dietitian" time="0.798">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="returns 404 when the primary recipient id is assigned but no recipient exists" time="0.256">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="still sends and persists the message when push notification delivery fails" time="0.576">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="returns a populated serialized message payload after a successful POST" time="0.522">
+    </testcase>
+    <testcase classname="Client messages route branch coverage" name="aggregates recent conversations with projected user data and unread counts" time="0.794">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/chat-messaging.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:19:44" time="4.639" tests="5">
+    <testcase classname="Socket.io chat messaging delivery" name="delivers a client message to the assigned dietitian in real time with IST timestamps" time="0.6">
+    </testcase>
+    <testcase classname="Socket.io chat messaging delivery" name="delivers a dietitian message to the client in the reverse direction" time="0.572">
+    </testcase>
+    <testcase classname="Socket.io chat messaging delivery" name="does not leak a message to an unrelated third socket" time="1.468">
+    </testcase>
+    <testcase classname="Socket.io chat messaging delivery" name="delivers multiple rapid messages in the correct order" time="0.548">
+    </testcase>
+    <testcase classname="Socket.io chat messaging delivery" name="persists the message even when the recipient socket is offline" time="0.512">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/notification-delivery.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:19:49" time="3.849" tests="3">
+    <testcase classname="Socket.io notification and unread-count delivery" name="delivers unread count updates only to the intended target user" time="1.509">
+    </testcase>
+    <testcase classname="Socket.io notification and unread-count delivery" name="broadcasts the exact unread count payload from the refresh route" time="0.558">
+    </testcase>
+    <testcase classname="Socket.io notification and unread-count delivery" name="surfaces offline notification counts after reconnect through the refresh recovery path" time="0.924">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/security.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:19:52" time="3.136" tests="3">
+    <testcase classname="Socket.io security scenarios" name="does not allow a client to spoof server-dispatched events by emitting them directly" time="1.255">
+    </testcase>
+    <testcase classname="Socket.io security scenarios" name="does not join an unauthorized room when a client emits a fake join request" time="0.528">
+    </testcase>
+    <testcase classname="Socket.io security scenarios" name="uses the authenticated session identity instead of a spoofed from field in realtime send" time="0.522">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/presence.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:19:56" time="2.918" tests="4">
+    <testcase classname="Socket.io online and offline presence" name="emits a user_online update to relevant peers when a user connects" time="0.549">
+    </testcase>
+    <testcase classname="Socket.io online and offline presence" name="emits a user_offline update on a clean disconnect" time="0.508">
+    </testcase>
+    <testcase classname="Socket.io online and offline presence" name="emits user_offline when the connection drops unexpectedly" time="0.506">
+    </testcase>
+    <testcase classname="Socket.io online and offline presence" name="marks a user offline immediately on explicit logout-style disconnect" time="0.509">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/room-management.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:19:58" time="2.955" tests="4">
+    <testcase classname="Socket.io room management" name="auto-joins the authenticated user room and receives direct events" time="0.295">
+    </testcase>
+    <testcase classname="Socket.io room management" name="delivers role broadcasts only to sockets in the matching role room" time="1.218">
+    </testcase>
+    <testcase classname="Socket.io room management" name="receives personal and role-room events independently when a user belongs to both" time="0.28">
+    </testcase>
+    <testcase classname="Socket.io room management" name="removes room membership after disconnect" time="0.258">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/concurrent-multi-user.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:20:01" time="2.822" tests="3">
+    <testcase classname="Socket.io concurrent multi-user scenarios" name="delivers each targeted event only to its intended user across ten simultaneous clients" time="0.885">
+    </testcase>
+    <testcase classname="Socket.io concurrent multi-user scenarios" name="delivers simultaneous bidirectional events without duplication" time="0.509">
+    </testcase>
+    <testcase classname="Socket.io concurrent multi-user scenarios" name="handles rapid connect-disconnect cycles without corrupting online membership state" time="0.555">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/chat-history-sync.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:20:04" time="2.678" tests="3">
+    <testcase classname="Socket.io chat history loading and synchronization" name="returns message history in chronological order for a conversation" time="0.641">
+    </testcase>
+    <testcase classname="Socket.io chat history loading and synchronization" name="makes offline messages available through history after reconnect" time="0.539">
+    </testcase>
+    <testcase classname="Socket.io chat history loading and synchronization" name="marks unread messages as read and broadcasts unread-count sync when history is opened" time="0.524">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/reconnection-recovery.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:20:07" time="2.075" tests="3">
+    <testcase classname="Socket.io reconnection and recovery" name="rejoins personal rooms after reconnect and recovers missed messages through history" time="0.64">
+    </testcase>
+    <testcase classname="Socket.io reconnection and recovery" name="exposes the configured reconnect policy for the client socket wrapper" time="0.005">
+    </testcase>
+    <testcase classname="Socket.io reconnection and recovery" name="preserves messages sent during a disconnect window so they can be fetched after reconnect" time="0.527">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/connection-auth.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:20:09" time="1.98" tests="6">
+    <testcase classname="Socket.io connection and authentication" name="accepts a valid auth token and emits a connected payload" time="0.295">
+    </testcase>
+    <testcase classname="Socket.io connection and authentication" name="rejects a client with an expired token" time="0.267">
+    </testcase>
+    <testcase classname="Socket.io connection and authentication" name="rejects a client with no token" time="0.002">
+    </testcase>
+    <testcase classname="Socket.io connection and authentication" name="rejects a client with a malformed token" time="0.004">
+    </testcase>
+    <testcase classname="Socket.io connection and authentication" name="rejects a client with a tampered token" time="0.258">
+    </testcase>
+    <testcase classname="Socket.io connection and authentication" name="attaches authenticated identity to the server-side socket instance" time="0.257">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/socket/socket-client-wrapper.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-03-27T12:20:11" time="0.84" tests="6">
+    <testcase classname="SocketClient browser-side wrapper" name="uses NEXTAUTH_URL in the non-browser environment" time="0.005">
+    </testcase>
+    <testcase classname="SocketClient browser-side wrapper" name="uses a browser-relative connection when window is available" time="0.001">
+    </testcase>
+    <testcase classname="SocketClient browser-side wrapper" name="re-attaches stored listeners when reconnecting after a disconnect" time="0.002">
+    </testcase>
+    <testcase classname="SocketClient browser-side wrapper" name="does not schedule reconnects after an io server disconnect" time="0.001">
+    </testcase>
+    <testcase classname="SocketClient browser-side wrapper" name="emits only when the socket is connected" time="0.001">
+    </testcase>
+    <testcase classname="SocketClient browser-side wrapper" name="clears pending reconnect timers on disconnect" time="0.002">
+    </testcase>
+  </testsuite>
+</testsuites>
