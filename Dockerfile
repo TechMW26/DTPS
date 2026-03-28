@@ -48,11 +48,8 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/server.js ./server.js
 
-# ✅ ADD THIS LINE — copy socket.io and its dependencies
-COPY --from=deps /app/node_modules/socket.io ./node_modules/socket.io
-COPY --from=deps /app/node_modules/engine.io ./node_modules/engine.io
-COPY --from=deps /app/node_modules/ws ./node_modules/ws
-COPY --from=deps /app/node_modules/cors ./node_modules/cors
+# Copy full runtime dependencies so custom server.js + socket.io can resolve all transitives
+COPY --from=deps /app/node_modules ./node_modules
 
 RUN chown -R nextjs:nodejs /app
 
