@@ -27,13 +27,31 @@ import {
   User,
   Loader2,
   Mic,
-  Play,
   FileText,
-  Download
+  Download,
+  Trash2,
+  MoreVertical,
+  X
 } from 'lucide-react';
-import { format, isToday, isYesterday } from 'date-fns';
+import { format, isToday, isYesterday, isSameDay, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface MessageUser {
   _id: string;
@@ -89,12 +107,18 @@ export default function UserMessagesPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [hasDietitian, setHasDietitian] = useState(true);
   const [showMediaUpload, setShowMediaUpload] = useState(false);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isInitialLoadRef = useRef(false);
 
   const openLightbox = (url: string) => {
     setLightboxImage(url);
@@ -104,6 +128,7 @@ export default function UserMessagesPage() {
   // Refs for SSE callbacks to avoid stale closures
   const selectedConversationRef = useRef<Conversation | null>(null);
   const fetchConversationsRef = useRef<() => void>(() => { });
+  const scrollToBottomRef = useRef<(instant?: boolean) => void>(() => { });
   const isFetchingConversationsRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
 
@@ -122,7 +147,8 @@ export default function UserMessagesPage() {
               (incoming.sender?._id === currentConv._id || incoming.receiver?._id === currentConv._id)
             ) {
               setMessages(prev => (prev.some(m => m._id === incoming._id) ? prev : [...prev, incoming]));
-              setTimeout(() => scrollToBottom(), 50);
+              // Smooth scroll for new messages
+              setTimeout(() => scrollToBottomRef.current(false), 50);
             }
 
             // Update ONLY the specific conversation in the list (not a full refetch)
@@ -171,6 +197,21 @@ export default function UserMessagesPage() {
             refreshCounts();
           }
         }
+
+        // Handle message deletion event
+        if (evt.type === 'message_deleted') {
+          const deletedMessageId = (evt.data as any)?.messageId;
+          if (deletedMessageId) {
+            // Remove the deleted message from local state
+            setMessages(prev => prev.filter(m => m._id !== deletedMessageId));
+            // Refresh conversations to update last message if needed
+            const now = Date.now();
+            if (now - lastFetchTimeRef.current > 1000) {
+              lastFetchTimeRef.current = now;
+              fetchConversationsRef.current();
+            }
+          }
+        }
       } catch (e) {
         console.error('Failed handling realtime message event', e);
       }
@@ -187,6 +228,10 @@ export default function UserMessagesPage() {
   });
 
   useEffect(() => {
+    scrollToBottomRef.current = scrollToBottom;
+  });
+
+  useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/login');
     }
@@ -198,15 +243,31 @@ export default function UserMessagesPage() {
     }
   }, [session]);
 
+  // Auto-select conversation if there's only one (the assigned dietitian)
+  useEffect(() => {
+    if (conversations.length === 1 && !selectedConversation) {
+      setSelectedConversation(conversations[0]);
+    }
+  }, [conversations, selectedConversation]);
+
   useEffect(() => {
     if (selectedConversation) {
+      // Flag that we're doing an initial load (so scroll goes instant)
+      isInitialLoadRef.current = true;
+      // Clear previous messages first for a clean slate
+      setMessages([]);
       fetchMessages(selectedConversation._id);
     }
   }, [selectedConversation]);
 
+  // Scroll to bottom when NEW messages arrive (not on initial load — that's handled in fetchMessages)
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (messages.length > 0 && !isInitialLoadRef.current) {
+      // Smooth scroll for new incoming messages
+      const timer = setTimeout(() => scrollToBottom(false), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [messages.length]);
 
   const fetchConversationsQuiet = async () => {
     // Prevent duplicate fetches
@@ -237,6 +298,7 @@ export default function UserMessagesPage() {
       if (response.ok) {
         const data = await response.json();
         setConversations(data.conversations || []);
+        setHasDietitian(data.hasDietitian !== false);
       }
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -249,22 +311,63 @@ export default function UserMessagesPage() {
   const fetchMessages = async (userId: string, showLoader = true) => {
     try {
       if (showLoader) setLoadingMessages(true);
+
+      // Fetch ALL messages in one call - no limit
       const response = await fetch(`/api/client/messages?conversationWith=${userId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(data.messages || []);
-        // Refresh unread counts after fetching messages (which auto-marks as read)
-        await refreshCounts();
+      if (!response.ok) {
+        console.error('Failed to fetch messages');
+        return;
       }
+
+      const data = await response.json();
+      const allMessages: Message[] = data.messages || [];
+
+      // Messages are already sorted by createdAt from API (oldest first)
+      // Set messages AND stop loading in same tick so messages render immediately
+      setMessages(allMessages);
+      setLoadingMessages(false);
+
+      // Now schedule scrolls AFTER the messages have actually rendered
+      // Using nested rAF ensures we scroll after React commits the DOM update
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const container = messagesContainerRef.current;
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+          // Additional delayed scroll to catch images/media that load late
+          setTimeout(() => {
+            if (messagesContainerRef.current) {
+              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
+            isInitialLoadRef.current = false;
+          }, 400);
+        });
+      });
+
+      // Refresh unread counts in background (don't await - don't block rendering)
+      refreshCounts().catch(() => { });
     } catch (error) {
       console.error('Error fetching messages:', error);
-    } finally {
       setLoadingMessages(false);
     }
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (instant = false) => {
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current;
+      if (container) {
+        if (instant) {
+          // Direct scrollTop is the most reliable way to instantly jump to bottom
+          container.scrollTop = container.scrollHeight;
+        } else {
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }
+    });
   };
 
   const handleSendMessage = async () => {
@@ -290,9 +393,10 @@ export default function UserMessagesPage() {
         inputRef.current?.focus();
         // Debounced refresh via SSE handler
       } else {
-        // Restore message on failure
+        // Restore message on failure and show error from API
         setNewMessage(messageContent);
-        toast.error('Failed to send message');
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(errorData.error || 'Failed to send message');
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -460,6 +564,57 @@ export default function UserMessagesPage() {
     return format(new Date(dateString), 'h:mm a');
   };
 
+  // Format date for date separator (WhatsApp style)
+  const formatDateSeparator = (dateString: string) => {
+    const date = new Date(dateString);
+    if (isToday(date)) return 'Today';
+    if (isYesterday(date)) return 'Yesterday';
+    return format(date, 'MMMM d, yyyy');
+  };
+
+  // Check if we should show date separator between two messages
+  const shouldShowDateSeparator = (currentMsg: Message, prevMsg: Message | null) => {
+    if (!prevMsg) return true; // Always show for first message
+    const currentDate = new Date(currentMsg.createdAt);
+    const prevDate = new Date(prevMsg.createdAt);
+    return !isSameDay(currentDate, prevDate);
+  };
+
+  // Handle message deletion
+  const handleDeleteMessage = async () => {
+    if (!messageToDelete || isDeleting) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/client/messages/${messageToDelete._id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Remove message from local state immediately
+        setMessages(prev => prev.filter(m => m._id !== messageToDelete._id));
+        toast.success('Message deleted');
+        // Refresh conversations to update last message if needed
+        fetchConversationsQuiet();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Failed to delete message');
+      }
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      toast.error('Failed to delete message');
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setMessageToDelete(null);
+    }
+  };
+
+  const confirmDeleteMessage = (message: Message) => {
+    setMessageToDelete(message);
+    setDeleteDialogOpen(true);
+  };
+
   const getStatusIcon = (isRead: boolean, isOwn: boolean) => {
     if (!isOwn) return null;
     if (isRead) {
@@ -499,11 +654,11 @@ export default function UserMessagesPage() {
               {conversations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4">
                   <div className="w-16 h-16 bg-[#075E54]/10 rounded-full flex items-center justify-center mb-4">
-                    <Send className="w-8 h-8 text-[#075E54]" />
+                    <User className="w-8 h-8 text-[#075E54]" />
                   </div>
-                  <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>No conversations yet</h3>
+                  <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>No dietitian assigned</h3>
                   <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'} text-sm text-center`}>
-                    Your conversations with your dietitian will appear here
+                    You don't have a primary dietitian assigned yet. Please contact support.
                   </p>
                 </div>
               ) : (
@@ -600,6 +755,7 @@ export default function UserMessagesPage() {
 
                 {/* Messages - WhatsApp Style - Scrollable area */}
                 <div
+                  ref={messagesContainerRef}
                   className="flex-1 overflow-y-auto p-4 space-y-2"
                   style={{
                     backgroundColor: isDarkMode ? '#0B141A' : '#ECE5DD',
@@ -626,9 +782,11 @@ export default function UserMessagesPage() {
                       </div>
                     </div>
                   ) : (
-                    messages.map((message) => {
+                    messages.map((message, index) => {
                       const isOwn = message.sender._id === session?.user?.id;
                       const attachment = message.attachments?.[0];
+                      const prevMessage = index > 0 ? messages[index - 1] : null;
+                      const showDateSeparator = shouldShowDateSeparator(message, prevMessage);
 
                       // Render message content based on type
                       const renderMessageContent = () => {
@@ -669,20 +827,13 @@ export default function UserMessagesPage() {
                             case 'audio':
                             case 'voice':
                               return (
-                                <div className={`rounded-lg p-3 border max-w-62.5 ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                                  <div className="flex items-center space-x-3">
-                                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                      <Play className="w-5 h-5 text-blue-600" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <audio controls className="w-full h-8">
-                                        <source src={attachment.url} type={attachment.mimeType} />
-                                        Your browser does not support the audio element.
-                                      </audio>
-                                      <div className={`mt-1 text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-                                        {message.type === 'voice' ? 'Voice message' : 'Audio message'} • {formatFileSize(attachment.size)}
-                                      </div>
-                                    </div>
+                                <div className={`rounded-lg p-2 border max-w-62.5 ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                  <audio controls className="w-full h-10">
+                                    <source src={attachment.url} type={attachment.mimeType} />
+                                    Your browser does not support the audio element.
+                                  </audio>
+                                  <div className={`mt-1 text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                                    {message.type === 'voice' ? 'Voice message' : 'Audio'} • {formatFileSize(attachment.size)}
                                   </div>
                                 </div>
                               );
@@ -694,8 +845,8 @@ export default function UserMessagesPage() {
                                       <FileText className="w-5 h-5 text-blue-600" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                      <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        File attachment
+                                      <p className={`text-sm font-medium truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        {attachment.filename || 'Document'}
                                       </p>
                                       <p className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
                                         {formatFileSize(attachment.size)}
@@ -710,6 +861,9 @@ export default function UserMessagesPage() {
                                       <Download className="w-4 h-4" />
                                     </Button>
                                   </div>
+                                  {message.content && message.content !== 'File attachment' && (
+                                    <p className="text-[14px] sm:text-[15px] mt-2">{message.content}</p>
+                                  )}
                                 </div>
                               );
                             default:
@@ -720,27 +874,65 @@ export default function UserMessagesPage() {
                       };
 
                       return (
-                        <div
-                          key={message._id}
-                          className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1`}
-                        >
-                          <div className={`max-w-[85%] sm:max-w-[75%] ${isOwn ? 'order-2' : ''}`}>
-                            <div
-                              className={`px-3 py-2 rounded-lg shadow-sm inline-block ${isOwn
-                                ? isDarkMode
-                                  ? 'bg-emerald-700 text-white rounded-tr-none'
-                                  : 'bg-[#DCF8C6] text-gray-900 rounded-tr-none'
-                                : isDarkMode
-                                  ? 'bg-gray-800 text-white rounded-tl-none'
-                                  : 'bg-white text-gray-900 rounded-tl-none'
-                                }`}
-                            >
-                              {renderMessageContent()}
-                              <div className={`flex items-center justify-end gap-1 mt-1`}>
-                                <span className={`text-[10px] sm:text-[11px] ${isDarkMode ? 'text-gray-200' : 'text-gray-500'}`}>
-                                  {formatMessageTime(message.createdAt)}
-                                </span>
-                                {getStatusIcon(message.isRead, isOwn)}
+                        <div key={message._id}>
+                          {/* Date Separator - WhatsApp Style */}
+                          {showDateSeparator && (
+                            <div className="flex justify-center my-4">
+                              <div className={`px-3 py-1 rounded-lg text-xs font-medium shadow-sm ${isDarkMode
+                                ? 'bg-gray-800 text-gray-300'
+                                : 'bg-white/90 text-gray-600'
+                                }`}>
+                                {formatDateSeparator(message.createdAt)}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Message Bubble */}
+                          <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 group`}>
+                            <div className={`max-w-[85%] sm:max-w-[75%] relative ${isOwn ? 'order-2' : ''}`}>
+                              {/* Delete menu for own messages */}
+                              {isOwn && (
+                                <div className="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`h-6 w-6 p-0 rounded-full ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
+                                      >
+                                        <MoreVertical className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="min-w-30">
+                                      <DropdownMenuItem
+                                        className="text-red-600 focus:text-red-600 cursor-pointer"
+                                        onClick={() => confirmDeleteMessage(message)}
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              )}
+
+                              <div
+                                className={`px-3 py-2 rounded-lg shadow-sm inline-block ${isOwn
+                                  ? isDarkMode
+                                    ? 'bg-emerald-700 text-white rounded-tr-none'
+                                    : 'bg-[#DCF8C6] text-gray-900 rounded-tr-none'
+                                  : isDarkMode
+                                    ? 'bg-gray-800 text-white rounded-tl-none'
+                                    : 'bg-white text-gray-900 rounded-tl-none'
+                                  }`}
+                              >
+                                {renderMessageContent()}
+                                <div className={`flex items-center justify-end gap-1 mt-1`}>
+                                  <span className={`text-[10px] sm:text-[11px] ${isDarkMode ? 'text-gray-200' : 'text-gray-500'}`}>
+                                    {formatMessageTime(message.createdAt)}
+                                  </span>
+                                  {getStatusIcon(message.isRead, isOwn)}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -841,6 +1033,35 @@ export default function UserMessagesPage() {
         src={lightboxImage}
         alt="Message attachment"
       />
+
+      {/* Delete Message Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Message?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This message will be permanently deleted. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteMessage}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageTransition>
   );
 }

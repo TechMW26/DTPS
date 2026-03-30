@@ -78,7 +78,16 @@ export async function POST(request: NextRequest) {
       avatar: ['image/jpeg', 'image/png', 'image/webp'],
       document: ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
       'recipe-image': ['image/jpeg', 'image/png', 'image/webp'],
-      'message': ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'audio/mpeg', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/x-m4a', 'audio/flac', 'audio/opus', 'audio/webm;codecs=opus', 'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'],
+      'message': [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif',
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/zip', 'application/x-zip-compressed',
+        'text/plain',
+        'audio/mpeg', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/x-m4a', 'audio/flac', 'audio/opus', 'audio/webm;codecs=opus',
+        'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska'
+      ],
       'note-attachment': ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/webm', 'audio/x-m4a', 'audio/aac'],
       'progress': ['image/jpeg', 'image/png', 'image/webp'],
       'progress-photo': ['image/jpeg', 'image/png', 'image/webp'],
@@ -119,7 +128,27 @@ export async function POST(request: NextRequest) {
 
     const fileType = type as keyof typeof allowedTypes;
 
-    if (!allowedTypes[fileType]?.includes(file.type)) {
+    const normalizedMimeType = (file.type || '').toLowerCase();
+    const extension = path.extname(file.name || '').toLowerCase();
+
+    // Message uploads support broad media/document families + extension fallback
+    const messageAllowedExtensions = new Set([
+      '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif',
+      '.mp4', '.webm', '.mov', '.avi', '.mkv',
+      '.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.opus',
+      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.zip'
+    ]);
+
+    const isMessageTypeAllowed =
+      fileType === 'message' && (
+        allowedTypes[fileType]?.includes(normalizedMimeType) ||
+        normalizedMimeType.startsWith('image/') ||
+        normalizedMimeType.startsWith('video/') ||
+        normalizedMimeType.startsWith('audio/') ||
+        messageAllowedExtensions.has(extension)
+      );
+
+    if (!isMessageTypeAllowed && !allowedTypes[fileType]?.includes(normalizedMimeType)) {
       return NextResponse.json(
         { error: 'Invalid file type' },
         { status: 400 }
@@ -149,7 +178,8 @@ export async function POST(request: NextRequest) {
 
     // Try to upload to ImageKit first (preferred for all file types)
     const folder = imagekitFolders[fileType] || '/uploads';
-    const shouldCompress = file.type.startsWith('image/') && !file.type.includes('gif');
+    const compressibleImages = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
+    const shouldCompress = compressibleImages.has(normalizedMimeType);
 
     const imageKitResult = await uploadToImageKit(
       buffer,

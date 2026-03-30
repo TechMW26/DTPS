@@ -17,6 +17,7 @@ export const SOCKET_EVENTS = {
     // Chat
     NEW_MESSAGE: 'new_message',
     MESSAGE_READ: 'message_read',
+    MESSAGE_DELETED: 'message_deleted',
     TYPING_START: 'typing_start',
     TYPING_STOP: 'typing_stop',
 

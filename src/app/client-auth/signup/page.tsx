@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { COUNTRY_CODES } from '@/lib/constants/countries';
+import { validateOptionalEmail, validatePhoneNumber } from '@/lib/validations/contact';
 
 export default function ClientSignUpPage() {
     const router = useRouter();
@@ -80,11 +81,6 @@ export default function ClientSignUpPage() {
         }
     };
 
-    const validateEmail = (emailStr: string) => {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(emailStr);
-    };
-
     const sendOtp = async () => {
         // Validate required fields
         if (!firstName.trim()) {
@@ -95,15 +91,21 @@ export default function ClientSignUpPage() {
             setError('Last name is required.');
             return;
         }
-        if (!phone.trim() || phone.length < 10) {
-            setError('Please enter a valid phone number (at least 10 digits).');
+        const rawPhone = phone.replace(/\D/g, '');
+        const fullPhone = `${countryCode}${rawPhone}`;
+        const phoneValidation = validatePhoneNumber(fullPhone, countryCode);
+        if (!phoneValidation.isValid) {
+            setError(phoneValidation.error || 'Please enter a valid phone number.');
             return;
         }
+
         // Email is optional, but if provided must be valid
-        if (email.trim() && !validateEmail(email.trim())) {
-            setError('Please enter a valid email address.');
+        const emailValidation = validateOptionalEmail(email);
+        if (!emailValidation.isValid) {
+            setError(emailValidation.error || 'Please enter a valid email address.');
             return;
         }
+
         if (!agreeToTerms) {
             setError('You must agree to the Terms of Service and Privacy Policy.');
             return;
@@ -113,8 +115,6 @@ export default function ClientSignUpPage() {
         setError('');
 
         try {
-            const phoneWithCode = `${countryCode}${phone.replace(/\s+/g, '')}`;
-
             const response = await fetch('/api/auth/otp/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -122,8 +122,8 @@ export default function ClientSignUpPage() {
                     mode: 'signup',
                     firstName: firstName.trim(),
                     lastName: lastName.trim(),
-                    email: email.trim() || undefined,
-                    phone: phoneWithCode,
+                    email: emailValidation.normalized,
+                    phone: phoneValidation.normalized,
                 }),
             });
 
@@ -151,17 +151,21 @@ export default function ClientSignUpPage() {
             return;
         }
 
+        const phoneValidation = validatePhoneNumber(`${countryCode}${phone.replace(/\D/g, '')}`, countryCode);
+        if (!phoneValidation.isValid) {
+            setError(phoneValidation.error || 'Please enter a valid phone number.');
+            return;
+        }
+
         setIsLoading(true);
         setError('');
 
         try {
-            const phoneWithCode = `${countryCode}${phone.replace(/\s+/g, '')}`;
-
             const response = await fetch('/api/auth/otp/verify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    phone: phoneWithCode,
+                    phone: phoneValidation.normalized,
                     otp: otpValue,
                 }),
             });
@@ -293,44 +297,44 @@ export default function ClientSignUpPage() {
                                 {/* Phone Input with Country Code - Fixed UI */}
                                 <div className="flex items-center h-12 sm:h-14 bg-[#3AB1A0]/5 border border-[#3AB1A0]/20  rounded-xl overflow-hidden px-2 focus-within:border-[#3AB1A0] focus-within:ring-1 focus-within:ring-[#3AB1A0]">
 
-  {/* Country Select */}
-  <Select value={countryCode} onValueChange={setCountryCode}>
-    <SelectTrigger
-      className="flex items-center gap-1 w-22.5 h-full border-0 bg-transparent px-2 focus:ring-0 focus:outline-none"
-    >
-      <SelectValue />
-    </SelectTrigger>
+                                    {/* Country Select */}
+                                    <Select value={countryCode} onValueChange={setCountryCode}>
+                                        <SelectTrigger
+                                            className="flex items-center gap-1 w-22.5 h-full border-0 bg-transparent px-2 focus:ring-0 focus:outline-none"
+                                        >
+                                            <SelectValue />
+                                        </SelectTrigger>
 
-    <SelectContent className="max-h-60">
-      {COUNTRY_CODES.map((country) => (
-        <SelectItem
-          key={`${country.code}-${country.country}`}
-          value={country.code}
-        >
-          <span className="flex items-center gap-2">
-            <span>{country.flag}</span>
-            <span>{country.code}</span>
-          </span>
-        </SelectItem>
-      ))}
-    </SelectContent>
-  </Select>
+                                        <SelectContent className="max-h-60">
+                                            {COUNTRY_CODES.map((country) => (
+                                                <SelectItem
+                                                    key={`${country.code}-${country.country}`}
+                                                    value={country.code}
+                                                >
+                                                    <span className="flex items-center gap-2">
+                                                        <span>{country.flag}</span>
+                                                        <span>{country.code}</span>
+                                                    </span>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
 
-  {/* Divider */}
-  <div className="w-px h-6 bg-[#3AB1A0]/20 mx-2" />
+                                    {/* Divider */}
+                                    <div className="w-px h-6 bg-[#3AB1A0]/20 mx-2" />
 
-  {/* Phone Icon */}
-  <Phone className="h-5 w-5 text-[#3AB1A0] mr-2 shrink-0" />
+                                    {/* Phone Icon */}
+                                    <Phone className="h-5 w-5 text-[#3AB1A0] mr-2 shrink-0" />
 
-  {/* Input */}
-  <Input
-  type="tel"
-  placeholder="WhatsApp Number *"
-  value={phone}
-  onChange={(e) => setPhone(e.target.value)}
-  className="flex-1 h-full border-0 outline-none bg-transparent text-black placeholder:text-gray-400 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none shadow-none"
-/>
-</div>
+                                    {/* Input */}
+                                    <Input
+                                        type="tel"
+                                        placeholder="WhatsApp Number *"
+                                        value={phone}
+                                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                                        className="flex-1 h-full border-0 outline-none bg-transparent text-black placeholder:text-gray-400 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none shadow-none"
+                                    />
+                                </div>
 
                                 {/* Email Input (Optional) */}
                                 <div className="relative">

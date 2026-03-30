@@ -1,5 +1,6 @@
 // Shared OTP store for send and verify routes
 // In production, use Redis or database for distributed systems
+import { normalizePhoneNumber } from '@/lib/validations/contact';
 
 interface OTPData {
     otp: string;
@@ -35,15 +36,7 @@ export function generateOTP(): string {
 
 // Normalize phone number
 export function normalizePhone(phone: string): string {
-    let normalized = phone.replace(/\s+/g, '').replace(/-/g, '');
-    if (!normalized.startsWith('+')) {
-        if (normalized.startsWith('91') && normalized.length === 12) {
-            normalized = '+' + normalized;
-        } else if (normalized.length === 10) {
-            normalized = '+91' + normalized;
-        }
-    }
-    return normalized;
+    return normalizePhoneNumber(phone, '+91');
 }
 
 // Clean up expired entries

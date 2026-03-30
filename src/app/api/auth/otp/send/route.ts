@@ -6,8 +6,8 @@ import { UserRole } from '@/types';
 import {
     OTP_CONFIG,
     generateOTP,
-    normalizePhone,
 } from '@/lib/auth/otpStore';
+import { validateOptionalEmail, validatePhoneNumber } from '@/lib/validations/contact';
 
 export async function POST(request: NextRequest) {
     try {
@@ -22,8 +22,15 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Normalize phone number
-        const normalizedPhone = normalizePhone(phone);
+        const phoneValidation = validatePhoneNumber(phone, '+91');
+        if (!phoneValidation.isValid || !phoneValidation.normalized) {
+            return NextResponse.json(
+                { success: false, error: phoneValidation.error || 'Invalid phone number' },
+                { status: 400 }
+            );
+        }
+
+        const normalizedPhone = phoneValidation.normalized;
 
         await connectDB();
 
@@ -83,6 +90,15 @@ export async function POST(request: NextRequest) {
                 );
             }
 
+            // Email is optional, but must be valid if provided
+            const emailValidation = validateOptionalEmail(email);
+            if (!emailValidation.isValid) {
+                return NextResponse.json(
+                    { success: false, error: emailValidation.error || 'Please enter a valid email address.' },
+                    { status: 400 }
+                );
+            }
+
             // Do not allow duplicate client creation by phone
             const existingClient = await User.findOne({
                 phone: { $in: phoneVariations }
@@ -99,7 +115,7 @@ export async function POST(request: NextRequest) {
             signupPayload = {
                 firstName: String(firstName).trim(),
                 lastName: String(lastName).trim(),
-                email: email ? String(email).trim().toLowerCase() : undefined
+                email: emailValidation.normalized
             };
         }
 

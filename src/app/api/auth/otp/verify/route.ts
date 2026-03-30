@@ -3,7 +3,8 @@ import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
 import OTPRecord from '@/lib/db/models/OTPRecord';
 import { UserRole } from '@/types';
-import { OTP_CONFIG, normalizePhone } from '@/lib/auth/otpStore';
+import { OTP_CONFIG } from '@/lib/auth/otpStore';
+import { validatePhoneNumber } from '@/lib/validations/contact';
 import { sign } from 'jsonwebtoken';
 import crypto from 'crypto';
 
@@ -20,14 +21,22 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (!otp || typeof otp !== 'string' || otp.length !== 4) {
+        if (!otp || typeof otp !== 'string' || !/^\d{4}$/.test(otp)) {
             return NextResponse.json(
                 { success: false, error: 'Valid 4-digit OTP is required' },
                 { status: 400 }
             );
         }
 
-        const normalizedPhone = normalizePhone(phone);
+        const phoneValidation = validatePhoneNumber(phone, '+91');
+        if (!phoneValidation.isValid || !phoneValidation.normalized) {
+            return NextResponse.json(
+                { success: false, error: phoneValidation.error || 'Invalid phone number' },
+                { status: 400 }
+            );
+        }
+
+        const normalizedPhone = phoneValidation.normalized;
 
         await connectDB();
 

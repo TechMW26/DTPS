@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Send, Image, Video, FileText, Music, Camera, Upload, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { compressImage } from '@/lib/imageCompression';
 
 interface MediaUploadModalProps {
   isOpen: boolean;
@@ -22,10 +23,41 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
   const [uploadProgress, setUploadProgress] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionStatus, setCompressionStatus] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
+
+  // Compress image using browser-image-compression library
+  const compressImageFile = async (file: File): Promise<File> => {
+    // Skip if file is small (< 500KB) or is a GIF
+    if (file.size < 500 * 1024 || file.type === 'image/gif') {
+      return file;
+    }
+
+    try {
+      setCompressionStatus('Compressing image...');
+      const result = await compressImage(file, {
+        maxWidth: 1600,
+        maxHeight: 1600,
+        quality: 0.85,
+        format: 'image/jpeg'
+      });
+
+      // Create a new File from the blob
+      const compressedFile = new File([result.blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+        type: 'image/jpeg',
+        lastModified: Date.now()
+      });
+
+      console.log(`Image compressed: ${(file.size / 1024).toFixed(2)}KB → ${(result.compressedSize / 1024).toFixed(2)}KB`);
+      return compressedFile;
+    } catch (err) {
+      console.warn('Image compression failed, using original:', err);
+      return file;
+    }
+  };
 
   // Compress video using canvas/mediarecorder (client-side)
   const compressVideo = async (file: File): Promise<File> => {
@@ -151,9 +183,24 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
     try {
       let fileToUpload = selectedFile;
 
+      // Compress image if it's an image file
+      if (selectedFile.type.startsWith('image/') && !selectedFile.type.includes('gif')) {
+        setIsCompressing(true);
+        setUploadProgress(5);
+        try {
+          fileToUpload = await compressImageFile(selectedFile);
+          setUploadProgress(15);
+        } catch (err) {
+          console.warn('Image compression failed, using original:', err);
+        }
+        setIsCompressing(false);
+        setCompressionStatus('');
+      }
+
       // Compress video if it's a video file
       if (selectedFile.type.startsWith('video/')) {
         setIsCompressing(true);
+        setCompressionStatus('Processing video...');
         setUploadProgress(10);
         try {
           fileToUpload = await compressVideo(selectedFile);
@@ -161,6 +208,7 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
           console.warn('Video compression failed, using original:', err);
         }
         setIsCompressing(false);
+        setCompressionStatus('');
       }
 
       // Simulate upload progress
@@ -188,6 +236,7 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
     } finally {
       setUploading(false);
       setIsCompressing(false);
+      setCompressionStatus('');
     }
   };
 
@@ -349,7 +398,7 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
                   <Progress value={uploadProgress} className="w-full" />
                   <p className="text-sm text-gray-500 text-center flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    {isCompressing ? 'Compressing video...' : `Uploading... ${uploadProgress}%`}
+                    {isCompressing ? compressionStatus || 'Compressing...' : `Uploading... ${uploadProgress}%`}
                   </p>
                 </div>
               )}

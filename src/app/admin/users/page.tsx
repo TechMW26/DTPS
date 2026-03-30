@@ -18,6 +18,7 @@ import { Copy, Eye, AlertCircle, CheckCircle, Clock, User, Briefcase, Settings, 
 import { toast } from "sonner";
 import { formatUserId } from "@/lib/utils";
 import { COUNTRY_CODES } from "@/lib/constants/countries";
+import { validateOptionalEmail, validatePhoneNumber } from "@/lib/validations/contact";
 
 interface AdminUser {
   _id: string;
@@ -355,6 +356,19 @@ export default function AdminUsersPage() {
       setError("Phone number is required");
       return;
     }
+
+    const emailValidation = validateOptionalEmail(form.email);
+    if (!emailValidation.isValid) {
+      setError(emailValidation.error || "Please enter a valid email address");
+      return;
+    }
+
+    const phoneValidation = validatePhoneNumber(`${form.countryCode}${form.phone}`, form.countryCode || '+91');
+    if (!phoneValidation.isValid || !phoneValidation.normalized) {
+      setError(phoneValidation.error || "Please enter a valid phone number");
+      return;
+    }
+
     // Password required only for non-client users when creating new
     if (!editing && !isClientRole && !form.password) {
       setError("Password is required when creating a new staff user");
@@ -365,8 +379,8 @@ export default function AdminUsersPage() {
       return;
     }
 
-    // Combine country code with phone
-    const fullPhone = `${form.countryCode}${form.phone.replace(/\s+/g, '')}`;
+    // Use normalized phone with country code
+    const fullPhone = phoneValidation.normalized;
 
     try {
       setSaving(true);
@@ -376,7 +390,7 @@ export default function AdminUsersPage() {
 
       if (editing) {
         const body: any = {
-          email: form.email,
+          email: emailValidation.normalized,
           firstName: form.firstName,
           lastName: form.lastName,
           role: form.role,
@@ -429,6 +443,7 @@ export default function AdminUsersPage() {
         // For clients: add createdByStaff flag, send email only if provided
         const createBody: any = {
           ...form,
+          email: emailValidation.normalized,
           phone: fullPhone,
           createdByStaff: true, // Flag to indicate admin is creating the user
         };
@@ -842,7 +857,7 @@ export default function AdminUsersPage() {
                         type="tel"
                         placeholder="Phone number"
                         value={form.phone}
-                        onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                        onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 15) }))}
                         className="flex-1"
                       />
                     </div>

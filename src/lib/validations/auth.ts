@@ -1,36 +1,14 @@
 import { z } from 'zod';
 import { UserRole } from '@/types';
-
-// Email validation regex that ensures:
-// 1. Local part contains at least one letter (not just numbers)
-// 2. Has proper format with @ symbol
-// 3. Domain has at least one dot
-const EMAIL_REGEX = /^(?=.*[a-zA-Z])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+import {
+  EMAIL_REGEX,
+  validateEmail as validateEmailAddress,
+  validatePhoneNumber,
+} from '@/lib/validations/contact';
 
 // Helper function to validate email - exported for use in other files
-export const validateEmail = (email: string): { isValid: boolean; error?: string } => {
-  if (!email || email.trim() === '') {
-    return { isValid: false, error: 'Email is required' };
-  }
-
-  // Check for basic email format
-  if (!email.includes('@')) {
-    return { isValid: false, error: 'Please enter a valid email address' };
-  }
-
-  // Check if local part is only numbers
-  const localPart = email.split('@')[0];
-  if (/^\d+$/.test(localPart)) {
-    return { isValid: false, error: 'Email cannot contain only numbers before @' };
-  }
-
-  // Check full email format with regex
-  if (!EMAIL_REGEX.test(email)) {
-    return { isValid: false, error: 'Please enter a valid email address (e.g., name@example.com)' };
-  }
-
-  return { isValid: true };
-};
+export { EMAIL_REGEX };
+export const validateEmail = validateEmailAddress;
 
 export const signInSchema = z.object({
   email: z
@@ -82,11 +60,7 @@ export const signUpSchema = z.object({
   phone: z
     .string()
     .min(1, 'Phone number is required')
-    .refine((val) => {
-      // Allow phone with or without country code - will be normalized
-      const cleaned = val.replace(/[\s\-\(\)]/g, '');
-      return /^\+?\d{10,15}$/.test(cleaned);
-    }, {
+    .refine((val) => validatePhoneNumber(val).isValid, {
       message: 'Invalid phone number format. Please enter 10-15 digits.',
     }),
 }).refine((data) => data.password === data.confirmPassword, {

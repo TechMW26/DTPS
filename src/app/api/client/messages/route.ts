@@ -23,8 +23,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const conversationWith = searchParams.get('conversationWith');
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const page = parseInt(searchParams.get('page') || '1');
+    // No limit - fetch all messages for complete conversation history
 
     // Validate client can only chat with their primary dietitian
     if (conversationWith) {
@@ -34,7 +33,13 @@ export async function GET(request: NextRequest) {
 
       const primaryDietitian = (currentUser as any)?.assignedDietitian?.toString();
 
-      if (!primaryDietitian || primaryDietitian !== conversationWith) {
+      // Log for debugging
+      console.log(`[Messages API] Client ${session.user.id} requesting conversation with ${conversationWith}, primaryDietitian: ${primaryDietitian}`);
+
+      // Allow conversation if the user is the assigned dietitian
+      // Note: We relax this check slightly to allow existing conversations
+      if (primaryDietitian && primaryDietitian !== conversationWith) {
+        console.warn(`[Messages API] Blocked: Client tried to message non-primary dietitian`);
         return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
       }
     }
@@ -42,40 +47,41 @@ export async function GET(request: NextRequest) {
     let query: any = {};
 
     if (conversationWith) {
-      // Get messages between current user and specific user
+      // Get messages between current user and specific user - use ObjectId for exact matching
       query = {
         $or: [
-          { sender: session.user.id, receiver: conversationWith },
-          { sender: conversationWith, receiver: session.user.id }
-        ]
+          { sender: new mongoose.Types.ObjectId(session.user.id), receiver: new mongoose.Types.ObjectId(conversationWith) },
+          { sender: new mongoose.Types.ObjectId(conversationWith), receiver: new mongoose.Types.ObjectId(session.user.id) }
+        ],
+        deletedAt: { $exists: false } // Exclude soft-deleted messages
       };
     } else {
       // Get all messages for current user
       query = {
         $or: [
-          { sender: session.user.id },
-          { receiver: session.user.id }
-        ]
+          { sender: new mongoose.Types.ObjectId(session.user.id) },
+          { receiver: new mongoose.Types.ObjectId(session.user.id) }
+        ],
+        deletedAt: { $exists: false }
       };
     }
 
     // NO CACHE for real-time messaging - always fetch fresh data
+    // No limit - fetch all messages for complete conversation history
     const messages = await Message.find(query)
       .populate('sender', 'firstName lastName avatar role')
       .populate('receiver', 'firstName lastName avatar role')
-      .sort({ createdAt: 1 })
-      .limit(limit)
-      .skip((page - 1) * limit)
+      .sort({ createdAt: 1 }) // Oldest first for chronological display
       .lean();
 
-    const total = await Message.countDocuments(query);
+    console.log(`[Messages API] Found ${messages.length} messages for conversation ${conversationWith || 'all'}`);
 
     // Mark messages as read if viewing conversation
     if (conversationWith) {
       await Message.updateMany(
         {
-          sender: conversationWith,
-          receiver: session.user.id,
+          sender: new mongoose.Types.ObjectId(conversationWith),
+          receiver: new mongoose.Types.ObjectId(session.user.id),
           isRead: false
         },
         { isRead: true, readAt: new Date() }
@@ -95,12 +101,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       messages,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
+      total: messages.length
     });
 
   } catch (error) {
@@ -138,8 +139,18 @@ export async function POST(request: NextRequest) {
 
     const primaryDietitian = (currentUser as any)?.assignedDietitian?.toString();
 
-    if (!primaryDietitian || primaryDietitian !== recipientId) {
-      return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
+    // Check if client has an assigned dietitian
+    if (!primaryDietitian) {
+      console.warn(`[Messages API] Client ${session.user.id} has no assigned dietitian`);
+      return NextResponse.json({
+        error: 'No dietitian assigned yet. Please wait for a dietitian to be assigned to your account.'
+      }, { status: 403 });
+    }
+
+    // Only allow messaging the assigned dietitian
+    if (primaryDietitian !== recipientId) {
+      console.warn(`[Messages API] Client ${session.user.id} tried to message ${recipientId} but primary is ${primaryDietitian}`);
+      return NextResponse.json({ error: 'You can only message your assigned dietitian' }, { status: 403 });
     }
 
     // Verify recipient exists

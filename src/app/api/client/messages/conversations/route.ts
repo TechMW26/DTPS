@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
           $or: [
             { sender: userId },
             { receiver: userId }
-          ]
+          ],
+          deletedAt: { $exists: false } // Exclude soft-deleted messages
         }
       },
       {
@@ -94,32 +95,86 @@ export async function GET(request: NextRequest) {
 
     // If no conversations exist, get assigned dietitian as potential conversation
     if (conversations.length === 0) {
+      console.log('[Conversations API] No existing conversations, checking assigned dietitian for client:', session.user.id);
+
       const client = await User.findById(session.user.id)
-        .select('assignedDietitian')
-        .populate('assignedDietitian', 'firstName lastName avatar role');
+        .select('assignedDietitian assignedDietitians')
+        .populate('assignedDietitian', 'firstName lastName avatar role')
+        .lean();
+
+      console.log('[Conversations API] Client data:', {
+        clientId: session.user.id,
+        assignedDietitian: (client as any)?.assignedDietitian,
+        assignedDietitians: (client as any)?.assignedDietitians
+      });
 
       const dietitians: any[] = [];
 
-      // Only show PRIMARY dietitian, not all assigned dietitians
-      if (client?.assignedDietitian) {
+      // Only show PRIMARY dietitian (assignedDietitian field), not secondary dietitians
+      const primaryDietitian = (client as any)?.assignedDietitian;
+      if (primaryDietitian) {
         dietitians.push({
-          _id: client.assignedDietitian._id,
+          _id: primaryDietitian._id,
           user: {
-            _id: client.assignedDietitian._id,
-            firstName: client.assignedDietitian.firstName,
-            lastName: client.assignedDietitian.lastName,
-            avatar: client.assignedDietitian.avatar,
-            role: client.assignedDietitian.role
+            _id: primaryDietitian._id,
+            firstName: primaryDietitian.firstName,
+            lastName: primaryDietitian.lastName,
+            avatar: primaryDietitian.avatar,
+            role: primaryDietitian.role
+          },
+          lastMessage: null,
+          unreadCount: 0
+        });
+        console.log('[Conversations API] Added primary dietitian to conversations:', primaryDietitian._id);
+      } else {
+        console.log('[Conversations API] No primary dietitian assigned to this client');
+        // Return empty array - UI will show appropriate message
+      }
+
+      return NextResponse.json({
+        conversations: dietitians,
+        hasDietitian: !!primaryDietitian
+      });
+    }
+
+    // For existing conversations, filter to only show primary dietitian's conversation
+    const client = await User.findById(session.user.id)
+      .select('assignedDietitian')
+      .lean();
+
+    const primaryDietitianId = (client as any)?.assignedDietitian?.toString();
+
+    // Filter conversations to only include primary dietitian
+    const filteredConversations = primaryDietitianId
+      ? conversations.filter((conv: any) => conv._id.toString() === primaryDietitianId)
+      : conversations;
+
+    // If primary dietitian has no messages yet, add them to the list
+    if (primaryDietitianId && !filteredConversations.some((c: any) => c._id.toString() === primaryDietitianId)) {
+      const primaryDietitian = await User.findById(primaryDietitianId)
+        .select('firstName lastName avatar role')
+        .lean();
+
+      if (primaryDietitian) {
+        filteredConversations.unshift({
+          _id: primaryDietitianId,
+          user: {
+            _id: primaryDietitianId,
+            firstName: (primaryDietitian as any).firstName,
+            lastName: (primaryDietitian as any).lastName,
+            avatar: (primaryDietitian as any).avatar,
+            role: (primaryDietitian as any).role
           },
           lastMessage: null,
           unreadCount: 0
         });
       }
-
-      return NextResponse.json({ conversations: dietitians });
     }
 
-    return NextResponse.json({ conversations });
+    return NextResponse.json({
+      conversations: filteredConversations,
+      hasDietitian: !!primaryDietitianId
+    });
 
   } catch (error) {
     console.error('Error fetching conversations:', error);

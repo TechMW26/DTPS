@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Eye, EyeOff, Mail, Lock, ArrowLeft, Leaf, Phone, MessageSquare } from 'lucide-react';
 import { signInSchema, SignInInput } from '@/lib/validations/auth';
+import { validatePhoneNumber } from '@/lib/validations/contact';
 import Image from 'next/image';
 
 type LoginMode = 'otp' | 'email';
@@ -122,8 +123,9 @@ export default function ClientSignInPage() {
 
   // Send OTP
   const handleSendOtp = async () => {
-    if (!phoneNumber || phoneNumber.length < 10) {
-      setError('Please enter a valid 10-digit phone number');
+    const phoneValidation = validatePhoneNumber(phoneNumber, '+91');
+    if (!phoneValidation.isValid) {
+      setError(phoneValidation.error || 'Please enter a valid 10-digit phone number');
       return;
     }
 
@@ -134,7 +136,7 @@ export default function ClientSignInPage() {
       const response = await fetch('/api/auth/otp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneNumber }),
+        body: JSON.stringify({ phone: phoneValidation.normalized }),
       });
 
       const data = await response.json();
@@ -164,6 +166,12 @@ export default function ClientSignInPage() {
       return;
     }
 
+    const phoneValidation = validatePhoneNumber(phoneNumber, '+91');
+    if (!phoneValidation.isValid) {
+      setError(phoneValidation.error || 'Please enter a valid 10-digit phone number');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -171,7 +179,7 @@ export default function ClientSignInPage() {
       const response = await fetch('/api/auth/otp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneNumber, otp: otpValue }),
+        body: JSON.stringify({ phone: phoneValidation.normalized, otp: otpValue }),
       });
 
       const data = await response.json();

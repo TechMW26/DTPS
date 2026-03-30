@@ -10,6 +10,7 @@ import { logActivity } from '@/lib/utils/activityLogger';
 import { computeClientStatus } from '@/lib/status/computeClientStatus';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
+import { validateOptionalEmail, validatePhoneNumber } from '@/lib/validations/contact';
 
 // Helper function to recompute client statuses for a list of clients
 async function recomputeClientStatuses(clients: any[]): Promise<any[]> {
@@ -271,6 +272,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
     }
 
+    const emailValidation = validateOptionalEmail(email);
+    if (!emailValidation.isValid) {
+      return NextResponse.json({ error: emailValidation.error || 'Invalid email address' }, { status: 400 });
+    }
+
     // For non-client roles, email and password are still required
     if (!isClientRole) {
       if (!email) {
@@ -291,12 +297,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Normalize phone number - remove spaces and dashes
-    let normalizedPhone = String(phone).replace(/[\s\-\(\)]/g, '');
-    // Ensure it starts with + (country code)
-    if (!normalizedPhone.startsWith('+')) {
-      normalizedPhone = '+91' + normalizedPhone;
+    const phoneValidation = validatePhoneNumber(String(phone), '+91');
+    if (!phoneValidation.isValid || !phoneValidation.normalized) {
+      return NextResponse.json({ error: phoneValidation.error || 'Invalid phone number' }, { status: 400 });
     }
+    const normalizedPhone = phoneValidation.normalized;
 
     // Extract raw 10-digit phone number for search
     // DB stores phones in mixed formats (10-digit, +91, 91)
@@ -383,7 +388,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = new User({
-      email: email ? String(email).toLowerCase() : undefined,
+      email: emailValidation.normalized,
       password: finalPassword, // Auto-generated for clients, provided for staff
       firstName,
       lastName,

@@ -8,28 +8,13 @@ import { z } from 'zod';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
 import crypto from 'crypto';
+import { validateOptionalEmail, validatePhoneNumber } from '@/lib/validations/contact';
 
 // Comprehensive registration schema for API
-// Helper function to normalize phone number with country code
-function normalizePhoneNumber(phone: string, defaultCountryCode: string = '+91'): string {
-  if (!phone) return '';
-  // Remove all non-digit characters except +
-  let cleaned = phone.replace(/[^\d+]/g, '');
-  // If doesn't start with +, add default country code
-  if (!cleaned.startsWith('+')) {
-    // If starts with 0, remove it
-    if (cleaned.startsWith('0')) {
-      cleaned = cleaned.substring(1);
-    }
-    cleaned = defaultCountryCode + cleaned;
-  }
-  return cleaned;
-}
-
 const registerSchema = z.object({
   signupContext: z.enum(['client', 'staff']).optional(),
   createdByStaff: z.boolean().optional(), // Flag to indicate staff is creating a client
-  email: z.string().email('Invalid email address').optional(), // Email optional for staff-created clients
+  email: z.string().optional(), // Email optional for staff-created clients
   password: z.string().min(4, 'Password must be at least 4 characters').optional(),
   confirmPassword: z.string().optional(),
   firstName: z.string().min(1, 'First name is required'),
@@ -82,9 +67,17 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions);
 
     // Check if user already exists by email (only if email is provided)
-    if (validatedData.email) {
+    const emailValidation = validateOptionalEmail(validatedData.email);
+    if (!emailValidation.isValid) {
+      return NextResponse.json(
+        { error: emailValidation.error || 'Invalid email address' },
+        { status: 400 }
+      );
+    }
+
+    if (emailValidation.normalized) {
       const existingUser = await User.findOne({
-        email: validatedData.email.toLowerCase()
+        email: emailValidation.normalized
       });
 
       if (existingUser) {
@@ -96,14 +89,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Normalize phone number with country code
-    const normalizedPhone = normalizePhoneNumber(validatedData.phone);
-
-    if (!normalizedPhone || normalizedPhone.length < 12) {
+    const phoneValidation = validatePhoneNumber(validatedData.phone, '+91');
+    if (!phoneValidation.isValid || !phoneValidation.normalized) {
       return NextResponse.json(
-        { error: 'Phone number is required. Please include country code (e.g., +91XXXXXXXXXX)' },
+        { error: phoneValidation.error || 'Invalid phone number' },
         { status: 400 }
       );
     }
+    const normalizedPhone = phoneValidation.normalized;
 
     // Extract raw 10-digit phone number for search
     // DB stores phones in mixed formats (10-digit, +91, 91)
@@ -155,7 +148,7 @@ export async function POST(request: NextRequest) {
         );
       }
       // Self-registration: email is required
-      if (!validatedData.email) {
+      if (!emailValidation.normalized) {
         return NextResponse.json(
           { error: 'Email is required' },
           { status: 400 }
@@ -166,7 +159,7 @@ export async function POST(request: NextRequest) {
 
     // Create user data
     const userData: any = {
-      email: validatedData.email ? validatedData.email.toLowerCase() : undefined,
+      email: emailValidation.normalized,
       password: finalPassword,
       firstName: validatedData.firstName,
       lastName: validatedData.lastName,

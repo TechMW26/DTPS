@@ -168,21 +168,28 @@ export function ChatBubble({
         case 'audio':
         case 'voice':
           return (
-            <div className="bg-gray-50 rounded-lg p-3 border max-w-xs">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <Play className="w-5 h-5 text-blue-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <audio controls className="w-full">
-                    <source src={attachment.url} type={attachment.mimeType} />
-                    Your browser does not support the audio element.
-                  </audio>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {attachment.filename} • {formatFileSize(attachment.size)}
-                    {attachment.duration && ` • ${Math.floor(attachment.duration / 60)}:${(attachment.duration % 60).toString().padStart(2, '0')}`}
-                  </div>
-                </div>
+            <div className="max-w-[280px] min-w-[200px]">
+              {/* WhatsApp-style voice message */}
+              <div className="flex items-center gap-2">
+                <audio
+                  controls
+                  className="w-full h-8"
+                  style={{
+                    filter: isOwn ? 'hue-rotate(80deg) saturate(1.2)' : 'none',
+                  }}
+                >
+                  <source src={attachment.url} type={attachment.mimeType || 'audio/mpeg'} />
+                  Your browser does not support audio.
+                </audio>
+              </div>
+              <div className="flex items-center justify-between mt-1 text-[10px] text-gray-500">
+                <span>
+                  {message.type === 'voice' ? 'Voice message' : attachment.filename}
+                  {attachment.size > 0 && ` • ${formatFileSize(attachment.size)}`}
+                </span>
+                {attachment.duration && (
+                  <span>{Math.floor(attachment.duration / 60)}:{(attachment.duration % 60).toString().padStart(2, '0')}</span>
+                )}
               </div>
             </div>
           );
@@ -345,8 +352,8 @@ export function ChatBubble({
                   userName: 'User', // This would come from user data
                   createdAt: r.createdAt
                 })) || []}
-                onAddReaction={onReaction || (() => {})}
-                onRemoveReaction={onRemoveReaction || (() => {})}
+                onAddReaction={onReaction || (() => { })}
+                onRemoveReaction={onRemoveReaction || (() => { })}
                 currentUserId={currentUserId || ''}
                 className="mt-1"
               />
@@ -385,11 +392,11 @@ export function ChatBubble({
 }
 
 // Typing indicator component
-export function TypingIndicator({ 
-  user, 
-  className 
-}: { 
-  user: { firstName: string; lastName: string; avatar?: string }; 
+export function TypingIndicator({
+  user,
+  className
+}: {
+  user: { firstName: string; lastName: string; avatar?: string };
   className?: string;
 }) {
   return (
@@ -400,7 +407,7 @@ export function TypingIndicator({
           {user.firstName[0]}{user.lastName[0]}
         </AvatarFallback>
       </Avatar>
-      
+
       <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm animate-in slide-in-from-bottom-2 duration-300">
         <div className="flex space-x-1">
           <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
