@@ -119,6 +119,7 @@ export default function UserMessagesPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isInitialLoadRef = useRef(false);
+  const userPressedBackRef = useRef(false);
 
   const openLightbox = (url: string) => {
     setLightboxImage(url);
@@ -244,8 +245,9 @@ export default function UserMessagesPage() {
   }, [session]);
 
   // Auto-select conversation if there's only one (the assigned dietitian)
+  // But don't re-select if user manually pressed back
   useEffect(() => {
-    if (conversations.length === 1 && !selectedConversation) {
+    if (conversations.length === 1 && !selectedConversation && !userPressedBackRef.current) {
       setSelectedConversation(conversations[0]);
     }
   }, [conversations, selectedConversation]);
@@ -445,13 +447,19 @@ export default function UserMessagesPage() {
         mimeType: uploadData.type || file.type,
       };
 
+      // Build a fallback content label for media messages (in case the API requires it)
+      const mediaLabel = messageType === 'image' ? '📷 Photo'
+        : messageType === 'video' ? '🎬 Video'
+          : messageType === 'audio' ? '🎵 Audio'
+            : '📎 File';
+
       // Send message with attachment
       const response = await fetch('/api/client/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipientId: selectedConversation._id,
-          content: caption?.trim() || '',
+          content: caption?.trim() || mediaLabel,
           type: messageType,
           attachments: [attachment]
         })
@@ -665,7 +673,10 @@ export default function UserMessagesPage() {
                 conversations.map((conv) => (
                   <button
                     key={conv._id}
-                    onClick={() => setSelectedConversation(conv)}
+                    onClick={() => {
+                      userPressedBackRef.current = false;
+                      setSelectedConversation(conv);
+                    }}
                     className={`w-full flex items-center gap-3 p-4 transition-colors border-b ${isDarkMode ? 'border-gray-800 hover:bg-gray-800' : 'border-gray-100 hover:bg-gray-50'
                       } ${selectedConversation?._id === conv._id ? 'bg-[#075E54]/5' : ''
                       }`}
@@ -729,9 +740,11 @@ export default function UserMessagesPage() {
                   <div className="flex items-center gap-3">
                     <button
                       className="p-2 -ml-2 md:hidden hover:bg-white/10 rounded-full"
-                      onClick={() => setSelectedConversation(null)}
+                      onClick={() => {
+                        userPressedBackRef.current = true;
+                        setSelectedConversation(null);
+                      }}
                     >
-
                       <ArrowLeft className="w-5 h-5 text-white" />
                     </button>
                     <div className="h-10 w-10 rounded-full bg-white/20 md:bg-[#075E54]/10 flex items-center justify-center overflow-hidden">
@@ -790,29 +803,38 @@ export default function UserMessagesPage() {
 
                       // Render message content based on type
                       const renderMessageContent = () => {
+                        // Helper to check if content is a meaningful caption (not just a media label)
+                        const mediaLabels = ['📷 Photo', '🎬 Video', '🎵 Audio', '📎 File', 'Voice message', 'File attachment', 'Image', 'Video', 'Audio'];
+                        const hasCaption = message.content && !mediaLabels.includes(message.content.trim());
+
                         if (attachment) {
                           switch (message.type) {
                             case 'image':
                               return (
-                                <div className="relative max-w-62.5">
+                                <div className="relative max-w-[280px]">
                                   <img
                                     src={attachment.thumbnail || attachment.url}
                                     alt="Image attachment"
                                     className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
                                     onClick={() => openLightbox(attachment.url)}
                                     style={{ maxHeight: '300px' }}
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
                                   />
-                                  {message.content && (
+                                  {hasCaption && (
                                     <p className="text-[14px] sm:text-[15px] mt-2">{message.content}</p>
                                   )}
                                 </div>
                               );
                             case 'video':
                               return (
-                                <div className="relative max-w-62.5">
+                                <div className="relative max-w-[280px]">
                                   <video
                                     src={attachment.url}
                                     controls
+                                    playsInline
+                                    preload="metadata"
                                     className="rounded-lg max-w-full h-auto"
                                     style={{ maxHeight: '300px' }}
                                     poster={attachment.thumbnail}
@@ -822,14 +844,17 @@ export default function UserMessagesPage() {
                                   <div className="mt-1 text-xs opacity-75">
                                     Video • {formatFileSize(attachment.size)}
                                   </div>
+                                  {hasCaption && (
+                                    <p className="text-[14px] sm:text-[15px] mt-1">{message.content}</p>
+                                  )}
                                 </div>
                               );
                             case 'audio':
                             case 'voice':
                               return (
-                                <div className={`rounded-lg p-2 border max-w-62.5 ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                                  <audio controls className="w-full h-10">
-                                    <source src={attachment.url} type={attachment.mimeType} />
+                                <div className={`rounded-lg p-2 border max-w-[280px] ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                  <audio controls className="w-full h-10" preload="metadata">
+                                    <source src={attachment.url} type={attachment.mimeType || 'audio/mpeg'} />
                                     Your browser does not support the audio element.
                                   </audio>
                                   <div className={`mt-1 text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
@@ -839,9 +864,14 @@ export default function UserMessagesPage() {
                               );
                             case 'file':
                               return (
-                                <div className={`rounded-lg p-3 border max-w-62.5 ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                                  <div className="flex items-center space-x-3">
-                                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                <div className={`rounded-lg p-3 border max-w-[280px] ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                  <a
+                                    href={attachment.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+                                  >
+                                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
                                       <FileText className="w-5 h-5 text-blue-600" />
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -852,16 +882,9 @@ export default function UserMessagesPage() {
                                         {formatFileSize(attachment.size)}
                                       </p>
                                     </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => window.open(attachment.url, '_blank')}
-                                      className="h-8 w-8 p-0"
-                                    >
-                                      <Download className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                  {message.content && message.content !== 'File attachment' && (
+                                    <Download className={`w-4 h-4 shrink-0 ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`} />
+                                  </a>
+                                  {hasCaption && message.content !== 'File attachment' && (
                                     <p className="text-[14px] sm:text-[15px] mt-2">{message.content}</p>
                                   )}
                                 </div>

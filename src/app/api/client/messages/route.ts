@@ -125,9 +125,11 @@ export async function POST(request: NextRequest) {
     const data = await request.json();
     const { recipientId, content, type = 'text', attachments } = data;
 
-    if (!recipientId || !content) {
+    // Content is required for text messages; media messages can have empty content
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+    if (!recipientId || (!content && !hasAttachments)) {
       return NextResponse.json(
-        { error: 'Recipient ID and content are required' },
+        { error: 'Recipient ID and message content are required' },
         { status: 400 }
       );
     }
