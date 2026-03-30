@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type ChangeEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -11,18 +11,13 @@ import { useRealtime } from '@/hooks/useRealtime';
 import { ResponsiveLayout } from '@/components/client/layouts';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { MediaUploadModal } from '@/components/chat/MediaUploadModal';
-import { VoiceRecorder } from '@/components/chat/VoiceRecorder';
+import { compressImage } from '@/lib/imageCompression';
 import ImageLightbox from '@/components/ui/image-lightbox';
 import {
   Send,
   Paperclip,
-  Image as ImageIcon,
   Check,
   CheckCheck,
-  Clock,
   ArrowLeft,
   User,
   Loader2,
@@ -31,9 +26,14 @@ import {
   Download,
   Trash2,
   MoreVertical,
+  Play,
+  Pause,
+  RotateCcw,
+  Camera,
+  File as FileIcon,
   X
 } from 'lucide-react';
-import { format, isToday, isYesterday, isSameDay, parseISO } from 'date-fns';
+import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { toast } from 'sonner';
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
 import {
@@ -66,6 +66,7 @@ interface MessageAttachment {
   filename: string;
   size: number;
   mimeType: string;
+  fileId?: string;
   thumbnail?: string;
   duration?: number;
   width?: number;
@@ -95,6 +96,23 @@ interface Conversation {
   unreadCount: number;
 }
 
+interface MediaPreviewState {
+  file: File;
+  type: 'image' | 'video' | 'file';
+  previewUrl: string;
+  caption: string;
+}
+
+interface UploadingMediaState {
+  id: string;
+  file: File;
+  type: 'image' | 'video' | 'file';
+  previewUrl: string;
+  caption: string;
+  progress: number;
+  error: string | null;
+}
+
 export default function UserMessagesPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -108,8 +126,17 @@ export default function UserMessagesPage() {
   const [sending, setSending] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [hasDietitian, setHasDietitian] = useState(true);
-  const [showMediaUpload, setShowMediaUpload] = useState(false);
-  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState<UploadingMediaState | null>(null);
+  const [failedAttachments, setFailedAttachments] = useState<Set<string>>(new Set());
+  const [voicePlayingId, setVoicePlayingId] = useState<string | null>(null);
+  const [voiceProgress, setVoiceProgress] = useState<Record<string, number>>({});
+  const [voiceDurations, setVoiceDurations] = useState<Record<string, number>>({});
+  const [videoPlayerOpen, setVideoPlayerOpen] = useState(false);
+  const [videoPlayerUrl, setVideoPlayerUrl] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -117,7 +144,18 @@ export default function UserMessagesPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const imageRef = useRef<HTMLInputElement>(null);
+  const docRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLInputElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<BlobPart[]>([]);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordStartedAtRef = useRef<number>(0);
   const isInitialLoadRef = useRef(false);
   const userPressedBackRef = useRef(false);
 
@@ -231,6 +269,45 @@ export default function UserMessagesPage() {
   useEffect(() => {
     scrollToBottomRef.current = scrollToBottom;
   });
+
+  useEffect(() => {
+    const handleOutside = (event: MouseEvent | TouchEvent) => {
+      if (!attachMenuRef.current) return;
+      if (!attachMenuRef.current.contains(event.target as Node)) {
+        setShowAttachMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (mediaPreview?.previewUrl) {
+        URL.revokeObjectURL(mediaPreview.previewUrl);
+      }
+      if (uploadingMedia?.previewUrl) {
+        URL.revokeObjectURL(uploadingMedia.previewUrl);
+      }
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+        recorderRef.current.stop();
+      }
+      if (recordStreamRef.current) {
+        recordStreamRef.current.getTracks().forEach((track) => track.stop());
+        recordStreamRef.current = null;
+      }
+    };
+  }, [mediaPreview, uploadingMedia]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -378,6 +455,9 @@ export default function UserMessagesPage() {
     const messageContent = newMessage.trim();
     setSending(true);
     setNewMessage(''); // Optimistic clear
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
 
     try {
       const response = await fetch('/api/client/messages', {
@@ -397,63 +477,253 @@ export default function UserMessagesPage() {
       } else {
         // Restore message on failure and show error from API
         setNewMessage(messageContent);
+        if (inputRef.current) {
+          inputRef.current.style.height = 'auto';
+          inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+        }
         const errorData = await response.json().catch(() => ({}));
         toast.error(errorData.error || 'Failed to send message');
       }
     } catch (error) {
       console.error('Error sending message:', error);
       setNewMessage(messageContent);
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+        inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+      }
       toast.error('Failed to send message');
     } finally {
       setSending(false);
     }
   };
 
-  // Handle media upload (images, videos, files)
-  const handleMediaUpload = async (file: File, caption?: string) => {
-    if (!selectedConversation) return;
+  const handleMessageInput = (value: string) => {
+    setNewMessage(value);
+    if (!inputRef.current) return;
+    inputRef.current.style.height = 'auto';
+    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+  };
 
-    try {
-      setSending(true);
+  const compressVideoFile = async (file: File): Promise<File> => {
+    if (!file.type.startsWith('video/') || file.size < 5 * 1024 * 1024 || typeof document === 'undefined') {
+      return file;
+    }
 
-      // Upload file to server
+    return new Promise((resolve) => {
+      try {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.muted = true;
+        video.playsInline = true;
+
+        video.onloadedmetadata = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(file);
+            return;
+          }
+
+          const maxHeight = 720;
+          let width = video.videoWidth;
+          let height = video.videoHeight;
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const stream = canvas.captureStream(24);
+          const recorder = new MediaRecorder(stream, {
+            mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+              ? 'video/webm;codecs=vp9'
+              : 'video/webm',
+            videoBitsPerSecond: 1500000
+          });
+
+          const chunks: Blob[] = [];
+          recorder.ondataavailable = (event) => {
+            if (event.data.size > 0) chunks.push(event.data);
+          };
+
+          recorder.onstop = () => {
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.webm'), {
+              type: 'video/webm',
+              lastModified: Date.now()
+            });
+            resolve(compressed.size < file.size ? compressed : file);
+          };
+
+          recorder.start();
+          video.currentTime = 0;
+          video.play().catch(() => {
+            recorder.stop();
+          });
+
+          const draw = () => {
+            if (video.paused || video.ended) {
+              if (recorder.state === 'recording') recorder.stop();
+              return;
+            }
+            ctx.drawImage(video, 0, 0, width, height);
+            requestAnimationFrame(draw);
+          };
+
+          video.onplay = draw;
+          video.onended = () => {
+            if (recorder.state === 'recording') recorder.stop();
+          };
+
+          setTimeout(() => {
+            if (recorder.state === 'recording') {
+              video.pause();
+              recorder.stop();
+            }
+          }, 60000);
+        };
+
+        video.onerror = () => resolve(file);
+        video.src = URL.createObjectURL(file);
+      } catch {
+        resolve(file);
+      }
+    });
+  };
+
+  const uploadFileWithProgress = async (file: File, onProgress?: (progress: number) => void) => {
+    return new Promise<any>((resolve, reject) => {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('type', 'message');
 
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload');
 
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to upload file');
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const progress = Math.round((event.loaded / event.total) * 100);
+        onProgress?.(progress);
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch {
+            reject(new Error('Invalid upload response'));
+          }
+          return;
+        }
+
+        try {
+          const err = JSON.parse(xhr.responseText);
+          reject(new Error(err.error || 'Upload failed'));
+        } catch {
+          reject(new Error('Upload failed'));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network upload error'));
+      xhr.send(formData);
+    });
+  };
+
+  const optimizeDocumentFile = async (file: File): Promise<File> => {
+    const maxDocSize = 25 * 1024 * 1024; // 25MB
+    if (file.size > maxDocSize) {
+      throw new Error('Document is too large. Please upload a file smaller than 25MB.');
+    }
+
+    // Lightweight optimization for plain text docs
+    if (file.type === 'text/plain' && file.size > 100 * 1024) {
+      try {
+        const text = await file.text();
+        const normalized = text
+          .replace(/\r\n/g, '\n')
+          .replace(/[\t ]+\n/g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+
+        if (normalized.length > 0 && normalized.length < text.length) {
+          return new File([normalized], file.name, {
+            type: file.type,
+            lastModified: Date.now()
+          });
+        }
+      } catch {
+        // Fallback to original file
+      }
+    }
+
+    return file;
+  };
+
+  const sendAttachmentMessage = async (
+    rawFile: File,
+    messageType: 'image' | 'video' | 'audio' | 'voice' | 'file',
+    caption?: string,
+    duration?: number,
+    onProgress?: (progress: number) => void
+  ) => {
+    if (!selectedConversation) return;
+
+    setSending(true);
+
+    try {
+      let file = rawFile;
+
+      if (messageType === 'image' && rawFile.type.startsWith('image/')) {
+        const compressed = await compressImage(rawFile, {
+          maxWidth: 800,
+          maxHeight: 800,
+          quality: 0.7,
+          format: 'image/jpeg'
+        });
+        file = new File([compressed.blob], rawFile.name.replace(/\.[^.]+$/, '.jpg'), {
+          type: 'image/jpeg',
+          lastModified: Date.now()
+        });
       }
 
-      const uploadData = await uploadResponse.json();
+      if (messageType === 'video') {
+        file = await compressVideoFile(rawFile);
+      }
 
-      // Determine message type based on file type
-      let messageType: 'text' | 'image' | 'file' | 'video' | 'audio' = 'file';
-      if (file.type.startsWith('image/')) messageType = 'image';
-      else if (file.type.startsWith('video/')) messageType = 'video';
-      else if (file.type.startsWith('audio/')) messageType = 'audio';
+      if (messageType === 'file') {
+        file = await optimizeDocumentFile(rawFile);
+      }
 
-      // Create attachment data
-      const attachment = {
-        url: uploadData.url,
+      const uploadData = await uploadFileWithProgress(file, onProgress);
+      const uploadedUrl = uploadData?.url;
+      const uploadedFileId = uploadData?.fileId || uploadData?.id || uploadData?.file?.fileId;
+
+      if (!uploadedUrl) {
+        throw new Error('Upload succeeded but file URL is missing');
+      }
+
+      const attachment: MessageAttachment = {
+        url: uploadedUrl,
+        fileId: uploadedFileId,
         filename: uploadData.filename || file.name,
         size: uploadData.size || file.size,
         mimeType: uploadData.type || file.type,
+        thumbnail: uploadData.thumbnail || uploadData.thumbnailUrl,
+        duration
       };
 
-      // Build a fallback content label for media messages (in case the API requires it)
-      const mediaLabel = messageType === 'image' ? '📷 Photo'
-        : messageType === 'video' ? '🎬 Video'
-          : messageType === 'audio' ? '🎵 Audio'
-            : '📎 File';
+      const mediaLabel = messageType === 'image'
+        ? 'Photo'
+        : messageType === 'video'
+          ? ' Video'
+          : messageType === 'voice'
+            ? 'Voice message'
+            : messageType === 'audio'
+              ? 'Audio'
+              : 'File';
 
-      // Send message with attachment
       const response = await fetch('/api/client/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -465,91 +735,214 @@ export default function UserMessagesPage() {
         })
       });
 
-      if (response.ok) {
-        setShowMediaUpload(false);
-        // SSE will handle refresh
-      } else {
-        toast.error('Failed to send media');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to send media message');
       }
+
+      setShowAttachMenu(false);
+      setTimeout(() => scrollToBottom(false), 30);
+      return true;
     } catch (error) {
-      console.error('Error uploading media:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to upload media');
       throw error;
     } finally {
       setSending(false);
     }
   };
 
-  // Handle voice recording
-  const handleVoiceRecording = async (audioBlob: Blob) => {
-    if (!selectedConversation) return;
+  const setPreviewForFile = (file: File, type: 'image' | 'video' | 'file') => {
+    if (mediaPreview?.previewUrl) {
+      URL.revokeObjectURL(mediaPreview.previewUrl);
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setMediaPreview({
+      file,
+      type,
+      previewUrl,
+      caption: ''
+    });
+    setShowAttachMenu(false);
+  };
+
+  const handleImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setPreviewForFile(file, 'image');
+  };
+
+  const handleVideoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setPreviewForFile(file, 'video');
+  };
+
+  const handleDocUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setPreviewForFile(file, 'file');
+  };
+
+  const clearMediaPreview = () => {
+    if (mediaPreview?.previewUrl) {
+      URL.revokeObjectURL(mediaPreview.previewUrl);
+    }
+    setMediaPreview(null);
+  };
+
+  const confirmMediaSend = async () => {
+    if (!mediaPreview) return;
+
+    setUploadingMedia({
+      id: `upload-${Date.now()}`,
+      file: mediaPreview.file,
+      type: mediaPreview.type,
+      previewUrl: mediaPreview.previewUrl,
+      caption: mediaPreview.caption,
+      progress: 0,
+      error: null
+    });
+
+    setMediaPreview(null);
 
     try {
-      setSending(true);
+      await sendAttachmentMessage(
+        mediaPreview.file,
+        mediaPreview.type,
+        mediaPreview.caption,
+        undefined,
+        (progress) => {
+          setUploadingMedia((prev) => {
+            if (!prev) return prev;
+            return { ...prev, progress };
+          });
+        }
+      );
 
-      // Determine file extension based on blob type
-      const mimeType = audioBlob.type || 'audio/webm';
-      let extension = 'webm';
-      if (mimeType.includes('mp4') || mimeType.includes('m4a')) extension = 'm4a';
-      else if (mimeType.includes('ogg')) extension = 'ogg';
-      else if (mimeType.includes('wav')) extension = 'wav';
+      setUploadingMedia((prev) => {
+        if (!prev) return prev;
+        if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+        return null;
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to send file';
+      setUploadingMedia((prev) => {
+        if (!prev) return prev;
+        return { ...prev, error: message };
+      });
+      toast.error(message);
+    }
+  };
 
-      // Convert blob to file with proper extension
-      const audioFile = new File([audioBlob], `voice_${Date.now()}.${extension}`, {
-        type: mimeType
+  const retryUploadingMedia = async () => {
+    if (!uploadingMedia) return;
+    setUploadingMedia((prev) => (prev ? { ...prev, progress: 0, error: null } : prev));
+
+    try {
+      await sendAttachmentMessage(
+        uploadingMedia.file,
+        uploadingMedia.type,
+        uploadingMedia.caption,
+        undefined,
+        (progress) => {
+          setUploadingMedia((prev) => {
+            if (!prev) return prev;
+            return { ...prev, progress };
+          });
+        }
+      );
+
+      setUploadingMedia((prev) => {
+        if (!prev) return prev;
+        if (prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+        return null;
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Retry failed';
+      setUploadingMedia((prev) => (prev ? { ...prev, error: message } : prev));
+      toast.error(message);
+    }
+  };
+
+  const startVoiceRecording = async (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (sending || isRecording || !selectedConversation) return;
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm'
       });
 
-      // Upload audio file
-      const formData = new FormData();
-      formData.append('file', audioFile);
-      formData.append('type', 'message');
+      recordStreamRef.current = stream;
+      recorderRef.current = recorder;
+      recordChunksRef.current = [];
+      recordStartedAtRef.current = Date.now();
+      setRecordingTime(0);
+      setIsRecording(true);
 
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to upload voice message');
-      }
-
-      const uploadData = await uploadResponse.json();
-
-      // Create attachment data
-      const attachment = {
-        url: uploadData.url,
-        filename: uploadData.filename || audioFile.name,
-        size: uploadData.size || audioFile.size,
-        mimeType: uploadData.type || audioFile.type,
-        duration: Math.max(1, Math.floor(audioBlob.size / 8000)) // Rough estimate
+      recorder.ondataavailable = (evt) => {
+        if (evt.data && evt.data.size > 0) {
+          recordChunksRef.current.push(evt.data);
+        }
       };
 
-      // Send voice message
-      const response = await fetch('/api/client/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipientId: selectedConversation._id,
-          content: 'Voice message',
-          type: 'voice',
-          attachments: [attachment]
-        })
-      });
-
-      if (response.ok) {
-        setShowVoiceRecorder(false);
-        // SSE will handle refresh
-      } else {
-        throw new Error('Failed to send voice message');
-      }
+      recorder.start();
+      recordTimerRef.current = setInterval(() => {
+        setRecordingTime(Math.floor((Date.now() - recordStartedAtRef.current) / 1000));
+      }, 250);
     } catch (error) {
-      console.error('Error uploading voice message:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to send voice message');
-      throw error; // Re-throw so VoiceRecorder can handle the error state
-    } finally {
-      setSending(false);
+      console.error('Voice recording start error:', error);
+      toast.error('Microphone permission is required');
+      setIsRecording(false);
     }
+  };
+
+  const stopVoiceRecording = async () => {
+    if (!recorderRef.current) return;
+
+    const recorder = recorderRef.current;
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+
+    const duration = Math.max(1, Math.floor((Date.now() - recordStartedAtRef.current) / 1000));
+
+    await new Promise<void>((resolve) => {
+      recorder.onstop = async () => {
+        const voiceBlob = new Blob(recordChunksRef.current, { type: 'audio/webm' });
+        const voiceFile = new File([voiceBlob], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
+
+        if (recordStreamRef.current) {
+          recordStreamRef.current.getTracks().forEach((track) => track.stop());
+          recordStreamRef.current = null;
+        }
+
+        recorderRef.current = null;
+        recordChunksRef.current = [];
+        setIsRecording(false);
+        setRecordingTime(0);
+
+        try {
+          await sendAttachmentMessage(voiceFile, 'voice', 'Voice message', duration);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Failed to send voice message');
+        }
+        resolve();
+      };
+
+      if (recorder.state !== 'inactive') {
+        recorder.stop();
+      } else {
+        resolve();
+      }
+    });
   };
 
   // Format file size for display
@@ -586,6 +979,35 @@ export default function UserMessagesPage() {
     const currentDate = new Date(currentMsg.createdAt);
     const prevDate = new Date(prevMsg.createdAt);
     return !isSameDay(currentDate, prevDate);
+  };
+
+  const toggleVoicePlayback = (messageId: string) => {
+    const audio = audioRefs.current[messageId];
+    if (!audio) return;
+
+    Object.entries(audioRefs.current).forEach(([id, element]) => {
+      if (id !== messageId && element && !element.paused) {
+        element.pause();
+        element.currentTime = 0;
+      }
+    });
+
+    if (voicePlayingId === messageId) {
+      audio.pause();
+      setVoicePlayingId(null);
+      return;
+    }
+
+    audio.play().catch(() => {
+      toast.error('Unable to play voice message');
+    });
+    setVoicePlayingId(messageId);
+  };
+
+  const formatVoiceDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
   };
 
   // Handle message deletion
@@ -626,9 +1048,9 @@ export default function UserMessagesPage() {
   const getStatusIcon = (isRead: boolean, isOwn: boolean) => {
     if (!isOwn) return null;
     if (isRead) {
-      return <CheckCheck className="h-3 w-3 text-green-500" />;
+      return <Check className="h-3 w-3 opacity-70" />;
     }
-    return <Check className="h-3 w-3 text-gray-400" />;
+    return <CheckCheck className="h-3 w-3 text-[#53BDEB]" />;
   };
 
   if (loading) {
@@ -641,8 +1063,8 @@ export default function UserMessagesPage() {
 
   return (
     <PageTransition>
-      <div className={`min-h-screen ${isDarkMode ? 'bg-gray-950' : 'bg-[#ECE5DD]'}`}>
-        <div className="h-screen md:h-[calc(100vh-120px)] flex flex-col md:flex-row md:gap-4 md:p-6">
+      <div className={`h-dvh md:h-screen overflow-hidden ${isDarkMode ? 'bg-gray-950' : 'bg-[#ECE5DD]'}`}>
+        <div className="h-full md:h-[calc(100vh-120px)] flex flex-col md:flex-row md:gap-4 md:p-6 overflow-hidden">
           {/* Conversations List - Hidden on mobile when conversation selected */}
           <div
             className={`md:w-80 shrink-0 md:rounded-xl md:shadow-sm md:border ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
@@ -727,15 +1149,16 @@ export default function UserMessagesPage() {
 
           {/* Chat Area */}
           <div
-            className={`flex-1 flex flex-col md:rounded-xl md:shadow-sm md:border ${isDarkMode ? 'border-gray-800' : 'border-gray-100'
+            className={`flex-1 flex flex-col min-h-0 md:rounded-xl md:shadow-sm md:border ${isDarkMode ? 'border-gray-800' : 'border-gray-100'
               } ${!selectedConversation ? 'hidden md:flex' : 'flex fixed inset-0 z-50 md:relative md:z-auto'}`}
           >
             {selectedConversation ? (
-              <div className="flex flex-col h-dvh md:h-full">
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
                 {/* Chat Header - WhatsApp Style - Fixed at top */}
                 <div
                   className={`flex items-center justify-between p-3 bg-[#075E54] text-white md:border-b md:rounded-t-xl shrink-0 ${isDarkMode ? 'md:bg-gray-900 md:text-white md:border-gray-800' : 'md:bg-white md:text-gray-900 md:border-gray-100'
                     }`}
+                  style={{ flexShrink: 0 }}
                 >
                   <div className="flex items-center gap-3">
                     <button
@@ -769,12 +1192,14 @@ export default function UserMessagesPage() {
                 {/* Messages - WhatsApp Style - Scrollable area */}
                 <div
                   ref={messagesContainerRef}
-                  className="flex-1 overflow-y-auto p-4 space-y-2"
+                  className="px-3 py-2 space-y-1"
                   style={{
-                    backgroundColor: isDarkMode ? '#0B141A' : '#ECE5DD',
+                    flex: 1,
+                    overflowY: 'auto',
+                    backgroundColor: isDarkMode ? '#0B141A' : '#EFEAE2',
                     backgroundImage: isDarkMode
-                      ? 'url("data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h100v100H0z\' fill=\'%230B141A\'/%3E%3Cpath d=\'M20 20h60v60H20z\' fill=\'%23FFFFFF\' opacity=\'.03\'/%3E%3C/svg%3E")'
-                      : 'url("data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h100v100H0z\' fill=\'%23ECE5DD\'/%3E%3Cpath d=\'M20 20h60v60H20z\' fill=\'%23D9D9D9\' opacity=\'.05\'/%3E%3C/svg%3E")',
+                      ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cdefs%3E%3Cpattern id='p' width='40' height='40' patternUnits='userSpaceOnUse'%3E%3Cpath d='M20 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM35 30a2 2 0 1 0 0 4 2 2 0 0 0 0-4z' fill='%23ffffff' opacity='.025'/%3E%3C/pattern%3E%3C/defs%3E%3Crect fill='url(%23p)' width='200' height='200'/%3E%3C/svg%3E")`
+                      : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cdefs%3E%3Cpattern id='p' width='40' height='40' patternUnits='userSpaceOnUse'%3E%3Cpath d='M20 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM35 30a2 2 0 1 0 0 4 2 2 0 0 0 0-4z' fill='%23000000' opacity='.03'/%3E%3C/pattern%3E%3C/defs%3E%3Crect fill='url(%23p)' width='200' height='200'/%3E%3C/svg%3E")`,
                     backgroundSize: '300px 300px'
                   }}
                 >
@@ -803,107 +1228,223 @@ export default function UserMessagesPage() {
 
                       // Render message content based on type
                       const renderMessageContent = () => {
-                        // Helper to check if content is a meaningful caption (not just a media label)
-                        const mediaLabels = ['📷 Photo', '🎬 Video', '🎵 Audio', '📎 File', 'Voice message', 'File attachment', 'Image', 'Video', 'Audio'];
+                        const mediaLabels = [' Photo', ' Video', ' Audio', ' File', 'Voice message', 'File attachment', 'Image', 'Video', 'Audio'];
                         const hasCaption = message.content && !mediaLabels.includes(message.content.trim());
+                        const url = attachment?.url || '';
+                        const hasValidUrl = !!url && /^https?:\/\//i.test(url);
+                        const failed = failedAttachments.has(message._id);
+
+                        const retryAttachment = () => {
+                          setFailedAttachments((prev) => {
+                            const next = new Set(prev);
+                            next.delete(message._id);
+                            return next;
+                          });
+                        };
 
                         if (attachment) {
                           switch (message.type) {
                             case 'image':
+                              if (!hasValidUrl || failed) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={retryAttachment}
+                                    className="w-55 h-40 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
+                                    style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
+                                  >
+                                    <RotateCcw className="w-5 h-5" />
+                                    <span>Image unavailable · Tap to retry</span>
+                                  </button>
+                                );
+                              }
                               return (
-                                <div className="relative max-w-[280px]">
+                                <div className="relative">
                                   <img
-                                    src={attachment.thumbnail || attachment.url}
+                                    src={attachment.thumbnail || url}
                                     alt="Image attachment"
-                                    className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                                    onClick={() => openLightbox(attachment.url)}
-                                    style={{ maxHeight: '300px' }}
-                                    onError={(e) => {
-                                      (e.target as HTMLImageElement).style.display = 'none';
-                                    }}
+                                    className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                    onClick={() => openLightbox(url)}
+                                    style={{ maxWidth: '220px', maxHeight: '260px', objectFit: 'cover' }}
+                                    onError={() => setFailedAttachments((prev) => new Set([...prev, message._id]))}
                                   />
-                                  {hasCaption && (
-                                    <p className="text-[14px] sm:text-[15px] mt-2">{message.content}</p>
-                                  )}
+                                  {hasCaption && <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">{message.content}</p>}
                                 </div>
                               );
                             case 'video':
-                              return (
-                                <div className="relative max-w-[280px]">
-                                  <video
-                                    src={attachment.url}
-                                    controls
-                                    playsInline
-                                    preload="metadata"
-                                    className="rounded-lg max-w-full h-auto"
-                                    style={{ maxHeight: '300px' }}
-                                    poster={attachment.thumbnail}
+                              if (!hasValidUrl || failed) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={retryAttachment}
+                                    className="w-55 h-40 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
+                                    style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
                                   >
-                                    Your browser does not support the video tag.
-                                  </video>
-                                  <div className="mt-1 text-xs opacity-75">
-                                    Video • {formatFileSize(attachment.size)}
-                                  </div>
-                                  {hasCaption && (
-                                    <p className="text-[14px] sm:text-[15px] mt-1">{message.content}</p>
-                                  )}
+                                    <RotateCcw className="w-5 h-5" />
+                                    <span>Video unavailable · Tap to retry</span>
+                                  </button>
+                                );
+                              }
+                              return (
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setVideoPlayerUrl(url);
+                                      setVideoPlayerOpen(true);
+                                    }}
+                                    className="relative rounded-lg overflow-hidden block"
+                                  >
+                                    {attachment.thumbnail ? (
+                                      <img
+                                        src={attachment.thumbnail}
+                                        alt="Video thumbnail"
+                                        className="rounded-lg"
+                                        style={{ maxWidth: '220px', maxHeight: '260px', objectFit: 'cover' }}
+                                        onError={() => setFailedAttachments((prev) => new Set([...prev, message._id]))}
+                                      />
+                                    ) : (
+                                      <div
+                                        className="rounded-lg bg-black/70 flex items-center justify-center"
+                                        style={{ width: 220, height: 160 }}
+                                      >
+                                        <Play className="w-8 h-8 text-white" />
+                                      </div>
+                                    )}
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/25">
+                                      <div className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center">
+                                        <Play className="w-5 h-5 text-white ml-0.5" />
+                                      </div>
+                                    </div>
+                                  </button>
+                                  <div className="mt-1 text-[11px] opacity-70">Video • {formatFileSize(attachment.size)}</div>
+                                  {hasCaption && <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">{message.content}</p>}
                                 </div>
                               );
                             case 'audio':
                             case 'voice':
+                              if (!hasValidUrl || failed) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={retryAttachment}
+                                    className="w-55 h-24 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
+                                    style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
+                                  >
+                                    <RotateCcw className="w-5 h-5" />
+                                    <span>Audio unavailable · Tap to retry</span>
+                                  </button>
+                                );
+                              }
                               return (
-                                <div className={`rounded-lg p-2 border max-w-[280px] ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                                  <audio controls className="w-full h-10" preload="metadata">
-                                    <source src={attachment.url} type={attachment.mimeType || 'audio/mpeg'} />
-                                    Your browser does not support the audio element.
-                                  </audio>
-                                  <div className={`mt-1 text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-                                    {message.type === 'voice' ? 'Voice message' : 'Audio'} • {formatFileSize(attachment.size)}
+                                <div className="flex items-center gap-3 min-w-50 max-w-65 py-1">
+                                  <audio
+                                    ref={(element) => {
+                                      if (element) audioRefs.current[message._id] = element;
+                                    }}
+                                    src={url}
+                                    preload="metadata"
+                                    onTimeUpdate={(event) => {
+                                      const audio = event.currentTarget;
+                                      if (audio.duration) {
+                                        setVoiceProgress((prev) => ({ ...prev, [message._id]: (audio.currentTime / audio.duration) * 100 }));
+                                      }
+                                    }}
+                                    onLoadedMetadata={(event) => {
+                                      const duration = event.currentTarget.duration;
+                                      if (isFinite(duration)) {
+                                        setVoiceDurations((prev) => ({ ...prev, [message._id]: duration }));
+                                      }
+                                    }}
+                                    onEnded={() => {
+                                      setVoicePlayingId(null);
+                                      setVoiceProgress((prev) => ({ ...prev, [message._id]: 0 }));
+                                    }}
+                                    className="hidden"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleVoicePlayback(message._id)}
+                                    className={`h-10 w-10 rounded-full flex items-center justify-center ${isOwn ? 'bg-white/25 hover:bg-white/35' : 'bg-[#00A884] hover:bg-[#00A884]/80'}`}
+                                  >
+                                    {voicePlayingId === message._id ? (
+                                      <Pause className="w-4 h-4 text-white" />
+                                    ) : (
+                                      <Play className="w-4 h-4 text-white ml-0.5" />
+                                    )}
+                                  </button>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="h-1.25 rounded-full overflow-hidden" style={{ backgroundColor: isOwn ? 'rgba(255,255,255,.28)' : 'rgba(0,0,0,.15)' }}>
+                                      <div
+                                        className="h-full rounded-full transition-all duration-100"
+                                        style={{
+                                          width: `${voiceProgress[message._id] || 0}%`,
+                                          backgroundColor: isOwn ? 'rgba(255,255,255,.85)' : '#00A884'
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="flex justify-between mt-1">
+                                      <span className="text-[10px] opacity-55">
+                                        {voiceDurations[message._id]
+                                          ? formatVoiceDuration(voiceDurations[message._id])
+                                          : attachment.duration
+                                            ? formatVoiceDuration(attachment.duration)
+                                            : '0:00'}
+                                      </span>
+                                      <span className="text-[10px] opacity-55">{formatFileSize(attachment.size)}</span>
+                                    </div>
                                   </div>
                                 </div>
                               );
                             case 'file':
+                              if (!hasValidUrl || failed) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={retryAttachment}
+                                    className="w-55 h-24 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
+                                    style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
+                                  >
+                                    <RotateCcw className="w-5 h-5" />
+                                    <span>Document unavailable · Tap to retry</span>
+                                  </button>
+                                );
+                              }
                               return (
-                                <div className={`rounded-lg p-3 border max-w-[280px] ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                <div className="max-w-65">
                                   <a
-                                    href={attachment.url}
+                                    href={url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+                                    className={`flex items-center gap-3 rounded-lg p-2.5 ${isOwn ? 'bg-white/10 hover:bg-white/15' : isDarkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-gray-100 hover:bg-gray-200'}`}
                                   >
-                                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
-                                      <FileText className="w-5 h-5 text-blue-600" />
+                                    <div className="w-10 h-10 bg-blue-500/15 rounded-lg flex items-center justify-center shrink-0">
+                                      <FileText className="w-5 h-5 text-blue-500" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                      <p className={`text-sm font-medium truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        {attachment.filename || 'Document'}
-                                      </p>
-                                      <p className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-                                        {formatFileSize(attachment.size)}
-                                      </p>
+                                      <p className="text-sm font-medium truncate">{attachment.filename || 'Document'}</p>
+                                      <p className="text-[10px] opacity-55">{formatFileSize(attachment.size)}</p>
                                     </div>
-                                    <Download className={`w-4 h-4 shrink-0 ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`} />
+                                    <Download className="w-4 h-4 opacity-60 shrink-0" />
                                   </a>
-                                  {hasCaption && message.content !== 'File attachment' && (
-                                    <p className="text-[14px] sm:text-[15px] mt-2">{message.content}</p>
-                                  )}
+                                  {hasCaption && <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">{message.content}</p>}
                                 </div>
                               );
                             default:
-                              return <p className="text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap wrap-break-word">{message.content}</p>;
+                              return <p className="text-[14px] leading-relaxed whitespace-pre-wrap wrap-break-word">{message.content}</p>;
                           }
                         }
-                        return <p className="text-[14px] sm:text-[15px] leading-relaxed whitespace-pre-wrap wrap-break-word">{message.content}</p>;
+                        return <p className="text-[14px] leading-relaxed whitespace-pre-wrap wrap-break-word">{message.content}</p>;
                       };
 
                       return (
                         <div key={message._id}>
                           {/* Date Separator - WhatsApp Style */}
                           {showDateSeparator && (
-                            <div className="flex justify-center my-4">
-                              <div className={`px-3 py-1 rounded-lg text-xs font-medium shadow-sm ${isDarkMode
-                                ? 'bg-gray-800 text-gray-300'
-                                : 'bg-white/90 text-gray-600'
+                            <div className="flex justify-center my-3">
+                              <div className={`px-3 py-1 rounded-md text-[11px] font-medium shadow-sm ${isDarkMode
+                                ? 'bg-[#182229] text-[#8696A0]'
+                                : 'bg-white/90 text-[#54656F] shadow-[0_1px_0.5px_rgba(0,0,0,.13)]'
                                 }`}>
                                 {formatDateSeparator(message.createdAt)}
                               </div>
@@ -911,47 +1452,55 @@ export default function UserMessagesPage() {
                           )}
 
                           {/* Message Bubble */}
-                          <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1 group`}>
+                          <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} items-end gap-2 mb-1 group`}>
+                            {!isOwn && (
+                              <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 bg-[#075E54]/15 flex items-center justify-center">
+                                {message.sender?.avatar ? (
+                                  <img src={message.sender.avatar} alt={message.sender.firstName} className="w-full h-full object-cover" loading="lazy" />
+                                ) : (
+                                  <User className="w-3.5 h-3.5 text-[#075E54]" />
+                                )}
+                              </div>
+                            )}
+
                             <div className={`max-w-[85%] sm:max-w-[75%] relative ${isOwn ? 'order-2' : ''}`}>
-                              {/* Delete menu for own messages */}
-                              {isOwn && (
-                                <div className="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className={`h-6 w-6 p-0 rounded-full ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
-                                      >
-                                        <MoreVertical className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start" className="min-w-30">
-                                      <DropdownMenuItem
-                                        className="text-red-600 focus:text-red-600 cursor-pointer"
-                                        onClick={() => confirmDeleteMessage(message)}
-                                      >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              )}
+                              {/* Delete menu for every message */}
+                              <div className={`absolute ${isOwn ? '-left-8' : '-right-8'} top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity`}>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className={`h-6 w-6 p-0 rounded-full ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
+                                    >
+                                      <MoreVertical className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align={isOwn ? 'start' : 'end'} className="min-w-30">
+                                    <DropdownMenuItem
+                                      className="text-red-600 focus:text-red-600 cursor-pointer"
+                                      onClick={() => confirmDeleteMessage(message)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
 
                               <div
-                                className={`px-3 py-2 rounded-lg shadow-sm inline-block ${isOwn
+                                className={`px-2.5 py-1.5 shadow-sm inline-block ${isOwn
                                   ? isDarkMode
-                                    ? 'bg-emerald-700 text-white rounded-tr-none'
-                                    : 'bg-[#DCF8C6] text-gray-900 rounded-tr-none'
+                                    ? 'bg-[#005C4B] text-white rounded-2xl rounded-tr-sm'
+                                    : 'bg-[#D9FDD3] text-gray-900 rounded-2xl rounded-tr-sm'
                                   : isDarkMode
-                                    ? 'bg-gray-800 text-white rounded-tl-none'
-                                    : 'bg-white text-gray-900 rounded-tl-none'
+                                    ? 'bg-[#202C33] text-white rounded-2xl rounded-tl-sm'
+                                    : 'bg-white text-gray-900 rounded-2xl rounded-tl-sm'
                                   }`}
                               >
                                 {renderMessageContent()}
-                                <div className={`flex items-center justify-end gap-1 mt-1`}>
-                                  <span className={`text-[10px] sm:text-[11px] ${isDarkMode ? 'text-gray-200' : 'text-gray-500'}`}>
+                                <div className="flex items-center justify-end gap-1 mt-0.5">
+                                  <span className="text-[10px] opacity-55">
                                     {formatMessageTime(message.createdAt)}
                                   </span>
                                   {getStatusIcon(message.isRead, isOwn)}
@@ -963,76 +1512,183 @@ export default function UserMessagesPage() {
                       );
                     })
                   )}
+
+                  {uploadingMedia && (
+                    <div className="flex justify-end mb-1">
+                      <div className={`px-2.5 py-1.5 shadow-sm inline-block rounded-2xl rounded-tr-sm ${isDarkMode ? 'bg-[#005C4B] text-white' : 'bg-[#D9FDD3] text-gray-900'} max-w-[85%] sm:max-w-[75%]`}>
+                        <div className="rounded-lg overflow-hidden bg-black/5 min-w-45 max-w-55">
+                          {uploadingMedia.type === 'image' && (
+                            <img src={uploadingMedia.previewUrl} alt="Uploading" className="w-full h-40 object-cover" />
+                          )}
+                          {uploadingMedia.type === 'video' && (
+                            <div className="w-full h-40 bg-black/60 flex items-center justify-center">
+                              <Play className="w-7 h-7 text-white" />
+                            </div>
+                          )}
+                          {uploadingMedia.type === 'file' && (
+                            <div className="p-3 flex items-center gap-3">
+                              <FileText className="w-7 h-7 text-blue-500" />
+                              <div className="min-w-0">
+                                <p className="text-sm truncate">{uploadingMedia.file.name}</p>
+                                <p className="text-[10px] opacity-60">{formatFileSize(uploadingMedia.file.size)}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {!uploadingMedia.error ? (
+                          <div className="mt-2">
+                            <div className="h-1.5 rounded-full bg-white/30 overflow-hidden">
+                              <div className="h-full bg-[#00A884] transition-all" style={{ width: `${uploadingMedia.progress}%` }} />
+                            </div>
+                            <p className="text-[11px] mt-1 opacity-80">Uploading... {uploadingMedia.progress}%</p>
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            <p className="text-[11px] text-red-200">{uploadingMedia.error}</p>
+                            <button
+                              type="button"
+                              onClick={retryUploadingMedia}
+                              className="mt-1 text-[11px] px-2 py-1 rounded bg-red-500/80 text-white"
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div ref={messagesEndRef} />
                 </div>
 
-                {/* Voice Recorder */}
-                {showVoiceRecorder && (
-                  <div className={`p-3 border-t ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
-                    <VoiceRecorder
-                      onSend={handleVoiceRecording}
-                      onCancel={() => setShowVoiceRecorder(false)}
-                    />
-                  </div>
-                )}
+                <div
+                  className="border-t"
+                  style={{
+                    flexShrink: 0,
+                    position: 'sticky',
+                    bottom: 0,
+                    zIndex: 50,
+                    background: '#f0f0f0',
+                    padding: '8px 12px',
+                    paddingBottom: 'max(8px, env(safe-area-inset-bottom))'
+                  }}
+                >
+                  <div className="relative" ref={attachMenuRef}>
+                    {showAttachMenu && (
+                      <div
+                        className="fixed inset-0 z-90 bg-black/35"
+                        onClick={() => setShowAttachMenu(false)}
+                      />
+                    )}
 
-                {/* Input Area - WhatsApp Style - Fixed at bottom */}
-                {!showVoiceRecorder && (
-                  <div
-                    className={`p-2 sm:p-3 md:border-t md:rounded-b-xl shrink-0 ${isDarkMode ? 'bg-gray-900 md:bg-gray-900 md:border-gray-800' : 'bg-[#F0F0F0] md:bg-white md:border-gray-100'
-                      }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className={`h-10 w-10 shrink-0 rounded-full ${isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
-                        onClick={() => setShowMediaUpload(true)}
-                        disabled={sending}
-                      >
-                        <Paperclip className={`h-5 w-5 ${isDarkMode ? 'text-gray-200' : 'text-gray-600'}`} />
-                      </Button>
-                      <div className={`flex-1 rounded-3xl flex items-center px-4 py-2 shadow-sm ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                        <Input
-                          ref={inputRef}
-                          value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
-                          placeholder="Type a message..."
-                          className={`flex-1 border-0 bg-transparent focus-visible:ring-0 text-[14px] sm:text-[15px] p-0 ${isDarkMode ? 'text-white placeholder:text-gray-400' : 'text-gray-900'}`}
-                          onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                          disabled={sending}
-                        />
+                    {showAttachMenu && (
+                      <div className="absolute bottom-16 left-0 z-100 w-64 bg-white rounded-2xl shadow-xl border border-gray-200 p-3">
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <button
+                            type="button"
+                            className="h-20 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all flex flex-col items-center justify-center gap-1.5"
+                            onClick={() => docRef.current?.click()}
+                          >
+                            <FileIcon className="h-5 w-5 text-[#075E54]" />
+                            <span className="text-xs text-gray-700">📄 Document</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="h-20 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all flex flex-col items-center justify-center gap-1.5"
+                            onClick={() => imageRef.current?.click()}
+                          >
+                            <Paperclip className="h-5 w-5 text-[#075E54]" />
+                            <span className="text-xs text-gray-700">🖼 Image</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="h-20 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all flex flex-col items-center justify-center gap-1.5"
+                            onClick={() => videoRef.current?.click()}
+                          >
+                            <Play className="h-5 w-5 text-[#075E54]" />
+                            <span className="text-xs text-gray-700">🎥 Video</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="h-20 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all flex flex-col items-center justify-center gap-1.5"
+                            onClick={() => cameraRef.current?.click()}
+                          >
+                            <Camera className="h-5 w-5 text-[#075E54]" />
+                            <span className="text-xs text-gray-700">📷 Camera</span>
+                          </button>
+                        </div>
                       </div>
+                    )}
+
+                    <div className="flex items-end gap-2">
+                      <button
+                        type="button"
+                        className="h-10 w-10 shrink-0 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"
+                        onClick={() => setShowAttachMenu((prev) => !prev)}
+                        disabled={sending || isRecording}
+                      >
+                        <Paperclip className="h-5 w-5 text-gray-600" />
+                      </button>
+
+                      <div className="flex-1 rounded-full bg-white border border-gray-200 px-4 py-2 min-h-10 flex items-center">
+                        {isRecording ? (
+                          <div className="w-full flex items-center justify-between text-sm text-gray-700">
+                            <span>Recording... {formatVoiceDuration(recordingTime)}</span>
+                            <span className="text-xs text-gray-500">Release to send</span>
+                          </div>
+                        ) : (
+                          <textarea
+                            ref={inputRef}
+                            value={newMessage}
+                            onChange={(event) => handleMessageInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' && !event.shiftKey) {
+                                event.preventDefault();
+                                handleSendMessage();
+                              }
+                            }}
+                            placeholder="Type a message..."
+                            rows={1}
+                            className="w-full resize-none bg-transparent border-0 outline-none text-[15px] leading-5 max-h-30"
+                            disabled={sending}
+                          />
+                        )}
+                      </div>
+
                       {newMessage.trim() ? (
-                        <Button
-                          size="icon"
-                          className="h-10 w-10 bg-[#075E54] hover:bg-[#064e47] shrink-0 rounded-full shadow-lg"
+                        <button
+                          type="button"
+                          className="h-10 w-10 shrink-0 rounded-full bg-[#075E54] text-white flex items-center justify-center hover:bg-[#064e47] disabled:opacity-60"
                           onClick={handleSendMessage}
-                          disabled={!newMessage.trim() || sending}
+                          disabled={sending}
                         >
                           <Send className="h-5 w-5" />
-                        </Button>
+                        </button>
                       ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={`h-10 w-10 shrink-0 rounded-full ${isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'}`}
-                          onClick={() => setShowVoiceRecorder(true)}
+                        <button
+                          type="button"
+                          className="h-10 w-10 shrink-0 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100 disabled:opacity-60"
+                          onPointerDown={startVoiceRecording}
+                          onPointerUp={() => {
+                            void stopVoiceRecording();
+                          }}
+                          onPointerCancel={() => {
+                            void stopVoiceRecording();
+                          }}
                           disabled={sending}
                         >
-                          <Mic className={`h-5 w-5 ${isDarkMode ? 'text-gray-200' : 'text-gray-600'}`} />
-                        </Button>
+                          <Mic className="h-5 w-5 text-gray-600" />
+                        </button>
                       )}
                     </div>
-                  </div>
-                )}
 
-                {/* Media Upload Modal */}
-                <MediaUploadModal
-                  isOpen={showMediaUpload}
-                  onClose={() => setShowMediaUpload(false)}
-                  onSend={handleMediaUpload}
-                />
+                    <input ref={imageRef} type="file" accept="image/*" hidden onChange={handleImageUpload} />
+                    <input ref={videoRef} type="file" accept="video/*" hidden onChange={handleVideoUpload} />
+                    <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx" hidden onChange={handleDocUpload} />
+                    <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={handleImageUpload} />
+                  </div>
+                </div>
               </div>
             ) : (
               <div className={`flex-1 flex items-center justify-center ${isDarkMode ? 'bg-gray-950' : 'bg-[#ECE5DD]'}`}>
@@ -1048,6 +1704,74 @@ export default function UserMessagesPage() {
           </div>
         </div>
       </div>
+
+      {mediaPreview && (
+        <div className="fixed inset-0 z-200 bg-black/70 flex items-center justify-center p-4" onClick={clearMediaPreview}>
+          <div className="relative w-[92vw] max-w-md max-h-[85vh] rounded-2xl bg-white overflow-hidden" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="absolute top-3 right-3 z-10 h-8 w-8 rounded-full bg-black/60 text-white flex items-center justify-center"
+              onClick={clearMediaPreview}
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="h-[52vh] max-h-[52vh] bg-gray-100 flex items-center justify-center">
+              {mediaPreview.type === 'image' && (
+                <img src={mediaPreview.previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+              )}
+
+              {mediaPreview.type === 'video' && (
+                <div className="relative w-full h-full flex items-center justify-center bg-black/70">
+                  <video src={mediaPreview.previewUrl} className="max-w-full max-h-full object-contain" muted playsInline preload="metadata" />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="h-12 w-12 rounded-full bg-black/60 flex items-center justify-center">
+                      <Play className="w-6 h-6 text-white ml-0.5" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {mediaPreview.type === 'file' && (
+                <div className="p-6 text-center">
+                  <FileText className="w-12 h-12 text-[#075E54] mx-auto mb-3" />
+                  <p className="text-sm font-medium break-all">{mediaPreview.file.name}</p>
+                  <p className="text-xs text-gray-500 mt-1">{formatFileSize(mediaPreview.file.size)}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 border-t bg-white">
+              <textarea
+                value={mediaPreview.caption}
+                onChange={(event) => setMediaPreview((prev) => (prev ? { ...prev, caption: event.target.value } : prev))}
+                placeholder="Add a caption (optional)"
+                rows={2}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none outline-none"
+              />
+
+              <div className="flex justify-end mt-3">
+                <button
+                  type="button"
+                  onClick={confirmMediaSend}
+                  disabled={sending}
+                  className="h-10 px-4 rounded-full bg-[#075E54] hover:bg-[#064e47] text-white text-sm disabled:opacity-60"
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {videoPlayerOpen && (
+        <div className="fixed inset-0 z-90 bg-black/80 flex items-center justify-center p-4" onClick={() => setVideoPlayerOpen(false)}>
+          <div className="w-full max-w-xl" onClick={(event) => event.stopPropagation()}>
+            <video src={videoPlayerUrl} controls autoPlay playsInline className="w-full rounded-xl bg-black" />
+          </div>
+        </div>
+      )}
 
       {/* Image Lightbox */}
       <ImageLightbox
