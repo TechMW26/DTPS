@@ -43,10 +43,36 @@ interface AdminUser {
   experience?: number;
   consultationFee?: number;
   timezone?: string;
+  // Expected service dates (admin-editable)
+  expectedStartDate?: string;
+  expectedEndDate?: string;
+  // Assignment fields for P/S badges
+  assignedDietitian?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+  };
+  assignedDietitians?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+  }[];
+  assignedHealthCounselor?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+  };
+  assignedHealthCounselors?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+  }[];
+  // Payment info for dynamic status calculation
+  hasSuccessfulPayment?: boolean;
 }
 
 // Helper function to get status display info - unified for all users
-function getStatusDisplay(status: UserStatus, clientStatus?: string, role?: UserRole) {
+function getStatusDisplay(status: UserStatus, clientStatus?: string, role?: UserRole, expectedStartDate?: string, expectedEndDate?: string, hasSuccessfulPayment?: boolean) {
   // Status configuration for all users - unified client-like status
   const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ReactNode }> = {
     'lead': {
@@ -143,6 +169,9 @@ export default function AdminUsersPage() {
     experience: "",
     consultationFee: "",
     timezone: "Asia/Kolkata",
+    // Expected service dates (admin-editable)
+    expectedStartDate: "",
+    expectedEndDate: "",
   });
 
   const filtered = useMemo(() => users, [users]);
@@ -202,6 +231,8 @@ export default function AdminUsersPage() {
       experience: "",
       consultationFee: "",
       timezone: "Asia/Kolkata",
+      expectedStartDate: "",
+      expectedEndDate: "",
     });
     setOpen(true);
   }
@@ -238,6 +269,8 @@ export default function AdminUsersPage() {
       experience: u.experience?.toString() || "",
       consultationFee: u.consultationFee?.toString() || "",
       timezone: u.timezone || "Asia/Kolkata",
+      expectedStartDate: u.expectedStartDate ? u.expectedStartDate.split('T')[0] : "",
+      expectedEndDate: u.expectedEndDate ? u.expectedEndDate.split('T')[0] : "",
     });
     setOpen(true);
   }
@@ -359,6 +392,16 @@ export default function AdminUsersPage() {
         // Add client status for clients
         if (form.role === UserRole.CLIENT && form.clientStatus) {
           body.clientStatus = form.clientStatus;
+        }
+
+        // Add expected dates for clients (admin-editable)
+        if (form.role === UserRole.CLIENT) {
+          if (form.expectedStartDate) {
+            body.expectedStartDate = form.expectedStartDate;
+          }
+          if (form.expectedEndDate) {
+            body.expectedEndDate = form.expectedEndDate;
+          }
         }
 
         // Add professional fields for dietitians and health counselors
@@ -530,6 +573,8 @@ export default function AdminUsersPage() {
                       <th className="text-left p-3">Name</th>
                       <th className="text-left p-3">Email</th>
                       <th className="text-left p-3">Role</th>
+                      <th className="text-left p-3">Dietitian</th>
+                      <th className="text-left p-3">Health Counselor</th>
                       <th className="text-left p-3">Status</th>
                       <th className="text-left p-3">Created</th>
                       <th className="text-left p-3">Actions</th>
@@ -544,6 +589,23 @@ export default function AdminUsersPage() {
                         'health_counselor': 'Health Counselor',
                         'client': 'Client'
                       };
+
+                      // Build dietitian list with P/S badges
+                      const primaryDietitian = u.assignedDietitian && typeof u.assignedDietitian === 'object' && u.assignedDietitian.firstName
+                        ? u.assignedDietitian
+                        : null;
+                      const secondaryDietitians = u.assignedDietitians?.filter(d =>
+                        d && typeof d === 'object' && d.firstName && d._id !== primaryDietitian?._id
+                      ) || [];
+
+                      // Build health counselor list with P/S badges
+                      const primaryCounselor = u.assignedHealthCounselor && typeof u.assignedHealthCounselor === 'object' && u.assignedHealthCounselor.firstName
+                        ? u.assignedHealthCounselor
+                        : null;
+                      const secondaryCounselors = u.assignedHealthCounselors?.filter(hc =>
+                        hc && typeof hc === 'object' && hc.firstName && hc._id !== primaryCounselor?._id
+                      ) || [];
+
                       return (
                         <tr key={u._id} className="border-b hover:bg-gray-50">
                           <td className="p-3">
@@ -568,6 +630,54 @@ export default function AdminUsersPage() {
                               }`}>
                               {roleNames[u.role] || u.role}
                             </span>
+                          </td>
+                          {/* Dietitian Column with P/S badges */}
+                          <td className="p-3">
+                            {u.role === 'client' ? (
+                              <div className="space-y-1">
+                                {primaryDietitian ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-blue-500 text-white">P</span>
+                                    <span className="text-xs text-gray-700">{primaryDietitian.firstName} {primaryDietitian.lastName}</span>
+                                  </div>
+                                ) : null}
+                                {secondaryDietitians.map(d => (
+                                  <div key={d._id} className="flex items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-gray-400 text-white">S</span>
+                                    <span className="text-xs text-gray-600">{d.firstName} {d.lastName}</span>
+                                  </div>
+                                ))}
+                                {!primaryDietitian && secondaryDietitians.length === 0 && (
+                                  <span className="text-xs text-orange-500 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">Unassigned</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
+                          </td>
+                          {/* Health Counselor Column with P/S badges */}
+                          <td className="p-3">
+                            {u.role === 'client' ? (
+                              <div className="space-y-1">
+                                {primaryCounselor ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-blue-500 text-white">P</span>
+                                    <span className="text-xs text-gray-700">{primaryCounselor.firstName} {primaryCounselor.lastName}</span>
+                                  </div>
+                                ) : null}
+                                {secondaryCounselors.map(hc => (
+                                  <div key={hc._id} className="flex items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-gray-400 text-white">S</span>
+                                    <span className="text-xs text-gray-600">{hc.firstName} {hc.lastName}</span>
+                                  </div>
+                                ))}
+                                {!primaryCounselor && secondaryCounselors.length === 0 && (
+                                  <span className="text-xs text-orange-500 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">Unassigned</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
                           </td>
                           <td className="p-3">
                             <Badge className={`flex items-center gap-1 w-fit ${statusDisplay.status.bgColor} ${statusDisplay.status.color} border-0`}>
@@ -860,6 +970,34 @@ export default function AdminUsersPage() {
                         This tracks client engagement status (payment/plan status)
                       </p>
                     </div>
+                  )}
+                  {/* Expected Service Dates - Only for clients */}
+                  {form.role === UserRole.CLIENT && (
+                    <>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Expected Start Date</label>
+                        <Input
+                          type="date"
+                          value={form.expectedStartDate}
+                          onChange={e => setForm(f => ({ ...f, expectedStartDate: e.target.value }))}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Service period start date</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Expected End Date</label>
+                        <Input
+                          type="date"
+                          value={form.expectedEndDate}
+                          onChange={e => setForm(f => ({ ...f, expectedEndDate: e.target.value }))}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Service period end date</p>
+                      </div>
+                      <div className="md:col-span-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <p className="text-xs text-blue-700">
+                          <strong>Note:</strong> Client status is calculated dynamically: <strong>Active</strong> if payment is made AND dates are set AND today is on or before end date. Otherwise shows as <strong>Inactive</strong> or <strong>Lead</strong> (no payment).
+                        </p>
+                      </div>
+                    </>
                   )}
                   <div>
                     <label className="text-sm font-medium text-gray-700">Timezone</label>

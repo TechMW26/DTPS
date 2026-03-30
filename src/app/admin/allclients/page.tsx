@@ -68,6 +68,10 @@ interface Client {
   medicalConditions?: string[];
   allergies?: string[];
   dietaryRestrictions?: string[];
+  // Expected service dates for dynamic status calculation
+  expectedStartDate?: string;
+  expectedEndDate?: string;
+  hasSuccessfulPayment?: boolean;
   assignedDietitian?: {
     _id: string;
     firstName: string;
@@ -911,37 +915,47 @@ export default function AdminAllClientsPage() {
                           </td>
                           <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                             {(() => {
-                              // Combine assignedDietitian (singular) and assignedDietitians (array)
-                              const allDietitians: { _id: string; firstName: string; lastName: string; email: string; avatar?: string }[] = [];
-                              // Check if assignedDietitian is a populated object (has firstName)
-                              if (client.assignedDietitian && typeof client.assignedDietitian === 'object' && client.assignedDietitian.firstName) {
-                                allDietitians.push(client.assignedDietitian);
-                              }
-                              if (client.assignedDietitians && client.assignedDietitians.length > 0) {
-                                client.assignedDietitians.forEach(d => {
-                                  // Only add if it's a populated object with firstName
-                                  if (d && typeof d === 'object' && d.firstName && !allDietitians.find(existing => existing._id === d._id)) {
-                                    allDietitians.push(d);
-                                  }
-                                });
-                              }
+                              // Primary dietitian (singular field)
+                              const primaryDietitian = client.assignedDietitian && typeof client.assignedDietitian === 'object' && client.assignedDietitian.firstName
+                                ? client.assignedDietitian : null;
 
-                              if (allDietitians.length > 0) {
+                              // Secondary dietitians (from array, excluding primary)
+                              const secondaryDietitians = client.assignedDietitians?.filter(d =>
+                                d && typeof d === 'object' && d.firstName && d._id !== primaryDietitian?._id
+                              ) || [];
+
+                              if (primaryDietitian || secondaryDietitians.length > 0) {
                                 return (
                                   <div className="space-y-1">
-                                    {allDietitians.map((dietitian) => (
-                                      <div key={dietitian._id} className="flex items-center gap-2 p-1.5 bg-green-50 rounded border border-green-200">
-                                        <Avatar className="h-6 w-6">
-                                          <AvatarImage src={dietitian.avatar} />
+                                    {primaryDietitian && (
+                                      <div className="flex items-center gap-2 p-1.5 bg-green-50 rounded border border-green-200">
+                                        <span className="px-1.5 py-0.5 text-xs font-bold rounded bg-blue-500 text-white shrink-0">P</span>
+                                        <Avatar className="h-5 w-5">
+                                          <AvatarImage src={primaryDietitian.avatar} />
                                           <AvatarFallback className="bg-green-100 text-green-800 text-xs">
-                                            {dietitian.firstName?.[0]}{dietitian.lastName?.[0]}
+                                            {primaryDietitian.firstName?.[0]}{primaryDietitian.lastName?.[0]}
                                           </AvatarFallback>
                                         </Avatar>
                                         <div className="hidden sm:block min-w-0">
                                           <div className="text-xs font-medium text-gray-900 truncate">
+                                            {primaryDietitian.firstName} {primaryDietitian.lastName}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {secondaryDietitians.map((dietitian) => (
+                                      <div key={dietitian._id} className="flex items-center gap-2 p-1.5 bg-gray-50 rounded border border-gray-200">
+                                        <span className="px-1.5 py-0.5 text-xs font-bold rounded bg-gray-400 text-white shrink-0">S</span>
+                                        <Avatar className="h-5 w-5">
+                                          <AvatarImage src={dietitian.avatar} />
+                                          <AvatarFallback className="bg-gray-100 text-gray-700 text-xs">
+                                            {dietitian.firstName?.[0]}{dietitian.lastName?.[0]}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div className="hidden sm:block min-w-0">
+                                          <div className="text-xs font-medium text-gray-700 truncate">
                                             {dietitian.firstName} {dietitian.lastName}
                                           </div>
-                                          <div className="text-xs text-gray-500 truncate">{dietitian.email}</div>
                                         </div>
                                       </div>
                                     ))}
@@ -959,37 +973,47 @@ export default function AdminAllClientsPage() {
                           </td>
                           <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
                             {(() => {
-                              // Combine assignedHealthCounselor (singular) and assignedHealthCounselors (array)
-                              const allHealthCounselors: { _id: string; firstName: string; lastName: string; email: string; avatar?: string }[] = [];
-                              // Check if assignedHealthCounselor is a populated object (has firstName)
-                              if (client.assignedHealthCounselor && typeof client.assignedHealthCounselor === 'object' && client.assignedHealthCounselor.firstName) {
-                                allHealthCounselors.push(client.assignedHealthCounselor);
-                              }
-                              if (client.assignedHealthCounselors && client.assignedHealthCounselors.length > 0) {
-                                client.assignedHealthCounselors.forEach(hc => {
-                                  // Only add if it's a populated object with firstName
-                                  if (hc && typeof hc === 'object' && hc.firstName && !allHealthCounselors.find(existing => existing._id === hc._id)) {
-                                    allHealthCounselors.push(hc);
-                                  }
-                                });
-                              }
+                              // Primary health counselor (singular field)
+                              const primaryCounselor = client.assignedHealthCounselor && typeof client.assignedHealthCounselor === 'object' && client.assignedHealthCounselor.firstName
+                                ? client.assignedHealthCounselor : null;
 
-                              if (allHealthCounselors.length > 0) {
+                              // Secondary health counselors (from array, excluding primary)
+                              const secondaryCounselors = client.assignedHealthCounselors?.filter(hc =>
+                                hc && typeof hc === 'object' && hc.firstName && hc._id !== primaryCounselor?._id
+                              ) || [];
+
+                              if (primaryCounselor || secondaryCounselors.length > 0) {
                                 return (
                                   <div className="space-y-1">
-                                    {allHealthCounselors.map((hc) => (
-                                      <div key={hc._id} className="flex items-center gap-2 p-1.5 bg-purple-50 rounded border border-purple-200">
-                                        <Avatar className="h-6 w-6">
-                                          <AvatarImage src={hc.avatar} />
+                                    {primaryCounselor && (
+                                      <div className="flex items-center gap-2 p-1.5 bg-purple-50 rounded border border-purple-200">
+                                        <span className="px-1.5 py-0.5 text-xs font-bold rounded bg-blue-500 text-white shrink-0">P</span>
+                                        <Avatar className="h-5 w-5">
+                                          <AvatarImage src={primaryCounselor.avatar} />
                                           <AvatarFallback className="bg-purple-100 text-purple-800 text-xs">
-                                            {hc.firstName?.[0]}{hc.lastName?.[0]}
+                                            {primaryCounselor.firstName?.[0]}{primaryCounselor.lastName?.[0]}
                                           </AvatarFallback>
                                         </Avatar>
                                         <div className="min-w-0">
                                           <div className="text-xs font-medium text-gray-900 truncate">
+                                            {primaryCounselor.firstName} {primaryCounselor.lastName}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {secondaryCounselors.map((hc) => (
+                                      <div key={hc._id} className="flex items-center gap-2 p-1.5 bg-gray-50 rounded border border-gray-200">
+                                        <span className="px-1.5 py-0.5 text-xs font-bold rounded bg-gray-400 text-white shrink-0">S</span>
+                                        <Avatar className="h-5 w-5">
+                                          <AvatarImage src={hc.avatar} />
+                                          <AvatarFallback className="bg-gray-100 text-gray-700 text-xs">
+                                            {hc.firstName?.[0]}{hc.lastName?.[0]}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div className="min-w-0">
+                                          <div className="text-xs font-medium text-gray-700 truncate">
                                             {hc.firstName} {hc.lastName}
                                           </div>
-                                          <div className="text-xs text-gray-500 truncate">{hc.email}</div>
                                         </div>
                                       </div>
                                     ))}

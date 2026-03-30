@@ -378,7 +378,7 @@ export async function PUT(
     }
 
     // Admin-only fields that can be updated
-    const adminOnlyFields = ["email", "phone", "role", "status", "clientStatus"];
+    const adminOnlyFields = ["email", "phone", "role", "status", "clientStatus", "expectedStartDate", "expectedEndDate"];
 
     // Allowed fields to update (only User model fields)
     let allowedFields = [

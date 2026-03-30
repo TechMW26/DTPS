@@ -5,6 +5,9 @@ import { UserRole } from '@/types';
 // App version for cache busting
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || process.env.npm_package_version || '1.0.0';
 
+// Check if maintenance mode is enabled
+const MAINTENANCE_MODE = process.env.MAINTENANCE_MODE === 'true';
+
 // Public routes that should completely bypass middleware auth
 const publicUserRoutes = [
   '/user/forget-password',
@@ -18,6 +21,17 @@ const onboardingExemptRoutes = [
   '/api/auth', // Auth routes must be exempt
 ];
 
+// Routes exempt from maintenance mode (always accessible)
+const maintenanceExemptRoutes = [
+  '/maintenance',
+  '/api/auth',
+  '/auth',
+  '/_next',
+  '/favicon.ico',
+  '/icons',
+  '/images',
+];
+
 // Check if the path is a public user route
 function isPublicUserRoute(pathname: string): boolean {
   return publicUserRoutes.some(route => pathname.startsWith(route));
@@ -26,6 +40,11 @@ function isPublicUserRoute(pathname: string): boolean {
 // Check if the path should skip onboarding redirect
 function isOnboardingExemptRoute(pathname: string): boolean {
   return onboardingExemptRoutes.some(route => pathname.startsWith(route));
+}
+
+// Check if the path is exempt from maintenance mode
+function isMaintenanceExemptRoute(pathname: string): boolean {
+  return maintenanceExemptRoutes.some(route => pathname.startsWith(route));
 }
 
 // Add cache control headers to response
@@ -50,6 +69,20 @@ export default withAuth(
     const pathname = req.nextUrl.pathname;
     const fullUrl = req.nextUrl.href;
     const isApiRoute = pathname.startsWith('/api');
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MAINTENANCE MODE CHECK - runs first for all requests
+    // ─────────────────────────────────────────────────────────────────────────
+    if (MAINTENANCE_MODE && !isMaintenanceExemptRoute(pathname)) {
+      // Allow admin users to bypass maintenance mode
+      const userRole = token?.role?.toString().toLowerCase();
+      const isAdmin = userRole?.includes('admin');
+
+      if (!isAdmin) {
+        // Redirect non-admin users to maintenance page
+        return NextResponse.redirect(new URL('/maintenance', req.url));
+      }
+    }
 
     // If it's a public user route, just pass through with pathname and URL headers
     if (isPublicUserRoute(pathname)) {

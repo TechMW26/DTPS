@@ -179,6 +179,10 @@ export async function GET(request: NextRequest) {
       async () => {
         const users = await User.find(query)
           .select(selectFields)
+          .populate('assignedDietitian', 'firstName lastName')
+          .populate('assignedDietitians', 'firstName lastName')
+          .populate('assignedHealthCounselor', 'firstName lastName')
+          .populate('assignedHealthCounselors', 'firstName lastName')
           .sort({ createdAt: -1 })
           .limit(limit)
           .skip((page - 1) * limit)

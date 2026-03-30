@@ -63,7 +63,8 @@ console.log('[server] Socket.io instance created, stored on globalThis.__socketI
 
 app.prepare().then(() => {
     httpServer.listen(port, hostname, () => {
-        console.log(`> Ready on http://${hostname}:${port}`);
+        const displayHost = hostname === '0.0.0.0' ? 'localhost' : hostname;
+        console.log(`> Ready on http://${displayHost}:${port}`);
         console.log(`> Socket.io attached on /socket.io`);
         console.log(`> CORS origins: ${allowedOrigins.join(', ')}`);
     });
