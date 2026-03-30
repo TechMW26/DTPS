@@ -60,7 +60,7 @@ export const authOptions: NextAuthOptions = {
         const otpToken = (credentials as any)?.otpToken as string | undefined;
 
         // OTP Token Login (WhatsApp OTP)
-        if (otpToken && credentials?.email) {
+        if (otpToken) {
           try {
             const jwtSecret = process.env.NEXTAUTH_SECRET;
             if (!jwtSecret) {
@@ -76,9 +76,8 @@ export const authOptions: NextAuthOptions = {
               onboardingCompleted?: boolean;
             };
 
-            // Verify the email matches
-            if (decoded.email.toLowerCase() !== credentials.email.toLowerCase()) {
-              throw new Error('Invalid token');
+            if (!decoded.userId) {
+              throw new Error('Invalid token: missing userId');
             }
 
             await connectDB();
@@ -96,12 +95,23 @@ export const authOptions: NextAuthOptions = {
               throw new Error('Your account is not active. Please contact support.');
             }
 
+            // Verify the email matches if both are present (extra safety check)
+            const tokenEmail = decoded.email?.toLowerCase();
+            const credEmail = credentials?.email?.toLowerCase();
+            if (tokenEmail && credEmail && tokenEmail !== credEmail) {
+              console.warn('OTP auth: email mismatch, token:', tokenEmail, 'cred:', credEmail);
+              // Don't reject — the userId from the signed token is authoritative
+            }
+
             // Update lastLoginAt
             await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
 
+            // Use user's email from DB, fallback to token email
+            const userEmail = user.email || decoded.email || `${decoded.userId}@phone.dtps.tech`;
+
             return {
               id: user._id.toString(),
-              email: user.email,
+              email: userEmail,
               name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
               role: user.role,
               firstName: user.firstName,

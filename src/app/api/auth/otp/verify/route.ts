@@ -40,15 +40,25 @@ export async function POST(request: NextRequest) {
 
         await connectDB();
 
-        // Find the OTP record
+        // Find the most recent OTP record for this phone (sort by createdAt desc)
         const otpRecord = await OTPRecord.findOne({
             phone: normalizedPhone,
-            expiresAt: { $gt: new Date() },
-        });
+        }).sort({ createdAt: -1 });
 
         if (!otpRecord) {
+            // No OTP record found at all for this phone
             return NextResponse.json(
-                { success: false, error: 'OTP expired or not found. Please request a new OTP.' },
+                { success: false, error: 'Phone number not registered or OTP not requested. Please request a new OTP.' },
+                { status: 400 }
+            );
+        }
+
+        // Check if the OTP has expired
+        if (new Date() > new Date(otpRecord.expiresAt)) {
+            // Clean up expired record
+            await OTPRecord.deleteOne({ _id: otpRecord._id });
+            return NextResponse.json(
+                { success: false, error: 'OTP expired, please resend.' },
                 { status: 400 }
             );
         }
@@ -62,15 +72,15 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Verify OTP
-        if (otpRecord.otp !== otp) {
+        // Verify OTP — cast both sides to string to avoid type mismatch
+        if (otpRecord.otp.toString() !== otp.toString()) {
             await OTPRecord.updateOne(
                 { _id: otpRecord._id },
                 { $inc: { attempts: 1 } }
             );
             const remaining = OTP_CONFIG.MAX_ATTEMPTS - otpRecord.attempts - 1;
             return NextResponse.json(
-                { success: false, error: `Invalid OTP. ${remaining} attempts remaining.` },
+                { success: false, error: `Invalid OTP. ${remaining > 0 ? remaining + ' attempts remaining.' : 'Please request a new OTP.'}` },
                 { status: 400 }
             );
         }
@@ -190,10 +200,18 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Ensure user has an email (fallback for users without one)
+        const userEmail = user.email || `${normalizedPhone.replace(/\+/g, '')}@phone.dtps.tech`;
+
+        // If user didn't have an email in DB, set it now so NextAuth can always find them
+        if (!user.email) {
+            await User.findByIdAndUpdate(user._id, { email: userEmail });
+        }
+
         const token = sign(
             {
                 userId: user._id.toString(),
-                email: user.email,
+                email: userEmail,
                 name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
                 role: user.role,
                 onboardingCompleted: user.onboardingCompleted,
@@ -205,6 +223,8 @@ export async function POST(request: NextRequest) {
         // Determine redirect URL based on onboarding status
         const redirectUrl = user.onboardingCompleted ? '/user' : '/user/onboarding';
 
+        console.log(`[OTP Verify] Success for ${normalizedPhone}, userId: ${user._id}, email: ${userEmail}, purpose: ${otpRecord.purpose}`);
+
         return NextResponse.json({
             success: true,
             message: isNewUser ? 'Account created successfully!' : 'Login successful!',
@@ -212,7 +232,7 @@ export async function POST(request: NextRequest) {
             redirectUrl,
             user: {
                 id: user._id.toString(),
-                email: user.email,
+                email: userEmail,
                 name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
                 role: user.role,
                 onboardingCompleted: user.onboardingCompleted,
