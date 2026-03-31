@@ -324,8 +324,8 @@ export default function GroupChatView({
             return (
               <div key={msg._id}>
                 {showDate && (
-                  <div className="flex justify-center my-3">
-                    <span className="bg-white/80 text-gray-500 text-xs px-3 py-1 rounded-full shadow-sm">
+                  <div className="flex justify-center my-4 sticky top-2 z-10">
+                    <span className="bg-white text-gray-600 text-[12px] font-medium px-4 py-1.5 rounded-lg shadow-md">
                       {getDateSeparator(msg.createdAt)}
                     </span>
                   </div>

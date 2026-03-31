@@ -1624,10 +1624,10 @@ export default function UserMessagesPage() {
                         <div key={message._id}>
                           {/* Date Separator - WhatsApp Style */}
                           {showDateSeparator && (
-                            <div className="flex justify-center my-3">
-                              <div className={`px-3 py-1 rounded-md text-[11px] font-medium shadow-sm ${isDarkMode
-                                ? 'bg-[#182229] text-[#8696A0]'
-                                : 'bg-white/90 text-[#54656F] shadow-[0_1px_0.5px_rgba(0,0,0,.13)]'
+                            <div className="flex justify-center my-4 sticky top-2 z-10">
+                              <div className={`px-4 py-1.5 rounded-lg text-[12px] font-medium shadow-md ${isDarkMode
+                                ? 'bg-[#1F2C34] text-[#8696A0] border border-[#2A3942]'
+                                : 'bg-white text-[#54656F] shadow-[0_1px_3px_rgba(0,0,0,.12)]'
                                 }`}>
                                 {formatDateSeparator(message.createdAt)}
                               </div>

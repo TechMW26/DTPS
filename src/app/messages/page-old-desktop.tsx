@@ -46,7 +46,7 @@ import {
   Trash2,
   Loader2
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import BulkMessageModal from '@/components/messages/BulkMessageModal';
 
 // Dynamic import for emoji picker to avoid SSR issues
@@ -591,16 +591,6 @@ function MessagesContent() {
   useEffect(() => {
     fetchConversationsRef.current = fetchConversations;
   });
-
-  // Cleanup for message press timer
-  useEffect(() => {
-    return () => {
-      if (messagePressTimerRef.current) {
-        clearTimeout(messagePressTimerRef.current);
-        messagePressTimerRef.current = null;
-      }
-    };
-  }, []);
 
   const fetchOnlineStatus = async (userIds: string[]) => {
     try {
@@ -1328,7 +1318,6 @@ function MessagesContent() {
         // Remove message from local state immediately
         setMessages(prev => prev.filter(m => m._id !== messageToDelete._id));
         toast.success('Message deleted');
-        setActiveMessageMenuId(null);
       } else {
         const data = await response.json();
         toast.error(data.error || 'Failed to delete message');
@@ -1346,6 +1335,21 @@ function MessagesContent() {
   const confirmDeleteMessage = (message: Message) => {
     setMessageToDelete(message);
     setDeleteDialogOpen(true);
+  };
+
+  // Date formatting helper functions
+  const formatDateSeparator = (dateString: string) => {
+    const date = new Date(dateString);
+    if (isToday(date)) return 'Today';
+    if (isYesterday(date)) return 'Yesterday';
+    return format(date, 'MMMM d, yyyy');
+  };
+
+  const shouldShowDateSeparator = (currentMsg: Message, prevMsg: Message | null) => {
+    if (!prevMsg) return true; // Always show for first message
+    const currentDate = new Date(currentMsg.createdAt);
+    const prevDate = new Date(prevMsg.createdAt);
+    return !isSameDay(currentDate, prevDate);
   };
 
   const selectedUser = conversations.find(c => c.user._id === selectedConversation);
@@ -1524,7 +1528,7 @@ function MessagesContent() {
                             if (!isNaN(date.getTime())) {
                               return (
                                 <p className="text-xs text-gray-500 shrink-0">
-                                  {format(date, 'HH:mm')}
+                                  {format(date, 'MMM d, yyyy • h:mm a')}
                                 </p>
                               );
                             }
@@ -1606,137 +1610,150 @@ function MessagesContent() {
                     <p className="text-sm text-gray-400">Start the conversation!</p>
                   </div>
                 ) : (
-                  messages.map((message) => {
+                  messages.map((message, index) => {
                     // Safety check for sender
                     if (!message.sender) {
                       return null;
                     }
 
                     const isOwn = message.sender._id === session.user.id;
+                    const prevMessage = index > 0 ? messages[index - 1] : null;
+                    const showDateSeparator = shouldShowDateSeparator(message, prevMessage);
 
                     return (
-                      <div
-                        key={message._id}
-                        className={`flex items-end gap-2 ${isOwn ? 'justify-end' : 'justify-start'
-                          }`}
-                      >
-                        {/* Delete menu only for own messages/media - always visible on left */}
-                        {isOwn && (
-                          <div className="order-2">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0 rounded-full hover:bg-gray-200"
-                                >
-                                  <MoreVertical className="h-3.5 w-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="start" className="min-w-40">
-                                <DropdownMenuItem
-                                  className="text-red-600 focus:text-red-600 cursor-pointer"
-                                  onClick={() => confirmDeleteMessage(message)}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                      <div key={message._id}>
+                        {/* Date Separator - WhatsApp style */}
+                        {showDateSeparator && (
+                          <div className="flex justify-center my-4 sticky top-2 z-10">
+                            <div className="px-4 py-1.5 rounded-lg text-[12px] font-medium text-gray-600 bg-white shadow-md">
+                              {formatDateSeparator(message.createdAt)}
+                            </div>
                           </div>
                         )}
 
+                        {/* Message */}
                         <div
-                          className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg shadow-sm ${isOwn
-                            ? 'bg-green-500 text-white rounded-br-none'
-                            : 'bg-white text-gray-900 rounded-bl-none'
+                          className={`flex items-end gap-2 ${isOwn ? 'justify-end' : 'justify-start'
                             }`}
                         >
-                          {/* Image Messages */}
-                          {message.type === 'image' && message.attachments?.[0] && (
-                            <div className="mb-2">
-                              <img
-                                src={message.attachments[0].url}
-                                alt="Shared image"
-                                className="rounded-lg max-w-xs h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                                onClick={() => setPreviewImage(message.attachments?.[0]?.url || '')}
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                  const parent = target.parentElement;
-                                  if (parent && !parent.querySelector('.error-placeholder')) {
-                                    const placeholder = document.createElement('div');
-                                    placeholder.className = 'error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm';
-                                    placeholder.innerHTML = '<span>📷 Image could not be loaded</span>';
-                                    parent.appendChild(placeholder);
-                                  }
-                                }}
-                              />
+                          {/* Delete menu only for own messages/media - always visible on left */}
+                          {isOwn && (
+                            <div className="order-2">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 rounded-full hover:bg-gray-200"
+                                  >
+                                    <MoreVertical className="h-3.5 w-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" className="min-w-40">
+                                  <DropdownMenuItem
+                                    className="text-red-600 focus:text-red-600 cursor-pointer"
+                                    onClick={() => confirmDeleteMessage(message)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           )}
 
-                          {/* Video Messages */}
-                          {message.type === 'video' && message.attachments?.[0] && (
-                            <div className="mb-2">
-                              <video
-                                src={message.attachments[0].url}
-                                controls
-                                className="rounded-lg max-w-xs h-auto"
-                                preload="metadata"
-                              >
-                                Your browser does not support video playback.
-                              </video>
-                            </div>
-                          )}
-
-                          {/* Audio Messages */}
-                          {(message.type === 'audio' || message.type === 'voice') && message.attachments?.[0] && (
-                            <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
-                              <Volume2 className="h-4 w-4 text-gray-600" />
-                              <audio
-                                src={message.attachments[0].url}
-                                controls
-                                className="flex-1"
-                                preload="metadata"
-                              />
-                            </div>
-                          )}
-
-                          {/* File Messages */}
-                          {message.type === 'file' && message.attachments?.[0] && (
-                            <a
-                              href={message.attachments[0].url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download={message.attachments[0].filename}
-                              className="flex items-center space-x-2 mb-2 p-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
-                            >
-                              <FileIcon className="h-4 w-4 text-gray-600" />
-                              <div className="flex-1">
-                                <span className="text-sm font-medium">{message.attachments[0].filename}</span>
-                                <p className="text-xs text-gray-500">
-                                  {(message.attachments[0].size / 1024 / 1024).toFixed(2)} MB
-                                </p>
+                          <div
+                            className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg shadow-sm ${isOwn
+                              ? 'bg-green-500 text-white rounded-br-none'
+                              : 'bg-white text-gray-900 rounded-bl-none'
+                              }`}
+                          >
+                            {/* Image Messages */}
+                            {message.type === 'image' && message.attachments?.[0] && (
+                              <div className="mb-2">
+                                <img
+                                  src={message.attachments[0].url}
+                                  alt="Shared image"
+                                  className="rounded-lg max-w-xs h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                  onClick={() => setPreviewImage(message.attachments?.[0]?.url || '')}
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                    const parent = target.parentElement;
+                                    if (parent && !parent.querySelector('.error-placeholder')) {
+                                      const placeholder = document.createElement('div');
+                                      placeholder.className = 'error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm';
+                                      placeholder.innerHTML = '<span>📷 Image could not be loaded</span>';
+                                      parent.appendChild(placeholder);
+                                    }
+                                  }}
+                                />
                               </div>
-                              <Download className="h-4 w-4 text-gray-600" />
-                            </a>
-                          )}
-                          <p className="text-sm">{message.content}</p>
-                          <div className="flex items-center justify-end space-x-1 mt-1">
-                            <p
-                              className={`text-xs ${isOwn ? 'text-green-100' : 'text-gray-500'
-                                }`}
-                            >
-                              {(() => {
-                                try {
-                                  const date = new Date(message.createdAt);
-                                  return !isNaN(date.getTime()) ? format(date, 'HH:mm') : '';
-                                } catch (error) {
-                                  return '';
-                                }
-                              })()}
-                            </p>
-                            {getMessageStatus(message)}
+                            )}
+
+                            {/* Video Messages */}
+                            {message.type === 'video' && message.attachments?.[0] && (
+                              <div className="mb-2">
+                                <video
+                                  src={message.attachments[0].url}
+                                  controls
+                                  className="rounded-lg max-w-xs h-auto"
+                                  preload="metadata"
+                                >
+                                  Your browser does not support video playback.
+                                </video>
+                              </div>
+                            )}
+
+                            {/* Audio Messages */}
+                            {(message.type === 'audio' || message.type === 'voice') && message.attachments?.[0] && (
+                              <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
+                                <Volume2 className="h-4 w-4 text-gray-600" />
+                                <audio
+                                  src={message.attachments[0].url}
+                                  controls
+                                  className="flex-1"
+                                  preload="metadata"
+                                />
+                              </div>
+                            )}
+
+                            {/* File Messages */}
+                            {message.type === 'file' && message.attachments?.[0] && (
+                              <a
+                                href={message.attachments[0].url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download={message.attachments[0].filename}
+                                className="flex items-center space-x-2 mb-2 p-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
+                              >
+                                <FileIcon className="h-4 w-4 text-gray-600" />
+                                <div className="flex-1">
+                                  <span className="text-sm font-medium">{message.attachments[0].filename}</span>
+                                  <p className="text-xs text-gray-500">
+                                    {(message.attachments[0].size / 1024 / 1024).toFixed(2)} MB
+                                  </p>
+                                </div>
+                                <Download className="h-4 w-4 text-gray-600" />
+                              </a>
+                            )}
+                            <p className="text-sm">{message.content}</p>
+                            <div className="flex items-center justify-end space-x-1 mt-1">
+                              <p
+                                className={`text-xs ${isOwn ? 'text-green-100' : 'text-gray-500'
+                                  }`}
+                              >
+                                {(() => {
+                                  try {
+                                    const date = new Date(message.createdAt);
+                                    return !isNaN(date.getTime()) ? format(date, 'MMM d, yyyy • h:mm a') : '';
+                                  } catch (error) {
+                                    return '';
+                                  }
+                                })()}
+                              </p>
+                              {getMessageStatus(message)}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1868,11 +1885,9 @@ function MessagesContent() {
                         onMouseDown={startAudioRecording}
                         onMouseUp={stopAudioRecording}
                         onTouchStart={startAudioRecording}
-
                         onTouchEnd={stopAudioRecording}
                         size="sm"
-                        className={`rounded-full w-10 h-10 p-0 ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
-                          }`}
+                        className={`rounded-full w-10 h-10 p-0 ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
                       >
                         <Mic className="h-4 w-4" />
                       </Button>
@@ -1913,7 +1928,7 @@ function MessagesContent() {
                     </DialogHeader>
                     <div className="flex justify-center">
                       <img
-                        src={previewImage}
+                        src={previewImage || undefined}
                         alt="Preview"
                         className="max-w-full max-h-96 object-contain rounded-lg"
                       />
@@ -2175,6 +2190,29 @@ function MessagesContent() {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Message</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this message? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleDeleteMessage}
+              disabled={isDeleting}
+            >
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
