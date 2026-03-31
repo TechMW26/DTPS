@@ -636,7 +636,7 @@ function MessagesContent() {
       if (response.ok) {
         const data = await response.json();
         setMessages(data.messages || []);
-        
+
         // Reset unread count for this conversation locally
         setConversations(prev => prev.map(conv =>
           conv.user._id === conversationWith
