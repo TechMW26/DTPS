@@ -4,10 +4,10 @@ import { ReactNode, useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { 
-  Home, 
-  Heart, 
-  TrendingUp, 
+import {
+  Home,
+  Heart,
+  TrendingUp,
   Calendar,
   MessageCircle,
   CreditCard,
@@ -71,8 +71,8 @@ import { useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
  * - Safe area handling for notch devices
  * - Smooth animations
  */
-export function MobileLayout({ 
-  children, 
+export function MobileLayout({
+  children,
   title,
   subtitle,
   showBack = false,
@@ -80,7 +80,7 @@ export function MobileLayout({
   showHeader = true,
   showBottomNav = true,
   headerAction,
-  className 
+  className
 }: MobileLayoutProps) {
   const { data: session } = useSession();
   const pathname = usePathname();
@@ -114,25 +114,25 @@ export function MobileLayout({
             {/* Left: Menu or Back */}
             <div className="flex items-center gap-2">
               {showBack ? (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={handleBack}
                   className="h-9 w-9"
                 >
                   <ChevronRight className="h-5 w-5 rotate-180" />
                 </Button>
               ) : (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setIsMenuOpen(true)}
                   className="h-9 w-9"
                 >
                   <Menu className="h-5 w-5" />
                 </Button>
               )}
-              
+
               {/* Title */}
               {title && (
                 <div>
@@ -149,11 +149,11 @@ export function MobileLayout({
             {/* Right: Actions */}
             <div className="flex items-center gap-2">
               {headerAction}
-              
+
               {/* Notifications */}
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-9 w-9 relative"
                 onClick={() => router.push('/user/notifications')}
               >
@@ -166,9 +166,9 @@ export function MobileLayout({
               </Button>
 
               {/* Profile Avatar */}
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-9 w-9"
                 onClick={() => router.push('/user/profile')}
               >
@@ -186,7 +186,7 @@ export function MobileLayout({
 
       {/* Slide-out Menu Overlay */}
       {isMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-50 animate-in fade-in duration-200"
           onClick={() => setIsMenuOpen(false)}
         />
@@ -201,16 +201,16 @@ export function MobileLayout({
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center justify-between mb-4">
             <span className="text-lg font-bold text-[#E06A26]">DTPS</span>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setIsMenuOpen(false)}
               className="h-8 w-8"
             >
               <X className="h-5 w-5" />
             </Button>
           </div>
-          
+
           {/* User Info */}
           <div className="flex items-center gap-3">
             <Avatar className="h-12 w-12">
@@ -233,7 +233,7 @@ export function MobileLayout({
           {menuItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
-            
+
             return (
               <Link
                 key={item.href}
@@ -241,16 +241,16 @@ export function MobileLayout({
                 onClick={() => setIsMenuOpen(false)}
                 className={cn(
                   "flex items-center gap-3 px-4 py-3 mx-2 rounded-lg transition-colors",
-                  active 
-                    ? "bg-[#3AB1A0]/10 text-[#3AB1A0]" 
+                  active
+                    ? "bg-[#3AB1A0]/10 text-[#3AB1A0]"
                     : "text-gray-700 hover:bg-gray-50"
                 )}
               >
                 <Icon className={cn("h-5 w-5", active && "text-[#3AB1A0]")} />
                 <span className="font-medium">{item.label}</span>
-                {item.href === '/user/messages' && (
+                {item.href === '/user/messages' && counts.messages > 0 && (
                   <Badge className="ml-auto bg-[#E06A26]/10 text-[#E06A26] text-xs">
-                    2
+                    {counts.messages > 99 ? '99+' : counts.messages}
                   </Badge>
                 )}
               </Link>
@@ -260,8 +260,8 @@ export function MobileLayout({
 
         {/* Sign Out */}
         <div className="p-4 border-t border-gray-100">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
             onClick={() => {
               // Clear local storage

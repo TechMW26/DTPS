@@ -4,8 +4,10 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import Message from '@/lib/db/models/Message';
 import User from '@/lib/db/models/User';
+import { Notification } from '@/lib/db/models';
 import { UserRole } from '@/types';
 import { socketManager } from '@/lib/realtime/socket-manager';
+import { broadcastUnreadCounts, broadcastStaffUnreadCounts } from '@/lib/realtime/broadcast-counts';
 import { createMessageWebhook } from '@/lib/webhooks/webhook-manager';
 import { z } from 'zod';
 import { logHistoryServer } from '@/lib/server/history';
@@ -136,14 +138,26 @@ export async function GET(request: NextRequest) {
         { isRead: true, readAt: new Date() }
       );
 
-      // Broadcast socket update for staff unread counts
+      // Broadcast socket update for unread counts
       try {
-        const { broadcastStaffUnreadCounts } = await import('@/lib/realtime/broadcast-counts');
         const messageCount = await Message.countDocuments({
           receiver: session.user.id,
           isRead: false
         });
-        broadcastStaffUnreadCounts(session.user.id, { messages: messageCount });
+
+        if (sessionRole === 'client') {
+          const notificationCount = await Notification.countDocuments({
+            userId: session.user.id,
+            read: false
+          });
+
+          broadcastUnreadCounts(session.user.id, {
+            notifications: notificationCount,
+            messages: messageCount
+          });
+        } else {
+          broadcastStaffUnreadCounts(session.user.id, { messages: messageCount });
+        }
       } catch (error) {
         // Silently handle broadcast errors
       }
@@ -278,7 +292,7 @@ export async function POST(request: NextRequest) {
         validatedData.recipientId,
         senderName,
         validatedData.content,
-        message._id.toString()
+        session.user.id
       );
     } catch (notifError) {
       console.error('Failed to send push notification:', notifError);
@@ -298,6 +312,32 @@ export async function POST(request: NextRequest) {
         hasAttachments: (validatedData.attachments || []).length > 0
       }
     });
+
+    // Real-time unread badge updates for recipient
+    try {
+      const recipientMessageCount = await Message.countDocuments({
+        receiver: validatedData.recipientId,
+        isRead: false
+      });
+
+      if (recipientRole === 'client') {
+        const recipientNotificationCount = await Notification.countDocuments({
+          userId: validatedData.recipientId,
+          read: false
+        });
+
+        broadcastUnreadCounts(validatedData.recipientId, {
+          notifications: recipientNotificationCount,
+          messages: recipientMessageCount
+        });
+      } else {
+        broadcastStaffUnreadCounts(validatedData.recipientId, {
+          messages: recipientMessageCount
+        });
+      }
+    } catch (countError) {
+      console.error('Failed to broadcast unread counts:', countError);
+    }
 
     return NextResponse.json(message, { status: 201 });
 

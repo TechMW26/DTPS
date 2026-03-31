@@ -18,8 +18,6 @@ import {
   Paperclip,
   Smile,
   MoreVertical,
-  Phone,
-  Video,
   User,
   Target,
   Heart,
@@ -191,7 +189,7 @@ export default function MessagesPage() {
   // Chat View
   if (selectedChat) {
     const currentChat = conversations.find(c => c.user._id === selectedChat);
-    
+
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {/* Chat Header */}
@@ -221,14 +219,7 @@ export default function MessagesPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <button className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors active:scale-95">
-                  <Phone className="h-5 w-5 text-gray-700" />
-                </button>
-                <button className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors active:scale-95">
-                  <Video className="h-5 w-5 text-gray-700" />
-                </button>
-              </div>
+              <div className="flex items-center space-x-2" />
             </div>
           </div>
         </div>
@@ -248,11 +239,10 @@ export default function MessagesPage() {
                 <div key={message._id} className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[75%] ${isSent ? 'order-2' : 'order-1'}`}>
                     <div
-                      className={`rounded-2xl px-4 py-2 ${
-                        isSent
+                      className={`rounded-2xl px-4 py-2 ${isSent
                           ? 'bg-linear-to-br from-emerald-500 to-teal-600 text-white'
                           : 'bg-white text-gray-900 shadow-sm'
-                      }`}
+                        }`}
                     >
                       <p className="text-sm">{message.content}</p>
                     </div>

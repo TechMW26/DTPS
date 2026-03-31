@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
         recipientId,
         senderName,
         content,
-        message._id.toString()
+        session.user.id
       );
     } catch (notifError) {
       console.error('Failed to send push notification:', notifError);

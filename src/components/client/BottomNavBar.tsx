@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, UtensilsCrossed, ListTodo, BarChart3, MessageCircle, User } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
 
 export default function BottomNavBar() {
   const pathname = usePathname();
   const { isDarkMode } = useTheme();
+  const { counts } = useUnreadCountsSafe();
 
   const isActive = (href: string) => {
     if (href === '/user') {
@@ -19,11 +21,11 @@ export default function BottomNavBar() {
   const navItems = [
     { href: '/user', icon: Home, label: 'Home' },
     { href: '/user/plan', icon: UtensilsCrossed, label: 'Meal' },
-       { href: '/user/messages', icon: MessageCircle, label: 'Messages' },
+    { href: '/user/messages', icon: MessageCircle, label: 'Messages' },
     { href: '/user/tasks', icon: ListTodo, label: 'Tasks' },
     { href: '/user/progress', icon: BarChart3, label: 'Progress' },
- 
-  
+
+
   ];
 
   return (
@@ -34,11 +36,16 @@ export default function BottomNavBar() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center justify-center"
+              className="relative flex items-center justify-center"
             >
               <item.icon
                 className={`h-6 w-6 transition-colors duration-200 ${isActive(item.href) ? 'text-[#ff9500]' : (isDarkMode ? 'text-gray-400' : 'text-gray-400')}`}
               />
+              {item.href === '/user/messages' && counts.messages > 0 && (
+                <span className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 text-center font-semibold">
+                  {counts.messages > 99 ? '99+' : counts.messages}
+                </span>
+              )}
             </Link>
           ))}
         </div>

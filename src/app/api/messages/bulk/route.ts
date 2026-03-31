@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     // RULE: Bulk messages can ONLY be sent to clients
     const nonClientRecipients = recipients.filter((r: any) => r.role !== UserRole.CLIENT && r.role !== 'client');
     if (nonClientRecipients.length > 0) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Bulk messages can only be sent to clients. Staff members must be messaged individually.',
         invalidRecipients: nonClientRecipients.map((r: any) => ({
           id: r._id,
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (validRecipientIds.length === 0) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'None of the selected recipients are assigned to you. You can only send bulk messages to your assigned clients.',
         unauthorizedRecipients
       }, { status: 403 });
@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
             recipientId,
             senderName,
             validatedData.content,
-            message._id.toString()
+            session.user.id
           );
         } catch (notifErr) {
           // Don't fail bulk send if notification fails

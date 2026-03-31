@@ -807,6 +807,11 @@ export default function UserMessagesPage() {
 
       if (messageType === 'video') {
         file = await compressVideoFile(rawFile);
+
+        // Ensure large videos are compressed before upload
+        if (rawFile.size > 1024 * 1024 && file === rawFile) {
+          throw new Error('Video compression failed. Please try a shorter/lower-quality video.');
+        }
       }
 
       if (messageType === 'audio') {
@@ -1485,36 +1490,16 @@ export default function UserMessagesPage() {
                               }
                               return (
                                 <div className="relative">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setVideoPlayerUrl(url);
-                                      setVideoPlayerOpen(true);
-                                    }}
-                                    className="relative rounded-lg overflow-hidden block"
-                                  >
-                                    {attachment.thumbnail ? (
-                                      <img
-                                        src={attachment.thumbnail}
-                                        alt="Video thumbnail"
-                                        className="rounded-lg"
-                                        style={{ maxWidth: '220px', maxHeight: '260px', objectFit: 'cover' }}
-                                        onError={() => setFailedAttachments((prev) => new Set([...prev, message._id]))}
-                                      />
-                                    ) : (
-                                      <div
-                                        className="rounded-lg bg-black/70 flex items-center justify-center"
-                                        style={{ width: 220, height: 160 }}
-                                      >
-                                        <Play className="w-8 h-8 text-white" />
-                                      </div>
-                                    )}
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/25">
-                                      <div className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center">
-                                        <Play className="w-5 h-5 text-white ml-0.5" />
-                                      </div>
-                                    </div>
-                                  </button>
+                                  <video
+                                    src={url}
+                                    controls
+                                    preload="metadata"
+                                    playsInline
+                                    poster={attachment.thumbnail}
+                                    className="rounded-lg bg-black"
+                                    style={{ maxWidth: '220px', maxHeight: '260px' }}
+                                    onError={() => setFailedAttachments((prev) => new Set([...prev, message._id]))}
+                                  />
                                   <div className="mt-1 text-[11px] opacity-70">Video • {formatFileSize(attachment.size)}</div>
                                   {hasCaption && <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">{message.content}</p>}
                                 </div>

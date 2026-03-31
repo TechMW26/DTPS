@@ -488,65 +488,9 @@ function ClientMessagesUI() {
 
   // Call handling functions
   const handleIncomingCall = async (callData: any) => {
-    setIncomingCall(callData);
-    setCallState('incoming');
-    setCurrentCall({
-      id: callData.callId,
-      type: callData.type,
-      caller: {
-        id: callData.callerId,
-        name: callData.callerName,
-        avatar: callData.callerAvatar
-      }
-    });
+    // Calling is disabled in messages UI
+    return;
 
-    // Show browser notification
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(`Incoming ${callData.type} call`, {
-        body: `${callData.callerName} is calling you`,
-        icon: callData.callerAvatar || '/vercel.svg',
-        tag: `call-${callData.callId}`,
-        requireInteraction: true
-      });
-    }
-
-    // Play ringtone (optional) - using Web Audio API for better compatibility
-    try {
-      // Create a simple beep sound using Web Audio API
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.5);
-
-      // Repeat every 2 seconds
-      const ringtoneInterval = setInterval(() => {
-        if (callState !== 'incoming') {
-          clearInterval(ringtoneInterval);
-          return;
-        }
-        try {
-          const osc = audioContext.createOscillator();
-          const gain = audioContext.createGain();
-          osc.connect(gain);
-          gain.connect(audioContext.destination);
-          osc.frequency.setValueAtTime(800, audioContext.currentTime);
-          gain.gain.setValueAtTime(0.1, audioContext.currentTime);
-          osc.start();
-          osc.stop(audioContext.currentTime + 0.5);
-        } catch (e) {
-          clearInterval(ringtoneInterval);
-        }
-      }, 2000);
-    } catch (error) {
-    }
   };
 
   const acceptCall = async () => {
@@ -1028,191 +972,7 @@ function ClientMessagesUI() {
     return null;
   }
 
-  // Incoming Call Interface
-  if (callState === 'incoming' && incomingCall) {
-    return (
-      <div className="fixed inset-0 bg-linear-to-br from-purple-900 via-blue-900 to-indigo-900 z-50 flex flex-col items-center justify-center text-white">
-        {/* Background blur effect */}
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
 
-        {/* Incoming call content */}
-        <div className="relative z-10 text-center px-6">
-          {/* Caller avatar */}
-          <div className="relative mb-8">
-            <div className="absolute inset-0 bg-white/20 rounded-full blur-2xl animate-pulse"></div>
-            <div className="relative w-32 h-32 mx-auto rounded-full overflow-hidden border-4 border-white/30 shadow-2xl">
-              {incomingCall.callerAvatar ? (
-                <img
-                  src={incomingCall.callerAvatar}
-                  alt={incomingCall.callerName}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-linear-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                  <UserIcon className="w-16 h-16 text-white" />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Caller info */}
-          <h2 className="text-3xl font-bold mb-2">{incomingCall.callerName}</h2>
-          <p className="text-lg text-white/80 mb-2">
-            Incoming {incomingCall.type} call
-          </p>
-          <div className="flex items-center justify-center gap-2 mb-12">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            <span className="text-sm text-white/70">Ringing...</span>
-          </div>
-
-          {/* Call actions */}
-          <div className="flex items-center justify-center gap-8">
-            {/* Reject button */}
-            <button
-              onClick={rejectCall}
-              className="w-16 h-16 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center shadow-2xl active:scale-95 transition-all"
-            >
-              <PhoneOff className="w-8 h-8 text-white" />
-            </button>
-
-            {/* Accept button */}
-            <button
-              onClick={() => {
-                acceptCall();
-              }}
-              className="w-16 h-16 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-2xl active:scale-95 transition-all animate-pulse"
-            >
-              <PhoneCall className="w-8 h-8 text-white" />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Active Call Interface
-  if (callState === 'connected' && currentCall) {
-    return (
-      <div className="fixed inset-0 bg-gray-900 z-50 flex flex-col">
-        {/* Call header */}
-        <div className="bg-black/50 text-white p-4 safe-area-top">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full overflow-hidden">
-                {currentCall.caller?.avatar ? (
-                  <img
-                    src={currentCall.caller.avatar}
-                    alt={currentCall.caller.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-linear-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                    <UserIcon className="w-6 h-6 text-white" />
-                  </div>
-                )}
-              </div>
-              <div>
-                <h3 className="font-semibold">{currentCall.caller?.name}</h3>
-                <p className="text-sm text-white/70">{formatCallDuration(callDuration)}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-              <span className="text-xs text-white/70">Connected</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Video area */}
-        {currentCall.type === 'video' && (
-          <div className="flex-1 relative">
-            {/* Remote video */}
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="w-full h-full object-cover"
-            />
-
-            {/* Local video (picture-in-picture) */}
-            <div className="absolute top-4 right-4 w-24 h-32 bg-gray-800 rounded-lg overflow-hidden border-2 border-white/20">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Audio call placeholder */}
-        {currentCall.type === 'audio' && (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-32 h-32 mx-auto rounded-full overflow-hidden border-4 border-white/20 mb-6">
-                {currentCall.caller?.avatar ? (
-                  <img
-                    src={currentCall.caller.avatar}
-                    alt={currentCall.caller.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-linear-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                    <UserIcon className="w-16 h-16 text-white" />
-                  </div>
-                )}
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-2">{currentCall.caller?.name}</h2>
-              <p className="text-white/70">{formatCallDuration(callDuration)}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Call controls */}
-        <div className="bg-black/50 p-6 safe-area-bottom">
-          <div className="flex items-center justify-center gap-6">
-            {/* Mute button */}
-            <button
-              onClick={toggleMute}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500' : 'bg-white/20'
-                }`}
-            >
-              {isMuted ? (
-                <MicOff className="w-6 h-6 text-white" />
-              ) : (
-                <Mic className="w-6 h-6 text-white" />
-              )}
-            </button>
-
-            {/* Video toggle (for video calls) */}
-            {currentCall.type === 'video' && (
-              <button
-                onClick={toggleVideo}
-                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isVideoOff ? 'bg-red-500' : 'bg-white/20'
-                  }`}
-              >
-                {isVideoOff ? (
-                  <VideoOff className="w-6 h-6 text-white" />
-                ) : (
-                  <Video className="w-6 h-6 text-white" />
-                )}
-              </button>
-            )}
-
-            {/* End call button */}
-            <button
-              onClick={endCall}
-              className="w-14 h-14 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center transition-all active:scale-95"
-            >
-              <PhoneOff className="w-6 h-6 text-white" />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Chat View (WhatsApp Style)
   if (selectedChat) {
@@ -1304,8 +1064,8 @@ function ClientMessagesUI() {
                     <div className={`max-w-[85%] sm:max-w-[75%] ${isSent ? 'order-2' : 'order-1'}`}>
                       <div
                         className={`rounded-lg px-3 py-2 shadow-sm inline-block ${isSent
-                            ? 'bg-[#DCF8C6] text-gray-900 rounded-tr-none'
-                            : 'bg-white text-gray-900 rounded-tl-none'
+                          ? 'bg-[#DCF8C6] text-gray-900 rounded-tr-none'
+                          : 'bg-white text-gray-900 rounded-tl-none'
                           }`}
                       >
                         {/* Image Messages */}
@@ -1523,8 +1283,8 @@ function ClientMessagesUI() {
               onClick={newMessage.trim() ? sendMessage : (isRecording ? stopRecording : startRecording)}
               disabled={sending}
               className={`p-2.5 sm:p-3 rounded-full shadow-lg active:scale-95 transition-all shrink-0 ${isRecording
-                  ? 'bg-red-500 hover:bg-red-600'
-                  : 'bg-[#075E54] hover:bg-[#064e47]'
+                ? 'bg-red-500 hover:bg-red-600'
+                : 'bg-[#075E54] hover:bg-[#064e47]'
                 } disabled:opacity-50`}
             >
               {newMessage.trim() ? (

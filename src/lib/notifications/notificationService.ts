@@ -3,7 +3,7 @@ import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
 
 // Notification types
-export type NotificationType = 
+export type NotificationType =
   | 'new_message'
   | 'appointment_booked'
   | 'appointment_cancelled'
@@ -30,7 +30,7 @@ export async function sendNewMessageNotification(
   recipientId: string,
   senderName: string,
   messagePreview: string,
-  conversationId?: string
+  conversationWith?: string
 ) {
   return sendNotificationToUser(recipientId, {
     title: `New message from ${senderName}`,
@@ -38,10 +38,10 @@ export async function sendNewMessageNotification(
     icon: '/icons/icon-192x192.png',
     data: {
       type: 'new_message',
-      conversationId: conversationId || '',
-      senderId: senderName,
+      conversationWith: conversationWith || '',
+      senderName,
     },
-    clickAction: conversationId ? `/messages?conversation=${conversationId}` : '/messages',
+    clickAction: conversationWith ? `/user/messages?conversationWith=${conversationWith}` : '/user/messages',
   });
 }
 
@@ -263,7 +263,7 @@ export async function sendNotificationToAllClients(
     }).select('_id');
 
     const clientIds = clients.map(c => c._id.toString());
-    
+
     if (clientIds.length === 0) {
       return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
     }

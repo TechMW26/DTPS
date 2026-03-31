@@ -12,13 +12,15 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { toast } from 'sonner';
 import {
   Send,
   MessageCircle,
   Paperclip,
   Image as ImageIcon,
   Smile,
-  MoreVertical,
   Phone,
   Video,
   Search,
@@ -39,7 +41,10 @@ import {
   PhoneOff,
   MicOff,
   VideoOff,
-  Megaphone
+  Megaphone,
+  MoreVertical,
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import BulkMessageModal from '@/components/messages/BulkMessageModal';
@@ -126,6 +131,11 @@ function MessagesContent() {
   // Bulk messaging state
   const [showBulkMessageModal, setShowBulkMessageModal] = useState(false);
 
+  // Message deletion state
+  const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // WebRTC calling states
   const [callState, setCallState] = useState<'idle' | 'calling' | 'incoming' | 'connected' | 'ended'>('idle');
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -153,7 +163,7 @@ function MessagesContent() {
 
   // Refs to hold latest state/functions for SSE callbacks (avoids stale closures)
   const selectedConversationRef = useRef<string | null>(null);
-  const fetchConversationsRef = useRef<() => void>(() => {});
+  const fetchConversationsRef = useRef<() => void>(() => { });
 
   // ICE buffering to avoid race where candidates arrive before remote description is set
   const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
@@ -200,6 +210,18 @@ function MessagesContent() {
               setTimeout(() => scrollToBottom(), 50);
             }
             // Always refresh conversations list (keeps last message + unread counts in sync)
+            fetchConversationsRef.current();
+          }
+          return;
+        }
+
+        // Handle message deletion event
+        if (evt.type === 'message_deleted') {
+          const deletedMessageId = (data as any)?.messageId;
+          if (deletedMessageId) {
+            // Remove the deleted message from local state
+            setMessages(prev => prev.filter(m => m._id !== deletedMessageId));
+            // Refresh conversations to update last message if needed
             fetchConversationsRef.current();
           }
           return;
@@ -404,7 +426,7 @@ function MessagesContent() {
               type: 'call_missed'
             })
           });
-        } catch (_) {}
+        } catch (_) { }
         setCallState('ended');
         setIsAudioCall(false);
         setIsVideoCall(false);
@@ -434,7 +456,7 @@ function MessagesContent() {
       // @ts-ignore
       remoteAudioRef.current.srcObject = remoteStream;
       // @ts-ignore
-      remoteAudioRef.current.play?.().catch(() => {});
+      remoteAudioRef.current.play?.().catch(() => { });
     }
   }, [remoteStream]);
 
@@ -570,6 +592,16 @@ function MessagesContent() {
     fetchConversationsRef.current = fetchConversations;
   });
 
+  // Cleanup for message press timer
+  useEffect(() => {
+    return () => {
+      if (messagePressTimerRef.current) {
+        clearTimeout(messagePressTimerRef.current);
+        messagePressTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const fetchOnlineStatus = async (userIds: string[]) => {
     try {
       const response = await fetch(`/api/realtime/status?userIds=${userIds.join(',')}`);
@@ -688,8 +720,8 @@ function MessagesContent() {
       };
 
       const type = file.type.startsWith('image/') ? 'image' :
-                   file.type.startsWith('video/') ? 'video' :
-                   file.type.startsWith('audio/') ? 'audio' : 'file';
+        file.type.startsWith('video/') ? 'video' :
+          file.type.startsWith('audio/') ? 'audio' : 'file';
 
       await sendMessage('', type, [attachment]);
     } catch (error) {
@@ -848,7 +880,7 @@ function MessagesContent() {
         remoteVideoRef.current.srcObject = stream;
         // Attempt to play (some browsers require explicit play())
         // @ts-ignore
-        remoteVideoRef.current.play?.().catch(() => {});
+        remoteVideoRef.current.play?.().catch(() => { });
       }
     };
 
@@ -925,7 +957,7 @@ function MessagesContent() {
         // @ts-ignore
         localVideoRef.current.muted = true; // avoid echo locally
         // @ts-ignore
-        localVideoRef.current.play?.().catch(() => {});
+        localVideoRef.current.play?.().catch(() => { });
       }
 
       // Initialize peer connection with the call ID
@@ -1034,7 +1066,7 @@ function MessagesContent() {
         // @ts-ignore
         localVideoRef.current.muted = true;
         // @ts-ignore
-        localVideoRef.current.play?.().catch(() => {});
+        localVideoRef.current.play?.().catch(() => { });
       }
 
       const pc = initializePeerConnection(theCallId);
@@ -1282,6 +1314,40 @@ function MessagesContent() {
     );
   };
 
+  // Handle message deletion
+  const handleDeleteMessage = async () => {
+    if (!messageToDelete || isDeleting) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/messages/${messageToDelete._id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Remove message from local state immediately
+        setMessages(prev => prev.filter(m => m._id !== messageToDelete._id));
+        toast.success('Message deleted');
+        setActiveMessageMenuId(null);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Failed to delete message');
+      }
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      toast.error('Failed to delete message');
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setMessageToDelete(null);
+    }
+  };
+
+  const confirmDeleteMessage = (message: Message) => {
+    setMessageToDelete(message);
+    setDeleteDialogOpen(true);
+  };
+
   const selectedUser = conversations.find(c => c.user._id === selectedConversation);
 
   if (!session) {
@@ -1326,73 +1392,73 @@ function MessagesContent() {
                     <Megaphone className="h-5 w-5" />
                   </Button>
                 )}
-              <Dialog open={showNewChatDialog} onOpenChange={setShowNewChatDialog}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-white hover:bg-green-700">
-                    <Plus className="h-5 w-5" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Start New Conversation</DialogTitle>
-                    <DialogDescription>
-                      Choose someone to start chatting with
-                    </DialogDescription>
-                  </DialogHeader>
+                <Dialog open={showNewChatDialog} onOpenChange={setShowNewChatDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className="text-white hover:bg-green-700">
+                      <Plus className="h-5 w-5" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Start New Conversation</DialogTitle>
+                      <DialogDescription>
+                        Choose someone to start chatting with
+                      </DialogDescription>
+                    </DialogHeader>
 
-                  <div className="space-y-4">
-                    {/* Search Users */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        placeholder="Search users..."
-                        value={searchUsers}
-                        onChange={(e) => setSearchUsers(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
+                    <div className="space-y-4">
+                      {/* Search Users */}
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          placeholder="Search users..."
+                          value={searchUsers}
+                          onChange={(e) => setSearchUsers(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
 
-                    {/* Available Users List */}
-                    <div className="max-h-64 overflow-y-auto space-y-2">
-                      {loadingUsers ? (
-                        <div className="flex justify-center py-4">
-                          <LoadingSpinner />
-                        </div>
-                      ) : availableUsers.length === 0 ? (
-                        <p className="text-gray-500 text-center py-4">No users found</p>
-                      ) : (
-                        availableUsers.map((user) => (
-                          <div
-                            key={user._id}
-                            onClick={() => startNewConversation(user)}
-                            className="p-3 rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="flex items-center space-x-3">
-                              <Avatar className="h-10 w-10">
-                                <AvatarImage src={user.avatar} />
-                                <AvatarFallback className="bg-green-100 text-green-600">
-                                  {user.firstName[0]}{user.lastName[0]}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-gray-900">
-                                  {user.firstName} {user.lastName}
-                                </p>
-                                <p className="text-sm text-gray-500 truncate">
-                                  {user.role} • {user.email}
-                                </p>
-                                {user.hasExistingConversation && (
-                                  <p className="text-xs text-blue-600">Existing conversation</p>
-                                )}
+                      {/* Available Users List */}
+                      <div className="max-h-64 overflow-y-auto space-y-2">
+                        {loadingUsers ? (
+                          <div className="flex justify-center py-4">
+                            <LoadingSpinner />
+                          </div>
+                        ) : availableUsers.length === 0 ? (
+                          <p className="text-gray-500 text-center py-4">No users found</p>
+                        ) : (
+                          availableUsers.map((user) => (
+                            <div
+                              key={user._id}
+                              onClick={() => startNewConversation(user)}
+                              className="p-3 rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors"
+                            >
+                              <div className="flex items-center space-x-3">
+                                <Avatar className="h-10 w-10">
+                                  <AvatarImage src={user.avatar} />
+                                  <AvatarFallback className="bg-green-100 text-green-600">
+                                    {user.firstName[0]}{user.lastName[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-gray-900">
+                                    {user.firstName} {user.lastName}
+                                  </p>
+                                  <p className="text-sm text-gray-500 truncate">
+                                    {user.role} • {user.email}
+                                  </p>
+                                  {user.hasExistingConversation && (
+                                    <p className="text-xs text-blue-600">Existing conversation</p>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))
-                      )}
+                          ))
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
             {/* Search */}
@@ -1422,9 +1488,8 @@ function MessagesContent() {
                 <div
                   key={conversation.user._id}
                   onClick={() => selectConversation(conversation.user._id)}
-                  className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors border-b ${
-                    selectedConversation === conversation.user._id ? 'bg-green-50' : ''
-                  }`}
+                  className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors border-b ${selectedConversation === conversation.user._id ? 'bg-green-50' : ''
+                    }`}
                 >
                   <div className="flex items-center space-x-3">
                     <div className="relative">
@@ -1445,11 +1510,10 @@ function MessagesContent() {
                             {conversation.user.firstName} {conversation.user.lastName}
                           </p>
                           {conversation.user.clientStatus && (
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${
-                              conversation.user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${conversation.user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
                               conversation.user.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700' :
-                              'bg-blue-100 text-blue-700'
-                            }`}>
+                                'bg-blue-100 text-blue-700'
+                              }`}>
                               {conversation.user.clientStatus.charAt(0).toUpperCase() + conversation.user.clientStatus.slice(1)}
                             </span>
                           )}
@@ -1473,8 +1537,8 @@ function MessagesContent() {
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-500 truncate">
                           {conversation.lastMessage?.type === 'image' ? '📷 Image' :
-                           conversation.lastMessage?.type === 'file' ? '📎 File' :
-                           conversation.lastMessage?.content || 'Start conversation...'}
+                            conversation.lastMessage?.type === 'file' ? '📎 File' :
+                              conversation.lastMessage?.content || 'Start conversation...'}
                         </p>
                         {conversation.unreadCount > 0 && (
                           <div className="bg-green-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
@@ -1517,11 +1581,10 @@ function MessagesContent() {
                         {selectedUser.user.firstName} {selectedUser.user.lastName}
                       </h3>
                       {selectedUser.user.clientStatus && (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          selectedUser.user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${selectedUser.user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
                           selectedUser.user.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700' :
-                          'bg-blue-100 text-blue-700'
-                        }`}>
+                            'bg-blue-100 text-blue-700'
+                          }`}>
                           {selectedUser.user.clientStatus.charAt(0).toUpperCase() + selectedUser.user.clientStatus.slice(1)}
                         </span>
                       )}
@@ -1531,54 +1594,11 @@ function MessagesContent() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  {/* 🚀 NEW: Simple WebRTC Call Buttons */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={startSimpleAudioCall}
-                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                    title="🚀 Simple Audio Call"
-                  >
-                    <Phone className="h-5 w-5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={startSimpleVideoCall}
-                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                    title="🚀 Simple Video Call"
-                  >
-                    <Video className="h-5 w-5" />
-                  </Button>
-
-                  {/* Legacy WebRTC Buttons (for comparison) */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={startAudioCall}
-                    className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                    title="Legacy Audio Call"
-                  >
-                    <Phone className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={startVideoCall}
-                    className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                    title="Legacy Video Call"
-                  >
-                    <Video className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" title="More options">
-                    <MoreVertical className="h-5 w-5" />
-                  </Button>
-                </div>
+                <div className="flex items-center space-x-2" />
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50" style={{backgroundImage: "url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><defs><pattern id=\"grain\" width=\"100\" height=\"100\" patternUnits=\"userSpaceOnUse\"><circle cx=\"50\" cy=\"50\" r=\"0.5\" fill=\"%23000\" opacity=\"0.02\"/></pattern></defs><rect width=\"100\" height=\"100\" fill=\"url(%23grain)\"/></svg>')"}}>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50" style={{ backgroundImage: "url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><defs><pattern id=\"grain\" width=\"100\" height=\"100\" patternUnits=\"userSpaceOnUse\"><circle cx=\"50\" cy=\"50\" r=\"0.5\" fill=\"%23000\" opacity=\"0.02\"/></pattern></defs><rect width=\"100\" height=\"100\" fill=\"url(%23grain)\"/></svg>')" }}>
                 {messages.length === 0 ? (
                   <div className="text-center py-8">
                     <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -1592,109 +1612,134 @@ function MessagesContent() {
                       return null;
                     }
 
+                    const isOwn = message.sender._id === session.user.id;
+
                     return (
                       <div
                         key={message._id}
-                        className={`flex ${
-                          message.sender._id === session.user.id ? 'justify-end' : 'justify-start'
-                        }`}
+                        className={`flex items-end gap-2 ${isOwn ? 'justify-end' : 'justify-start'
+                          }`}
                       >
-                      <div
-                        className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg shadow-sm ${
-                          message.sender._id === session.user.id
+                        {/* Delete menu only for own messages/media - always visible on left */}
+                        {isOwn && (
+                          <div className="order-2">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 rounded-full hover:bg-gray-200"
+                                >
+                                  <MoreVertical className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="min-w-40">
+                                <DropdownMenuItem
+                                  className="text-red-600 focus:text-red-600 cursor-pointer"
+                                  onClick={() => confirmDeleteMessage(message)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        )}
+
+                        <div
+                          className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg shadow-sm ${isOwn
                             ? 'bg-green-500 text-white rounded-br-none'
                             : 'bg-white text-gray-900 rounded-bl-none'
-                        }`}
-                      >
-                        {/* Image Messages */}
-                        {message.type === 'image' && message.attachments?.[0] && (
-                          <div className="mb-2">
-                            <img
-                              src={message.attachments[0].url}
-                              alt="Shared image"
-                              className="rounded-lg max-w-xs h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                              onClick={() => setPreviewImage(message.attachments?.[0]?.url || '')}
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                                const parent = target.parentElement;
-                                if (parent && !parent.querySelector('.error-placeholder')) {
-                                  const placeholder = document.createElement('div');
-                                  placeholder.className = 'error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm';
-                                  placeholder.innerHTML = '<span>📷 Image could not be loaded</span>';
-                                  parent.appendChild(placeholder);
-                                }
-                              }}
-                            />
-                          </div>
-                        )}
-
-                        {/* Video Messages */}
-                        {message.type === 'video' && message.attachments?.[0] && (
-                          <div className="mb-2">
-                            <video
-                              src={message.attachments[0].url}
-                              controls
-                              className="rounded-lg max-w-xs h-auto"
-                              preload="metadata"
-                            >
-                              Your browser does not support video playback.
-                            </video>
-                          </div>
-                        )}
-
-                        {/* Audio Messages */}
-                        {(message.type === 'audio' || message.type === 'voice') && message.attachments?.[0] && (
-                          <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
-                            <Volume2 className="h-4 w-4 text-gray-600" />
-                            <audio
-                              src={message.attachments[0].url}
-                              controls
-                              className="flex-1"
-                              preload="metadata"
-                            />
-                          </div>
-                        )}
-
-                        {/* File Messages */}
-                        {message.type === 'file' && message.attachments?.[0] && (
-                          <a
-                            href={message.attachments[0].url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download={message.attachments[0].filename}
-                            className="flex items-center space-x-2 mb-2 p-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
-                          >
-                            <FileIcon className="h-4 w-4 text-gray-600" />
-                            <div className="flex-1">
-                              <span className="text-sm font-medium">{message.attachments[0].filename}</span>
-                              <p className="text-xs text-gray-500">
-                                {(message.attachments[0].size / 1024 / 1024).toFixed(2)} MB
-                              </p>
-                            </div>
-                            <Download className="h-4 w-4 text-gray-600" />
-                          </a>
-                        )}
-                        <p className="text-sm">{message.content}</p>
-                        <div className="flex items-center justify-end space-x-1 mt-1">
-                          <p
-                            className={`text-xs ${
-                              message.sender._id === session.user.id ? 'text-green-100' : 'text-gray-500'
                             }`}
-                          >
-                            {(() => {
-                              try {
-                                const date = new Date(message.createdAt);
-                                return !isNaN(date.getTime()) ? format(date, 'HH:mm') : '';
-                              } catch (error) {
-                                return '';
-                              }
-                            })()}
-                          </p>
-                          {getMessageStatus(message)}
+                        >
+                          {/* Image Messages */}
+                          {message.type === 'image' && message.attachments?.[0] && (
+                            <div className="mb-2">
+                              <img
+                                src={message.attachments[0].url}
+                                alt="Shared image"
+                                className="rounded-lg max-w-xs h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                onClick={() => setPreviewImage(message.attachments?.[0]?.url || '')}
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                  const parent = target.parentElement;
+                                  if (parent && !parent.querySelector('.error-placeholder')) {
+                                    const placeholder = document.createElement('div');
+                                    placeholder.className = 'error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm';
+                                    placeholder.innerHTML = '<span>📷 Image could not be loaded</span>';
+                                    parent.appendChild(placeholder);
+                                  }
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {/* Video Messages */}
+                          {message.type === 'video' && message.attachments?.[0] && (
+                            <div className="mb-2">
+                              <video
+                                src={message.attachments[0].url}
+                                controls
+                                className="rounded-lg max-w-xs h-auto"
+                                preload="metadata"
+                              >
+                                Your browser does not support video playback.
+                              </video>
+                            </div>
+                          )}
+
+                          {/* Audio Messages */}
+                          {(message.type === 'audio' || message.type === 'voice') && message.attachments?.[0] && (
+                            <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
+                              <Volume2 className="h-4 w-4 text-gray-600" />
+                              <audio
+                                src={message.attachments[0].url}
+                                controls
+                                className="flex-1"
+                                preload="metadata"
+                              />
+                            </div>
+                          )}
+
+                          {/* File Messages */}
+                          {message.type === 'file' && message.attachments?.[0] && (
+                            <a
+                              href={message.attachments[0].url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={message.attachments[0].filename}
+                              className="flex items-center space-x-2 mb-2 p-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
+                            >
+                              <FileIcon className="h-4 w-4 text-gray-600" />
+                              <div className="flex-1">
+                                <span className="text-sm font-medium">{message.attachments[0].filename}</span>
+                                <p className="text-xs text-gray-500">
+                                  {(message.attachments[0].size / 1024 / 1024).toFixed(2)} MB
+                                </p>
+                              </div>
+                              <Download className="h-4 w-4 text-gray-600" />
+                            </a>
+                          )}
+                          <p className="text-sm">{message.content}</p>
+                          <div className="flex items-center justify-end space-x-1 mt-1">
+                            <p
+                              className={`text-xs ${isOwn ? 'text-green-100' : 'text-gray-500'
+                                }`}
+                            >
+                              {(() => {
+                                try {
+                                  const date = new Date(message.createdAt);
+                                  return !isNaN(date.getTime()) ? format(date, 'HH:mm') : '';
+                                } catch (error) {
+                                  return '';
+                                }
+                              })()}
+                            </p>
+                            {getMessageStatus(message)}
+                          </div>
                         </div>
                       </div>
-                    </div>
                     );
                   }).filter(Boolean)
                 )}
@@ -1826,9 +1871,8 @@ function MessagesContent() {
 
                         onTouchEnd={stopAudioRecording}
                         size="sm"
-                        className={`rounded-full w-10 h-10 p-0 ${
-                          isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
-                        }`}
+                        className={`rounded-full w-10 h-10 p-0 ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
+                          }`}
                       >
                         <Mic className="h-4 w-4" />
                       </Button>
@@ -1909,6 +1953,35 @@ function MessagesContent() {
         currentUserId={session?.user?.id || ''}
       />
 
+      {/* Delete Message Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Message?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This message will be permanently deleted. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteMessage}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Call Interface */}
       {(isVideoCall || isAudioCall) && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col">
@@ -1927,78 +2000,78 @@ function MessagesContent() {
                 </h3>
                 <p className="text-sm text-gray-300">
                   {callState === 'calling' ? 'Calling...' :
-                   callState === 'connected' ? 'Connected' :
-                   callState === 'incoming' ? 'Incoming call...' : 'Connecting...'}
+                    callState === 'connected' ? 'Connected' :
+                      callState === 'incoming' ? 'Incoming call...' : 'Connecting...'}
                 </p>
               </div>
             </div>
           </div>
 
-      {/* Incoming Call Banner/Modal */}
-      {callState === 'incoming' && incomingCall && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 text-center">
-            <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-              <Phone className="w-8 h-8 text-green-600" />
-            </div>
-            <h3 className="text-xl font-semibold mb-1">Incoming {incomingCall.type === 'video' ? 'Video' : 'Audio'} Call</h3>
-            <p className="text-gray-600 mb-6">from {(() => {
-              const conv = conversations.find(c => c.user._id === incomingCall.callerId);
-              return conv ? `${conv.user.firstName} ${conv.user.lastName}` : 'Unknown';
-            })()}</p>
-            <div className="flex justify-center gap-4">
-              <Button
-                onClick={incomingCall?.isSimpleWebRTC ? handleSimpleCallReject : rejectIncomingCall}
-                className="bg-red-500 hover:bg-red-600"
-              >
-                <X className="w-4 h-4 mr-2" /> Reject
-              </Button>
-              <Button
-                onClick={incomingCall?.isSimpleWebRTC ? handleSimpleCallAccept : acceptIncomingCall}
-                className="bg-green-500 hover:bg-green-600"
-              >
-                <Phone className="w-4 h-4 mr-2" /> Accept {incomingCall?.isSimpleWebRTC ? '🚀' : ''}
-              </Button>
-            </div>
-          </div>
-
-      {/* Hidden remote audio element for audio-only calls */}
-      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-
-        </div>
-      )}
-
-      {/* 🚀 Simple WebRTC Call Status */}
-      {simpleCallState.isInCall && (
-        <div className="fixed top-4 right-4 z-40 bg-white rounded-lg shadow-lg p-4 border-2 border-blue-500">
-          <div className="flex items-center space-x-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-            <div>
-              <div className="font-semibold text-sm">🚀 Simple WebRTC Call</div>
-              <div className="text-xs text-gray-600">
-                Status: {simpleCallState.status} | Type: {simpleCallState.callType}
+          {/* Incoming Call Banner/Modal */}
+          {callState === 'incoming' && incomingCall && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 text-center">
+                <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+                  <Phone className="w-8 h-8 text-green-600" />
+                </div>
+                <h3 className="text-xl font-semibold mb-1">Incoming {incomingCall.type === 'video' ? 'Video' : 'Audio'} Call</h3>
+                <p className="text-gray-600 mb-6">from {(() => {
+                  const conv = conversations.find(c => c.user._id === incomingCall.callerId);
+                  return conv ? `${conv.user.firstName} ${conv.user.lastName}` : 'Unknown';
+                })()}</p>
+                <div className="flex justify-center gap-4">
+                  <Button
+                    onClick={incomingCall?.isSimpleWebRTC ? handleSimpleCallReject : rejectIncomingCall}
+                    className="bg-red-500 hover:bg-red-600"
+                  >
+                    <X className="w-4 h-4 mr-2" /> Reject
+                  </Button>
+                  <Button
+                    onClick={incomingCall?.isSimpleWebRTC ? handleSimpleCallAccept : acceptIncomingCall}
+                    className="bg-green-500 hover:bg-green-600"
+                  >
+                    <Phone className="w-4 h-4 mr-2" /> Accept {incomingCall?.isSimpleWebRTC ? '🚀' : ''}
+                  </Button>
+                </div>
               </div>
-              <div className="text-xs text-gray-500">
-                Role: {simpleCallState.isInitiator ? 'Caller' : 'Receiver'}
-              </div>
-            </div>
-            <Button
-              onClick={handleSimpleCallEnd}
-              size="sm"
-              className="bg-red-500 hover:bg-red-600 text-white"
-            >
-              End
-            </Button>
-          </div>
 
-          {/* Simple WebRTC Error Display */}
-          {simpleCallError && (
-            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-              Error: {simpleCallError}
+              {/* Hidden remote audio element for audio-only calls */}
+              <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+
             </div>
           )}
-        </div>
-      )}
+
+          {/* 🚀 Simple WebRTC Call Status */}
+          {simpleCallState.isInCall && (
+            <div className="fixed top-4 right-4 z-40 bg-white rounded-lg shadow-lg p-4 border-2 border-blue-500">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                <div>
+                  <div className="font-semibold text-sm">🚀 Simple WebRTC Call</div>
+                  <div className="text-xs text-gray-600">
+                    Status: {simpleCallState.status} | Type: {simpleCallState.callType}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Role: {simpleCallState.isInitiator ? 'Caller' : 'Receiver'}
+                  </div>
+                </div>
+                <Button
+                  onClick={handleSimpleCallEnd}
+                  size="sm"
+                  className="bg-red-500 hover:bg-red-600 text-white"
+                >
+                  End
+                </Button>
+              </div>
+
+              {/* Simple WebRTC Error Display */}
+              {simpleCallError && (
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                  Error: {simpleCallError}
+                </div>
+              )}
+            </div>
+          )}
 
 
           {/* Video Area */}
@@ -2060,7 +2133,7 @@ function MessagesContent() {
                 </h2>
                 <p className="text-gray-300">
                   {callState === 'calling' ? 'Calling...' :
-                   callState === 'connected' ? 'Connected' : 'Connecting...'}
+                    callState === 'connected' ? 'Connected' : 'Connecting...'}
                 </p>
               </div>
             </div>
@@ -2073,9 +2146,8 @@ function MessagesContent() {
               <Button
                 onClick={toggleMute}
                 variant="outline"
-                className={`w-12 h-12 rounded-full ${
-                  isMuted ? 'bg-red-500 text-white border-red-500' : 'bg-white/10 text-white border-white/20'
-                }`}
+                className={`w-12 h-12 rounded-full ${isMuted ? 'bg-red-500 text-white border-red-500' : 'bg-white/10 text-white border-white/20'
+                  }`}
               >
                 {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </Button>
@@ -2085,9 +2157,8 @@ function MessagesContent() {
                 <Button
                   onClick={toggleVideo}
                   variant="outline"
-                  className={`w-12 h-12 rounded-full ${
-                    !isVideoEnabled ? 'bg-red-500 text-white border-red-500' : 'bg-white/10 text-white border-white/20'
-                  }`}
+                  className={`w-12 h-12 rounded-full ${!isVideoEnabled ? 'bg-red-500 text-white border-red-500' : 'bg-white/10 text-white border-white/20'
+                    }`}
                 >
                   {!isVideoEnabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
                 </Button>

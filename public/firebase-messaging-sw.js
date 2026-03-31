@@ -13,7 +13,7 @@ let messaging = null;
 // Initialize Firebase with config from API
 async function initializeFirebase() {
     if (firebaseInitialized) return true;
-    
+
     try {
         // Fetch config from API endpoint
         const response = await fetch('/api/firebase-config');
@@ -21,21 +21,21 @@ async function initializeFirebase() {
             console.error('[firebase-messaging-sw.js] Failed to fetch Firebase config');
             return false;
         }
-        
+
         const firebaseConfig = await response.json();
-        
+
         if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
             console.error('[firebase-messaging-sw.js] Invalid Firebase config received');
             return false;
         }
-        
+
         // Initialize Firebase in the service worker
         firebase.initializeApp(firebaseConfig);
-        
+
         // Get Firebase Messaging instance
         messaging = firebase.messaging();
         firebaseInitialized = true;
-        
+
         console.log('[firebase-messaging-sw.js] Firebase initialized successfully');
         return true;
     } catch (error) {
@@ -112,24 +112,24 @@ messaging.onBackgroundMessage((payload) => {
     console.log('[firebase-messaging-sw.js] Received background message:', payload);
 
     // Generate a unique tag for deduplication
-    const notificationTag = payload.data?.tag || 
-                           payload.data?.messageId || 
-                           payload.messageId ||
-                           `dtps-${Date.now()}`;
-    
+    const notificationTag = payload.data?.tag ||
+        payload.data?.messageId ||
+        payload.messageId ||
+        `dtps-${Date.now()}`;
+
     // Check for duplicate
     if (wasRecentlyShown(notificationTag)) {
         console.log('[firebase-messaging-sw.js] Skipping duplicate notification:', notificationTag);
         return;
     }
 
-    const notificationTitle = payload.notification?.title || 
-                              payload.data?.title || 
-                              'DTPS Notification';
-    const notificationBody = payload.notification?.body || 
-                             payload.data?.body || 
-                             payload.data?.message ||
-                             'You have a new notification';
+    const notificationTitle = payload.notification?.title ||
+        payload.data?.title ||
+        'DTPS Notification';
+    const notificationBody = payload.notification?.body ||
+        payload.data?.body ||
+        payload.data?.message ||
+        'You have a new notification';
     const notificationType = payload.data?.type || 'general';
 
     const notificationOptions = {
@@ -139,9 +139,9 @@ messaging.onBackgroundMessage((payload) => {
         image: payload.notification?.image || payload.data?.image,
         data: payload.data || {},
         tag: notificationTag,
-        requireInteraction: notificationType === 'call' || 
-                            notificationType === 'new_message' ||
-                            payload.data?.requireInteraction === 'true',
+        requireInteraction: notificationType === 'call' ||
+            notificationType === 'new_message' ||
+            payload.data?.requireInteraction === 'true',
         vibrate: [200, 100, 200],
         actions: getNotificationActions(notificationType),
         renotify: true,
@@ -170,14 +170,16 @@ self.addEventListener('notificationclick', (event) => {
     let urlToOpen = data.clickAction || data.url || '/user';
 
     // Type-specific URL handling
-    if (type === 'new_message' && data.conversationId) {
-        urlToOpen = `/messages?conversation=${data.conversationId}`;
+    if (type === 'new_message') {
+        urlToOpen = data.conversationWith
+            ? `/user/messages?conversationWith=${data.conversationWith}`
+            : '/user/messages';
     } else if (type === 'appointment' || type === 'appointment_booked') {
         urlToOpen = '/user/appointments';
     } else if (type === 'payment_link' || type === 'payment_link_created' || action === 'pay') {
         urlToOpen = '/user/payments';
     } else if (type === 'meal_plan' || type === 'meal_plan_created') {
-        urlToOpen = '/my-plan';
+        urlToOpen = '/user/plan';
     } else if (type === 'task_assigned') {
         urlToOpen = '/user/tasks';
     } else if (type === 'call' && action === 'accept') {
@@ -232,10 +234,10 @@ self.addEventListener('push', (event) => {
 
     // If this is a data-only message (no notification field), show notification manually
     if (!data.notification && data.data) {
-        const notificationTag = data.data.tag || 
-                               data.data.messageId || 
-                               `dtps-push-${Date.now()}`;
-        
+        const notificationTag = data.data.tag ||
+            data.data.messageId ||
+            `dtps-push-${Date.now()}`;
+
         if (wasRecentlyShown(notificationTag)) {
             console.log('[firebase-messaging-sw.js] Skipping duplicate push notification');
             return;
@@ -244,7 +246,7 @@ self.addEventListener('push', (event) => {
         const notificationTitle = data.data.title || 'DTPS Notification';
         const notificationBody = data.data.body || data.data.message || 'You have a new notification';
         const notificationType = data.data.type || 'general';
-        
+
         event.waitUntil(
             self.registration.showNotification(notificationTitle, {
                 body: notificationBody,
