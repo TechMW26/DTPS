@@ -3,12 +3,16 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
+import Message from '@/lib/db/models/Message';
+import User from '@/lib/db/models/User';
+import { Notification } from '@/lib/db/models';
 import { UserRole } from '@/types';
 import { parseISO, startOfDay, isToday } from 'date-fns';
 import { getImageKit } from '@/lib/imagekit';
 import { compressImageServer } from '@/lib/imageCompressionServer';
 import { MEAL_TYPE_KEYS, normalizeMealType, type MealTypeKey } from '@/lib/mealConfig';
 import { socketManager } from '@/lib/realtime/socket-manager';
+import { broadcastUnreadCounts, broadcastStaffUnreadCounts } from '@/lib/realtime/broadcast-counts';
 import { logActivity } from '@/lib/utils/activityLogger';
 
 // Map camelCase meal types to canonical UPPERCASE keys
@@ -202,6 +206,84 @@ export async function POST(request: NextRequest) {
     mealPlan.analytics.averageAdherence = Math.round((completedMeals / totalMeals) * 100);
 
     await mealPlan.save();
+
+    // If meal image exists, also send it as a chat image message to assigned dietitian
+    // so it appears in client↔dietitian conversation with "Meal Picture" tag.
+    if (imagePath) {
+      try {
+        const currentUser = await User.findById(session.user.id)
+          .select('assignedDietitian')
+          .lean();
+
+        const primaryDietitianId = (currentUser as any)?.assignedDietitian?.toString();
+
+        if (primaryDietitianId) {
+          const mealLabel = determinedMealType
+            .toLowerCase()
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+          const noteText = (notes || '').trim();
+          const chatContent = noteText
+            ? `Meal Picture • ${mealLabel}\n${noteText}`
+            : `Meal Picture • ${mealLabel}`;
+
+          const mealPictureMessage = new Message({
+            sender: session.user.id,
+            receiver: primaryDietitianId,
+            content: chatContent,
+            type: 'image',
+            attachments: [{
+              url: imagePath,
+              filename: imageFile?.name || `meal-picture-${Date.now()}.jpg`,
+              size: Math.max(imageFile?.size || 0, 1),
+              mimeType: imageFile?.type || 'image/jpeg'
+            }],
+            status: 'sent',
+            isRead: false
+          });
+
+          await mealPictureMessage.save();
+          await mealPictureMessage.populate('sender', 'firstName lastName avatar role');
+          await mealPictureMessage.populate('receiver', 'firstName lastName avatar role');
+
+          const msgJson = mealPictureMessage.toJSON();
+          const ts = Date.now();
+
+          // Recipient event: conversation is with sender(client)
+          socketManager.sendToUser(primaryDietitianId, 'new_message', {
+            message: msgJson,
+            conversationWith: session.user.id,
+            timestamp: ts
+          });
+
+          // Sender event: conversation is with recipient(dietitian)
+          socketManager.sendToUser(session.user.id, 'new_message', {
+            message: msgJson,
+            conversationWith: primaryDietitianId,
+            timestamp: ts
+          });
+
+          // Refresh unread badges for both sides
+          const [clientNotificationCount, clientMessageCount, staffMessageCount] = await Promise.all([
+            Notification.countDocuments({ userId: session.user.id, read: false }),
+            Message.countDocuments({ receiver: session.user.id, isRead: false }),
+            Message.countDocuments({ receiver: primaryDietitianId, isRead: false })
+          ]);
+
+          broadcastUnreadCounts(session.user.id, {
+            notifications: clientNotificationCount,
+            messages: clientMessageCount
+          });
+
+          broadcastStaffUnreadCounts(primaryDietitianId, {
+            messages: staffMessageCount
+          });
+        }
+      } catch (chatMessageError) {
+        console.error('Error sending meal picture to chat:', chatMessageError);
+        // Do not fail meal completion if chat mirror fails
+      }
+    }
 
     // Log activity
     logActivity({

@@ -142,6 +142,7 @@ export default function UserMessagesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeMessageMenuId, setActiveMessageMenuId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -156,6 +157,7 @@ export default function UserMessagesPage() {
   const recordStreamRef = useRef<MediaStream | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordStartedAtRef = useRef<number>(0);
+  const messagePressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoadRef = useRef(false);
   const userPressedBackRef = useRef(false);
 
@@ -505,26 +507,38 @@ export default function UserMessagesPage() {
   };
 
   const compressVideoFile = async (file: File): Promise<File> => {
-    if (!file.type.startsWith('video/') || file.size < 5 * 1024 * 1024 || typeof document === 'undefined') {
+    if (!file.type.startsWith('video/') || file.size < 1024 * 1024 || typeof document === 'undefined') {
       return file;
     }
 
     return new Promise((resolve) => {
+      let settled = false;
+      let objectUrl = '';
+
+      const finish = (result: File) => {
+        if (settled) return;
+        settled = true;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        resolve(result);
+      };
+
       try {
         const video = document.createElement('video');
         video.preload = 'metadata';
         video.muted = true;
         video.playsInline = true;
 
+        objectUrl = URL.createObjectURL(file);
+
         video.onloadedmetadata = () => {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           if (!ctx) {
-            resolve(file);
+            finish(file);
             return;
           }
 
-          const maxHeight = 720;
+          const maxHeight = 480;
           let width = video.videoWidth;
           let height = video.videoHeight;
           if (height > maxHeight) {
@@ -540,7 +554,7 @@ export default function UserMessagesPage() {
             mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
               ? 'video/webm;codecs=vp9'
               : 'video/webm',
-            videoBitsPerSecond: 1500000
+            videoBitsPerSecond: 700000
           });
 
           const chunks: Blob[] = [];
@@ -550,11 +564,15 @@ export default function UserMessagesPage() {
 
           recorder.onstop = () => {
             const blob = new Blob(chunks, { type: 'video/webm' });
+            if (!blob.size) {
+              finish(file);
+              return;
+            }
             const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.webm'), {
               type: 'video/webm',
               lastModified: Date.now()
             });
-            resolve(compressed.size < file.size ? compressed : file);
+            finish(compressed);
           };
 
           recorder.start();
@@ -585,10 +603,102 @@ export default function UserMessagesPage() {
           }, 60000);
         };
 
-        video.onerror = () => resolve(file);
-        video.src = URL.createObjectURL(file);
+        video.onerror = () => finish(file);
+        video.src = objectUrl;
       } catch {
-        resolve(file);
+        finish(file);
+      }
+    });
+  };
+
+  const compressAudioFile = async (file: File, mode: 'audio' | 'voice' = 'audio'): Promise<File> => {
+    if (!file.type.startsWith('audio/') || file.size < 1024 * 1024 || typeof document === 'undefined') {
+      return file;
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let objectUrl = '';
+      let audioContext: AudioContext | null = null;
+
+      const finish = (result: File) => {
+        if (settled) return;
+        settled = true;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        if (audioContext && audioContext.state !== 'closed') {
+          void audioContext.close().catch(() => undefined);
+        }
+        resolve(result);
+      };
+
+      try {
+        const audio = document.createElement('audio');
+        audio.preload = 'metadata';
+        audio.muted = true;
+
+        objectUrl = URL.createObjectURL(file);
+
+        audio.onloadedmetadata = async () => {
+          try {
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+              ? 'audio/webm;codecs=opus'
+              : MediaRecorder.isTypeSupported('audio/webm')
+                ? 'audio/webm'
+                : '';
+
+            if (!mimeType) {
+              finish(file);
+              return;
+            }
+
+            audioContext = new AudioContext();
+            const source = audioContext.createMediaElementSource(audio);
+            const destination = audioContext.createMediaStreamDestination();
+            source.connect(destination);
+
+            const recorder = new MediaRecorder(destination.stream, {
+              mimeType,
+              audioBitsPerSecond: mode === 'voice' ? 24000 : 48000
+            });
+
+            const chunks: Blob[] = [];
+            recorder.ondataavailable = (event) => {
+              if (event.data.size > 0) chunks.push(event.data);
+            };
+
+            recorder.onstop = () => {
+              const blob = new Blob(chunks, { type: 'audio/webm' });
+              const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.webm'), {
+                type: 'audio/webm',
+                lastModified: Date.now()
+              });
+              finish(compressed.size < file.size ? compressed : file);
+            };
+
+            recorder.start();
+            audio.currentTime = 0;
+            await audio.play();
+
+            audio.onended = () => {
+              if (recorder.state === 'recording') recorder.stop();
+            };
+
+            const timeoutMs = Math.max(8000, Math.min(120000, Math.floor((audio.duration || 30) * 1200)));
+            setTimeout(() => {
+              if (recorder.state === 'recording') {
+                audio.pause();
+                recorder.stop();
+              }
+            }, timeoutMs);
+          } catch {
+            finish(file);
+          }
+        };
+
+        audio.onerror = () => finish(file);
+        audio.src = objectUrl;
+      } catch {
+        finish(file);
       }
     });
   };
@@ -637,8 +747,15 @@ export default function UserMessagesPage() {
       throw new Error('Document is too large. Please upload a file smaller than 25MB.');
     }
 
-    // Lightweight optimization for plain text docs
-    if (file.type === 'text/plain' && file.size > 100 * 1024) {
+    // Lightweight optimization for text-based documents
+    const isTextLike =
+      file.type === 'text/plain' ||
+      file.type === 'text/csv' ||
+      file.type === 'application/json' ||
+      file.type === 'application/xml' ||
+      file.type === 'text/xml';
+
+    if (isTextLike && file.size > 100 * 1024) {
       try {
         const text = await file.text();
         const normalized = text
@@ -692,6 +809,14 @@ export default function UserMessagesPage() {
         file = await compressVideoFile(rawFile);
       }
 
+      if (messageType === 'audio') {
+        file = await compressAudioFile(rawFile, 'audio');
+      }
+
+      if (messageType === 'voice') {
+        file = await compressAudioFile(rawFile, 'voice');
+      }
+
       if (messageType === 'file') {
         file = await optimizeDocumentFile(rawFile);
       }
@@ -717,7 +842,7 @@ export default function UserMessagesPage() {
       const mediaLabel = messageType === 'image'
         ? 'Photo'
         : messageType === 'video'
-          ? ' Video'
+          ? 'Video'
           : messageType === 'voice'
             ? 'Voice message'
             : messageType === 'audio'
@@ -1045,6 +1170,23 @@ export default function UserMessagesPage() {
     setDeleteDialogOpen(true);
   };
 
+  const startOwnMessagePress = (messageId: string) => {
+    if (messagePressTimerRef.current) {
+      clearTimeout(messagePressTimerRef.current);
+    }
+
+    messagePressTimerRef.current = setTimeout(() => {
+      setActiveMessageMenuId(messageId);
+    }, 300);
+  };
+
+  const endOwnMessagePress = () => {
+    if (messagePressTimerRef.current) {
+      clearTimeout(messagePressTimerRef.current);
+      messagePressTimerRef.current = null;
+    }
+  };
+
   const getStatusIcon = (isRead: boolean, isOwn: boolean) => {
     if (!isOwn) return null;
     if (isRead) {
@@ -1222,17 +1364,59 @@ export default function UserMessagesPage() {
                   ) : (
                     messages.map((message, index) => {
                       const isOwn = message.sender._id === session?.user?.id;
+                      const isOwnMenuVisible = activeMessageMenuId === message._id;
                       const attachment = message.attachments?.[0];
                       const prevMessage = index > 0 ? messages[index - 1] : null;
                       const showDateSeparator = shouldShowDateSeparator(message, prevMessage);
 
                       // Render message content based on type
                       const renderMessageContent = () => {
-                        const mediaLabels = [' Photo', ' Video', ' Audio', ' File', 'Voice message', 'File attachment', 'Image', 'Video', 'Audio'];
-                        const hasCaption = message.content && !mediaLabels.includes(message.content.trim());
+                        const mediaLabels = ['Photo', 'Video', 'Audio', 'File', 'Voice message', 'File attachment', 'Image'];
+                        const rawContent = (message.content || '').trim();
+                        const contentLines = rawContent
+                          .split(/\r?\n/)
+                          .map((line) => line.trim())
+                          .filter(Boolean);
+                        const firstContentLine = contentLines[0] || '';
                         const url = attachment?.url || '';
+                        const mimeType = (attachment?.mimeType || '').toLowerCase();
+                        const filename = (attachment?.filename || '').toLowerCase();
+                        const lowerUrl = url.toLowerCase();
                         const hasValidUrl = !!url && /^https?:\/\//i.test(url);
                         const failed = failedAttachments.has(message._id);
+
+                        let resolvedType = message.type;
+                        if (attachment && message.type === 'text') {
+                          if (mimeType.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|heic|heif)$/i.test(lowerUrl)) {
+                            resolvedType = 'image';
+                          } else if (mimeType.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi)$/i.test(lowerUrl)) {
+                            resolvedType = 'video';
+                          } else if (mimeType.startsWith('audio/') || /\.(mp3|wav|m4a|ogg|webm)$/i.test(lowerUrl)) {
+                            resolvedType = 'audio';
+                          } else {
+                            resolvedType = 'file';
+                          }
+                        }
+
+                        const isMealPicture =
+                          /meal\s*(picture|photo|image)|meal\s*completion/i.test(message.content || '') ||
+                          /meal[-_\s]*(picture|photo|image|completion)/i.test(filename) ||
+                          /meal[-_\s]*(picture|photo|image|completion)/i.test(lowerUrl) ||
+                          /meal-completions?\//i.test(lowerUrl);
+
+                        const mealTypeText = isMealPicture && /^meal\s*picture/i.test(firstContentLine)
+                          ? firstContentLine.replace(/^meal\s*picture\s*[:•\-]?\s*/i, '').trim()
+                          : '';
+                        const mealHeaderCaption = isMealPicture
+                          ? `Meal Picture - ${mealTypeText || 'Meal'}`
+                          : '';
+                        const mealNoteCaption = isMealPicture && /^meal\s*picture/i.test(firstContentLine)
+                          ? contentLines.slice(1).join('\n').trim()
+                          : '';
+                        const imageCaption = isMealPicture
+                          ? [mealHeaderCaption, mealNoteCaption].filter(Boolean).join('\n')
+                          : rawContent;
+                        const hasCaption = imageCaption && !mediaLabels.includes(imageCaption.trim());
 
                         const retryAttachment = () => {
                           setFailedAttachments((prev) => {
@@ -1243,7 +1427,7 @@ export default function UserMessagesPage() {
                         };
 
                         if (attachment) {
-                          switch (message.type) {
+                          switch (resolvedType) {
                             case 'image':
                               if (!hasValidUrl || failed) {
                                 return (
@@ -1260,6 +1444,11 @@ export default function UserMessagesPage() {
                               }
                               return (
                                 <div className="relative">
+                                  {isMealPicture && (
+                                    <span className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#075E54]/90 text-white">
+                                      Meal Picture
+                                    </span>
+                                  )}
                                   <img
                                     src={attachment.thumbnail || url}
                                     alt="Image attachment"
@@ -1268,7 +1457,16 @@ export default function UserMessagesPage() {
                                     style={{ maxWidth: '220px', maxHeight: '260px', objectFit: 'cover' }}
                                     onError={() => setFailedAttachments((prev) => new Set([...prev, message._id]))}
                                   />
-                                  {hasCaption && <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">{message.content}</p>}
+                                  {hasCaption && (
+                                    isMealPicture ? (
+                                      <div className="mt-1.5 leading-snug wrap-break-word whitespace-pre-line">
+                                        <p className="text-[14px] font-semibold">{mealHeaderCaption}</p>
+                                        {mealNoteCaption && <p className="text-[14px]">{mealNoteCaption}</p>}
+                                      </div>
+                                    ) : (
+                                      <p className="text-[14px] mt-1.5 leading-snug wrap-break-word whitespace-pre-line">{imageCaption}</p>
+                                    )
+                                  )}
                                 </div>
                               );
                             case 'video':
@@ -1368,9 +1566,9 @@ export default function UserMessagesPage() {
                                     className={`h-10 w-10 rounded-full flex items-center justify-center ${isOwn ? 'bg-white/25 hover:bg-white/35' : 'bg-[#00A884] hover:bg-[#00A884]/80'}`}
                                   >
                                     {voicePlayingId === message._id ? (
-                                      <Pause className="w-4 h-4 text-white" />
+                                      <Pause className="w-4 h-4 text-blue-500" />
                                     ) : (
-                                      <Play className="w-4 h-4 text-white ml-0.5" />
+                                      <Play className="w-4 h-4 text-blue-500 ml-0.5" />
                                     )}
                                   </button>
                                   <div className="flex-1 min-w-0">
@@ -1379,7 +1577,7 @@ export default function UserMessagesPage() {
                                         className="h-full rounded-full transition-all duration-100"
                                         style={{
                                           width: `${voiceProgress[message._id] || 0}%`,
-                                          backgroundColor: isOwn ? 'rgba(255,255,255,.85)' : '#00A884'
+                                          backgroundColor: isOwn ? '#3B82F6' : '#00A884'
                                         }}
                                       />
                                     </div>
@@ -1464,29 +1662,37 @@ export default function UserMessagesPage() {
                             )}
 
                             <div className={`max-w-[85%] sm:max-w-[75%] relative ${isOwn ? 'order-2' : ''}`}>
-                              {/* Delete menu for every message */}
-                              <div className={`absolute ${isOwn ? '-left-8' : '-right-8'} top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity`}>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className={`h-6 w-6 p-0 rounded-full ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
-                                    >
-                                      <MoreVertical className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align={isOwn ? 'start' : 'end'} className="min-w-30">
-                                    <DropdownMenuItem
-                                      className="text-red-600 focus:text-red-600 cursor-pointer"
-                                      onClick={() => confirmDeleteMessage(message)}
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-2" />
-                                      Delete
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
+                              {/* Delete menu only for own messages/media */}
+                              {isOwn && (
+                                <div className={`absolute -left-8 top-1/2 -translate-y-1/2 transition-opacity ${isOwnMenuVisible ? 'opacity-100' : 'opacity-0 pointer-events-none sm:pointer-events-auto sm:group-hover:opacity-100'}`}>
+                                  <DropdownMenu
+                                    onOpenChange={(open) => {
+                                      if (!open) {
+                                        setActiveMessageMenuId(null);
+                                      }
+                                    }}
+                                  >
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`h-6 w-6 p-0 rounded-full ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
+                                      >
+                                        <MoreVertical className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="min-w-30">
+                                      <DropdownMenuItem
+                                        className="text-red-600 focus:text-red-600 cursor-pointer"
+                                        onClick={() => confirmDeleteMessage(message)}
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              )}
 
                               <div
                                 className={`px-2.5 py-1.5 shadow-sm inline-block ${isOwn
@@ -1497,6 +1703,17 @@ export default function UserMessagesPage() {
                                     ? 'bg-[#202C33] text-white rounded-2xl rounded-tl-sm'
                                     : 'bg-white text-gray-900 rounded-2xl rounded-tl-sm'
                                   }`}
+                                onPointerDown={() => {
+                                  if (isOwn) startOwnMessagePress(message._id);
+                                }}
+                                onPointerUp={endOwnMessagePress}
+                                onPointerLeave={endOwnMessagePress}
+                                onPointerCancel={endOwnMessagePress}
+                                onClick={() => {
+                                  if (isOwn) {
+                                    setActiveMessageMenuId((prev) => (prev === message._id ? null : message._id));
+                                  }
+                                }}
                               >
                                 {renderMessageContent()}
                                 <div className="flex items-center justify-end gap-1 mt-0.5">
