@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const limit = parseInt(searchParams.get('limit') || '100');
     const forBulkMessage = searchParams.get('forBulkMessage') === 'true';
+    const roleFilterParam = searchParams.get('role') || ''; // Filter by specific role
 
     const sessionRole = String(session.user.role || '').toLowerCase();
 
@@ -128,6 +129,12 @@ export async function GET(request: NextRequest) {
           { email: searchRegex }
         ]
       });
+    }
+
+    // Add role filter
+    if (roleFilterParam) {
+      query.$and = query.$and || [];
+      query.$and.push({ role: roleFilterParam });
     }
 
     // Get users

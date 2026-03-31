@@ -10,6 +10,7 @@ import { broadcastUnreadCounts } from '@/lib/realtime/broadcast-counts';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { sendNewMessageNotification } from '@/lib/notifications/notificationService';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 
 // GET /api/client/messages - Get messages for current client
 export async function GET(request: NextRequest) {
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     // Mark messages as read if viewing conversation
     if (conversationWith) {
-      await Message.updateMany(
+      const updateResult = await Message.updateMany(
         {
           sender: new mongoose.Types.ObjectId(conversationWith),
           receiver: new mongoose.Types.ObjectId(session.user.id),
@@ -97,6 +98,18 @@ export async function GET(request: NextRequest) {
         notifications: notificationCount,
         messages: messageCount
       });
+
+      // Emit message_read event to notify other clients (e.g., staff panel)
+      if (updateResult.modifiedCount > 0) {
+        const sm = socketManager;
+        if (sm) {
+          sm.emitToUser(conversationWith, SOCKET_EVENTS.MESSAGE_READ, {
+            conversationWith: session.user.id,
+            readBy: session.user.id,
+            readAt: new Date().toISOString()
+          });
+        }
+      }
     }
 
     return NextResponse.json({

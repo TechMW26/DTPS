@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import {
   Send,
   MessageCircle,
@@ -117,6 +118,7 @@ function MessagesContent() {
   const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
   const [searchUsers, setSearchUsers] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [roleFilter, setRoleFilter] = useState<string>('all');
 
   // Enhanced WhatsApp-like features
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -560,7 +562,7 @@ function MessagesContent() {
     if (showNewChatDialog) {
       fetchAvailableUsers();
     }
-  }, [showNewChatDialog, searchUsers]);
+  }, [showNewChatDialog, searchUsers, roleFilter]);
 
   const fetchConversations = async () => {
     try {
@@ -614,6 +616,7 @@ function MessagesContent() {
     try {
       const params = new URLSearchParams();
       if (searchUsers) params.append('search', searchUsers);
+      if (roleFilter && roleFilter !== 'all') params.append('role', roleFilter);
 
       const response = await fetch(`/api/users/available-for-chat?${params}`);
       if (response.ok) {
@@ -633,6 +636,13 @@ function MessagesContent() {
       if (response.ok) {
         const data = await response.json();
         setMessages(data.messages || []);
+        
+        // Reset unread count for this conversation locally
+        setConversations(prev => prev.map(conv =>
+          conv.user._id === conversationWith
+            ? { ...conv, unreadCount: 0 }
+            : conv
+        ));
       } else if (response.status === 404) {
         // No messages found, start with empty array (this is normal for new conversations)
         setMessages([]);
@@ -1411,6 +1421,30 @@ function MessagesContent() {
                     </DialogHeader>
 
                     <div className="space-y-4">
+                      {/* Role Filter Tabs */}
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { value: 'all', label: 'All' },
+                          { value: 'client', label: 'Clients' },
+                          { value: 'dietitian', label: 'Dietitians' },
+                          { value: 'health_counselor', label: 'Health Counselors' },
+                          { value: 'admin', label: 'Admin' },
+                        ].map((tab) => (
+                          <button
+                            key={tab.value}
+                            onClick={() => setRoleFilter(tab.value)}
+                            className={cn(
+                              "px-3 py-1.5 text-sm font-medium rounded-full transition-colors",
+                              roleFilter === tab.value
+                                ? "bg-green-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                            )}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+
                       {/* Search Users */}
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -1445,11 +1479,22 @@ function MessagesContent() {
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-gray-900">
-                                    {user.firstName} {user.lastName}
-                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-gray-900">
+                                      {user.firstName} {user.lastName}
+                                    </p>
+                                    <span className={cn(
+                                      "px-2 py-0.5 text-xs font-medium rounded-full",
+                                      user.role === 'admin' && "bg-purple-100 text-purple-700",
+                                      user.role === 'dietitian' && "bg-blue-100 text-blue-700",
+                                      user.role === 'health_counselor' && "bg-orange-100 text-orange-700",
+                                      user.role === 'client' && "bg-green-100 text-green-700"
+                                    )}>
+                                      {user.role === 'health_counselor' ? 'HC' : user.role?.charAt(0).toUpperCase() + user.role?.slice(1)}
+                                    </span>
+                                  </div>
                                   <p className="text-sm text-gray-500 truncate">
-                                    {user.role} • {user.email}
+                                    {user.email}
                                   </p>
                                   {user.hasExistingConversation && (
                                     <p className="text-xs text-blue-600">Existing conversation</p>

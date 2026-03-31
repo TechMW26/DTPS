@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, type ChangeEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -116,6 +116,7 @@ interface UploadingMediaState {
 export default function UserMessagesPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isDarkMode } = useTheme();
   const { refreshCounts } = useUnreadCountsSafe();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -214,8 +215,9 @@ export default function UserMessagesPage() {
                     createdAt: incoming.createdAt,
                     isRead: currentConv?._id === conversationWith ? true : false
                   },
+                  // If chat is currently open, keep unread at 0; otherwise increment
                   unreadCount: currentConv?._id === conversationWith
-                    ? updated[idx].unreadCount
+                    ? 0
                     : updated[idx].unreadCount + 1
                 };
                 // Move to top of list
@@ -323,13 +325,30 @@ export default function UserMessagesPage() {
     }
   }, [session]);
 
-  // Auto-select conversation if there's only one (the assigned dietitian)
-  // But don't re-select if user manually pressed back
+  // Handle conversationWith query param from push notification taps
   useEffect(() => {
-    if (conversations.length === 1 && !selectedConversation && !userPressedBackRef.current) {
+    const conversationWith = searchParams.get('conversationWith');
+    if (conversationWith && conversations.length > 0 && !selectedConversation) {
+      // Find the conversation with this user ID
+      const targetConversation = conversations.find(c => c._id === conversationWith);
+      if (targetConversation) {
+        userPressedBackRef.current = false;
+        setSelectedConversation(targetConversation);
+        // Clear the query param from URL without triggering a navigation
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }
+    }
+  }, [searchParams, conversations, selectedConversation]);
+
+  // Auto-select conversation if there's only one (the assigned dietitian)
+  // But don't re-select if user manually pressed back or if URL has conversationWith
+  useEffect(() => {
+    const hasConversationWithParam = searchParams.get('conversationWith');
+    if (conversations.length === 1 && !selectedConversation && !userPressedBackRef.current && !hasConversationWithParam) {
       setSelectedConversation(conversations[0]);
     }
-  }, [conversations, selectedConversation]);
+  }, [conversations, selectedConversation, searchParams]);
 
   useEffect(() => {
     if (selectedConversation) {
@@ -407,6 +426,13 @@ export default function UserMessagesPage() {
       // Set messages AND stop loading in same tick so messages render immediately
       setMessages(allMessages);
       setLoadingMessages(false);
+
+      // Reset unread count for this conversation locally
+      setConversations(prev => prev.map(conv =>
+        conv._id === userId
+          ? { ...conv, unreadCount: 0 }
+          : conv
+      ));
 
       // Now schedule scrolls AFTER the messages have actually rendered
       // Using nested rAF ensures we scroll after React commits the DOM update
@@ -896,24 +922,39 @@ export default function UserMessagesPage() {
   };
 
   const handleImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setPreviewForFile(file, 'image');
+    try {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      setPreviewForFile(file, 'image');
+    } catch (error) {
+      console.error('Error handling image upload:', error);
+      toast.error('Failed to process image. Please try again.');
+    }
   };
 
   const handleVideoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setPreviewForFile(file, 'video');
+    try {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      setPreviewForFile(file, 'video');
+    } catch (error) {
+      console.error('Error handling video upload:', error);
+      toast.error('Failed to process video. Please try again.');
+    }
   };
 
   const handleDocUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setPreviewForFile(file, 'file');
+    try {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      setPreviewForFile(file, 'file');
+    } catch (error) {
+      console.error('Error handling document upload:', error);
+      toast.error('Failed to process document. Please try again.');
+    }
   };
 
   const clearMediaPreview = () => {
@@ -1003,11 +1044,15 @@ export default function UserMessagesPage() {
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : 'audio/webm'
-      });
+
+      // Use audio/webm for Chrome/Firefox, audio/mp4 for Safari
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/mp4';
+
+      const recorder = new MediaRecorder(stream, { mimeType });
 
       recordStreamRef.current = stream;
       recorderRef.current = recorder;
@@ -1046,8 +1091,13 @@ export default function UserMessagesPage() {
 
     await new Promise<void>((resolve) => {
       recorder.onstop = async () => {
-        const voiceBlob = new Blob(recordChunksRef.current, { type: 'audio/webm' });
-        const voiceFile = new File([voiceBlob], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
+        // Use the actual MIME type from the recorder for the blob
+        const actualMimeType = recorder.mimeType || 'audio/webm';
+        const voiceBlob = new Blob(recordChunksRef.current, { type: actualMimeType });
+
+        // Determine file extension based on MIME type
+        const ext = actualMimeType.includes('mp4') ? 'mp4' : 'webm';
+        const voiceFile = new File([voiceBlob], `voice_${Date.now()}.${ext}`, { type: actualMimeType });
 
         if (recordStreamRef.current) {
           recordStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -1113,25 +1163,40 @@ export default function UserMessagesPage() {
 
   const toggleVoicePlayback = (messageId: string) => {
     const audio = audioRefs.current[messageId];
-    if (!audio) return;
+    if (!audio) {
+      console.error('Audio element not found for message:', messageId);
+      return;
+    }
 
+    // Pause all other audio elements first
     Object.entries(audioRefs.current).forEach(([id, element]) => {
       if (id !== messageId && element && !element.paused) {
         element.pause();
         element.currentTime = 0;
+        setVoiceProgress((prev) => ({ ...prev, [id]: 0 }));
       }
     });
 
-    if (voicePlayingId === messageId) {
+    if (voicePlayingId === messageId && !audio.paused) {
       audio.pause();
       setVoicePlayingId(null);
       return;
     }
 
-    audio.play().catch(() => {
-      toast.error('Unable to play voice message');
-    });
-    setVoicePlayingId(messageId);
+    // Reset to beginning if ended
+    if (audio.ended) {
+      audio.currentTime = 0;
+    }
+
+    audio.play()
+      .then(() => {
+        setVoicePlayingId(messageId);
+      })
+      .catch((error) => {
+        console.error('Audio playback error:', error);
+        toast.error('Unable to play voice message');
+        setVoicePlayingId(null);
+      });
   };
 
   const formatVoiceDuration = (seconds: number) => {
@@ -1527,15 +1592,16 @@ export default function UserMessagesPage() {
                                     }}
                                     src={url}
                                     preload="metadata"
+                                    crossOrigin="anonymous"
                                     onTimeUpdate={(event) => {
                                       const audio = event.currentTarget;
-                                      if (audio.duration) {
+                                      if (audio.duration && isFinite(audio.duration)) {
                                         setVoiceProgress((prev) => ({ ...prev, [message._id]: (audio.currentTime / audio.duration) * 100 }));
                                       }
                                     }}
                                     onLoadedMetadata={(event) => {
                                       const duration = event.currentTarget.duration;
-                                      if (isFinite(duration)) {
+                                      if (isFinite(duration) && duration > 0) {
                                         setVoiceDurations((prev) => ({ ...prev, [message._id]: duration }));
                                       }
                                     }}
@@ -1543,26 +1609,43 @@ export default function UserMessagesPage() {
                                       setVoicePlayingId(null);
                                       setVoiceProgress((prev) => ({ ...prev, [message._id]: 0 }));
                                     }}
+                                    onError={(e) => {
+                                      console.error('Audio load error:', e);
+                                      setFailedAttachments((prev) => new Set([...prev, message._id]));
+                                    }}
                                     className="hidden"
                                   />
                                   <button
                                     type="button"
                                     onClick={() => toggleVoicePlayback(message._id)}
-                                    className={`h-10 w-10 rounded-full flex items-center justify-center ${isOwn ? 'bg-white/25 hover:bg-white/35' : 'bg-[#00A884] hover:bg-[#00A884]/80'}`}
+                                    className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${isOwn ? 'bg-white/25 hover:bg-white/35' : 'bg-[#00A884] hover:bg-[#00A884]/80'}`}
                                   >
                                     {voicePlayingId === message._id ? (
-                                      <Pause className="w-4 h-4 text-blue-500" />
+                                      <Pause className="w-4 h-4 text-white" />
                                     ) : (
-                                      <Play className="w-4 h-4 text-blue-500 ml-0.5" />
+                                      <Play className="w-4 h-4 text-white ml-0.5" />
                                     )}
                                   </button>
                                   <div className="flex-1 min-w-0">
-                                    <div className="h-1.25 rounded-full overflow-hidden" style={{ backgroundColor: isOwn ? 'rgba(255,255,255,.28)' : 'rgba(0,0,0,.15)' }}>
+                                    {/* Clickable seek bar */}
+                                    <div
+                                      className="h-2 rounded-full overflow-hidden cursor-pointer relative"
+                                      style={{ backgroundColor: isOwn ? 'rgba(255,255,255,.28)' : 'rgba(0,0,0,.15)' }}
+                                      onClick={(e) => {
+                                        const audio = audioRefs.current[message._id];
+                                        if (!audio || !isFinite(audio.duration)) return;
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        const clickX = e.clientX - rect.left;
+                                        const percent = clickX / rect.width;
+                                        audio.currentTime = percent * audio.duration;
+                                        setVoiceProgress((prev) => ({ ...prev, [message._id]: percent * 100 }));
+                                      }}
+                                    >
                                       <div
                                         className="h-full rounded-full transition-all duration-100"
                                         style={{
                                           width: `${voiceProgress[message._id] || 0}%`,
-                                          backgroundColor: isOwn ? '#3B82F6' : '#00A884'
+                                          backgroundColor: isOwn ? '#fff' : '#00A884'
                                         }}
                                       />
                                     </div>
@@ -1790,7 +1873,16 @@ export default function UserMessagesPage() {
                           <button
                             type="button"
                             className="h-20 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all flex flex-col items-center justify-center gap-1.5"
-                            onClick={() => docRef.current?.click()}
+                            onClick={() => {
+                              try {
+                                if (docRef.current) {
+                                  docRef.current.click();
+                                }
+                              } catch (error) {
+                                console.error('Error opening document picker:', error);
+                                toast.error('Unable to open file picker');
+                              }
+                            }}
                           >
                             <FileIcon className="h-5 w-5 text-[#075E54]" />
                             <span className="text-xs text-gray-700">📄 Document</span>
@@ -1798,7 +1890,16 @@ export default function UserMessagesPage() {
                           <button
                             type="button"
                             className="h-20 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all flex flex-col items-center justify-center gap-1.5"
-                            onClick={() => imageRef.current?.click()}
+                            onClick={() => {
+                              try {
+                                if (imageRef.current) {
+                                  imageRef.current.click();
+                                }
+                              } catch (error) {
+                                console.error('Error opening image picker:', error);
+                                toast.error('Unable to open file picker');
+                              }
+                            }}
                           >
                             <Paperclip className="h-5 w-5 text-[#075E54]" />
                             <span className="text-xs text-gray-700">🖼 Image</span>
@@ -1806,7 +1907,16 @@ export default function UserMessagesPage() {
                           <button
                             type="button"
                             className="h-20 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all flex flex-col items-center justify-center gap-1.5"
-                            onClick={() => videoRef.current?.click()}
+                            onClick={() => {
+                              try {
+                                if (videoRef.current) {
+                                  videoRef.current.click();
+                                }
+                              } catch (error) {
+                                console.error('Error opening video picker:', error);
+                                toast.error('Unable to open file picker');
+                              }
+                            }}
                           >
                             <Play className="h-5 w-5 text-[#075E54]" />
                             <span className="text-xs text-gray-700">🎥 Video</span>
@@ -1814,7 +1924,16 @@ export default function UserMessagesPage() {
                           <button
                             type="button"
                             className="h-20 rounded-xl border border-gray-200 hover:bg-gray-100 active:scale-95 transition-all flex flex-col items-center justify-center gap-1.5"
-                            onClick={() => cameraRef.current?.click()}
+                            onClick={() => {
+                              try {
+                                if (cameraRef.current) {
+                                  cameraRef.current.click();
+                                }
+                              } catch (error) {
+                                console.error('Error opening camera:', error);
+                                toast.error('Unable to open camera');
+                              }
+                            }}
                           >
                             <Camera className="h-5 w-5 text-[#075E54]" />
                             <span className="text-xs text-gray-700">📷 Camera</span>
