@@ -332,8 +332,8 @@ export default function GroupChatView({
                 )}
                 <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} mb-1`}>
                   <div className={`max-w-[75%] rounded-lg px-3 py-2 shadow-sm ${isMe
-                      ? 'bg-[#dcf8c6] text-gray-900'
-                      : 'bg-white text-gray-900'
+                    ? 'bg-[#dcf8c6] text-gray-900'
+                    : 'bg-white text-gray-900'
                     }`}>
                     {showName && (
                       <p className="text-xs font-semibold text-blue-600 mb-1">
