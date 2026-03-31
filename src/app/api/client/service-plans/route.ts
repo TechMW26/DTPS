@@ -5,6 +5,7 @@ import dbConnect from '@/lib/db/connect';
 import { ServicePlan } from '@/lib/db/models/ServicePlan';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
+import User from '@/lib/db/models/User';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // GET - Fetch service plans visible to clients (for user dashboard)
@@ -18,6 +19,14 @@ export async function GET(request: NextRequest) {
 
         await dbConnect();
 
+        // Fetch the client's primary dietitian from User model (not from payment)
+        const clientUser = await User.findById(session.user.id)
+            .select('assignedDietitian')
+            .populate('assignedDietitian', 'firstName lastName email phone avatar role')
+            .lean() as any;
+
+        const primaryDietitian = clientUser?.assignedDietitian;
+
         // Check if client has any purchases in UnifiedPayment collection (paid status)
         const allPurchases = await withCache(
             `client:service-plans:${JSON.stringify({
@@ -29,7 +38,7 @@ export async function GET(request: NextRequest) {
                 client: session.user.id,
                 status: { $in: ['paid', 'completed'] },
                 paymentStatus: 'paid'
-            }).populate('dietitian', 'firstName lastName email phone avatar').sort({ createdAt: -1 }),
+            }).populate('dietitian', 'firstName lastName email phone avatar role').sort({ createdAt: -1 }),
             { ttl: 120000, tags: ['client'] }
         );
 
@@ -89,7 +98,15 @@ export async function GET(request: NextRequest) {
             hasActiveMealPlan,
             currentMealPlan: currentMealPlanDetails,
             activePurchases: allPurchases.map(p => {
-                const dietitian = p.dietitian as any;
+                const paymentDietitian = p.dietitian as any;
+                // Use primary dietitian from User model if available and is a dietitian role
+                // Otherwise fall back to payment dietitian only if they are a dietitian (not health_counselor)
+                const isPrimaryDietitian = primaryDietitian && primaryDietitian.role === 'dietitian';
+                const isPaymentDietitian = paymentDietitian && paymentDietitian.role === 'dietitian';
+
+                // Prefer primary dietitian, then payment dietitian (only if role is dietitian)
+                const dietitianToShow = isPrimaryDietitian ? primaryDietitian : (isPaymentDietitian ? paymentDietitian : null);
+
                 // Check if this purchase has an active meal plan running
                 // Either mealPlanCreated flag is true OR there's an active ClientMealPlan
                 const isMealPlanActive = Boolean(p.mealPlanCreated) || hasActiveMealPlan;
@@ -108,17 +125,18 @@ export async function GET(request: NextRequest) {
                     startDate: mealPlanStartDate,
                     endDate: mealPlanEndDate,
                     status: p.status,
-                    hasDietitian: !!dietitian,
+                    hasDietitian: !!dietitianToShow,
                     mealPlanCreated: isMealPlanActive,
                     // Also include meal plan specific info
                     mealPlanName: currentMealPlanDetails?.name || null,
                     mealPlanGoal: currentMealPlanDetails?.goal || null,
-                    dietitian: dietitian ? {
-                        id: dietitian._id,
-                        name: `${dietitian.firstName || ''} ${dietitian.lastName || ''}`.trim(),
-                        email: dietitian.email,
-                        phone: dietitian.phone,
-                        avatar: dietitian.avatar
+                    // Show only the primary dietitian (from User.assignedDietitian), not health counselors
+                    dietitian: dietitianToShow ? {
+                        id: dietitianToShow._id,
+                        name: `${dietitianToShow.firstName || ''} ${dietitianToShow.lastName || ''}`.trim(),
+                        email: dietitianToShow.email,
+                        phone: dietitianToShow.phone,
+                        avatar: dietitianToShow.avatar
                     } : null
                 };
             })

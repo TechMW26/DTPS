@@ -7,6 +7,7 @@ import User from '@/lib/db/models/User';
 import { Notification } from '@/lib/db/models';
 import { UserRole } from '@/types';
 import { socketManager } from '@/lib/realtime/socket-manager';
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 import { broadcastUnreadCounts, broadcastStaffUnreadCounts } from '@/lib/realtime/broadcast-counts';
 import { createMessageWebhook } from '@/lib/webhooks/webhook-manager';
 import { z } from 'zod';
@@ -117,19 +118,25 @@ export async function GET(request: NextRequest) {
     }
 
     // NO CACHE for real-time messaging - always fetch fresh data
-    const messages = await Message.find(query)
+    // When fetching a specific conversation, get ALL messages (no limit)
+    // Only apply limit/pagination when fetching all messages (inbox view)
+    const messageQuery = Message.find(query)
       .populate('sender', 'firstName lastName avatar')
       .populate('receiver', 'firstName lastName avatar')
-      .sort({ createdAt: 1 }) // Sort oldest first for proper chat order
-      .limit(limit)
-      .skip((page - 1) * limit)
-      .lean();
+      .sort({ createdAt: 1 }); // Sort oldest first for proper chat order
+
+    // Only apply limit if NOT viewing a specific conversation
+    if (!conversationWith) {
+      messageQuery.limit(limit).skip((page - 1) * limit);
+    }
+
+    const messages = await messageQuery.lean();
 
     const total = await Message.countDocuments(query);
 
     // Mark messages as read if viewing conversation
     if (conversationWith) {
-      await Message.updateMany(
+      const updateResult = await Message.updateMany(
         {
           sender: conversationWith,
           receiver: session.user.id,
@@ -137,6 +144,15 @@ export async function GET(request: NextRequest) {
         },
         { isRead: true, readAt: new Date() }
       );
+
+      // Emit message_read event to the other party so they see read receipts update
+      if (updateResult.modifiedCount > 0) {
+        socketManager.sendToUser(conversationWith, SOCKET_EVENTS.MESSAGE_READ, {
+          conversationWith: session.user.id,
+          readBy: session.user.id,
+          readAt: new Date().toISOString()
+        });
+      }
 
       // Broadcast socket update for unread counts
       try {

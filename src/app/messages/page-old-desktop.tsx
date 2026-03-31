@@ -206,12 +206,28 @@ function MessagesContent() {
             const currentConv = selectedConversationRef.current;
             if (
               currentConv &&
-              (incoming.sender?._id === currentConv || incoming.receiver?._id === currentConv)
+              (String(incoming.sender?._id) === currentConv || String(incoming.receiver?._id) === currentConv)
             ) {
               setMessages(prev => (prev.some(m => m._id === incoming._id) ? prev : [...prev, incoming]));
               setTimeout(() => scrollToBottom(), 50);
             }
             // Always refresh conversations list (keeps last message + unread counts in sync)
+            fetchConversationsRef.current();
+          }
+          return;
+        }
+
+        // Handle message read event - update isRead status for messages
+        if (evt.type === 'message_read') {
+          const readData = data as any;
+          if (readData?.conversationWith) {
+            // Mark all messages in this conversation as read
+            setMessages(prev => prev.map(msg =>
+              String(msg.receiver?._id) === String(readData.readBy)
+                ? { ...msg, isRead: true }
+                : msg
+            ));
+            // Refresh conversations to update unread count
             fetchConversationsRef.current();
           }
           return;
@@ -632,7 +648,8 @@ function MessagesContent() {
 
   const fetchMessages = async (conversationWith: string) => {
     try {
-      const response = await fetch(`/api/messages?conversationWith=${conversationWith}&limit=50`);
+      // Fetch ALL messages for the conversation (no limit) to ensure no messages are missed
+      const response = await fetch(`/api/messages?conversationWith=${conversationWith}`);
       if (response.ok) {
         const data = await response.json();
         setMessages(data.messages || []);
@@ -1585,12 +1602,15 @@ function MessagesContent() {
                       </div>
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-500 truncate">
-                          {conversation.lastMessage?.type === 'image' ? '📷 Image' :
-                            conversation.lastMessage?.type === 'file' ? '📎 File' :
-                              conversation.lastMessage?.content || 'Start conversation...'}
+                          {conversation.lastMessage?.type === 'image' ? '📷 Photo' :
+                            conversation.lastMessage?.type === 'video' ? '🎬 Video' :
+                              conversation.lastMessage?.type === 'audio' ? '🎵 Audio' :
+                                conversation.lastMessage?.type === 'voice' ? '🎤 Voice message' :
+                                  conversation.lastMessage?.type === 'file' ? '📄 Document' :
+                                    conversation.lastMessage?.content || 'Start conversation...'}
                         </p>
                         {conversation.unreadCount > 0 && (
-                          <div className="bg-green-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                          <div className="bg-green-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center shrink-0 ml-2">
                             {conversation.unreadCount}
                           </div>
                         )}
@@ -1661,7 +1681,8 @@ function MessagesContent() {
                       return null;
                     }
 
-                    const isOwn = message.sender._id === session.user.id;
+                    // Convert both to strings for proper comparison (handles ObjectId vs string mismatch)
+                    const isOwn = String(message.sender._id || '') === String(session?.user?.id || '');
                     const prevMessage = index > 0 ? messages[index - 1] : null;
                     const showDateSeparator = shouldShowDateSeparator(message, prevMessage);
 
@@ -1681,6 +1702,16 @@ function MessagesContent() {
                           className={`flex items-end gap-2 ${isOwn ? 'justify-end' : 'justify-start'
                             }`}
                         >
+                          {/* Avatar for received messages */}
+                          {!isOwn && (
+                            <Avatar className="h-7 w-7 shrink-0">
+                              <AvatarImage src={message.sender?.avatar} />
+                              <AvatarFallback className="bg-green-100 text-green-600 text-xs">
+                                {message.sender?.firstName?.[0]}{message.sender?.lastName?.[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                          )}
+
                           {/* Delete menu only for own messages/media - always visible on left */}
                           {isOwn && (
                             <div className="order-2">
@@ -1707,97 +1738,105 @@ function MessagesContent() {
                             </div>
                           )}
 
-                          <div
-                            className={`max-w-xs lg:max-w-md px-3 py-2 rounded-lg shadow-sm ${isOwn
-                              ? 'bg-green-500 text-white rounded-br-none'
-                              : 'bg-white text-gray-900 rounded-bl-none'
-                              }`}
-                          >
-                            {/* Image Messages */}
-                            {message.type === 'image' && message.attachments?.[0] && (
-                              <div className="mb-2">
-                                <img
-                                  src={message.attachments[0].url}
-                                  alt="Shared image"
-                                  className="rounded-lg max-w-xs h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                                  onClick={() => setPreviewImage(message.attachments?.[0]?.url || '')}
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.style.display = 'none';
-                                    const parent = target.parentElement;
-                                    if (parent && !parent.querySelector('.error-placeholder')) {
-                                      const placeholder = document.createElement('div');
-                                      placeholder.className = 'error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm';
-                                      placeholder.innerHTML = '<span>📷 Image could not be loaded</span>';
-                                      parent.appendChild(placeholder);
-                                    }
-                                  }}
-                                />
-                              </div>
-                            )}
-
-                            {/* Video Messages */}
-                            {message.type === 'video' && message.attachments?.[0] && (
-                              <div className="mb-2">
-                                <video
-                                  src={message.attachments[0].url}
-                                  controls
-                                  className="rounded-lg max-w-xs h-auto"
-                                  preload="metadata"
-                                >
-                                  Your browser does not support video playback.
-                                </video>
-                              </div>
-                            )}
-
-                            {/* Audio Messages */}
-                            {(message.type === 'audio' || message.type === 'voice') && message.attachments?.[0] && (
-                              <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
-                                <Volume2 className="h-4 w-4 text-gray-600" />
-                                <audio
-                                  src={message.attachments[0].url}
-                                  controls
-                                  className="flex-1"
-                                  preload="metadata"
-                                />
-                              </div>
-                            )}
-
-                            {/* File Messages */}
-                            {message.type === 'file' && message.attachments?.[0] && (
-                              <a
-                                href={message.attachments[0].url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                download={message.attachments[0].filename}
-                                className="flex items-center space-x-2 mb-2 p-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
-                              >
-                                <FileIcon className="h-4 w-4 text-gray-600" />
-                                <div className="flex-1">
-                                  <span className="text-sm font-medium">{message.attachments[0].filename}</span>
-                                  <p className="text-xs text-gray-500">
-                                    {(message.attachments[0].size / 1024 / 1024).toFixed(2)} MB
-                                  </p>
-                                </div>
-                                <Download className="h-4 w-4 text-gray-600" />
-                              </a>
-                            )}
-                            <p className="text-sm">{message.content}</p>
-                            <div className="flex items-center justify-end space-x-1 mt-1">
-                              <p
-                                className={`text-xs ${isOwn ? 'text-green-100' : 'text-gray-500'
-                                  }`}
-                              >
-                                {(() => {
-                                  try {
-                                    const date = new Date(message.createdAt);
-                                    return !isNaN(date.getTime()) ? format(date, 'MMM d, yyyy • h:mm a') : '';
-                                  } catch (error) {
-                                    return '';
-                                  }
-                                })()}
+                          <div className="max-w-xs lg:max-w-md">
+                            {/* Sender name for received messages */}
+                            {!isOwn && (
+                              <p className="text-xs text-gray-500 mb-1 ml-1">
+                                {message.sender?.firstName} {message.sender?.lastName}
                               </p>
-                              {getMessageStatus(message)}
+                            )}
+                            <div
+                              className={`px-3 py-2 rounded-2xl shadow-sm ${isOwn
+                                ? 'bg-[#25D366] text-white rounded-tr-sm'
+                                : 'bg-white text-gray-900 rounded-tl-sm border border-gray-100'
+                                }`}
+                            >
+                              {/* Image Messages */}
+                              {message.type === 'image' && message.attachments?.[0] && (
+                                <div className="mb-2">
+                                  <img
+                                    src={message.attachments[0].url}
+                                    alt="Shared image"
+                                    className="rounded-lg max-w-xs h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                    onClick={() => setPreviewImage(message.attachments?.[0]?.url || '')}
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      target.style.display = 'none';
+                                      const parent = target.parentElement;
+                                      if (parent && !parent.querySelector('.error-placeholder')) {
+                                        const placeholder = document.createElement('div');
+                                        placeholder.className = 'error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm';
+                                        placeholder.innerHTML = '<span>📷 Image could not be loaded</span>';
+                                        parent.appendChild(placeholder);
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              )}
+
+                              {/* Video Messages */}
+                              {message.type === 'video' && message.attachments?.[0] && (
+                                <div className="mb-2">
+                                  <video
+                                    src={message.attachments[0].url}
+                                    controls
+                                    className="rounded-lg max-w-xs h-auto"
+                                    preload="metadata"
+                                  >
+                                    Your browser does not support video playback.
+                                  </video>
+                                </div>
+                              )}
+
+                              {/* Audio Messages */}
+                              {(message.type === 'audio' || message.type === 'voice') && message.attachments?.[0] && (
+                                <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
+                                  <Volume2 className="h-4 w-4 text-gray-600" />
+                                  <audio
+                                    src={message.attachments[0].url}
+                                    controls
+                                    className="flex-1"
+                                    preload="metadata"
+                                  />
+                                </div>
+                              )}
+
+                              {/* File Messages */}
+                              {message.type === 'file' && message.attachments?.[0] && (
+                                <a
+                                  href={message.attachments[0].url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={message.attachments[0].filename}
+                                  className="flex items-center space-x-2 mb-2 p-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
+                                >
+                                  <FileIcon className="h-4 w-4 text-gray-600" />
+                                  <div className="flex-1">
+                                    <span className="text-sm font-medium">{message.attachments[0].filename}</span>
+                                    <p className="text-xs text-gray-500">
+                                      {(message.attachments[0].size / 1024 / 1024).toFixed(2)} MB
+                                    </p>
+                                  </div>
+                                  <Download className="h-4 w-4 text-gray-600" />
+                                </a>
+                              )}
+                              <p className="text-sm">{message.content}</p>
+                              <div className={`flex items-center ${isOwn ? 'justify-end' : 'justify-start'} space-x-1 mt-1`}>
+                                <p
+                                  className={`text-xs ${isOwn ? 'text-green-100' : 'text-gray-500'
+                                    }`}
+                                >
+                                  {(() => {
+                                    try {
+                                      const date = new Date(message.createdAt);
+                                      return !isNaN(date.getTime()) ? format(date, 'h:mm a') : '';
+                                    } catch (error) {
+                                      return '';
+                                    }
+                                  })()}
+                                </p>
+                                {getMessageStatus(message)}
+                              </div>
                             </div>
                           </div>
                         </div>

@@ -114,6 +114,14 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
       onMessageRef.current?.({ type: 'new_message', data, timestamp: Date.now() });
     }));
 
+    unsubs.push(socketClient.on(SOCKET_EVENTS.MESSAGE_READ, (data: any) => {
+      onMessageRef.current?.({ type: 'message_read', data, timestamp: Date.now() });
+    }));
+
+    unsubs.push(socketClient.on(SOCKET_EVENTS.MESSAGE_DELETED, (data: any) => {
+      onMessageRef.current?.({ type: 'message_deleted', data, timestamp: Date.now() });
+    }));
+
     // ── Calls / WebRTC ────────────────────────────────────────────
     for (const evt of CALL_EVENTS) {
       unsubs.push(socketClient.on(evt, (data: any) => {

@@ -255,6 +255,19 @@ export default function UserMessagesPage() {
             }
           }
         }
+
+        // Handle message read event - update isRead status for messages
+        if (evt.type === 'message_read') {
+          const readData = evt.data as any;
+          if (readData?.conversationWith) {
+            // Mark all messages in this conversation as read
+            setMessages(prev => prev.map(msg =>
+              String(msg.receiver?._id) === String(readData.readBy)
+                ? { ...msg, isRead: true }
+                : msg
+            ));
+          }
+        }
       } catch (e) {
         console.error('Failed handling realtime message event', e);
       }
@@ -1350,7 +1363,12 @@ export default function UserMessagesPage() {
                             : 'text-gray-500'
                           }`}
                       >
-                        {conv.lastMessage?.content || 'Start a conversation'}
+                        {conv.lastMessage?.type === 'image' ? '📷 Photo' :
+                          conv.lastMessage?.type === 'video' ? '🎬 Video' :
+                            conv.lastMessage?.type === 'audio' ? '🎵 Audio' :
+                              conv.lastMessage?.type === 'voice' ? '🎤 Voice message' :
+                                conv.lastMessage?.type === 'file' ? '📄 Document' :
+                                  conv.lastMessage?.content || 'Start a conversation'}
                       </p>
                     </div>
                   </button>
@@ -1433,7 +1451,8 @@ export default function UserMessagesPage() {
                     </div>
                   ) : (
                     messages.map((message, index) => {
-                      const isOwn = message.sender._id === session?.user?.id;
+                      // Convert both to strings for proper comparison (handles ObjectId vs string mismatch)
+                      const isOwn = String(message.sender?._id || '') === String(session?.user?.id || '');
                       const isOwnMenuVisible = activeMessageMenuId === message._id;
                       const attachment = message.attachments?.[0];
                       const prevMessage = index > 0 ? messages[index - 1] : null;
