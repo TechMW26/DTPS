@@ -179,6 +179,45 @@ const hasMealContent = (meals: any[] | null | undefined): boolean => {
   });
 };
 
+// Fix malformed year values like "20206-03-30" -> "2026-03-30"
+const normalizeDateString = (value?: string): string | undefined => {
+  if (!value || typeof value !== 'string') return value;
+
+  const match = value.match(/^(\d{5})(-.+)$/);
+  if (!match) return value;
+
+  const [, year, rest] = match;
+
+  // Common bad format observed in data: extra 0 in year (e.g., 20206)
+  if (year.startsWith('20') && year[3] === '0') {
+    return `${year.slice(0, 3)}${year.slice(4)}${rest}`;
+  }
+
+  return value;
+};
+
+const normalizePlanDates = (plan: any) => ({
+  ...plan,
+  startDate: normalizeDateString(plan?.startDate) || plan?.startDate,
+  endDate: normalizeDateString(plan?.endDate) || plan?.endDate,
+});
+
+const normalizePurchaseDates = (purchase: any) => ({
+  ...purchase,
+  startDate: normalizeDateString(purchase?.startDate) || purchase?.startDate,
+  endDate: normalizeDateString(purchase?.endDate) || purchase?.endDate,
+  expectedStartDate: normalizeDateString(purchase?.expectedStartDate),
+  expectedEndDate: normalizeDateString(purchase?.expectedEndDate),
+});
+
+const normalizePaymentCheckDates = (data: any) => ({
+  ...data,
+  purchase: data?.purchase ? normalizePurchaseDates(data.purchase) : data?.purchase,
+  allPurchasesNeedingMealPlan: Array.isArray(data?.allPurchasesNeedingMealPlan)
+    ? data.allPurchasesNeedingMealPlan.map((purchase: any) => normalizePurchaseDates(purchase))
+    : data?.allPurchasesNeedingMealPlan,
+});
+
 export default function PlanningSection({ client, viewOnly = false, onRegisterReset }: PlanningSectionProps) {
   // Form states
   const [step, setStep] = useState<'list' | 'form' | 'meals' | 'view'>('list');
@@ -272,7 +311,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       }
       const data = await res.json();
       if (data.success) {
-        setPaymentCheck(data);
+        setPaymentCheck(normalizePaymentCheckDates(data));
         if (showToast) {
           if (data.hasPaidPlan) {
             toast.success(`Payment verified! ${data.remainingDays} days remaining`);
@@ -550,7 +589,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       }
       const data = await res.json();
       if (data.success) {
-        setClientPlans(data.mealPlans || []);
+        setClientPlans(Array.isArray(data.mealPlans) ? data.mealPlans.map((plan: any) => normalizePlanDates(plan)) : []);
       }
     } catch (error) {
       console.error('Error fetching client plans:', error);
