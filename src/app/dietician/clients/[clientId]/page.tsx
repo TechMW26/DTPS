@@ -1073,10 +1073,11 @@ export default function ClientDetailPage() {
         setClient(data?.user);
         setFormData(data?.user);
 
-        // Keep current weight in sync with authoritative user profile summary field
+        // Profile weightKg is the "first weight" / baseline - NOT current weight
+        // Current weight comes from weight log (fetchClientWeightLog)
+        // Only set firstWeightKg from profile as fallback if not already set from weight log
         const profileWeight = Number(data?.user?.weightKg ?? data?.user?.weight ?? 0);
         if (Number.isFinite(profileWeight) && profileWeight > 0) {
-          setCurrentWeightKg(profileWeight);
           setFirstWeightKg(prev => (prev && Number.isFinite(prev) && prev > 0 ? prev : profileWeight));
         }
 
@@ -1265,26 +1266,32 @@ export default function ClientDetailPage() {
 
   const fetchCurrentWeightSummary = async (silent = false) => {
     try {
-      // Source of truth for current weight is user's profile summary field (`weightKg`)
-      // because client progress/profile updates write to this value in realtime flows.
-      const profileResponse = await fetch(`/api/users/${params.clientId}`, { cache: 'no-store' });
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json();
-        const profileWeight = Number(profileData?.user?.weightKg ?? profileData?.user?.weight ?? 0);
-        if (Number.isFinite(profileWeight) && profileWeight > 0) {
-          setCurrentWeightKg(profileWeight);
-          return;
+      // Current weight comes from weight log (most recent entry)
+      // Profile weightKg is the first/baseline weight, NOT current weight
+      // Fetch from progress API to get the most recent weight entry
+      const response = await fetch(`/api/progress?clientId=${params.clientId}&type=weight&limit=1&page=1`, {
+        cache: 'no-store'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const entries = Array.isArray(data?.progressEntries) ? data.progressEntries : [];
+        if (entries.length > 0) {
+          const latestWeight = Number(entries[0]?.value);
+          if (Number.isFinite(latestWeight) && latestWeight > 0) {
+            setCurrentWeightKg(latestWeight);
+            return;
+          }
         }
       }
 
-      // Fallback: journal progress summary when profile has no usable weight
-      const response = await fetch(`/api/journal/progress?clientId=${params.clientId}`, { cache: 'no-store' });
-      if (!response.ok) return;
+      // Fallback: journal progress summary
+      const journalResponse = await fetch(`/api/journal/progress?clientId=${params.clientId}`, { cache: 'no-store' });
+      if (!journalResponse.ok) return;
 
-      const data = await response.json();
-      if (!data?.success) return;
+      const journalData = await journalResponse.json();
+      if (!journalData?.success) return;
 
-      const current = Number(data?.summary?.currentlyAt?.weight);
+      const current = Number(journalData?.summary?.currentlyAt?.weight);
 
       if (Number.isFinite(current) && current > 0) {
         setCurrentWeightKg(current);
@@ -1620,19 +1627,27 @@ export default function ClientDetailPage() {
   };
 
   const displayCurrentWeight = (() => {
+    // Current weight comes from weight log (most recent entry)
+    // DO NOT fall back to basicInfo.weightKg - that's the first/baseline weight
     if (currentWeightKg && Number.isFinite(currentWeightKg) && currentWeightKg > 0) return currentWeightKg;
-    const basicWeight = parseFloat(String(basicInfo?.weightKg || ''));
-    if (Number.isFinite(basicWeight) && basicWeight > 0) return basicWeight;
-    const clientWeight = Number(client?.weight || 0);
-    return Number.isFinite(clientWeight) && clientWeight > 0 ? clientWeight : null;
+    // Fallback to most recent weight log entry
+    if (weightLog.length > 0) {
+      const latest = weightLog[0]; // weightLog is sorted newest first
+      if (Number.isFinite(latest.weight) && latest.weight > 0) return latest.weight;
+    }
+    return null;
   })();
 
   const displayFirstWeight = (() => {
+    // First weight comes from oldest weight log entry or profile baseline
     if (firstWeightKg && Number.isFinite(firstWeightKg) && firstWeightKg > 0) return firstWeightKg;
     if (weightLog.length > 0) {
       const oldest = weightLog[weightLog.length - 1];
       if (Number.isFinite(oldest.weight) && oldest.weight > 0) return oldest.weight;
     }
+    // Fallback to profile baseline weight
+    const basicWeight = parseFloat(String(basicInfo?.weightKg || ''));
+    if (Number.isFinite(basicWeight) && basicWeight > 0) return basicWeight;
     return null;
   })();
 
