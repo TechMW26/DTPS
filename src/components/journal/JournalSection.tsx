@@ -13,11 +13,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import { MEAL_TYPES, MEAL_TYPE_KEYS } from '@/lib/mealConfig';
-import { 
-  Activity, 
-  Utensils, 
-  Footprints, 
-  Droplets, 
+import {
+  Activity,
+  Utensils,
+  Footprints,
+  Droplets,
   Moon,
   ChevronLeft,
   ChevronRight,
@@ -52,7 +52,7 @@ export default function JournalSection({ clientId, onRegisterReset }: JournalSec
   const [activeMainTab, setActiveMainTab] = useState<MainTabType>('daily');
   const [activeTab, setActiveTab] = useState<TabType>('activity');
   const [calendarOpen, setCalendarOpen] = useState(false);
-  
+
   // Check if the current user is the client themselves (not a dietitian viewing client data)
   const isClient = session?.user?.id === clientId;
 
@@ -130,11 +130,10 @@ export default function JournalSection({ clientId, onRegisterReset }: JournalSec
                       variant={activeTab === tab.id ? 'default' : 'ghost'}
                       size="sm"
                       onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center gap-2 px-4 py-2 ${
-                        activeTab === tab.id 
-                          ? 'bg-white text-gray-900 shadow-sm hover:bg-white' 
-                          : 'text-gray-600 hover:bg-gray-200'
-                      }`}
+                      className={`flex items-center gap-2 px-4 py-2 ${activeTab === tab.id
+                        ? 'bg-white text-gray-900 shadow-sm hover:bg-white'
+                        : 'text-gray-600 hover:bg-gray-200'
+                        }`}
                     >
                       <Icon className={`h-4 w-4 ${activeTab === tab.id ? tab.color : 'text-gray-500'}`} />
                       {tab.label}
@@ -202,11 +201,10 @@ export default function JournalSection({ clientId, onRegisterReset }: JournalSec
                 variant={activeMainTab === tab.id ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setActiveMainTab(tab.id)}
-                className={`flex-1 flex items-center justify-center gap-2 px-6 py-2 rounded-lg ${
-                  activeMainTab === tab.id 
-                    ? 'bg-white text-gray-900 shadow-sm hover:bg-white' 
-                    : 'text-gray-600 hover:bg-gray-200'
-                }`}
+                className={`flex-1 flex items-center justify-center gap-2 px-6 py-2 rounded-lg ${activeMainTab === tab.id
+                  ? 'bg-white text-gray-900 shadow-sm hover:bg-white'
+                  : 'text-gray-600 hover:bg-gray-200'
+                  }`}
               >
                 <Icon className="h-4 w-4" />
                 {tab.label}
@@ -245,8 +243,8 @@ function ProgressOverview({ clientId, selectedDate }: { clientId: string; select
         return <BCATab clientId={clientId} selectedDate={selectedDate} />;
       case 'measurements':
         return <MeasurementsTab showAddMeasurement={showAddMeasurement} setShowAddMeasurement={setShowAddMeasurement} clientId={clientId} selectedDate={selectedDate} />;
-    //   case 'analytical':
-    //     return <AnalyticalDataTab />;
+      //   case 'analytical':
+      //     return <AnalyticalDataTab />;
       default:
         return null;
     }
@@ -265,8 +263,8 @@ function ProgressOverview({ clientId, selectedDate }: { clientId: string; select
               <Download className="h-4 w-4" />
               Export
             </Button>
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               className="bg-blue-600 hover:bg-blue-700 flex items-center gap-1"
               onClick={() => {
                 if (activeSubTab === 'progress') setShowAddProgress(true);
@@ -289,11 +287,10 @@ function ProgressOverview({ clientId, selectedDate }: { clientId: string; select
                 variant={activeSubTab === tab.id ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setActiveSubTab(tab.id)}
-                className={`px-6 ${
-                  activeSubTab === tab.id 
-                    ? 'bg-white text-gray-900 shadow-sm hover:bg-white' 
-                    : 'text-gray-600 hover:bg-gray-200'
-                }`}
+                className={`px-6 ${activeSubTab === tab.id
+                  ? 'bg-white text-gray-900 shadow-sm hover:bg-white'
+                  : 'text-gray-600 hover:bg-gray-200'
+                  }`}
               >
                 {tab.label}
               </Button>
@@ -520,16 +517,10 @@ function ProgressTab({ showAddProgress, setShowAddProgress, clientId, selectedDa
         </DialogContent>
       </Dialog>
 
-      {/* Progress / Gallery Toggle */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-blue-600" />
-          <span className="font-medium text-blue-600">Progress</span>
-        </div>
-        <Button variant="outline" size="sm" className="flex items-center gap-1">
-          <ImageIcon className="h-4 w-4" />
-          Gallery
-        </Button>
+      {/* Progress Section Header */}
+      <div className="flex items-center gap-2">
+        <TrendingUp className="h-4 w-4 text-blue-600" />
+        <span className="font-medium text-blue-600">Progress</span>
       </div>
 
       {/* Progress Cards */}
@@ -736,22 +727,33 @@ function ProgressTab({ showAddProgress, setShowAddProgress, clientId, selectedDa
               ) : (
                 progressHistory.map((entry) => (
                   <tr key={entry._id} className="border-t">
-                    <td className="px-4 py-3 text-sm">{format(new Date(entry.date), 'MMM d, yyyy')}</td>
-                    <td className="px-4 py-3 text-sm">{entry.weight?.toFixed(1)}</td>
-                    <td className="px-4 py-3 text-sm">{entry.bmi?.toFixed(1)}</td>
-                    <td className="px-4 py-3 text-sm">{entry.bmr?.toFixed(1)}</td>
-                    <td className="px-4 py-3 text-sm">{entry.bodyFat?.toFixed(1)}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex flex-col">
+                        <span>{format(new Date(entry.date), 'MMM d, yyyy, hh:mm a')}</span>
+                        {entry.source === 'weight_tracker' && (
+                          <span className="text-[10px] text-blue-600 font-medium">Weight Tracker</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm">{Number.isFinite(entry.weight) ? Number(entry.weight).toFixed(1) : '-'}</td>
+                    <td className="px-4 py-3 text-sm">{Number.isFinite(entry.bmi) ? Number(entry.bmi).toFixed(1) : '-'}</td>
+                    <td className="px-4 py-3 text-sm">{Number.isFinite(entry.bmr) ? Number(entry.bmr).toFixed(1) : '-'}</td>
+                    <td className="px-4 py-3 text-sm">{Number.isFinite(entry.bodyFat) ? Number(entry.bodyFat).toFixed(1) : '-'}</td>
                     <td className="px-4 py-3 text-sm">{entry.dietPlan || '-'}</td>
                     <td className="px-4 py-3 text-sm">{entry.notes || '-'}</td>
                     <td className="px-4 py-3 text-sm">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-red-500 hover:text-red-700"
-                        onClick={() => handleDeleteProgress(entry._id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {entry.source === 'weight_tracker' ? (
+                        <span className="text-xs text-gray-400">-</span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 hover:text-red-700"
+                          onClick={() => handleDeleteProgress(entry._id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -946,11 +948,11 @@ function BCATab({ clientId, selectedDate }: { clientId: string; selectedDate: Da
         <h3 className="font-medium text-gray-700 mb-3">MEASUREMENT DATA</h3>
         <div>
           <Label className="text-sm text-gray-600">Date of Measurement</Label>
-          <Input 
-            type="date" 
+          <Input
+            type="date"
             value={formData.measurementDate}
             onChange={(e) => handleInputChange('measurementDate', e.target.value)}
-            className="mt-1" 
+            className="mt-1"
           />
         </div>
       </div>
@@ -961,35 +963,35 @@ function BCATab({ clientId, selectedDate }: { clientId: string; selectedDate: Da
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <Label className="text-sm text-gray-600">Height (inches) <span className="text-xs text-gray-400">(auto from profile)</span></Label>
-            <Input 
-              type="number" 
-              placeholder="0.0" 
-              step="0.1" 
+            <Input
+              type="number"
+              placeholder="0.0"
+              step="0.1"
               value={formData.height}
               onChange={(e) => handleInputChange('height', e.target.value)}
-              className="mt-1" 
+              className="mt-1"
             />
           </div>
           <div>
             <Label className="text-sm text-gray-600">Weight (Kgs) <span className="text-red-500">*</span></Label>
-            <Input 
-              type="number" 
-              placeholder="0.0" 
-              step="0.1" 
+            <Input
+              type="number"
+              placeholder="0.0"
+              step="0.1"
               value={formData.weight}
               onChange={(e) => handleInputChange('weight', e.target.value)}
-              className="mt-1" 
+              className="mt-1"
             />
           </div>
           <div>
             <Label className="text-sm text-gray-600">BMI (Kg/m²)</Label>
-            <Input 
-              type="number" 
-              placeholder="0.0" 
-              step="0.1" 
+            <Input
+              type="number"
+              placeholder="0.0"
+              step="0.1"
               value={formData.bmi}
-              className="mt-1 bg-gray-50" 
-              readOnly 
+              className="mt-1 bg-gray-50"
+              readOnly
             />
           </div>
         </div>
@@ -1076,7 +1078,7 @@ function BCATab({ clientId, selectedDate }: { clientId: string; selectedDate: Da
 
       {/* Submit Button */}
       <div className="flex justify-center">
-        <Button 
+        <Button
           className="bg-blue-600 hover:bg-blue-700 px-8"
           onClick={handleSubmit}
           disabled={isSaving}
@@ -1439,15 +1441,11 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="flex items-center gap-1">
-            <ImageIcon className="h-4 w-4" />
-            Gallery
-          </Button>
-          <Button variant="outline" size="sm" className="flex items-center gap-1">
             <Download className="h-4 w-4" />
             Export
           </Button>
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             className="bg-blue-600 hover:bg-blue-700 flex items-center gap-1"
             onClick={() => setShowAddMeasurement(true)}
           >
@@ -1737,9 +1735,9 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
                         <Button variant="ghost" size="sm" className="text-blue-500 hover:text-blue-700">
                           <TrendingUp className="h-4 w-4" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="text-red-500 hover:text-red-700"
                           onClick={() => handleDeleteMeasurement(entry._id)}
                         >
@@ -1910,25 +1908,25 @@ function FoodCompliance({ clientId, selectedDate }: { clientId: string; selected
                         <div key={index} className="flex-1 min-w-7.5 flex flex-col items-center">
                           <div className="w-full flex flex-col gap-0.5" style={{ height: '160px', justifyContent: 'flex-end' }}>
                             {day.taken > 0 && (
-                              <div 
+                              <div
                                 className="w-full bg-green-500 rounded-t"
                                 style={{ height: `${Math.max(day.taken * barScale, 4)}px` }}
                               />
                             )}
                             {day.options > 0 && (
-                              <div 
+                              <div
                                 className="w-full bg-blue-500"
                                 style={{ height: `${Math.max(day.options * barScale, 4)}px` }}
                               />
                             )}
                             {day.missed > 0 && (
-                              <div 
+                              <div
                                 className="w-full bg-red-500 rounded-b"
                                 style={{ height: `${Math.max(day.missed * barScale, 4)}px` }}
                               />
                             )}
                             {day.taken === 0 && day.missed === 0 && day.options === 0 && (
-                              <div 
+                              <div
                                 className="w-full bg-gray-200 rounded"
                                 style={{ height: '4px' }}
                               />
@@ -2053,7 +2051,7 @@ function FoodCompliance({ clientId, selectedDate }: { clientId: string; selected
 
             {/* See Full Report Button */}
             <div className="flex justify-center mt-6">
-              <Button 
+              <Button
                 className="bg-blue-600 hover:bg-blue-700"
                 onClick={() => setShowFullReport(!showFullReport)}
               >
@@ -2104,18 +2102,18 @@ function FoodCompliance({ clientId, selectedDate }: { clientId: string; selected
                             <span>{Math.round((plannedMeals.filter(m => m.consumed).length / plannedMeals.length) * 100)}%</span>
                           </div>
                           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div 
+                            <div
                               className="h-full bg-green-500 rounded-full transition-all duration-500"
                               style={{ width: `${(plannedMeals.filter(m => m.consumed).length / plannedMeals.length) * 100}%` }}
                             />
                           </div>
                         </div>
-                        
+
                         {/* Group meals by type */}
                         {MEAL_TYPE_KEYS.map(key => MEAL_TYPES[key].label).map(mealType => {
                           const mealsOfType = plannedMeals.filter(m => m.type === mealType);
                           if (mealsOfType.length === 0) return null;
-                          
+
                           return (
                             <div key={mealType} className="border rounded-lg overflow-hidden">
                               <div className="bg-linear-to-r from-orange-500 to-orange-600 px-4 py-2">
@@ -2123,11 +2121,10 @@ function FoodCompliance({ clientId, selectedDate }: { clientId: string; selected
                               </div>
                               <div className="divide-y">
                                 {mealsOfType.map((meal: any) => (
-                                  <div 
+                                  <div
                                     key={meal._id}
-                                    className={`p-3 flex items-center justify-between ${
-                                      meal.consumed ? 'bg-green-50' : 'bg-white'
-                                    }`}
+                                    className={`p-3 flex items-center justify-between ${meal.consumed ? 'bg-green-50' : 'bg-white'
+                                      }`}
                                   >
                                     <div className="flex-1">
                                       <p className="font-medium text-gray-800">{meal.name}</p>
@@ -2141,8 +2138,8 @@ function FoodCompliance({ clientId, selectedDate }: { clientId: string; selected
                                         <p className="text-xs text-gray-400 mt-1">{meal.time}</p>
                                       )}
                                     </div>
-                                    <Badge className={meal.consumed 
-                                      ? 'bg-green-100 text-green-700 border-green-300' 
+                                    <Badge className={meal.consumed
+                                      ? 'bg-green-100 text-green-700 border-green-300'
                                       : 'bg-gray-100 text-gray-600 border-gray-300'
                                     }>
                                       {meal.consumed ? '✓ Consumed' : 'Pending'}
@@ -2191,7 +2188,7 @@ function FoodCompliance({ clientId, selectedDate }: { clientId: string; selected
                 </Card>
               </div>
             )}
-            
+
           </>
         )}
       </CardContent>

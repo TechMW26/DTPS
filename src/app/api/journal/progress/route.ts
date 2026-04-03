@@ -5,6 +5,7 @@ import connectDB from '@/lib/db/connection';
 import JournalTracking from '@/lib/db/models/JournalTracking';
 import User from '@/lib/db/models/User';
 import LifestyleInfo from '@/lib/db/models/LifestyleInfo';
+import ProgressEntry from '@/lib/db/models/ProgressEntry';
 import { format } from 'date-fns';
 import { UserRole } from '@/types';
 import mongoose from 'mongoose';
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
+
     // Get user ID - handle different possible locations
     const userId = session.user.id || (session.user as any).sub || (session as any).sub;
 
@@ -101,8 +102,8 @@ export async function GET(request: NextRequest) {
     // Convert clientId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(clientId);
 
-    // Fetch client profile and journal entries in parallel
-    const [allJournals, clientProfile] = await Promise.all([
+    // Fetch client profile, journal entries, and weight tracker entries in parallel
+    const [allJournals, clientProfile, weightEntries] = await Promise.all([
       withCache(
         `journal:progress:all:${clientId}`,
         async () => await JournalTracking.find({
@@ -111,7 +112,12 @@ export async function GET(request: NextRequest) {
         }).sort({ date: -1 }),
         { ttl: 120000, tags: ['journal'] }
       ),
-      getClientProfile(clientObjectId)
+      getClientProfile(clientObjectId),
+      // Fetch weight entries from Weight Tracker (ProgressEntry model)
+      ProgressEntry.find({
+        user: clientObjectId,
+        type: 'weight'
+      }).sort({ recordedAt: -1 }).lean()
     ]);
 
     // Pre-compute profile-based metrics for seeding
@@ -119,63 +125,103 @@ export async function GET(request: NextRequest) {
     const profileBmi = calcBMI(profileWeight, clientProfile.heightCm);
     const profileBmr = calcBMR(profileWeight, clientProfile.heightCm, clientProfile.age, clientProfile.gender);
 
-    // Flatten all progress entries with their dates
+    // Flatten all journal progress entries with their dates
     const allProgress: any[] = [];
     allJournals.forEach(journal => {
       journal.progress.forEach((entry: any) => {
         allProgress.push({
           ...entry.toObject(),
-          journalDate: journal.date
+          journalDate: journal.date,
+          source: 'journal'
         });
       });
     });
 
-    // Sort by date descending
-    allProgress.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Build weight history rows from Weight Tracker (ProgressEntry model)
+    const weightHistoryRows = weightEntries
+      .map((entry: any) => {
+        const wt = Number(entry?.value);
+        if (!Number.isFinite(wt) || wt <= 0) return null;
 
-    // Calculate started with (first entry) and currently at (latest entry)
-    // If no entries exist, use client profile data as starting point
+        return {
+          _id: `wt_${String(entry?._id || '')}`,
+          source: 'weight_tracker',
+          date: entry.recordedAt,
+          weight: wt,
+          bmi: calcBMI(wt, clientProfile.heightCm),
+          bmr: calcBMR(wt, clientProfile.heightCm, clientProfile.age, clientProfile.gender),
+          bodyFat: 0,
+          dietPlan: '',
+          notes: 'Weight Tracker'
+        };
+      })
+      .filter(Boolean) as any[];
+
+    // Merge journal + weight tracker entries for unified history table
+    const mergedProgress = [...allProgress, ...weightHistoryRows];
+
+    // Sort by date descending (latest first)
+    mergedProgress.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Get first and current weight from Weight Tracker (ProgressEntry) as primary source
+    const sortedWeightEntriesAsc = [...weightEntries].sort(
+      (a: any, b: any) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
+    );
+
+    const firstWeightEntry = sortedWeightEntriesAsc.length > 0 ? sortedWeightEntriesAsc[0] : null;
+    const currentWeightEntry = weightEntries.length > 0 ? weightEntries[0] : null; // Already sorted desc
+
+    // Calculate started with - use weight tracker first, then journal progress, then profile
     const sortedByDateAsc = [...allProgress].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
-    const startedWith = sortedByDateAsc.length > 0 ? {
-      weight: sortedByDateAsc[0].weight,
-      bmr: sortedByDateAsc[0].bmr,
-      bmi: sortedByDateAsc[0].bmi,
-      bodyFat: sortedByDateAsc[0].bodyFat
-    } : {
-      weight: profileWeight,
-      bmr: profileBmr,
-      bmi: profileBmi,
-      bodyFat: 0
+
+    // First weight from weight tracker or journal progress or profile
+    const firstWeight = firstWeightEntry
+      ? Number(firstWeightEntry.value)
+      : (sortedByDateAsc.length > 0 ? sortedByDateAsc[0].weight : profileWeight);
+
+    const startedWith = {
+      weight: firstWeight,
+      bmr: firstWeightEntry
+        ? calcBMR(firstWeight, clientProfile.heightCm, clientProfile.age, clientProfile.gender)
+        : (sortedByDateAsc.length > 0 ? sortedByDateAsc[0].bmr : calcBMR(firstWeight, clientProfile.heightCm, clientProfile.age, clientProfile.gender)),
+      bmi: firstWeightEntry
+        ? calcBMI(firstWeight, clientProfile.heightCm)
+        : (sortedByDateAsc.length > 0 ? sortedByDateAsc[0].bmi : calcBMI(firstWeight, clientProfile.heightCm)),
+      bodyFat: firstWeightEntry ? 0 : (sortedByDateAsc.length > 0 ? sortedByDateAsc[0].bodyFat : 0)
     };
 
-    const currentlyAt = allProgress.length > 0 ? {
-      weight: allProgress[0].weight,
-      bmr: allProgress[0].bmr,
-      bmi: allProgress[0].bmi,
-      bodyFat: allProgress[0].bodyFat
-    } : {
-      weight: profileWeight,
-      bmr: profileBmr,
-      bmi: profileBmi,
-      bodyFat: 0
+    // Current weight from weight tracker (most recent) or journal progress or profile
+    const currentWeight = currentWeightEntry
+      ? Number(currentWeightEntry.value)
+      : (allProgress.length > 0 ? allProgress[0].weight : profileWeight);
+
+    const currentlyAt = {
+      weight: currentWeight,
+      bmr: currentWeightEntry
+        ? calcBMR(currentWeight, clientProfile.heightCm, clientProfile.age, clientProfile.gender)
+        : (allProgress.length > 0 ? allProgress[0].bmr : calcBMR(currentWeight, clientProfile.heightCm, clientProfile.age, clientProfile.gender)),
+      bmi: currentWeightEntry
+        ? calcBMI(currentWeight, clientProfile.heightCm)
+        : (allProgress.length > 0 ? allProgress[0].bmi : calcBMI(currentWeight, clientProfile.heightCm)),
+      bodyFat: currentWeightEntry ? 0 : (allProgress.length > 0 ? allProgress[0].bodyFat : 0)
     };
 
     const difference = {
-      weight: currentlyAt.weight - startedWith.weight,
-      bmr: currentlyAt.bmr - startedWith.bmr,
-      bmi: currentlyAt.bmi - startedWith.bmi,
-      bodyFat: currentlyAt.bodyFat - startedWith.bodyFat
+      weight: parseFloat((currentlyAt.weight - startedWith.weight).toFixed(2)),
+      bmr: parseFloat((currentlyAt.bmr - startedWith.bmr).toFixed(0)),
+      bmi: parseFloat((currentlyAt.bmi - startedWith.bmi).toFixed(1)),
+      bodyFat: parseFloat((currentlyAt.bodyFat - startedWith.bodyFat).toFixed(1))
     };
 
     return NextResponse.json({
       success: true,
-      progress: allProgress,
+      progress: mergedProgress,
       summary: {
         startedWith,
         currentlyAt,
         difference,
-        totalEntries: allProgress.length
+        totalEntries: mergedProgress.length,
+        weightTrackerEntries: weightEntries.length
       },
       clientProfile: {
         heightCm: clientProfile.heightCm,
