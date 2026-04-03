@@ -22,10 +22,10 @@ interface ClientsLayoutProps {
  * - Normal scrolling behavior on desktop
  * - Persistent across page navigation and refresh
  */
-export default function ClientsLayout({ 
-  children, 
+export default function ClientsLayout({
+  children,
   className,
-  showSidebar = true 
+  showSidebar = true
 }: ClientsLayoutProps) {
   const { data: session, status } = useSession();
   const { isMobile, isPWA } = useMobileDetection();
@@ -42,6 +42,7 @@ export default function ClientsLayout({
           width={150}
           height={225}
           className="object-contain"
+          style={{ height: 'auto' }}
           unoptimized
           priority
         />

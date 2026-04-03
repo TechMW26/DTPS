@@ -347,6 +347,7 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
               width={80}
               height={120}
               className="object-contain"
+              style={{ height: 'auto' }}
               unoptimized
             />
           </div>

@@ -148,6 +148,7 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
             width={60}
             height={90}
             className="object-contain"
+            style={{ height: 'auto' }}
             unoptimized
           />
         </CardContent>
@@ -193,7 +194,7 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
                   const value = latestMeasurement[item.key as keyof MeasurementEntry] as number;
                   const prevValue = previousMeasurement?.[item.key as keyof MeasurementEntry] as number;
                   const change = getChange(value, prevValue);
-                  
+
                   return (
                     <div key={item.key} className={`bg-${item.color}-50 rounded-xl p-4 text-center`}>
                       <p className="text-2xl font-bold text-gray-900">
@@ -261,9 +262,8 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
                       <td className="py-3 px-2 text-center">{entry.hips || '-'}</td>
                       <td className="py-3 px-2 text-center">{entry.thigh || '-'}</td>
                       <td className="py-3 px-2 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded ${
-                          entry.addedBy === 'client' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
-                        }`}>
+                        <span className={`text-xs px-2 py-0.5 rounded ${entry.addedBy === 'client' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                          }`}>
                           {entry.addedBy || 'system'}
                         </span>
                       </td>
@@ -288,7 +288,7 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
 
       {/* Add Measurement Modal */}
       {showAddModal && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-hidden"
           onClick={(e) => e.target === e.currentTarget && setShowAddModal(false)}
         >

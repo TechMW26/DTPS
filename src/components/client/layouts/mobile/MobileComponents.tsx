@@ -62,7 +62,7 @@ interface MobileCardProps {
 
 export function MobileCard({ children, className, onClick }: MobileCardProps) {
   return (
-    <div 
+    <div
       className={cn(
         'bg-white rounded-xl p-4 shadow-sm',
         onClick && 'cursor-pointer active:scale-[0.98] transition-transform',
@@ -102,7 +102,7 @@ interface MobileListItemProps {
 
 export function MobileListItem({ children, onClick, className }: MobileListItemProps) {
   return (
-    <div 
+    <div
       className={cn(
         'py-3',
         onClick && 'cursor-pointer active:bg-gray-50',
@@ -176,11 +176,11 @@ interface MobileActionButtonProps {
   className?: string;
 }
 
-export function MobileActionButton({ 
-  children, 
-  onClick, 
+export function MobileActionButton({
+  children,
+  onClick,
   position = 'bottom-right',
-  className 
+  className
 }: MobileActionButtonProps) {
   const positionClass = {
     'bottom-right': 'right-4 bottom-20',
@@ -213,12 +213,12 @@ interface MobileEmptyStateProps {
   className?: string;
 }
 
-export function MobileEmptyState({ 
-  icon, 
-  title, 
-  description, 
+export function MobileEmptyState({
+  icon,
+  title,
+  description,
   action,
-  className 
+  className
 }: MobileEmptyStateProps) {
   return (
     <div className={cn('text-center py-12 px-4', className)}>
@@ -256,6 +256,7 @@ export function MobilePullIndicator({ isRefreshing, className }: MobilePullIndic
         width={40}
         height={60}
         className="object-contain"
+        style={{ height: 'auto' }}
         unoptimized
       />
     </div>

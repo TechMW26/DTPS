@@ -29,6 +29,7 @@ export const LoadingSpinner = memo(function LoadingSpinner({ size = 'md', classN
         width={width}
         height={height}
         className="object-contain"
+        style={{ height: 'auto' }}
         unoptimized
         priority
       />

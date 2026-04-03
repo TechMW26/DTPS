@@ -47,7 +47,7 @@ export function ResponsiveLayout({
 
   useEffect(() => {
     setMounted(true);
-    
+
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
@@ -71,6 +71,7 @@ export function ResponsiveLayout({
           width={100}
           height={150}
           className="object-contain"
+          style={{ height: 'auto' }}
           unoptimized
           priority
         />
