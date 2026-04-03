@@ -11,6 +11,51 @@ import mongoose from 'mongoose';
 import { AppointmentStatus, UserRole, PaymentStatus } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
+const STAFF_ROLES = [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] as const;
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+async function resolveStaffByIdentifier(identifier: string) {
+  const normalized = decodeURIComponent(identifier || '').trim();
+  if (!normalized) return null;
+
+  // 1) Direct Mongo ObjectId
+  if (mongoose.Types.ObjectId.isValid(normalized)) {
+    const byObjectId = await User.findById(normalized).select('-password');
+    if (byObjectId) return byObjectId;
+  }
+
+  // 2) Display IDs like Dt-ABCD / HC-ABCD (prefix of ObjectId)
+  const displayIdMatch = normalized.match(/^(?:Dt|HC)-([A-Za-z0-9]{2,24})$/i);
+  if (displayIdMatch) {
+    const objectIdPrefix = escapeRegex(displayIdMatch[1].toLowerCase());
+    const byDisplayId = await User.findOne({
+      role: { $in: STAFF_ROLES },
+      $expr: {
+        $regexMatch: {
+          input: { $toString: '$_id' },
+          regex: `^${objectIdPrefix}`,
+          options: 'i'
+        }
+      }
+    }).select('-password');
+
+    if (byDisplayId) return byDisplayId;
+  }
+
+  // 3) Fallback: allow email based lookup
+  if (normalized.includes('@')) {
+    const byEmail = await User.findOne({
+      email: normalized.toLowerCase(),
+      role: { $in: STAFF_ROLES }
+    }).select('-password');
+
+    if (byEmail) return byEmail;
+  }
+
+  return null;
+}
+
 // Get the ClientNote model dynamically
 const getClientNoteModel = (): mongoose.Model<any> => {
   if (mongoose.models.ClientNote) {
@@ -52,15 +97,16 @@ export async function GET(
     const { dietitianId } = await params;
 
     const dietitian = await withCache(
-      `admin:dietitians:dietitianId:${JSON.stringify(dietitianId)}`,
-      async () => await User.findById(dietitianId)
-        .select('-password'),
+      `admin:dietitians:resolved:${JSON.stringify(dietitianId)}`,
+      async () => await resolveStaffByIdentifier(dietitianId),
       { ttl: 120000, tags: ['admin'] }
     );
 
     if (!dietitian) {
       return NextResponse.json({ error: 'Dietitian not found' }, { status: 404 });
     }
+
+    const resolvedDietitianId = dietitian._id.toString();
 
     // Allow both dietitian and health_counselor roles (case-insensitive check)
     const dietitianRole = dietitian.role?.toLowerCase();
@@ -73,15 +119,15 @@ export async function GET(
       `admin:dietitians:dietitianId:${JSON.stringify({
         role: UserRole.CLIENT,
         $or: [
-          { assignedDietitian: dietitianId },
-          { assignedDietitians: dietitianId }
+          { assignedDietitian: resolvedDietitianId },
+          { assignedDietitians: resolvedDietitianId }
         ]
       })}`,
       async () => await User.find({
         role: UserRole.CLIENT,
         $or: [
-          { assignedDietitian: dietitianId },
-          { assignedDietitians: dietitianId }
+          { assignedDietitian: resolvedDietitianId },
+          { assignedDietitians: resolvedDietitianId }
         ]
       })
         .select('firstName lastName email avatar phone status clientStatus createdAt weight height healthGoals generalGoal onboardingCompleted')
@@ -95,7 +141,7 @@ export async function GET(
         // Get meal plan count
         const mealPlanCount = await ClientMealPlan.countDocuments({
           clientId: client._id,
-          assignedBy: dietitianId
+          assignedBy: resolvedDietitianId
         });
 
         // Get latest meal plan
@@ -114,15 +160,15 @@ export async function GET(
         // Get appointment count
         const appointmentCount = await Appointment.countDocuments({
           client: client._id,
-          dietitian: dietitianId
+          dietitian: resolvedDietitianId
         });
 
         // Get upcoming appointment
         const upcomingAppointment = await withCache(
-          `admin:dietitians:dietitianId:upcoming-appointment:${client._id}:${dietitianId}`,
+          `admin:dietitians:dietitianId:upcoming-appointment:${client._id}:${resolvedDietitianId}`,
           async () => await Appointment.findOne({
             client: client._id,
-            dietitian: dietitianId,
+            dietitian: resolvedDietitianId,
             scheduledAt: { $gte: new Date() },
             status: AppointmentStatus.SCHEDULED
           }).sort({ scheduledAt: 1 }),
@@ -152,19 +198,19 @@ export async function GET(
     const totalClients = assignedClients.length;
     const activeClients = assignedClients.filter(c => c.status === 'active').length;
     const totalAppointments = await Appointment.countDocuments({
-      dietitian: dietitianId
+      dietitian: resolvedDietitianId
     });
     const completedAppointments = await Appointment.countDocuments({
-      dietitian: dietitianId,
+      dietitian: resolvedDietitianId,
       status: AppointmentStatus.COMPLETED
     });
     const totalMealPlans = await ClientMealPlan.countDocuments({
-      assignedBy: dietitianId
+      assignedBy: resolvedDietitianId
     });
 
     // Get recent appointments (last 30 + upcoming)
     const appointments = await Appointment.find({
-      dietitian: dietitianId
+      dietitian: resolvedDietitianId
     })
       .populate('client', 'firstName lastName email avatar')
       .sort({ scheduledAt: -1 })
@@ -172,7 +218,7 @@ export async function GET(
 
     // Get payments associated with this dietitian
     const payments = await UnifiedPayment.find({
-      dietitian: dietitianId
+      dietitian: resolvedDietitianId
     })
       .populate('client', 'firstName lastName email')
       .sort({ createdAt: -1 })
@@ -181,7 +227,7 @@ export async function GET(
     // Get notes created by this dietitian
     const ClientNote = getClientNoteModel();
     const notes = await ClientNote.find({
-      createdBy: dietitianId
+      createdBy: resolvedDietitianId
     })
       .populate('userId', 'firstName lastName email avatar')
       .sort({ createdAt: -1 })
@@ -190,8 +236,8 @@ export async function GET(
     // Get tasks assigned by/to this dietitian
     const tasks = await Task.find({
       $or: [
-        { dietitian: dietitianId },
-        { assignedBy: dietitianId }
+        { dietitian: resolvedDietitianId },
+        { assignedBy: resolvedDietitianId }
       ]
     })
       .populate('client', 'firstName lastName email avatar')
@@ -200,7 +246,7 @@ export async function GET(
 
     // Get all meal plans created by this dietitian
     const mealPlans = await ClientMealPlan.find({
-      assignedBy: dietitianId
+      assignedBy: resolvedDietitianId
     })
       .populate('clientId', 'firstName lastName email avatar')
       .populate('templateId', 'name')
@@ -272,11 +318,16 @@ export async function PUT(
     const { dietitianId } = await params;
     const body = await request.json();
 
+    const existingDietitian = await resolveStaffByIdentifier(dietitianId);
+    if (!existingDietitian) {
+      return NextResponse.json({ error: 'Dietitian not found' }, { status: 404 });
+    }
+
     // Remove fields that shouldn't be updated directly
     const { password, _id, role, ...updateData } = body;
 
     const dietitian = await User.findByIdAndUpdate(
-      dietitianId,
+      existingDietitian._id,
       { $set: updateData },
       { new: true }
     ).select('-password');
@@ -314,12 +365,18 @@ export async function DELETE(
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action') || 'deactivate';
 
+    const existingDietitian = await resolveStaffByIdentifier(dietitianId);
+    if (!existingDietitian) {
+      return NextResponse.json({ error: 'Dietitian not found' }, { status: 404 });
+    }
+    const resolvedDietitianId = existingDietitian._id.toString();
+
     // Check if dietitian has assigned clients
     const assignedClientsCount = await User.countDocuments({
       role: UserRole.CLIENT,
       $or: [
-        { assignedDietitian: dietitianId },
-        { assignedDietitians: dietitianId }
+        { assignedDietitian: resolvedDietitianId },
+        { assignedDietitians: resolvedDietitianId }
       ]
     });
 
@@ -330,11 +387,11 @@ export async function DELETE(
           assignedClientsCount
         }, { status: 400 });
       }
-      await User.findByIdAndDelete(dietitianId);
+      await User.findByIdAndDelete(resolvedDietitianId);
       return NextResponse.json({ message: 'Dietitian deleted permanently' });
     } else {
       const dietitian = await User.findByIdAndUpdate(
-        dietitianId,
+        resolvedDietitianId,
         { status: 'inactive' },
         { new: true }
       ).select('-password');

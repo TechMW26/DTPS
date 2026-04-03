@@ -61,9 +61,13 @@ interface BasicInfoFormProps extends BasicInfoData {
   loading?: boolean;
   disableEmail?: boolean;
   disablePhone?: boolean;
+  disableFirstWeight?: boolean;
+  hideFirstWeightField?: boolean;
+  currentWeightKg?: number | null;
+  userRole?: 'client' | 'dietitian' | 'health_counselor' | 'admin';
 }
 
-export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, gender, parentAccount, altPhone, altEmails, anniversary, source, referralSource, generalGoal, maritalStatus, occupation, goalsList, targetWeightBucket, sharePhotoConsent, heightFeet, heightInch, heightCm, weightKg, targetWeightKg, idealWeightKg, bmi, activityLevel, onChange, onSave, loading, disableEmail = false, disablePhone = false }: BasicInfoFormProps) {
+export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, gender, parentAccount, altPhone, altEmails, anniversary, source, referralSource, generalGoal, maritalStatus, occupation, goalsList, targetWeightBucket, sharePhotoConsent, heightFeet, heightInch, heightCm, weightKg, targetWeightKg, idealWeightKg, bmi, activityLevel, onChange, onSave, loading, disableEmail = false, disablePhone = false, disableFirstWeight = false, hideFirstWeightField = false, currentWeightKg = null, userRole = 'client' }: BasicInfoFormProps) {
   const [goalCategories, setGoalCategories] = useState<GoalCategory[]>(defaultGoals);
 
   // Fetch dynamic goal categories with better error handling
@@ -442,16 +446,42 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
           <div>
             <Label className="text-sm font-medium mb-3 block">Weight Measurements</Label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="space-y-2.5">
-                <Label className="text-xs text-gray-600">Weight (Kg)*</Label>
-                <Input
-                  type="number"
-                  value={weightKg}
-                  onChange={e => onChange("weightKg", e.target.value)}
-                  placeholder="70"
-                  className="h-10"
-                />
-              </div>
+              {hideFirstWeightField ? (
+                <div className="space-y-2.5">
+                  <Label className="text-xs text-gray-600">Current Weight (Live)</Label>
+                  <Input
+                    readOnly
+                    value={currentWeightKg && Number.isFinite(currentWeightKg) ? `${currentWeightKg.toFixed(1)} kg` : '--'}
+                    className="h-10 bg-blue-50"
+                  />
+                  <p className="text-[11px] text-blue-700">Live value from Weight Tracker.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <Label className="text-xs text-gray-600">Weight (Kg)*</Label>
+                  <Input
+                    type="number"
+                    value={weightKg}
+                    onChange={e => onChange("weightKg", e.target.value)}
+                    placeholder="70"
+                    className={`h-10 ${disableFirstWeight ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    disabled={disableFirstWeight}
+                  />
+                  {disableFirstWeight && (
+                    <p className="text-[11px] text-amber-700">First weight is locked after first save.</p>
+                  )}
+                  {userRole === 'client' && disableFirstWeight && (
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                      🔒 FIRST WEIGHT (Locked)
+                    </span>
+                  )}
+                  {(userRole === 'dietitian' || userRole === 'admin') && (
+                    <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                      ✏️ FIRST WEIGHT (You can edit)
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="space-y-2.5">
                 <Label className="text-xs text-gray-600">Target Weight (Kg)</Label>
                 <Input

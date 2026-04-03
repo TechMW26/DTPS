@@ -495,6 +495,84 @@ export async function PUT(
         return obj;
       }, {});
 
+    // First weight permission + lock rules
+    if (body.weightKg !== undefined) {
+      const incomingWeight = parseFloat(String(body.weightKg));
+      if (!Number.isFinite(incomingWeight) || incomingWeight <= 0) {
+        return NextResponse.json({ error: 'Weight must be a positive number' }, { status: 400 });
+      }
+
+      const currentRole = session.user.role as UserRole;
+      const canStaffEditFirstWeight = isAdmin || currentRole === UserRole.DIETITIAN;
+      const isClientSelfEdit = isSelf && currentRole === UserRole.CLIENT;
+
+      const firstWeightValue = Number((targetUser as any)?.firstWeight?.value || 0);
+      const legacyWeightValue = parseFloat(String((targetUser as any)?.weightKg || '0'));
+      const hasBaseline = (Number.isFinite(firstWeightValue) && firstWeightValue > 0)
+        || (Number.isFinite(legacyWeightValue) && legacyWeightValue > 0);
+
+      if (canStaffEditFirstWeight) {
+        const actor = isAdmin ? 'admin' : 'dietitian';
+        const existingSetBy = (targetUser as any)?.firstWeight?.setBy;
+        const existingSetDate = (targetUser as any)?.firstWeight?.setDate;
+
+        updateData.weightKg = String(incomingWeight);
+        updateData.weight = incomingWeight;
+        updateData.firstWeight = {
+          value: incomingWeight,
+          setBy: existingSetBy || actor,
+          setDate: existingSetDate || new Date(),
+          isLocked: true,
+          lastUpdatedBy: actor,
+          lastUpdateDate: new Date(),
+        };
+      } else if (isClientSelfEdit) {
+        if (hasBaseline) {
+          const baseline = (Number.isFinite(firstWeightValue) && firstWeightValue > 0)
+            ? firstWeightValue
+            : legacyWeightValue;
+
+          if (Math.abs(incomingWeight - baseline) > 0.0001) {
+            return NextResponse.json(
+              { error: 'First weight is locked. Please contact your dietitian to update it.' },
+              { status: 403 }
+            );
+          }
+
+          // Backfill metadata for legacy profiles
+          if (!(Number.isFinite(firstWeightValue) && firstWeightValue > 0) && Number.isFinite(legacyWeightValue) && legacyWeightValue > 0) {
+            updateData.firstWeight = {
+              value: legacyWeightValue,
+              setBy: 'client',
+              setDate: new Date(),
+              isLocked: true,
+              lastUpdatedBy: 'client',
+              lastUpdateDate: new Date(),
+            };
+          }
+          updateData.weightKg = String(baseline);
+          updateData.weight = baseline;
+        } else {
+          // Client first-time set
+          updateData.weightKg = String(incomingWeight);
+          updateData.weight = incomingWeight;
+          updateData.firstWeight = {
+            value: incomingWeight,
+            setBy: 'client',
+            setDate: new Date(),
+            isLocked: true,
+            lastUpdatedBy: 'client',
+            lastUpdateDate: new Date(),
+          };
+        }
+      } else {
+        return NextResponse.json(
+          { error: 'Only your dietitian can update first weight.' },
+          { status: 403 }
+        );
+      }
+    }
+
 
     // Store original values before update for audit logging
     const originalValues: Record<string, any> = {};

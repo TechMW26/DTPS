@@ -98,10 +98,6 @@ export async function PUT(request: NextRequest) {
     
     const updateData: Record<string, any> = {};
     
-    if (weightKg !== undefined) {
-      updateData.weightKg = String(weightKg);
-    }
-    
     if (heightCm !== undefined) {
       updateData.heightCm = String(heightCm);
     }
@@ -109,9 +105,57 @@ export async function PUT(request: NextRequest) {
     // Get current user data to calculate BMI
     const currentUser = await withCache(
       `client:bmi:${JSON.stringify(session.user.id)}`,
-      async () => await User.findById(session.user.id),
+      async () => await User.findById(session.user.id).select('weightKg heightCm firstWeight'),
       { ttl: 120000, tags: ['client'] }
     );
+
+    if (weightKg !== undefined) {
+      const incomingWeight = parseFloat(String(weightKg));
+      if (!Number.isFinite(incomingWeight) || incomingWeight <= 0) {
+        return NextResponse.json({ error: 'Weight must be a positive number' }, { status: 400 });
+      }
+
+      const firstWeightValue = Number(currentUser?.firstWeight?.value || 0);
+      const legacyWeightValue = parseFloat(String(currentUser?.weightKg || '0'));
+      const hasBaseline = (Number.isFinite(firstWeightValue) && firstWeightValue > 0)
+        || (Number.isFinite(legacyWeightValue) && legacyWeightValue > 0);
+
+      if (hasBaseline) {
+        const baseline = (Number.isFinite(firstWeightValue) && firstWeightValue > 0)
+          ? firstWeightValue
+          : legacyWeightValue;
+
+        if (Math.abs(incomingWeight - baseline) > 0.0001) {
+          return NextResponse.json(
+            { error: 'Your starting weight is locked. Please contact your dietitian to update it.' },
+            { status: 403 }
+          );
+        }
+
+        if (!(Number.isFinite(firstWeightValue) && firstWeightValue > 0) && Number.isFinite(legacyWeightValue) && legacyWeightValue > 0) {
+          updateData.firstWeight = {
+            value: legacyWeightValue,
+            setBy: 'client',
+            setDate: new Date(),
+            isLocked: true,
+            lastUpdatedBy: 'client',
+            lastUpdateDate: new Date(),
+          };
+        }
+      } else {
+        updateData.firstWeight = {
+          value: incomingWeight,
+          setBy: 'client',
+          setDate: new Date(),
+          isLocked: true,
+          lastUpdatedBy: 'client',
+          lastUpdateDate: new Date(),
+        };
+      }
+
+      updateData.weightKg = String(incomingWeight);
+      updateData.weight = incomingWeight;
+    }
     
     const finalWeightKg = parseFloat(weightKg !== undefined ? String(weightKg) : currentUser?.weightKg || '0');
     const finalHeightCm = parseFloat(heightCm !== undefined ? String(heightCm) : currentUser?.heightCm || '0');

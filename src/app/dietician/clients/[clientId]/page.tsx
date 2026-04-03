@@ -61,6 +61,8 @@ import { BasicInfoForm, type BasicInfoData } from '@/components/clients/BasicInf
 import { MedicalForm, type MedicalData } from '@/components/clients/MedicalForm';
 import { LifestyleForm, type LifestyleData } from '@/components/clients/LifestyleForm';
 import { useDataRefresh, DataEventTypes, emitDataChange } from '@/lib/events/useDataRefresh';
+import { socketClient } from '@/lib/realtime/socket-client';
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 import { RecallForm, type RecallEntry } from '@/components/clients/RecallForm';
 import FormsSection from '@/components/clientDashboard/FormsSection';
 import { JournalSection } from '@/components/journal';
@@ -90,6 +92,7 @@ interface ClientData {
   gender?: string;
   height?: number;
   weight?: number;
+  weightKg?: string;
   activityLevel?: string;
   healthGoals?: string[];
   medicalConditions?: string[];
@@ -245,6 +248,12 @@ interface ClientTag {
   createdAt?: string;
 }
 
+interface ClientWeightLogEntry {
+  _id: string;
+  weight: number;
+  recordedAt: string;
+}
+
 export default function ClientDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -261,6 +270,9 @@ export default function ClientDetailPage() {
 
   // Notes panel state
   const [isNotesOpen, setIsNotesOpen] = useState(false);
+  
+  // Weight tracker visibility state
+  const [showWeightTracker, setShowWeightTracker] = useState(false);
 
   // Reset-to-home callbacks for each section
   const resetCallbacksRef = useRef<Record<string, (() => void) | undefined>>({});
@@ -475,6 +487,9 @@ export default function ClientDetailPage() {
 
   // Backend-computed client status (lead / active / inactive)
   const [clientComputedStatus, setClientComputedStatus] = useState<'lead' | 'active' | 'inactive'>('lead');
+  const [currentWeightKg, setCurrentWeightKg] = useState<number | null>(null);
+  const [firstWeightKg, setFirstWeightKg] = useState<number | null>(null);
+  const [weightLog, setWeightLog] = useState<ClientWeightLogEntry[]>([]);
 
   useEffect(() => {
     if (params.clientId) {
@@ -482,6 +497,8 @@ export default function ClientDetailPage() {
       fetchClientNotes();
       fetchClientTasks();
       fetchActivePlan();
+      fetchCurrentWeightSummary();
+      fetchClientWeightLog();
     }
   }, [params.clientId]);
 
@@ -555,9 +572,103 @@ export default function ClientDetailPage() {
     () => {
       fetchActivePlan(); // Refresh active plan banner when data changes
       fetchClientDetails(true); // Silent refresh of client data
+      fetchCurrentWeightSummary(true); // Refresh current/first weight summary
+      fetchClientWeightLog(true); // Refresh full weight tracker block
     },
     [params.clientId]
   );
+
+  // Realtime weight updates from client app -> staff dashboard
+  useEffect(() => {
+    if (!params.clientId) return;
+
+    const unsubscribe = socketClient.on(SOCKET_EVENTS.CLIENT_WEIGHT_UPDATED, (payload: any) => {
+      const incomingClientId = String(payload?.clientId || '');
+      const pageClientId = String(params.clientId);
+      if (!incomingClientId || incomingClientId !== pageClientId) return;
+
+      const nextWeight = Number(payload?.weightKg);
+      if (!Number.isFinite(nextWeight) || nextWeight <= 0) return;
+
+      setCurrentWeightKg(nextWeight);
+      fetchClientWeightLog(true).catch(() => { });
+
+      // Update local page state instantly (current weight only)
+      setClient(prev => prev ? ({
+        ...prev,
+        weight: nextWeight,
+        weightKg: String(nextWeight)
+      }) : prev);
+
+      // Keep Basic Info form weight unchanged.
+      // Realtime/progress updates should only affect tracker/current display, not baseline form values.
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [params.clientId]);
+
+  // Realtime fallback: keep weight fresh even if a socket event is missed
+  useEffect(() => {
+    if (!params.clientId) return;
+
+    const refreshWeight = () => {
+      fetchCurrentWeightSummary(true).catch(() => { });
+      fetchClientWeightLog(true).catch(() => { });
+    };
+
+    const intervalId = window.setInterval(refreshWeight, 20000);
+    const onFocus = () => refreshWeight();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refreshWeight();
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [params.clientId]);
+
+  const fetchClientWeightLog = async (silent = false) => {
+    try {
+      const response = await fetch(`/api/progress?clientId=${params.clientId}&type=weight&limit=365&page=1`, {
+        cache: 'no-store'
+      });
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const entriesRaw = Array.isArray(data?.progressEntries) ? data.progressEntries : [];
+
+      const entries: ClientWeightLogEntry[] = entriesRaw
+        .map((entry: any) => ({
+          _id: String(entry?._id || ''),
+          weight: Number(entry?.value),
+          recordedAt: entry?.recordedAt || new Date().toISOString()
+        }))
+        .filter((entry: ClientWeightLogEntry) => Number.isFinite(entry.weight) && entry.weight > 0)
+        .sort((a: ClientWeightLogEntry, b: ClientWeightLogEntry) =>
+          new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
+        );
+
+      setWeightLog(entries);
+
+      if (entries.length > 0) {
+        setCurrentWeightKg(entries[0].weight);
+        setFirstWeightKg(entries[entries.length - 1].weight);
+      }
+    } catch (error) {
+      if (!silent) {
+        console.error('Error fetching client weight log:', error);
+      }
+    }
+  };
 
   // Fetch active plan data (from client-meal-plans and client-purchases)
   const fetchActivePlan = async () => {
@@ -962,6 +1073,13 @@ export default function ClientDetailPage() {
         setClient(data?.user);
         setFormData(data?.user);
 
+        // Keep current weight in sync with authoritative user profile summary field
+        const profileWeight = Number(data?.user?.weightKg ?? data?.user?.weight ?? 0);
+        if (Number.isFinite(profileWeight) && profileWeight > 0) {
+          setCurrentWeightKg(profileWeight);
+          setFirstWeightKg(prev => (prev && Number.isFinite(prev) && prev > 0 ? prev : profileWeight));
+        }
+
         // Load client tags
         if (data?.user?.tags && Array.isArray(data.user.tags)) {
           const tagIds = data.user.tags.map((tag: any) =>
@@ -1094,6 +1212,39 @@ export default function ClientDetailPage() {
       if (!silent) toast.error('Error loading client data');
     } finally {
       if (!silent) setLoading(false);
+    }
+  };
+
+  const fetchCurrentWeightSummary = async (silent = false) => {
+    try {
+      // Source of truth for current weight is user's profile summary field (`weightKg`)
+      // because client progress/profile updates write to this value in realtime flows.
+      const profileResponse = await fetch(`/api/users/${params.clientId}`, { cache: 'no-store' });
+      if (profileResponse.ok) {
+        const profileData = await profileResponse.json();
+        const profileWeight = Number(profileData?.user?.weightKg ?? profileData?.user?.weight ?? 0);
+        if (Number.isFinite(profileWeight) && profileWeight > 0) {
+          setCurrentWeightKg(profileWeight);
+          return;
+        }
+      }
+
+      // Fallback: journal progress summary when profile has no usable weight
+      const response = await fetch(`/api/journal/progress?clientId=${params.clientId}`, { cache: 'no-store' });
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (!data?.success) return;
+
+      const current = Number(data?.summary?.currentlyAt?.weight);
+
+      if (Number.isFinite(current) && current > 0) {
+        setCurrentWeightKg(current);
+      }
+    } catch (error) {
+      if (!silent) {
+        console.error('Error fetching weight summary:', error);
+      }
     }
   };
 
@@ -1419,6 +1570,32 @@ export default function ClientDetailPage() {
       return 'Never';
     }
   };
+
+  const displayCurrentWeight = (() => {
+    if (currentWeightKg && Number.isFinite(currentWeightKg) && currentWeightKg > 0) return currentWeightKg;
+    const basicWeight = parseFloat(String(basicInfo?.weightKg || ''));
+    if (Number.isFinite(basicWeight) && basicWeight > 0) return basicWeight;
+    const clientWeight = Number(client?.weight || 0);
+    return Number.isFinite(clientWeight) && clientWeight > 0 ? clientWeight : null;
+  })();
+
+  const displayFirstWeight = (() => {
+    if (firstWeightKg && Number.isFinite(firstWeightKg) && firstWeightKg > 0) return firstWeightKg;
+    if (weightLog.length > 0) {
+      const oldest = weightLog[weightLog.length - 1];
+      if (Number.isFinite(oldest.weight) && oldest.weight > 0) return oldest.weight;
+    }
+    return null;
+  })();
+
+  const weightDelta = (() => {
+    if (!displayCurrentWeight || !displayFirstWeight) return null;
+    return Number((displayCurrentWeight - displayFirstWeight).toFixed(1));
+  })();
+
+  const isFirstWeightLocked = (() => {
+    return !!(displayFirstWeight && Number.isFinite(displayFirstWeight) && displayFirstWeight > 0);
+  })();
 
   const [isTagsModalOpen, setIsTagsModalOpen] = useState(false);
 
@@ -1801,6 +1978,12 @@ export default function ClientDetailPage() {
                         <span>HC: {getHealthCounselorDisplayName()}</span>
                         <span className="text-gray-300">•</span>
                         <span className="whitespace-nowrap">Last seen: {formatLastSeen(client?.lastLoginAt || client?.createdAt)}</span>
+                        {displayCurrentWeight && (
+                          <>
+                            <span className="text-gray-300">•</span>
+                            <span className="whitespace-nowrap">Current Weight: {displayCurrentWeight} kg</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1882,6 +2065,103 @@ export default function ClientDetailPage() {
                     )}
                   </Button> */}
                 </div>
+              </div>
+
+              {/* Weight Tracker Summary (First / Current / History with tags) */}
+              <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <button
+                  onClick={() => setShowWeightTracker(!showWeightTracker)}
+                  className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-semibold text-gray-800">Weight Tracker</h3>
+                    <span className="text-xs text-gray-500">{weightLog.length} entries</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {displayCurrentWeight && (
+                      <span className="text-sm font-medium text-blue-600">{displayCurrentWeight.toFixed(1)} kg</span>
+                    )}
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${showWeightTracker ? 'rotate-180' : ''}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </button>
+
+                {showWeightTracker && (
+                  <div className="px-4 pb-4 border-t border-gray-100">
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-amber-700">First Weight</span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">START</span>
+                    </div>
+                    <p className="mt-1 text-lg font-bold text-amber-900">
+                      {displayFirstWeight ? `${displayFirstWeight.toFixed(1)} kg` : '--'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-blue-700">Current Weight</span>
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">NOW</span>
+                    </div>
+                    <p className="mt-1 text-lg font-bold text-blue-900">
+                      {displayCurrentWeight ? `${displayCurrentWeight.toFixed(1)} kg` : '--'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <div className="text-xs font-medium text-gray-600">Change from Start</div>
+                    <p className={`mt-1 text-lg font-bold ${weightDelta === null
+                      ? 'text-gray-500'
+                      : weightDelta < 0
+                        ? 'text-green-700'
+                        : weightDelta > 0
+                          ? 'text-red-700'
+                          : 'text-gray-700'
+                      }`}>
+                      {weightDelta === null
+                        ? '--'
+                        : `${weightDelta > 0 ? '+' : ''}${weightDelta.toFixed(1)} kg ${weightDelta < 0 ? '↓' : weightDelta > 0 ? '↑' : '→'}`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 max-h-56 overflow-y-auto rounded-lg border border-gray-100">
+                  {weightLog.length === 0 ? (
+                    <div className="p-4 text-sm text-gray-500">No weight entries yet.</div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {weightLog.map((entry, index) => {
+                        const isNow = index === 0;
+                        const isStart = index === weightLog.length - 1;
+                        return (
+                          <div key={entry._id} className="flex items-center justify-between p-3">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{entry.weight.toFixed(1)} kg</p>
+                              <p className="text-xs text-gray-500">{format(new Date(entry.recordedAt), 'dd MMM yyyy, hh:mm a')}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {isStart && (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">START</span>
+                              )}
+                              {isNow && (
+                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">NOW</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                  </div>
+                )}
               </div>
 
               {/* Program Banner */}
@@ -2073,6 +2353,7 @@ export default function ClientDetailPage() {
                 loading={savingForm}
                 clientId={params.clientId as string}
                 userRole="dietitian"
+                disableFirstWeight={false}
                 onRegisterReset={(fn: () => void) => registerReset('forms', fn)}
               />
             </div>

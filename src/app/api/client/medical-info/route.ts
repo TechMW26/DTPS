@@ -98,7 +98,7 @@ export async function POST(request: Request) {
       userEmail: session.user.email || '',
       action: 'update_medical_info',
       actionType: 'update',
-      category: 'health',
+      category: 'fitness',
       description: 'Updated own medical information',
       targetUserId: session.user.id,
       targetUserName: session.user.name || '',

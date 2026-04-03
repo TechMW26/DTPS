@@ -7,6 +7,7 @@ import { socketManager } from "@/lib/realtime/socket-manager";
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { getClientStatusInfo } from '@/lib/status/computeClientStatus';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { emitClientWeightUpdate } from '@/lib/realtime/weight-notify';
 
 // BMI Calculation Helper
 function calculateBMI(weightKg: number, heightCm: number): { bmi: string; bmiCategory: string } {
@@ -52,7 +53,7 @@ export async function GET() {
       async () => {
         const user = await User.findById(session.user.id)
           .select(
-            "name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource assignedDietitian bmi bmiCategory height weight clientStatus"
+            "name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg firstWeight targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource assignedDietitian bmi bmiCategory height weight clientStatus"
           )
           .populate('assignedDietitian', 'firstName lastName email phone')
           .lean() as any;
@@ -157,12 +158,72 @@ export async function PUT(request: Request) {
     // Check if weight or height is being updated - recalculate BMI
     const isWeightOrHeightUpdated = data.weightKg !== undefined || data.heightCm !== undefined;
 
-    if (isWeightOrHeightUpdated) {
-      // Get current user data to calculate BMI with new values
-      const currentUser = await User.findById(session.user.id).select('weightKg heightCm').lean() as any;
+    let currentUserForValidation: any = null;
 
-      const finalWeightKg = parseFloat(data.weightKg !== undefined ? String(data.weightKg) : currentUser?.weightKg || '0');
-      const finalHeightCm = parseFloat(data.heightCm !== undefined ? String(data.heightCm) : currentUser?.heightCm || '0');
+    if (isWeightOrHeightUpdated || data.weightKg !== undefined) {
+      currentUserForValidation = await User.findById(session.user.id)
+        .select('weightKg heightCm firstWeight')
+        .lean() as any;
+    }
+
+    // Client can set first weight once; after that it's locked for client
+    if (data.weightKg !== undefined) {
+      const incomingWeight = parseFloat(String(data.weightKg));
+      if (!Number.isFinite(incomingWeight) || incomingWeight <= 0) {
+        return NextResponse.json({ error: 'Weight must be a positive number' }, { status: 400 });
+      }
+
+      const firstWeightValue = Number(currentUserForValidation?.firstWeight?.value || 0);
+      const legacyWeightValue = parseFloat(String(currentUserForValidation?.weightKg || '0'));
+      const hasBaseline = (Number.isFinite(firstWeightValue) && firstWeightValue > 0)
+        || (Number.isFinite(legacyWeightValue) && legacyWeightValue > 0);
+
+      if (hasBaseline) {
+        const baseline = (Number.isFinite(firstWeightValue) && firstWeightValue > 0)
+          ? firstWeightValue
+          : legacyWeightValue;
+
+        if (Math.abs(incomingWeight - baseline) > 0.0001) {
+          return NextResponse.json(
+            { error: 'Your starting weight is locked. Please contact your dietitian to update it.' },
+            { status: 403 }
+          );
+        }
+
+        // Backfill metadata when legacy weight exists but firstWeight object is missing
+        if (!(Number.isFinite(firstWeightValue) && firstWeightValue > 0) && Number.isFinite(legacyWeightValue) && legacyWeightValue > 0) {
+          updateData.firstWeight = {
+            value: legacyWeightValue,
+            setBy: 'client',
+            setDate: new Date(),
+            isLocked: true,
+            lastUpdatedBy: 'client',
+            lastUpdateDate: new Date(),
+          };
+        }
+      } else {
+        // First time set by client
+        updateData.firstWeight = {
+          value: incomingWeight,
+          setBy: 'client',
+          setDate: new Date(),
+          isLocked: true,
+          lastUpdatedBy: 'client',
+          lastUpdateDate: new Date(),
+        };
+      }
+
+      updateData.weightKg = String(incomingWeight);
+      updateData.weight = incomingWeight;
+    }
+
+    if (isWeightOrHeightUpdated) {
+      const finalWeightKg = parseFloat(
+        data.weightKg !== undefined
+          ? String(updateData.weightKg ?? data.weightKg)
+          : currentUserForValidation?.weightKg || '0'
+      );
+      const finalHeightCm = parseFloat(data.heightCm !== undefined ? String(data.heightCm) : currentUserForValidation?.heightCm || '0');
 
       // Calculate BMI if both weight and height are available
       if (finalWeightKg > 0 && finalHeightCm > 0) {
@@ -176,7 +237,7 @@ export async function PUT(request: Request) {
       session.user.id,
       updateData,
       { new: true, runValidators: true }
-    ).select("name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource bmi bmiCategory");
+    ).select("name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg firstWeight targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource bmi bmiCategory");
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -219,6 +280,19 @@ export async function PUT(request: Request) {
         });
       } catch (sseError) {
         console.warn('SSE notification failed:', sseError);
+      }
+    }
+
+    // Realtime: push current weight to assigned staff dashboards
+    if (data.weightKg !== undefined) {
+      const numericWeight = parseFloat(String(user.weightKg || '0'));
+      if (numericWeight > 0) {
+        await emitClientWeightUpdate({
+          clientId: session.user.id,
+          weightKg: numericWeight,
+          bmi: user.bmi || undefined,
+          source: 'client_profile'
+        });
       }
     }
 

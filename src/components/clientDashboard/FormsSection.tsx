@@ -32,6 +32,9 @@ interface FormsSectionProps {
   loading: boolean;
   clientId?: string;
   userRole?: 'client' | 'dietitian' | 'health_counselor' | 'admin';
+  disableFirstWeight?: boolean;
+  hideFirstWeightField?: boolean;
+  currentWeightKg?: number | null;
   onRegisterReset?: (fn: () => void) => void;
 }
 
@@ -52,6 +55,9 @@ export default function FormsSection({
   loading,
   clientId,
   userRole = 'client',
+  disableFirstWeight = false,
+  hideFirstWeightField = false,
+  currentWeightKg = null,
   onRegisterReset
 }: FormsSectionProps) {
   const [showUnfilledPopup, setShowUnfilledPopup] = useState(false);
@@ -200,6 +206,10 @@ export default function FormsSection({
               loading={loading}
               disableEmail={userRole === 'client'}
               disablePhone={userRole === 'client'}
+              disableFirstWeight={disableFirstWeight}
+              hideFirstWeightField={hideFirstWeightField}
+              currentWeightKg={currentWeightKg}
+              userRole={userRole}
             />
           ) : (
             <BasicInfoDashboard data={basicInfo} onEdit={() => setEditingTab(prev => ({ ...prev, 'basic-details': true }))} />

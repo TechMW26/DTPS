@@ -48,6 +48,7 @@ export const SOCKET_EVENTS = {
     // Admin SSE→Socket events
     CLIENT_UPDATED: 'client_updated',
     CLIENT_ADDED: 'client_added',
+    CLIENT_WEIGHT_UPDATED: 'client_weight_updated',
     INITIAL_DATA: 'initial_data',
     NEW_LOGS: 'new_logs',
 

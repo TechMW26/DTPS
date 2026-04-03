@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       userEmail: session.user.email || '',
       action: existingRecall ? 'update_dietary_recall' : 'create_dietary_recall',
       actionType: existingRecall ? 'update' : 'create',
-      category: 'health',
+      category: 'fitness',
       description: `${existingRecall ? 'Updated' : 'Recorded'} dietary recall for ${date.toDateString()}`,
       targetUserId: session.user.id,
       targetUserName: session.user.name || '',

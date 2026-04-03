@@ -210,6 +210,21 @@ const userSchema = new Schema({
     type: String,
     description: 'Weight in kg (string format)'
   },
+  // Permanent baseline/starting weight metadata
+  firstWeight: {
+    value: { type: Number, min: 0 },
+    setBy: {
+      type: String,
+      enum: ['client', 'dietitian', 'admin']
+    },
+    setDate: { type: Date },
+    isLocked: { type: Boolean, default: false },
+    lastUpdatedBy: {
+      type: String,
+      enum: ['client', 'dietitian', 'admin']
+    },
+    lastUpdateDate: { type: Date }
+  },
   targetWeightKg: {
     type: String,
     description: 'Target weight in kg'

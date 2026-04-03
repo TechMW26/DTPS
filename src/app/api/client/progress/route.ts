@@ -10,6 +10,7 @@ import { startOfDay, endOfDay, format } from 'date-fns';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { MEAL_TYPES, MEAL_TYPE_KEYS } from '@/lib/mealConfig';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { emitClientWeightUpdate } from '@/lib/realtime/weight-notify';
 
 // Get all possible meal type keys (canonical + common variations for DB compatibility)
 const ALL_MEAL_KEYS = [...MEAL_TYPE_KEYS, ...MEAL_TYPE_KEYS.map(k => MEAL_TYPES[k].label)];
@@ -18,6 +19,7 @@ const ALL_MEAL_KEYS = [...MEAL_TYPE_KEYS, ...MEAL_TYPE_KEYS.map(k => MEAL_TYPES[
 function getStartDate(range: string): Date {
   const now = new Date();
   switch (range) {
+    case 'ALL': return new Date(0);
     case '1W': return new Date(now.setDate(now.getDate() - 7));
     case '1M': return new Date(now.setMonth(now.getMonth() - 1));
     case '3M': return new Date(now.setMonth(now.getMonth() - 3));
@@ -40,44 +42,60 @@ export async function GET(request: Request) {
     // Get range from query params
     const { searchParams } = new URL(request.url);
     const range = searchParams.get('range') || '1W';
+    const includeAllWeights = searchParams.get('allWeights') === 'true';
     const startDate = getStartDate(range);
 
     // Get user data for current and target weight
     const user = await withCache(
       `client:progress:${JSON.stringify(session.user.id)}`,
       async () => await User.findById(session.user.id).select(
-        "weightKg targetWeightKg heightCm goals"
+        "weightKg firstWeight targetWeightKg heightCm goals"
       ),
       { ttl: 120000, tags: ['client'] }
     );
 
-    // Get all progress entries (for overall stats) - last year
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    // Get progress entries for requested range (or ALL)
+    const progressStartDate = range === 'ALL' ? new Date(0) : startDate;
 
     const allProgressEntries = await withCache(
       `client:progress:${JSON.stringify({
         user: session.user.id,
-        recordedAt: { $gte: oneYearAgo }
+        recordedAt: { $gte: progressStartDate }
       })}`,
       async () => await ProgressEntry.find({
         user: session.user.id,
-        recordedAt: { $gte: oneYearAgo }
+        recordedAt: { $gte: progressStartDate }
       }).sort({ recordedAt: -1 }),
       { ttl: 120000, tags: ['client'] }
     );
 
+    // Optionally fetch complete weight history independently from chart range
+    const allWeightEntriesSource = includeAllWeights
+      ? await withCache(
+        `client:progress:weights:all:${JSON.stringify(session.user.id)}`,
+        async () => await ProgressEntry.find({
+          user: session.user.id,
+          type: 'weight'
+        }).sort({ recordedAt: -1 }),
+        { ttl: 120000, tags: ['client'] }
+      )
+      : allProgressEntries;
+
     // Get weight entries
-    const weightEntries = allProgressEntries
+    const weightEntries = allWeightEntriesSource
       .filter(entry => entry.type === 'weight' && entry.value)
       .map(entry => ({
+        _id: entry._id,
         date: entry.recordedAt,
         weight: Number(entry.value)
       }));
 
-    // Get latest weight entry
-    const latestWeight = weightEntries[0]?.weight || parseFloat(user?.weightKg) || 0;
-    const startWeight = weightEntries[weightEntries.length - 1]?.weight || parseFloat(user?.weightKg) || latestWeight;
+    // Progress weight is independent from profile weight (no fallback to user.weightKg)
+    const latestWeight = weightEntries[0]?.weight || 0;
+    const baselineFirstWeight = Number(user?.firstWeight?.value || 0);
+    const startWeight = (Number.isFinite(baselineFirstWeight) && baselineFirstWeight > 0)
+      ? baselineFirstWeight
+      : (weightEntries[weightEntries.length - 1]?.weight || latestWeight);
     const targetWeight = parseFloat(user?.targetWeightKg) || parseFloat(user?.goals?.targetWeight) || 0;
 
     // Calculate week's change
@@ -361,11 +379,11 @@ export async function GET(request: Request) {
     const foodLogs = await withCache(
       `client:progress:${JSON.stringify({
         client: session.user.id,
-        date: { $gte: oneYearAgo }
+        date: { $gte: progressStartDate }
       })}`,
       async () => await FoodLog.find({
         client: session.user.id,
-        date: { $gte: oneYearAgo }
+        date: { $gte: progressStartDate }
       }).select('date totalNutrition entries').sort({ date: -1 }),
       { ttl: 120000, tags: ['client'] }
     );
@@ -471,7 +489,8 @@ export async function GET(request: Request) {
       bmi: validBmi,
       heightCm: heightCm || 0,
       progressPercent: Math.max(0, Math.min(100, progressPercent)),
-      weightHistory: weightEntries.slice(0, 365).reverse(),
+      // Newest first for history list rendering on the client
+      weightHistory: weightEntries,
       measurements: measurements,
       todayMeasurements: todayMeasurements,
       measurementHistory: measurementHistory,
@@ -523,7 +542,7 @@ export async function POST(request: Request) {
         userEmail: session.user.email || '',
         action: 'upload_progress_photo',
         actionType: 'create',
-        category: 'health',
+        category: 'fitness',
         description: `Uploaded transformation photo (${side || 'front'} view)`,
         targetUserId: session.user.id,
         targetUserName: session.user.name || '',
@@ -562,7 +581,7 @@ export async function POST(request: Request) {
           userEmail: session.user.email || '',
           action: 'log_body_measurements',
           actionType: 'create',
-          category: 'health',
+          category: 'fitness',
           description: `Recorded body measurements: ${savedEntries.map(e => e.type).join(', ')}`,
           targetUserId: session.user.id,
           targetUserName: session.user.name || '',
@@ -585,11 +604,19 @@ export async function POST(request: Request) {
 
     await progressEntry.save();
 
-    // Also update user's current weight if it's a weight entry
+    // Keep progress weights independent from profile/basic form weight
     if (type === 'weight' && value) {
-      await User.findByIdAndUpdate(session.user.id, {
-        weightKg: value.toString()
-      });
+      clearCacheByTag('client');
+
+      // Realtime: update current weight on assigned staff dashboards
+      const numericWeight = Number(value);
+      if (Number.isFinite(numericWeight) && numericWeight > 0) {
+        await emitClientWeightUpdate({
+          clientId: session.user.id,
+          weightKg: numericWeight,
+          source: 'client_progress'
+        });
+      }
     }
 
     // Log activity
@@ -600,7 +627,7 @@ export async function POST(request: Request) {
       userEmail: session.user.email || '',
       action: type === 'weight' ? 'log_weight' : 'log_progress',
       actionType: 'create',
-      category: 'health',
+      category: 'fitness',
       description: `Recorded ${type}: ${value}${type === 'weight' ? ' kg' : ' cm'}`,
       targetUserId: session.user.id,
       targetUserName: session.user.name || '',
@@ -626,6 +653,24 @@ export async function DELETE(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const entryId = searchParams.get('id');
+    const deleteType = searchParams.get('type');
+    const deleteAll = searchParams.get('all') === 'true';
+
+    // Bulk reset: delete all weight entries for current user
+    if (deleteType === 'weight' && deleteAll) {
+      const result = await ProgressEntry.deleteMany({
+        user: session.user.id,
+        type: 'weight'
+      });
+
+      clearCacheByTag('client');
+
+      return NextResponse.json({
+        success: true,
+        message: 'All weight entries deleted successfully',
+        deletedCount: result.deletedCount || 0
+      });
+    }
 
     if (!entryId) {
       return NextResponse.json({ error: "Entry ID is required" }, { status: 400 });

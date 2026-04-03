@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import PaymentLink from '@/lib/db/models/PaymentLink';
+import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { z } from 'zod';
@@ -154,16 +155,44 @@ export async function GET(request: NextRequest) {
 
     if (status) query.status = status;
 
-    // Auto-expire payment links that have passed their expiry date (end of day)
-    // Note: Only mark as 'expired', not 'cancelled'. Cancelled is for rejected payments.
-    // Only expire if the expiry date has fully passed (compare with start of today, not current time)
+    // Reconcile links that are already paid in UnifiedPayment, to avoid any paid->expired regression.
+    const paidUnifiedPayments = await UnifiedPayment.find({
+      $or: [
+        { status: { $in: ['paid', 'completed'] } },
+        { paymentStatus: 'paid' }
+      ],
+      paymentLink: { $exists: true, $ne: null }
+    }).select('paymentLink paidAt');
+
+    const paidLinkIds = paidUnifiedPayments
+      .map((p: any) => p.paymentLink)
+      .filter(Boolean);
+
+    if (paidLinkIds.length > 0) {
+      await PaymentLink.updateMany(
+        {
+          _id: { $in: paidLinkIds },
+          status: { $ne: 'paid' }
+        },
+        {
+          $set: {
+            status: 'paid'
+          }
+        }
+      );
+    }
+
+    // Auto-expire payment links that have passed their expiry date (only if never completed)
+    // Paid/completed always has higher priority than expiry.
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
     await PaymentLink.updateMany(
       {
         expireDate: { $lt: todayStart }, // Only expire if expiry date is before today (not including today)
-        status: { $in: ['created', 'pending'] }
+        status: { $in: ['created', 'pending'] },
+        paidAt: { $exists: false },
+        _id: { $nin: paidLinkIds }
       },
       {
         $set: { status: 'expired' }

@@ -26,6 +26,8 @@ import { format, subDays, subMonths, subYears } from 'date-fns';
 import { toast } from 'sonner';
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
 import { compressImage } from '@/lib/imageCompression';
+import { socketClient } from '@/lib/realtime/socket-client';
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 
 type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y';
 
@@ -360,10 +362,46 @@ export default function UserProgressPage() {
     }
   }, [session, timeRange]);
 
+  // Realtime: keep weight cards/list updated instantly when weight changes
+  useEffect(() => {
+    const currentUserId = String(session?.user?.id || '');
+    if (!currentUserId) return;
+
+    const unsubscribe = socketClient.on(SOCKET_EVENTS.CLIENT_WEIGHT_UPDATED, (payload: any) => {
+      const incomingClientId = String(payload?.clientId || '');
+      const nextWeight = Number(payload?.weightKg);
+      if (!incomingClientId || incomingClientId !== currentUserId) return;
+      if (!Number.isFinite(nextWeight) || nextWeight <= 0) return;
+
+      const updatedAt = payload?.updatedAt || new Date().toISOString();
+
+      setProgressData(prev => {
+        if (!prev) return prev;
+
+        const currentHistory = Array.isArray(prev.weightHistory) ? prev.weightHistory : [];
+        const appended = [{ date: updatedAt, weight: nextWeight }, ...currentHistory];
+
+        const uniqueHistory = appended.filter((entry, index, arr) =>
+          index === arr.findIndex(e => e.date === entry.date && e.weight === entry.weight)
+        );
+
+        return {
+          ...prev,
+          currentWeight: nextWeight,
+          weightHistory: uniqueHistory,
+        };
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [session?.user?.id]);
+
   const fetchProgressData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/client/progress?range=${timeRange}`, { cache: 'no-store' });
+      const response = await fetch(`/api/client/progress?range=${timeRange}&allWeights=true`, { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
 
@@ -444,34 +482,27 @@ export default function UserProgressPage() {
       });
 
       if (response.ok) {
-        // Also update BMI by updating profile weight
-        try {
-          const bmiResponse = await fetch('/api/client/bmi', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              weightKg: parseFloat(newWeight)
-            })
-          });
+        const result = await response.json();
+        const savedWeight = parseFloat(newWeight);
+        const savedDate = result?.entry?.recordedAt || new Date().toISOString();
 
-          if (bmiResponse.ok) {
-            const bmiData = await bmiResponse.json();
-            // Update local profile state with new BMI
-            setUserProfile(prev => {
-              if (!prev) return null;
-              return {
-                ...prev,
-                bmi: bmiData.bmi?.toString() || prev.bmi,
-                bmiCategory: bmiData.bmiCategory || prev.bmiCategory,
-                weightKg: newWeight,
-                heightCm: prev.heightCm ?? '',
-                generalGoal: prev.generalGoal ?? ''
-              };
-            });
-          }
-        } catch (bmiError) {
-          console.error('Error updating BMI:', bmiError);
-        }
+        // Optimistic local update so list shows immediately
+        setProgressData(prev => {
+          if (!prev || !Number.isFinite(savedWeight) || savedWeight <= 0) return prev;
+
+          const currentHistory = Array.isArray(prev.weightHistory) ? prev.weightHistory : [];
+          const nextHistory = [{ date: savedDate, weight: savedWeight }, ...currentHistory];
+
+          return {
+            ...prev,
+            currentWeight: savedWeight,
+            weightHistory: nextHistory,
+          };
+        });
+
+        // Also update BMI by updating profile weight
+        // Do NOT update profile/basic form weight here.
+        // Progress weight logs must remain independent.
 
         toast.success('Weight logged successfully!');
         setShowWeightModal(false);
@@ -647,8 +678,16 @@ export default function UserProgressPage() {
   // Filter data based on time range
   const filteredWeightHistory = useMemo(() => {
     const startDate = getDateRange(timeRange);
-    return data.weightHistory.filter(entry => new Date(entry.date) >= startDate);
+    return data.weightHistory
+      .filter(entry => new Date(entry.date) >= startDate)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [data.weightHistory, timeRange]);
+
+  const allWeightHistoryNewestFirst = useMemo(() => {
+    return [...data.weightHistory].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [data.weightHistory]);
 
   const filteredMeasurementHistory = useMemo(() => {
     const startDate = getDateRange(timeRange);
@@ -977,9 +1016,9 @@ export default function UserProgressPage() {
             {/* Recent Entries */}
             <div className={`p-4 shadow-sm rounded-2xl ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
               <h3 className={`mb-3 font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Recent Entries</h3>
-              {filteredWeightHistory.length > 0 ? (
+              {allWeightHistoryNewestFirst.length > 0 ? (
                 <div className="space-y-2">
-                  {filteredWeightHistory.slice(0, 5).map((entry, index) => (
+                  {allWeightHistoryNewestFirst.map((entry, index) => (
                     <div
                       key={index}
                       className={`flex items-center justify-between py-2 border-b last:border-0 ${isDarkMode ? 'border-gray-700' : 'border-gray-50'}`}

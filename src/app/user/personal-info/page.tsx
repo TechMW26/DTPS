@@ -47,6 +47,15 @@ interface PersonalData {
   referralSource: string;
 }
 
+interface FirstWeightMeta {
+  value?: number;
+  setBy?: 'client' | 'dietitian' | 'admin';
+  setDate?: string;
+  isLocked?: boolean;
+  lastUpdatedBy?: 'client' | 'dietitian' | 'admin';
+  lastUpdateDate?: string;
+}
+
 const activityLevels = [
   { value: "sedentary", label: "Sedentary", desc: "Little or no exercise" },
   { value: "lightly_active", label: "Lightly Active", desc: "Light exercise 1-3 days/week" },
@@ -72,6 +81,7 @@ export default function PersonalInfoPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [firstWeightMeta, setFirstWeightMeta] = useState<FirstWeightMeta | null>(null);
   const [data, setData] = useState<PersonalData>({
     firstName: "",
     lastName: "",
@@ -134,6 +144,7 @@ export default function PersonalInfoPage() {
             source: user.source || "",
             referralSource: user.referralSource || ""
           });
+          setFirstWeightMeta(user.firstWeight || null);
         }
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -243,6 +254,12 @@ export default function PersonalInfoPage() {
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase() || "U";
   };
+
+  const hasFirstWeight = !!(
+    (firstWeightMeta?.value && Number(firstWeightMeta.value) > 0) ||
+    (data.weightKg && Number(data.weightKg) > 0)
+  );
+  const isFirstWeightLockedForClient = hasFirstWeight;
 
   // Convert cm to feet/inches for display
   const cmToFeetInches = (cm: string) => {
@@ -473,8 +490,16 @@ export default function PersonalInfoPage() {
                   value={data.weightKg}
                   onChange={(e) => setData({ ...data, weightKg: e.target.value })}
                   placeholder="Weight"
-                  className={fieldClassName}
+                  disabled={isFirstWeightLockedForClient}
+                  className={`${fieldClassName} ${isFirstWeightLockedForClient ? 'opacity-80 cursor-not-allowed' : ''}`}
                 />
+                {hasFirstWeight && (
+                  <div className="space-y-1">
+                    <p className={isDarkMode ? "text-xs text-amber-300" : "text-xs text-amber-700"}>
+                      This is your starting weight baseline. Contact your dietitian to update it.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <label className={labelClassName}>Target Weight (KG)</label>

@@ -202,7 +202,35 @@ export async function POST(request: NextRequest) {
           razorpayPaymentLinkId: paymentLinkEntity.id
         });
 
-        if (paymentLink && paymentLink.status !== 'paid') {
+        if (paymentLink) {
+          const completedUnifiedPayment = await UnifiedPayment.findOne({
+            $and: [
+              {
+                $or: [
+                  { paymentLink: paymentLink._id },
+                  paymentLink.razorpayPaymentLinkId ? { razorpayPaymentLinkId: paymentLink.razorpayPaymentLinkId } : null,
+                  paymentLink.razorpayPaymentId ? { razorpayPaymentId: paymentLink.razorpayPaymentId } : null,
+                ].filter(Boolean) as any
+              },
+              {
+                $or: [
+                  { status: { $in: ['paid', 'completed'] } },
+                  { paymentStatus: 'paid' }
+                ]
+              }
+            ]
+          }).select('_id paidAt');
+
+          if (paymentLink.status === 'paid' || paymentLink.paidAt || paymentLink.razorpayPaymentId || completedUnifiedPayment) {
+            // PAID is immutable: do not downgrade to expired
+            if (paymentLink.status !== 'paid') {
+              paymentLink.status = 'paid';
+              if (!paymentLink.paidAt) paymentLink.paidAt = completedUnifiedPayment?.paidAt || new Date();
+              await paymentLink.save();
+            }
+            break;
+          }
+
           paymentLink.status = 'expired';
           await paymentLink.save();
 
@@ -230,7 +258,35 @@ export async function POST(request: NextRequest) {
           razorpayPaymentLinkId: paymentLinkEntity.id
         });
 
-        if (paymentLink && paymentLink.status !== 'paid') {
+        if (paymentLink) {
+          const completedUnifiedPayment = await UnifiedPayment.findOne({
+            $and: [
+              {
+                $or: [
+                  { paymentLink: paymentLink._id },
+                  paymentLink.razorpayPaymentLinkId ? { razorpayPaymentLinkId: paymentLink.razorpayPaymentLinkId } : null,
+                  paymentLink.razorpayPaymentId ? { razorpayPaymentId: paymentLink.razorpayPaymentId } : null,
+                ].filter(Boolean) as any
+              },
+              {
+                $or: [
+                  { status: { $in: ['paid', 'completed'] } },
+                  { paymentStatus: 'paid' }
+                ]
+              }
+            ]
+          }).select('_id paidAt');
+
+          if (paymentLink.status === 'paid' || paymentLink.paidAt || paymentLink.razorpayPaymentId || completedUnifiedPayment) {
+            // PAID is immutable: do not downgrade to cancelled
+            if (paymentLink.status !== 'paid') {
+              paymentLink.status = 'paid';
+              if (!paymentLink.paidAt) paymentLink.paidAt = completedUnifiedPayment?.paidAt || new Date();
+              await paymentLink.save();
+            }
+            break;
+          }
+
           paymentLink.status = 'cancelled';
           await paymentLink.save();
 

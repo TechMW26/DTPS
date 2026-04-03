@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       userEmail: session.user.email || '',
       action: 'update_lifestyle_info',
       actionType: 'update',
-      category: 'health',
+      category: 'fitness',
       description: 'Updated own lifestyle information',
       targetUserId: session.user.id,
       targetUserName: session.user.name || '',

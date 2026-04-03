@@ -218,6 +218,39 @@ const paymentLinkSchema = new Schema({
   autoIndex: false
 });
 
+// Guardrail: once paid, status must never downgrade.
+paymentLinkSchema.pre('save', async function (next) {
+  try {
+    const doc = this as any;
+
+    if (doc.isNew) {
+      if (doc.status === 'paid' && !doc.paidAt) {
+        doc.paidAt = new Date();
+      }
+      return next();
+    }
+
+    if (!doc.isModified('status')) {
+      return next();
+    }
+
+    const previous = await (mongoose.models.PaymentLink || mongoose.model('PaymentLink')).findById(doc._id).select('status paidAt');
+    const wasPaid = previous?.status === 'paid' || !!previous?.paidAt;
+
+    if (wasPaid && doc.status !== 'paid') {
+      return next(new Error('Payment status is immutable once paid'));
+    }
+
+    if (doc.status === 'paid' && !doc.paidAt) {
+      doc.paidAt = new Date();
+    }
+
+    return next();
+  } catch (error) {
+    return next(error as any);
+  }
+});
+
 // Indexes
 paymentLinkSchema.index({ client: 1, status: 1 });
 paymentLinkSchema.index({ dietitian: 1, status: 1 });

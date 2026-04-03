@@ -245,8 +245,17 @@ export default function AdminDietitianDetailPage() {
   const fetchDietitianDetails = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/admin/dietitians/${dietitianId}`);
-      if (!response.ok) throw new Error('Failed to fetch dietitian details');
+      const response = await fetch(`/api/admin/dietitians/${encodeURIComponent(dietitianId)}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        const errorMessage = errorData?.error || 'Failed to fetch dietitian details';
+
+        // 404 is handled in-page via "Dietitian not found" state
+        if (response.status !== 404) {
+          toast.error(errorMessage);
+        }
+        throw new Error(errorMessage);
+      }
 
       const data = await response.json();
       setDietitian(data.dietitian);
@@ -259,7 +268,6 @@ export default function AdminDietitianDetailPage() {
       setStats(data.stats);
     } catch (error) {
       console.error('Error fetching dietitian:', error);
-      toast.error('Failed to load dietitian details');
     } finally {
       setLoading(false);
     }
@@ -285,7 +293,7 @@ export default function AdminDietitianDetailPage() {
   const handleSave = async () => {
     try {
       setSaving(true);
-      const response = await fetch(`/api/admin/dietitians/${dietitianId}`, {
+      const response = await fetch(`/api/admin/dietitians/${encodeURIComponent(dietitianId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editData)
@@ -307,7 +315,7 @@ export default function AdminDietitianDetailPage() {
 
   const handleDeactivate = async () => {
     try {
-      const response = await fetch(`/api/admin/dietitians/${dietitianId}?action=deactivate`, {
+      const response = await fetch(`/api/admin/dietitians/${encodeURIComponent(dietitianId)}?action=deactivate`, {
         method: 'DELETE'
       });
 
@@ -328,7 +336,7 @@ export default function AdminDietitianDetailPage() {
 
   const handleDelete = async () => {
     try {
-      const response = await fetch(`/api/admin/dietitians/${dietitianId}?action=delete`, {
+      const response = await fetch(`/api/admin/dietitians/${encodeURIComponent(dietitianId)}?action=delete`, {
         method: 'DELETE'
       });
 

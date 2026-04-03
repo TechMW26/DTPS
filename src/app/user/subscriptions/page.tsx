@@ -57,7 +57,7 @@ interface Subscription {
   planCategory: string;
   amount: number;
   currency: string;
-  status: 'active' | 'pending' | 'expired' | 'cancelled';
+  status: 'paid' | 'active' | 'pending' | 'expired' | 'cancelled';
   startDate?: string;
   endDate?: string;
   durationDays: number;
@@ -232,6 +232,20 @@ export default function UserSubscriptionsPage() {
   };
 
   const getStatusBadge = (status: string, paymentStatus?: string) => {
+    if (paymentStatus === 'paid' || status === 'paid' || status === 'completed') {
+      return (
+        <Badge
+          className={
+            isDarkMode
+              ? 'bg-emerald-500/15 text-emerald-200 border border-emerald-500/30'
+              : 'bg-green-100 text-green-700'
+          }
+        >
+          Paid
+        </Badge>
+      );
+    }
+
     if (paymentStatus === 'pending') {
       return (
         <Badge
@@ -544,7 +558,7 @@ export default function UserSubscriptionsPage() {
             {availablePlans.length > 0 ? (
               availablePlans.map((plan) => {
                 const alreadyPurchased = subscriptions.some(
-                  s => s.planName === plan.name && (s.status === 'active' || s.paymentStatus === 'pending')
+                  s => s.planName === plan.name && (s.paymentStatus === 'paid' || s.status === 'paid' || s.status === 'active' || s.paymentStatus === 'pending')
                 );
 
                 return (

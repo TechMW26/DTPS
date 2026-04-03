@@ -59,6 +59,40 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const completedUnifiedPayment = await UnifiedPayment.findOne({
+      $and: [
+        {
+          $or: [
+            { paymentLink: paymentLink._id },
+            paymentLink.razorpayPaymentLinkId ? { razorpayPaymentLinkId: paymentLink.razorpayPaymentLinkId } : null,
+            paymentLink.razorpayPaymentId ? { razorpayPaymentId: paymentLink.razorpayPaymentId } : null,
+          ].filter(Boolean) as any
+        },
+        {
+          $or: [
+            { status: { $in: ['paid', 'completed'] } },
+            { paymentStatus: 'paid' }
+          ]
+        }
+      ]
+    }).select('_id paidAt status paymentStatus');
+
+    if (completedUnifiedPayment || paymentLink.paidAt || paymentLink.razorpayPaymentId) {
+      if (paymentLink.status !== 'paid') {
+        paymentLink.status = 'paid';
+        if (!paymentLink.paidAt) {
+          paymentLink.paidAt = completedUnifiedPayment?.paidAt || new Date();
+        }
+        await paymentLink.save();
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Payment already completed. Status preserved as PAID.',
+        paymentLink
+      });
+    }
+
     // Check if Razorpay is configured
     if (!razorpay || !paymentLink.razorpayPaymentLinkId) {
       return NextResponse.json({
@@ -206,6 +240,18 @@ export async function POST(request: NextRequest) {
           unifiedPaymentCreated
         });
       } else if (razorpayLink.status === 'expired') {
+        if (paymentLink.paidAt || paymentLink.razorpayPaymentId) {
+          paymentLink.status = 'paid';
+          if (!paymentLink.paidAt) paymentLink.paidAt = new Date();
+          await paymentLink.save();
+          return NextResponse.json({
+            success: true,
+            message: 'Payment completion already recorded. Keeping status as PAID.',
+            paymentLink,
+            razorpayStatus: razorpayLink.status
+          });
+        }
+
         paymentLink.status = 'expired';
         await paymentLink.save();
 
@@ -227,6 +273,18 @@ export async function POST(request: NextRequest) {
           razorpayStatus: razorpayLink.status
         });
       } else if (razorpayLink.status === 'cancelled') {
+        if (paymentLink.paidAt || paymentLink.razorpayPaymentId) {
+          paymentLink.status = 'paid';
+          if (!paymentLink.paidAt) paymentLink.paidAt = new Date();
+          await paymentLink.save();
+          return NextResponse.json({
+            success: true,
+            message: 'Payment completion already recorded. Keeping status as PAID.',
+            paymentLink,
+            razorpayStatus: razorpayLink.status
+          });
+        }
+
         paymentLink.status = 'cancelled';
         await paymentLink.save();
 
@@ -308,6 +366,36 @@ export async function GET(request: NextRequest) {
 
     for (const paymentLink of pendingLinks) {
       try {
+        const completedUnifiedPayment = await UnifiedPayment.findOne({
+          $and: [
+            {
+              $or: [
+                { paymentLink: paymentLink._id },
+                paymentLink.razorpayPaymentLinkId ? { razorpayPaymentLinkId: paymentLink.razorpayPaymentLinkId } : null,
+                paymentLink.razorpayPaymentId ? { razorpayPaymentId: paymentLink.razorpayPaymentId } : null,
+              ].filter(Boolean) as any
+            },
+            {
+              $or: [
+                { status: { $in: ['paid', 'completed'] } },
+                { paymentStatus: 'paid' }
+              ]
+            }
+          ]
+        }).select('_id paidAt');
+
+        if (completedUnifiedPayment || paymentLink.paidAt || paymentLink.razorpayPaymentId) {
+          if (paymentLink.status !== 'paid') {
+            paymentLink.status = 'paid';
+            if (!paymentLink.paidAt) paymentLink.paidAt = completedUnifiedPayment?.paidAt || new Date();
+            await paymentLink.save();
+            results.updated++;
+          } else {
+            results.stillPending++;
+          }
+          continue;
+        }
+
         const razorpayLink: any = await razorpay.paymentLink.fetch(paymentLink.razorpayPaymentLinkId!);
 
         if (razorpayLink.status === 'paid') {

@@ -165,6 +165,7 @@ const normalizeMealKeys = (meals: Record<string, Meal>): Record<string, Meal> =>
       };
     }
   });
+  
   return normalized;
 };
 
@@ -260,15 +261,9 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
   // Using JSON stringify for deep comparison since object reference may not change
   const initialMealsKey = JSON.stringify(initialMeals);
   useEffect(() => {
-
     const newDays = buildDays(duration);
 
     if (initialMeals && Array.isArray(initialMeals) && initialMeals.length > 0) {
-      // Log what we're loading
-      initialMeals.forEach((day, i) => {
-        const mealCount = day?.meals ? Object.keys(day.meals).length : 0;
-        const isHeld = (day as any)?.isHeld || false;
-      });
 
       // Always set the weekPlan from initialMeals if provided
       // Use MAX of duration and initialMeals.length to ensure we show all days

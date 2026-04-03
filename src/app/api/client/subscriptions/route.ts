@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/db/connection';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { isPaidOrCompleted, resolvePaymentStatus } from '@/lib/payments/payment-status';
 
 // GET /api/client/subscriptions - Get client's subscriptions
 export async function GET(request: NextRequest) {
@@ -38,12 +39,23 @@ export async function GET(request: NextRequest) {
       endDate.setDate(endDate.getDate() + durationDays);
       
       const now = new Date();
-      let status = 'pending';
-      if (payment.status === 'completed' || payment.status === 'paid') {
-        status = now > endDate ? 'expired' : 'active';
-      } else if (payment.status === 'cancelled') {
-        status = 'cancelled';
-      }
+      const paymentCompleted = isPaidOrCompleted({
+        status: payment.status,
+        paymentStatus: payment.paymentStatus,
+        paidAt: payment.paidAt
+      });
+
+      const normalizedPaymentStatus = paymentCompleted
+        ? 'paid'
+        : (payment.paymentStatus === 'failed' || payment.status === 'failed' ? 'failed' : 'pending');
+
+      const status = resolvePaymentStatus({
+        status: payment.status,
+        paymentStatus: payment.paymentStatus,
+        paidAt: payment.paidAt,
+        expiryDate: endDate,
+        now
+      });
 
       return {
         _id: payment._id.toString(),
@@ -52,14 +64,15 @@ export async function GET(request: NextRequest) {
         amount: payment.amount,
         currency: payment.currency || 'INR',
         status,
-        startDate: payment.status === 'completed' || payment.status === 'paid' ? startDate : null,
-        endDate: payment.status === 'completed' || payment.status === 'paid' ? endDate : null,
+        startDate: paymentCompleted ? startDate : null,
+        endDate: paymentCompleted ? endDate : null,
         durationDays,
         durationLabel: payment.durationLabel || `${durationDays} days`,
         features: payment.features || [],
-        paymentStatus: payment.status === 'completed' || payment.status === 'paid' ? 'paid' : 'pending',
+        paymentStatus: normalizedPaymentStatus,
         razorpayPaymentLinkUrl: payment.razorpayPaymentLinkUrl,
         razorpayPaymentLinkShortUrl: payment.razorpayPaymentLinkShortUrl,
+        paidAt: payment.paidAt || null,
         dietitian: payment.dietitian ? {
           name: `${payment.dietitian.firstName} ${payment.dietitian.lastName}`
         } : null

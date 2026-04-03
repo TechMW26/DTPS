@@ -58,6 +58,14 @@ export interface IUser extends Document {
   heightInch?: string; // Height in inches (for import)
   heightCm?: string; // Height in cm (string format)
   weightKg?: string; // Weight in kg (string format)
+  firstWeight?: {
+    value?: number;
+    setBy?: 'client' | 'dietitian' | 'admin';
+    setDate?: Date;
+    isLocked?: boolean;
+    lastUpdatedBy?: 'client' | 'dietitian' | 'admin';
+    lastUpdateDate?: Date;
+  };
   targetWeightKg?: string; // Target weight in kg
   bmr?: number; // Basal Metabolic Rate (calories)
   bodyFat?: number; // Body fat percentage (0-100)

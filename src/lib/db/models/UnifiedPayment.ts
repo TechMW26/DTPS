@@ -1044,6 +1044,37 @@ unifiedPaymentSchema.statics.syncRazorpayPayment = async function (
 // Pre-save hook to calculate amounts, capture client details, and calculate remaining days
 unifiedPaymentSchema.pre('save', async function (next) {
   try {
+    // Guardrail: once a payment is paid/completed, prevent status downgrade.
+    if (!this.isNew && (this.isModified('status') || this.isModified('paymentStatus'))) {
+      const previous = await (mongoose.models.UnifiedPayment || mongoose.model('UnifiedPayment'))
+        .findById(this._id)
+        .select('status paymentStatus paidAt');
+
+      const wasPaid =
+        previous?.paymentStatus === 'paid' ||
+        previous?.status === 'paid' ||
+        previous?.status === 'completed' ||
+        !!previous?.paidAt;
+
+      const nowPaid =
+        this.paymentStatus === 'paid' ||
+        this.status === 'paid' ||
+        this.status === 'completed' ||
+        !!this.paidAt;
+
+      if (wasPaid && !nowPaid) {
+        return next(new Error('UnifiedPayment status is immutable once paid/completed'));
+      }
+    }
+
+    // Ensure completion timestamp is present for paid/completed statuses.
+    if (
+      (this.paymentStatus === 'paid' || this.status === 'paid' || this.status === 'completed') &&
+      !this.paidAt
+    ) {
+      this.paidAt = new Date();
+    }
+
     // Capture client details if not already set (real-time dynamic data)
     if (this.client && (!this.payerEmail || !this.payerPhone || !this.payerName)) {
       try {

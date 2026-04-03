@@ -699,11 +699,13 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       setInitialMealTypes(template.mealTypes);
     }
 
+    let mealsToSet: any[] = [];
+    
     if (template.meals && template.meals.length > 0) {
       // In edit mode, merge template meals with existing meals instead of overwriting
       if (isEditMode && initialMeals.length > 0) {
         const templateMealsList = template.meals!;
-        const mergedMeals = initialMeals.map((existingDay: any, i: number) => {
+        mealsToSet = initialMeals.map((existingDay: any, i: number) => {
           const templateDay = templateMealsList[i];
           if (!templateDay || !templateDay.meals) return existingDay;
 
@@ -722,10 +724,20 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
           return { ...existingDay, meals: mergedDayMeals };
         });
-        setInitialMeals(mergedMeals);
+        setInitialMeals(mealsToSet);
       } else {
-        setInitialMeals(template.meals);
+        mealsToSet = template.meals;
+        setInitialMeals(mealsToSet);
       }
+    }
+    
+    // IMPORTANT: In edit mode, also update editingPlan.meals so DietPlanDashboard picks up the change
+    if (isEditMode && editingPlan && mealsToSet.length > 0) {
+      setEditingPlan((prev: any) => prev ? { 
+        ...prev, 
+        meals: mealsToSet,
+        mealTypes: template.mealTypes || prev.mealTypes 
+      } : null);
     }
 
     // Force DietPlanDashboard to re-mount with new meals
@@ -738,6 +750,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   // Deep clone a meal day's data to avoid reference sharing between days
   const deepCloneMealDay = (sourceDay: any) => {
     const clonedMeals: Record<string, any> = {};
+    
     if (sourceDay.meals && typeof sourceDay.meals === 'object') {
       Object.keys(sourceDay.meals).forEach(mealType => {
         const meal = sourceDay.meals[mealType];
@@ -755,12 +768,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         };
       });
     }
+    
     return clonedMeals;
   };
 
   // Apply template with date→day mapping from the Date Selection modal
   const applyTemplateMappingToMeals = () => {
-    if (!pendingTemplate || !pendingTemplate.meals) return;
+    if (!pendingTemplate || !pendingTemplate.meals) {
+      return;
+    }
 
     const template = pendingTemplate;
     const templateMeals = template.meals;
@@ -846,9 +862,21 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
     // Set the mapped meals — this triggers DietPlanDashboard to rebuild weekPlan
     setInitialMeals(mappedMeals);
+    
+    // IMPORTANT: In edit mode, we also need to update editingPlan.meals
+    // because the DietPlanDashboard uses editingPlan.meals over initialMeals in edit mode
+    if (isEditMode && editingPlan) {
+      setEditingPlan((prev: any) => prev ? { 
+        ...prev, 
+        meals: mappedMeals,
+        mealTypes: template.mealTypes || prev.mealTypes 
+      } : null);
+    }
 
     // Force DietPlanDashboard to re-mount with new meals
     setPlanKey(prev => prev + 1);
+    
+    console.log('[Template Load] State updated, planKey incremented');
 
     // Close the dialog and reset mapping state
     setShowTemplateDialog(false);

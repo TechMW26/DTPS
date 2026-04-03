@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
             userEmail: session.user.email || '',
             action: 'log_activity',
             actionType: 'create',
-            category: 'health',
+            category: 'fitness',
             description: `Logged activity: ${entry.name} for ${entry.duration} minutes`,
             targetUserId: session.user.id,
             targetUserName: session.user.name || '',
