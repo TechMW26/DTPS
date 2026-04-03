@@ -109,14 +109,63 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
 
   const formattedAN = anniversary ? new Date(anniversary).toISOString().split("T")[0] : "";
 
-  // Computed values for height and BMI
-  const feetNum = parseFloat(heightFeet || '0');
-  const inchNum = parseFloat(heightInch || '0');
-  const computedCm = feetNum > 0 || inchNum > 0 ? ((feetNum * 12 + inchNum) * 2.54).toFixed(2) : heightCm;
-  const hMeters = parseFloat(computedCm || '0') / 100;
+  // Height field values - show empty when no value (never show 0 as default)
+  const isEmptyValue = (val: any) => val === '' || val === null || val === undefined || val === '0' || val === 0;
+  const displayHeightFeet = isEmptyValue(heightFeet) ? '' : String(heightFeet);
+  const displayHeightInch = isEmptyValue(heightInch) ? '' : String(heightInch);
+  const displayHeightCm = isEmptyValue(heightCm) ? '' : String(heightCm);
+
+  // BMI calculation - auto-calculate from weight and height
+  const calculateBMI = (weightKgVal: string, heightCmVal: string): string => {
+    const w = parseFloat(weightKgVal || '0');
+    const h = parseFloat(heightCmVal || '0');
+    if (!w || !h || h === 0) return '';
+    const heightM = h / 100;
+    const bmiVal = w / (heightM * heightM);
+    return bmiVal.toFixed(1);
+  };
+
+  const hCmNum = parseFloat(displayHeightCm || '0');
   const wKg = parseFloat(weightKg || '0');
-  const computedBmi = hMeters > 0 && wKg > 0 ? (wKg / (hMeters * hMeters)).toFixed(1) : bmi;
-  const computedIdeal = hMeters > 0 ? (parseFloat(computedCm) - 100).toFixed(1) : idealWeightKg;
+  const computedBmi = calculateBMI(weightKg, displayHeightCm || heightCm);
+  const computedIdeal = hCmNum > 0 ? (hCmNum - 100).toFixed(1) : idealWeightKg;
+
+  const handleHeightFeetChange = (value: string) => {
+    const ft = parseFloat(value) || 0;
+    const inch = parseFloat(String(heightInch)) || 0;
+    const totalInches = (ft * 12) + inch;
+    const cm = Math.round(totalInches * 2.54);
+
+    // Set feet value - keep empty if user clears it
+    onChange('heightFeet', value);
+    // Set cm - only show value if conversion produces non-zero result
+    onChange('heightCm', cm > 0 ? String(cm) : '');
+  };
+
+  const handleHeightInchChange = (value: string) => {
+    const ft = parseFloat(String(heightFeet)) || 0;
+    const inch = parseFloat(value) || 0;
+    const totalInches = (ft * 12) + inch;
+    const cm = Math.round(totalInches * 2.54);
+
+    // Set inch value - keep empty if user clears it
+    onChange('heightInch', value);
+    // Set cm - only show value if conversion produces non-zero result
+    onChange('heightCm', cm > 0 ? String(cm) : '');
+  };
+
+  const handleHeightCmChange = (value: string) => {
+    const cm = parseFloat(value) || 0;
+    const totalInches = cm / 2.54;
+    const ft = Math.floor(totalInches / 12);
+    const inch = Math.round(totalInches % 12);
+
+    // Set cm value - keep empty if user clears it
+    onChange('heightCm', value);
+    // Set ft and inch - only show values if conversion produces non-zero results
+    onChange('heightFeet', ft > 0 ? String(ft) : '');
+    onChange('heightInch', inch > 0 ? String(inch) : '');
+  };
 
   return (
     <Card className="border-0 shadow-lg rounded-xl overflow-hidden">
@@ -414,9 +463,9 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
                 <Label className="text-xs text-gray-600">Height (Ft)*</Label>
                 <Input
                   type="number"
-                  value={heightFeet}
-                  onChange={e => onChange("heightFeet", e.target.value)}
-                  placeholder="5"
+                  value={displayHeightFeet}
+                  onChange={e => handleHeightFeetChange(e.target.value)}
+                  placeholder="Enter feet"
                   className="h-10"
                 />
               </div>
@@ -424,9 +473,9 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
                 <Label className="text-xs text-gray-600">Height (Inch)</Label>
                 <Input
                   type="number"
-                  value={heightInch}
-                  onChange={e => onChange("heightInch", e.target.value)}
-                  placeholder="6"
+                  value={displayHeightInch}
+                  onChange={e => handleHeightInchChange(e.target.value)}
+                  placeholder="Enter inches"
                   className="h-10"
                 />
               </div>
@@ -434,8 +483,9 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
                 <Label className="text-xs text-gray-600">Height (Cm)</Label>
                 <Input
                   type="number"
-                  value={computedCm}
-                  onChange={e => onChange("heightCm", e.target.value)}
+                  value={displayHeightCm}
+                  onChange={e => handleHeightCmChange(e.target.value)}
+                  placeholder="Enter centimeters"
                   className="h-10 bg-gray-50"
                 />
               </div>

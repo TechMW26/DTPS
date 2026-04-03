@@ -1097,6 +1097,54 @@ export default function ClientDetailPage() {
         }
 
         // Populate form component states (with physical measurements from user or lifestyle)
+        // Get raw height values from database
+        const savedFt = parseFloat(data?.user?.heightFeet || lifestyleInfo?.heightFeet || '0') || 0;
+        const savedInch = parseFloat(data?.user?.heightInch || lifestyleInfo?.heightInch || '0') || 0;
+        const savedCm = parseFloat(data?.user?.heightCm || lifestyleInfo?.heightCm || data?.user?.height || '0') || 0;
+
+        // Height conversion on load - auto-fill missing fields
+        let finalHeightFeet = '';
+        let finalHeightInch = '';
+        let finalHeightCm = '';
+
+        if (savedCm > 0 && savedFt === 0 && savedInch === 0) {
+          // Convert cm to ft and inch
+          const totalInches = savedCm / 2.54;
+          const ft = Math.floor(totalInches / 12);
+          const inch = Math.round(totalInches % 12);
+          finalHeightFeet = ft > 0 ? String(ft) : '';
+          finalHeightInch = inch > 0 ? String(inch) : '';
+          finalHeightCm = String(savedCm);
+        } else if ((savedFt > 0 || savedInch > 0) && savedCm === 0) {
+          // Convert ft+inch to cm
+          const totalInches = (savedFt * 12) + savedInch;
+          const cm = Math.round(totalInches * 2.54);
+          finalHeightCm = cm > 0 ? String(cm) : '';
+          finalHeightFeet = savedFt > 0 ? String(savedFt) : '';
+          finalHeightInch = savedInch > 0 ? String(savedInch) : '';
+        } else if (savedFt > 0 || savedInch > 0 || savedCm > 0) {
+          // All values exist or partial - display them as-is
+          finalHeightFeet = savedFt > 0 ? String(savedFt) : '';
+          finalHeightInch = savedInch > 0 ? String(savedInch) : '';
+          finalHeightCm = savedCm > 0 ? String(savedCm) : '';
+        }
+        // If all are 0/empty, keep all fields empty (no default 0)
+
+        // Get weight value
+        const savedWeight = parseFloat(data?.user?.weightKg || lifestyleInfo?.weightKg || data?.user?.weight || '0') || 0;
+        const finalWeightKg = savedWeight > 0 ? String(savedWeight) : '';
+
+        // Calculate BMI from final values
+        const calculateBMI = (weightKgVal: string, heightCmVal: string): string => {
+          const w = parseFloat(weightKgVal || '0');
+          const h = parseFloat(heightCmVal || '0');
+          if (!w || !h || h === 0) return '';
+          const heightM = h / 100;
+          const bmiVal = w / (heightM * heightM);
+          return bmiVal.toFixed(1);
+        };
+        const calculatedBmi = calculateBMI(finalWeightKg, finalHeightCm);
+
         setBasicInfo({
           firstName: data?.user?.firstName || '',
           lastName: data?.user?.lastName || '',
@@ -1116,14 +1164,14 @@ export default function ClientDetailPage() {
           goalsList: data?.user?.healthGoals || [],
           targetWeightBucket: data?.user?.targetWeightBucket || '',
           sharePhotoConsent: data?.user?.sharePhotoConsent || false,
-          // Physical measurements (from user model or lifestyle info)
-          heightFeet: data?.user?.heightFeet || lifestyleInfo?.heightFeet || '',
-          heightInch: data?.user?.heightInch || lifestyleInfo?.heightInch || '',
-          heightCm: String(data?.user?.heightCm || lifestyleInfo?.heightCm || data?.user?.height || ''),
-          weightKg: String(data?.user?.weightKg || lifestyleInfo?.weightKg || data?.user?.weight || ''),
+          // Physical measurements - use converted values
+          heightFeet: finalHeightFeet,
+          heightInch: finalHeightInch,
+          heightCm: finalHeightCm,
+          weightKg: finalWeightKg,
           targetWeightKg: data?.user?.targetWeightKg || lifestyleInfo?.targetWeightKg || '',
           idealWeightKg: data?.user?.idealWeightKg || lifestyleInfo?.idealWeightKg || '',
-          bmi: data?.user?.bmi || lifestyleInfo?.bmi || '',
+          bmi: calculatedBmi,
           activityLevel: data?.user?.activityLevel || lifestyleInfo?.activityLevel || ''
         });
 

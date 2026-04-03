@@ -484,7 +484,7 @@ export default function PersonalInfoPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className={labelClassName}>Current Weight (KG)</label>
+                <label className={labelClassName}>First Weight (KG)</label>
                 <input
                   type="number"
                   value={data.weightKg}
