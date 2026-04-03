@@ -22,12 +22,12 @@ export async function GET(request: NextRequest) {
     const payments = await withCache(
       `client-subscriptions:${session.user.id}`,
       async () => await UnifiedPayment.find({
-      client: session.user.id,
-      type: { $in: ['service_plan', 'subscription', 'consultation'] }
-    })
-      .populate('dietitian', 'firstName lastName')
-      .sort({ createdAt: -1 })
-      .lean(),
+        client: session.user.id,
+        type: { $in: ['service_plan', 'subscription', 'consultation'] }
+      })
+        .populate('dietitian', 'firstName lastName')
+        .sort({ createdAt: -1 })
+        .lean(),
       { ttl: 120000, tags: ['client'] }
     );
 
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       const durationDays = payment.durationDays || 30;
       const endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + durationDays);
-      
+
       const now = new Date();
       const paymentCompleted = isPaidOrCompleted({
         status: payment.status,

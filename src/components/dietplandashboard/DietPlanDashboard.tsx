@@ -165,7 +165,7 @@ const normalizeMealKeys = (meals: Record<string, Meal>): Record<string, Meal> =>
       };
     }
   });
-  
+
   return normalized;
 };
 

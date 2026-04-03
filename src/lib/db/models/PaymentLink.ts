@@ -5,14 +5,14 @@ export interface IPaymentLink extends Document {
   // References
   client: mongoose.Types.ObjectId;
   dietitian: mongoose.Types.ObjectId;
-  
+
   // Payment details
   amount: number;
   tax: number;
   discount: number;
   finalAmount: number;
   currency: string;
-  
+
   // Plan details
   planCategory?: string;
   planName?: string;
@@ -21,7 +21,7 @@ export interface IPaymentLink extends Document {
   catalogue?: string;
   servicePlanId?: mongoose.Types.ObjectId;
   pricingTierId?: string;
-  
+
   // Razorpay details
   razorpayPaymentLinkId?: string;
   razorpayPaymentLinkUrl?: string;
@@ -42,18 +42,18 @@ export interface IPaymentLink extends Document {
   cardNetwork?: string;
   errorCode?: string;
   errorDescription?: string;
-  
+
   // Status
   status: 'created' | 'pending' | 'paid' | 'expired' | 'cancelled';
-  
+
   // Dates
   expireDate?: Date;
   paidAt?: Date;
-  
+
   // Additional info
   notes?: string;
   showToClient: boolean;
-  
+
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -70,7 +70,7 @@ const paymentLinkSchema = new Schema({
     ref: 'User',
     required: true
   },
-  
+
   // Payment details
   amount: {
     type: Number,
@@ -97,7 +97,7 @@ const paymentLinkSchema = new Schema({
     default: 'INR',
     uppercase: true
   },
-  
+
   // Plan details
   planCategory: {
     type: String,
@@ -126,7 +126,7 @@ const paymentLinkSchema = new Schema({
   pricingTierId: {
     type: String
   },
-  
+
   // Razorpay details
   razorpayPaymentLinkId: {
     type: String,
@@ -187,7 +187,7 @@ const paymentLinkSchema = new Schema({
   errorDescription: {
     type: String
   },
-  
+
   // Status
   status: {
     type: String,
@@ -195,7 +195,7 @@ const paymentLinkSchema = new Schema({
     enum: ['created', 'pending', 'paid', 'expired', 'cancelled'],
     default: 'created'
   },
-  
+
   // Dates
   expireDate: {
     type: Date
@@ -203,7 +203,7 @@ const paymentLinkSchema = new Schema({
   paidAt: {
     type: Date
   },
-  
+
   // Additional info
   notes: {
     type: String,
@@ -258,7 +258,7 @@ paymentLinkSchema.index({ createdAt: -1 });
 // Note: razorpayPaymentLinkId index is created automatically by sparse: true, so we don't need schema.index() call
 
 // Method to mark as paid
-paymentLinkSchema.methods.markAsPaid = function(paymentDetails: {
+paymentLinkSchema.methods.markAsPaid = function (paymentDetails: {
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
   razorpaySignature?: string;
@@ -278,13 +278,13 @@ paymentLinkSchema.methods.markAsPaid = function(paymentDetails: {
 };
 
 // Method to check if expired
-paymentLinkSchema.methods.isExpired = function() {
+paymentLinkSchema.methods.isExpired = function () {
   if (!this.expireDate) return false;
   return new Date() > this.expireDate;
 };
 
 // Static method to get payment links for a client
-paymentLinkSchema.statics.getClientPaymentLinks = function(clientId: string, limit = 20, skip = 0) {
+paymentLinkSchema.statics.getClientPaymentLinks = function (clientId: string, limit = 20, skip = 0) {
   return this.find({ client: clientId })
     .populate('dietitian', 'firstName lastName')
     .sort({ createdAt: -1 })
@@ -293,10 +293,10 @@ paymentLinkSchema.statics.getClientPaymentLinks = function(clientId: string, lim
 };
 
 // Static method to get payment links for a dietitian
-paymentLinkSchema.statics.getDietitianPaymentLinks = function(dietitianId: string, clientId?: string, limit = 50, skip = 0) {
+paymentLinkSchema.statics.getDietitianPaymentLinks = function (dietitianId: string, clientId?: string, limit = 50, skip = 0) {
   const query: any = { dietitian: dietitianId };
   if (clientId) query.client = clientId;
-  
+
   return this.find(query)
     .populate('client', 'firstName lastName email phone')
     .sort({ createdAt: -1 })

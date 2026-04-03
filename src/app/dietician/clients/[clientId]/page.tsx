@@ -270,7 +270,7 @@ export default function ClientDetailPage() {
 
   // Notes panel state
   const [isNotesOpen, setIsNotesOpen] = useState(false);
-  
+
   // Weight tracker visibility state
   const [showWeightTracker, setShowWeightTracker] = useState(false);
 
@@ -2095,71 +2095,71 @@ export default function ClientDetailPage() {
                 {showWeightTracker && (
                   <div className="px-4 pb-4 border-t border-gray-100">
                     <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-amber-700">First Weight</span>
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">START</span>
-                    </div>
-                    <p className="mt-1 text-lg font-bold text-amber-900">
-                      {displayFirstWeight ? `${displayFirstWeight.toFixed(1)} kg` : '--'}
-                    </p>
-                  </div>
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-amber-700">First Weight</span>
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">START</span>
+                        </div>
+                        <p className="mt-1 text-lg font-bold text-amber-900">
+                          {displayFirstWeight ? `${displayFirstWeight.toFixed(1)} kg` : '--'}
+                        </p>
+                      </div>
 
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-blue-700">Current Weight</span>
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">NOW</span>
-                    </div>
-                    <p className="mt-1 text-lg font-bold text-blue-900">
-                      {displayCurrentWeight ? `${displayCurrentWeight.toFixed(1)} kg` : '--'}
-                    </p>
-                  </div>
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-blue-700">Current Weight</span>
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">NOW</span>
+                        </div>
+                        <p className="mt-1 text-lg font-bold text-blue-900">
+                          {displayCurrentWeight ? `${displayCurrentWeight.toFixed(1)} kg` : '--'}
+                        </p>
+                      </div>
 
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                    <div className="text-xs font-medium text-gray-600">Change from Start</div>
-                    <p className={`mt-1 text-lg font-bold ${weightDelta === null
-                      ? 'text-gray-500'
-                      : weightDelta < 0
-                        ? 'text-green-700'
-                        : weightDelta > 0
-                          ? 'text-red-700'
-                          : 'text-gray-700'
-                      }`}>
-                      {weightDelta === null
-                        ? '--'
-                        : `${weightDelta > 0 ? '+' : ''}${weightDelta.toFixed(1)} kg ${weightDelta < 0 ? '↓' : weightDelta > 0 ? '↑' : '→'}`}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 max-h-56 overflow-y-auto rounded-lg border border-gray-100">
-                  {weightLog.length === 0 ? (
-                    <div className="p-4 text-sm text-gray-500">No weight entries yet.</div>
-                  ) : (
-                    <div className="divide-y divide-gray-100">
-                      {weightLog.map((entry, index) => {
-                        const isNow = index === 0;
-                        const isStart = index === weightLog.length - 1;
-                        return (
-                          <div key={entry._id} className="flex items-center justify-between p-3">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{entry.weight.toFixed(1)} kg</p>
-                              <p className="text-xs text-gray-500">{format(new Date(entry.recordedAt), 'dd MMM yyyy, hh:mm a')}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {isStart && (
-                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">START</span>
-                              )}
-                              {isNow && (
-                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">NOW</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <div className="text-xs font-medium text-gray-600">Change from Start</div>
+                        <p className={`mt-1 text-lg font-bold ${weightDelta === null
+                          ? 'text-gray-500'
+                          : weightDelta < 0
+                            ? 'text-green-700'
+                            : weightDelta > 0
+                              ? 'text-red-700'
+                              : 'text-gray-700'
+                          }`}>
+                          {weightDelta === null
+                            ? '--'
+                            : `${weightDelta > 0 ? '+' : ''}${weightDelta.toFixed(1)} kg ${weightDelta < 0 ? '↓' : weightDelta > 0 ? '↑' : '→'}`}
+                        </p>
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    <div className="mt-4 max-h-56 overflow-y-auto rounded-lg border border-gray-100">
+                      {weightLog.length === 0 ? (
+                        <div className="p-4 text-sm text-gray-500">No weight entries yet.</div>
+                      ) : (
+                        <div className="divide-y divide-gray-100">
+                          {weightLog.map((entry, index) => {
+                            const isNow = index === 0;
+                            const isStart = index === weightLog.length - 1;
+                            return (
+                              <div key={entry._id} className="flex items-center justify-between p-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-900">{entry.weight.toFixed(1)} kg</p>
+                                  <p className="text-xs text-gray-500">{format(new Date(entry.recordedAt), 'dd MMM yyyy, hh:mm a')}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {isStart && (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">START</span>
+                                  )}
+                                  {isNow && (
+                                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">NOW</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

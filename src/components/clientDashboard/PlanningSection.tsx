@@ -700,7 +700,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     }
 
     let mealsToSet: any[] = [];
-    
+
     if (template.meals && template.meals.length > 0) {
       // In edit mode, merge template meals with existing meals instead of overwriting
       if (isEditMode && initialMeals.length > 0) {
@@ -730,13 +730,13 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         setInitialMeals(mealsToSet);
       }
     }
-    
+
     // IMPORTANT: In edit mode, also update editingPlan.meals so DietPlanDashboard picks up the change
     if (isEditMode && editingPlan && mealsToSet.length > 0) {
-      setEditingPlan((prev: any) => prev ? { 
-        ...prev, 
+      setEditingPlan((prev: any) => prev ? {
+        ...prev,
         meals: mealsToSet,
-        mealTypes: template.mealTypes || prev.mealTypes 
+        mealTypes: template.mealTypes || prev.mealTypes
       } : null);
     }
 
@@ -750,7 +750,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   // Deep clone a meal day's data to avoid reference sharing between days
   const deepCloneMealDay = (sourceDay: any) => {
     const clonedMeals: Record<string, any> = {};
-    
+
     if (sourceDay.meals && typeof sourceDay.meals === 'object') {
       Object.keys(sourceDay.meals).forEach(mealType => {
         const meal = sourceDay.meals[mealType];
@@ -768,7 +768,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         };
       });
     }
-    
+
     return clonedMeals;
   };
 
@@ -862,20 +862,20 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
     // Set the mapped meals — this triggers DietPlanDashboard to rebuild weekPlan
     setInitialMeals(mappedMeals);
-    
+
     // IMPORTANT: In edit mode, we also need to update editingPlan.meals
     // because the DietPlanDashboard uses editingPlan.meals over initialMeals in edit mode
     if (isEditMode && editingPlan) {
-      setEditingPlan((prev: any) => prev ? { 
-        ...prev, 
+      setEditingPlan((prev: any) => prev ? {
+        ...prev,
         meals: mappedMeals,
-        mealTypes: template.mealTypes || prev.mealTypes 
+        mealTypes: template.mealTypes || prev.mealTypes
       } : null);
     }
 
     // Force DietPlanDashboard to re-mount with new meals
     setPlanKey(prev => prev + 1);
-    
+
     console.log('[Template Load] State updated, planKey incremented');
 
     // Close the dialog and reset mapping state
