@@ -87,6 +87,7 @@ interface Conversation {
     avatar?: string;
     role: string;
     clientStatus?: 'lead' | 'active' | 'inactive';
+    clientId?: string;
   };
   lastMessage: Message;
   unreadCount: number;
@@ -119,6 +120,7 @@ function MessagesContent() {
   const [searchUsers, setSearchUsers] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [conversationSearch, setConversationSearch] = useState('');
 
   // Enhanced WhatsApp-like features
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -151,6 +153,7 @@ function MessagesContent() {
   const [incomingCall, setIncomingCall] = useState<any | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -189,8 +192,19 @@ function MessagesContent() {
 
 
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (instant = true) => {
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current;
+      if (container) {
+        if (instant) {
+          container.scrollTop = container.scrollHeight;
+        } else {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        }
+      }
+      // Also use scrollIntoView as backup
+      messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'instant' : 'smooth' });
+    });
   };
 
   // Real-time connection for online status updates + call signaling
@@ -209,7 +223,7 @@ function MessagesContent() {
               (String(incoming.sender?._id) === currentConv || String(incoming.receiver?._id) === currentConv)
             ) {
               setMessages(prev => (prev.some(m => m._id === incoming._id) ? prev : [...prev, incoming]));
-              setTimeout(() => scrollToBottom(), 50);
+              setTimeout(() => scrollToBottom(false), 50);
             }
             // Always refresh conversations list (keeps last message + unread counts in sync)
             fetchConversationsRef.current();
@@ -384,7 +398,7 @@ function MessagesContent() {
   });
 
   useEffect(() => {
-    scrollToBottom();
+    scrollToBottom(false);
   }, [messages]);
 
   useEffect(() => {
@@ -660,6 +674,16 @@ function MessagesContent() {
             ? { ...conv, unreadCount: 0 }
             : conv
         ));
+
+        // Scroll to bottom after messages are loaded
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            scrollToBottom(true);
+            // Additional delayed scroll to catch images/media that load late
+            setTimeout(() => scrollToBottom(true), 100);
+            setTimeout(() => scrollToBottom(true), 300);
+          });
+        });
       } else if (response.status === 404) {
         // No messages found, start with empty array (this is normal for new conversations)
         setMessages([]);
@@ -1531,8 +1555,10 @@ function MessagesContent() {
             <div className="mt-3 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Search conversations..."
+                placeholder="Search by name or C-ID..."
                 className="pl-10 bg-white text-gray-900"
+                value={conversationSearch}
+                onChange={(e) => setConversationSearch(e.target.value)}
               />
             </div>
           </div>
@@ -1550,75 +1576,87 @@ function MessagesContent() {
                 </Button>
               </div>
             ) : (
-              conversations.filter(conversation => conversation.user).map((conversation) => (
-                <div
-                  key={conversation.user._id}
-                  onClick={() => selectConversation(conversation.user._id)}
-                  className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors border-b ${selectedConversation === conversation.user._id ? 'bg-green-50' : ''
-                    }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="relative">
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src={conversation.user.avatar} />
-                        <AvatarFallback className="bg-green-100 text-green-600">
-                          {conversation.user.firstName[0]}{conversation.user.lastName[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      {conversation.isOnline && (
-                        <div className="absolute bottom-0 right-0 h-3 w-3 bg-green-500 rounded-full border-2 border-white"></div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {conversation.user.firstName} {conversation.user.lastName}
+              conversations
+                .filter(conversation => conversation.user)
+                .filter(conversation => {
+                  if (!conversationSearch.trim()) return true;
+                  const search = conversationSearch.toLowerCase().trim();
+                  const fullName = `${conversation.user.firstName} ${conversation.user.lastName}`.toLowerCase();
+                  const clientId = conversation.user.clientId?.toLowerCase() || '';
+                  return fullName.includes(search) || clientId.includes(search);
+                })
+                .map((conversation) => (
+                  <div
+                    key={conversation.user._id}
+                    onClick={() => selectConversation(conversation.user._id)}
+                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors border-b ${selectedConversation === conversation.user._id ? 'bg-green-50' : ''
+                      }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="relative">
+                        <Avatar className="h-12 w-12">
+                          <AvatarImage src={conversation.user.avatar} />
+                          <AvatarFallback className="bg-green-100 text-green-600">
+                            {conversation.user.firstName[0]}{conversation.user.lastName[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        {conversation.isOnline && (
+                          <div className="absolute bottom-0 right-0 h-3 w-3 bg-green-500 rounded-full border-2 border-white"></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {conversation.user.firstName} {conversation.user.lastName}
+                              {conversation.user.clientId && (
+                                <span className="ml-1 text-xs text-gray-500">({conversation.user.clientId})</span>
+                              )}
+                            </p>
+                            {conversation.user.clientStatus && (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${conversation.user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
+                                conversation.user.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700' :
+                                  'bg-blue-100 text-blue-700'
+                                }`}>
+                                {conversation.user.clientStatus.charAt(0).toUpperCase() + conversation.user.clientStatus.slice(1)}
+                              </span>
+                            )}
+                          </div>
+                          {conversation.lastMessage?.createdAt && (() => {
+                            try {
+                              const date = new Date(conversation.lastMessage.createdAt);
+                              if (!isNaN(date.getTime())) {
+                                return (
+                                  <p className="text-xs text-gray-500 shrink-0">
+                                    {format(date, 'MMM d, yyyy • h:mm a')}
+                                  </p>
+                                );
+                              }
+                            } catch (error) {
+                              return null;
+                            }
+                            return null;
+                          })()}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-gray-500 truncate">
+                            {conversation.lastMessage?.type === 'image' ? '📷 Photo' :
+                              conversation.lastMessage?.type === 'video' ? '🎬 Video' :
+                                conversation.lastMessage?.type === 'audio' ? '🎵 Audio' :
+                                  conversation.lastMessage?.type === 'voice' ? '🎤 Voice message' :
+                                    conversation.lastMessage?.type === 'file' ? '📄 Document' :
+                                      conversation.lastMessage?.content || 'Start conversation...'}
                           </p>
-                          {conversation.user.clientStatus && (
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${conversation.user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
-                              conversation.user.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700' :
-                                'bg-blue-100 text-blue-700'
-                              }`}>
-                              {conversation.user.clientStatus.charAt(0).toUpperCase() + conversation.user.clientStatus.slice(1)}
-                            </span>
+                          {conversation.unreadCount > 0 && (
+                            <div className="bg-green-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center shrink-0 ml-2">
+                              {conversation.unreadCount}
+                            </div>
                           )}
                         </div>
-                        {conversation.lastMessage?.createdAt && (() => {
-                          try {
-                            const date = new Date(conversation.lastMessage.createdAt);
-                            if (!isNaN(date.getTime())) {
-                              return (
-                                <p className="text-xs text-gray-500 shrink-0">
-                                  {format(date, 'MMM d, yyyy • h:mm a')}
-                                </p>
-                              );
-                            }
-                          } catch (error) {
-                            return null;
-                          }
-                          return null;
-                        })()}
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-500 truncate">
-                          {conversation.lastMessage?.type === 'image' ? '📷 Photo' :
-                            conversation.lastMessage?.type === 'video' ? '🎬 Video' :
-                              conversation.lastMessage?.type === 'audio' ? '🎵 Audio' :
-                                conversation.lastMessage?.type === 'voice' ? '🎤 Voice message' :
-                                  conversation.lastMessage?.type === 'file' ? '📄 Document' :
-                                    conversation.lastMessage?.content || 'Start conversation...'}
-                        </p>
-                        {conversation.unreadCount > 0 && (
-                          <div className="bg-green-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center shrink-0 ml-2">
-                            {conversation.unreadCount}
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
-                </div>
-              ))
+                ))
             )}
           </div>
         </div>
@@ -1648,6 +1686,9 @@ function MessagesContent() {
                     <div className="flex items-center gap-2">
                       <h3 className="font-medium">
                         {selectedUser.user.firstName} {selectedUser.user.lastName}
+                        {selectedUser.user.clientId && (
+                          <span className="ml-1 text-sm font-normal text-gray-500">({selectedUser.user.clientId})</span>
+                        )}
                       </h3>
                       {selectedUser.user.clientStatus && (
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${selectedUser.user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
@@ -1667,7 +1708,7 @@ function MessagesContent() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50" style={{ backgroundImage: "url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><defs><pattern id=\"grain\" width=\"100\" height=\"100\" patternUnits=\"userSpaceOnUse\"><circle cx=\"50\" cy=\"50\" r=\"0.5\" fill=\"%23000\" opacity=\"0.02\"/></pattern></defs><rect width=\"100\" height=\"100\" fill=\"url(%23grain)\"/></svg>')" }}>
+              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50" style={{ backgroundImage: "url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><defs><pattern id=\"grain\" width=\"100\" height=\"100\" patternUnits=\"userSpaceOnUse\"><circle cx=\"50\" cy=\"50\" r=\"0.5\" fill=\"%23000\" opacity=\"0.02\"/></pattern></defs><rect width=\"100\" height=\"100\" fill=\"url(%23grain)\"/></svg>')" }}>
                 {messages.length === 0 ? (
                   <div className="text-center py-8">
                     <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />

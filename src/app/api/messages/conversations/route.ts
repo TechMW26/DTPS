@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
     // Batch-fetch all conversation partner users in one query instead of N+1
     const convIds = conversations.map((c: any) => c._id);
     const users = await User.find({ _id: { $in: convIds } })
-      .select('firstName lastName avatar role assignedDietitian assignedDietitians assignedHealthCounselor clientStatus')
+      .select('firstName lastName avatar role assignedDietitian assignedDietitians assignedHealthCounselor clientStatus clientId')
       .lean();
     const userMap = new Map(users.map((u: any) => [u._id.toString(), u]));
 

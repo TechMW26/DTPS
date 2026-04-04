@@ -24,8 +24,6 @@ import {
   Mic,
   FileText,
   Download,
-  Trash2,
-  MoreVertical,
   Play,
   Pause,
   RotateCcw,
@@ -36,22 +34,6 @@ import {
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { toast } from 'sonner';
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 
 interface MessageUser {
   _id: string;
@@ -140,10 +122,6 @@ export default function UserMessagesPage() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState('');
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [activeMessageMenuId, setActiveMessageMenuId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -158,7 +136,6 @@ export default function UserMessagesPage() {
   const recordStreamRef = useRef<MediaStream | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordStartedAtRef = useRef<number>(0);
-  const messagePressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoadRef = useRef(false);
   const userPressedBackRef = useRef(false);
 
@@ -455,13 +432,23 @@ export default function UserMessagesPage() {
           if (container) {
             container.scrollTop = container.scrollHeight;
           }
-          // Additional delayed scroll to catch images/media that load late
+          // Additional delayed scrolls to catch images/media that load late
+          setTimeout(() => {
+            if (messagesContainerRef.current) {
+              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
+          }, 100);
+          setTimeout(() => {
+            if (messagesContainerRef.current) {
+              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
+          }, 300);
           setTimeout(() => {
             if (messagesContainerRef.current) {
               messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
             }
             isInitialLoadRef.current = false;
-          }, 400);
+          }, 500);
         });
       });
 
@@ -1219,57 +1206,6 @@ export default function UserMessagesPage() {
   };
 
   // Handle message deletion
-  const handleDeleteMessage = async () => {
-    if (!messageToDelete || isDeleting) return;
-
-    setIsDeleting(true);
-    try {
-      const response = await fetch(`/api/client/messages/${messageToDelete._id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        // Remove message from local state immediately
-        setMessages(prev => prev.filter(m => m._id !== messageToDelete._id));
-        toast.success('Message deleted');
-        // Refresh conversations to update last message if needed
-        fetchConversationsQuiet();
-      } else {
-        const data = await response.json();
-        toast.error(data.error || 'Failed to delete message');
-      }
-    } catch (error) {
-      console.error('Error deleting message:', error);
-      toast.error('Failed to delete message');
-    } finally {
-      setIsDeleting(false);
-      setDeleteDialogOpen(false);
-      setMessageToDelete(null);
-    }
-  };
-
-  const confirmDeleteMessage = (message: Message) => {
-    setMessageToDelete(message);
-    setDeleteDialogOpen(true);
-  };
-
-  const startOwnMessagePress = (messageId: string) => {
-    if (messagePressTimerRef.current) {
-      clearTimeout(messagePressTimerRef.current);
-    }
-
-    messagePressTimerRef.current = setTimeout(() => {
-      setActiveMessageMenuId(messageId);
-    }, 300);
-  };
-
-  const endOwnMessagePress = () => {
-    if (messagePressTimerRef.current) {
-      clearTimeout(messagePressTimerRef.current);
-      messagePressTimerRef.current = null;
-    }
-  };
-
   const getStatusIcon = (isRead: boolean, isOwn: boolean) => {
     if (!isOwn) return null;
     if (isRead) {
@@ -1453,7 +1389,6 @@ export default function UserMessagesPage() {
                     messages.map((message, index) => {
                       // Convert both to strings for proper comparison (handles ObjectId vs string mismatch)
                       const isOwn = String(message.sender?._id || '') === String(session?.user?.id || '');
-                      const isOwnMenuVisible = activeMessageMenuId === message._id;
                       const attachment = message.attachments?.[0];
                       const prevMessage = index > 0 ? messages[index - 1] : null;
                       const showDateSeparator = shouldShowDateSeparator(message, prevMessage);
@@ -1474,15 +1409,23 @@ export default function UserMessagesPage() {
                         const hasValidUrl = !!url && /^https?:\/\//i.test(url);
                         const failed = failedAttachments.has(message._id);
 
+                        // Check if URL is from ImageKit and appears to be an image
+                        const isImageKitImage = /ik\.imagekit\.io/i.test(lowerUrl) &&
+                          (/\/(messages|meal-completions|progress|transformation|profile|recipes)\//i.test(lowerUrl) ||
+                            /tr:[^/]*\.(jpg|jpeg|png|webp)/i.test(lowerUrl));
+
                         let resolvedType = message.type;
-                        if (attachment && message.type === 'text') {
-                          if (mimeType.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|heic|heif)$/i.test(lowerUrl)) {
+                        if (attachment && (message.type === 'text' || message.type === 'file')) {
+                          if (mimeType.startsWith('image/') ||
+                            /\.(jpg|jpeg|png|webp|gif|heic|heif)(\?|$)/i.test(lowerUrl) ||
+                            isImageKitImage ||
+                            /meal-completions?\//i.test(lowerUrl)) {
                             resolvedType = 'image';
-                          } else if (mimeType.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi)$/i.test(lowerUrl)) {
+                          } else if (mimeType.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi)(\?|$)/i.test(lowerUrl)) {
                             resolvedType = 'video';
-                          } else if (mimeType.startsWith('audio/') || /\.(mp3|wav|m4a|ogg|webm)$/i.test(lowerUrl)) {
+                          } else if (mimeType.startsWith('audio/') || /\.(mp3|wav|m4a|ogg)(\?|$)/i.test(lowerUrl)) {
                             resolvedType = 'audio';
-                          } else {
+                          } else if (message.type !== 'file') {
                             resolvedType = 'file';
                           }
                         }
@@ -1629,7 +1572,10 @@ export default function UserMessagesPage() {
                                       setVoiceProgress((prev) => ({ ...prev, [message._id]: 0 }));
                                     }}
                                     onError={(e) => {
-                                      console.error('Audio load error:', e);
+                                      const audioElement = e.currentTarget as HTMLAudioElement;
+                                      const errorCode = audioElement?.error?.code;
+                                      const errorMessage = audioElement?.error?.message || 'Unknown audio error';
+                                      console.warn(`Audio load error for message ${message._id}:`, errorCode, errorMessage);
                                       setFailedAttachments((prev) => new Set([...prev, message._id]));
                                     }}
                                     className="hidden"
@@ -1749,38 +1695,6 @@ export default function UserMessagesPage() {
                             )}
 
                             <div className={`max-w-[85%] sm:max-w-[75%] relative ${isOwn ? 'order-2' : ''}`}>
-                              {/* Delete menu only for own messages/media */}
-                              {isOwn && (
-                                <div className={`absolute -left-8 top-1/2 -translate-y-1/2 transition-opacity ${isOwnMenuVisible ? 'opacity-100' : 'opacity-0 pointer-events-none sm:pointer-events-auto sm:group-hover:opacity-100'}`}>
-                                  <DropdownMenu
-                                    onOpenChange={(open) => {
-                                      if (!open) {
-                                        setActiveMessageMenuId(null);
-                                      }
-                                    }}
-                                  >
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className={`h-6 w-6 p-0 rounded-full ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}`}
-                                      >
-                                        <MoreVertical className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start" className="min-w-30">
-                                      <DropdownMenuItem
-                                        className="text-red-600 focus:text-red-600 cursor-pointer"
-                                        onClick={() => confirmDeleteMessage(message)}
-                                      >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              )}
-
                               <div
                                 className={`px-2.5 py-1.5 shadow-sm inline-block ${isOwn
                                   ? isDarkMode
@@ -1790,17 +1704,6 @@ export default function UserMessagesPage() {
                                     ? 'bg-[#202C33] text-white rounded-2xl rounded-tl-sm'
                                     : 'bg-white text-gray-900 rounded-2xl rounded-tl-sm'
                                   }`}
-                                onPointerDown={() => {
-                                  if (isOwn) startOwnMessagePress(message._id);
-                                }}
-                                onPointerUp={endOwnMessagePress}
-                                onPointerLeave={endOwnMessagePress}
-                                onPointerCancel={endOwnMessagePress}
-                                onClick={() => {
-                                  if (isOwn) {
-                                    setActiveMessageMenuId((prev) => (prev === message._id ? null : message._id));
-                                  }
-                                }}
                               >
                                 {renderMessageContent()}
                                 <div className="flex items-center justify-end gap-1 mt-0.5">
@@ -2120,35 +2023,6 @@ export default function UserMessagesPage() {
         src={lightboxImage}
         alt="Message attachment"
       />
-
-      {/* Delete Message Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Message?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This message will be permanently deleted. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteMessage}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                'Delete'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </PageTransition>
   );
 }
