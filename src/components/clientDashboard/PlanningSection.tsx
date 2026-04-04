@@ -395,9 +395,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   // Save draft to DB
   const saveDraftToDB = useCallback(async () => {
     if (draftSaveInProgressRef.current) return;
-    if (!latestMealDataRef.current) return;
     if (!planTitle.trim()) return;
     if (!startDate || !endDate) return;
+
+    // Use resolveCurrentMealPayload to get meal data with fallback logic
+    const mealPayload = resolveCurrentMealPayload();
+    if (!mealPayload?.meals?.length) {
+      console.log('[saveDraftToDB] No meal data available (ref or fallback)');
+      return;
+    }
 
     // Stop retrying after 3 consecutive failures
     if (draftSaveFailCountRef.current >= 3) return;
@@ -408,8 +414,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     try {
       const startDateObj = new Date(startDate);
       const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const mealsData = latestMealDataRef.current.meals;
-      const mealTypesData = latestMealDataRef.current.mealTypes;
+      const mealsData = mealPayload.meals;
+      const mealTypesData = mealPayload.mealTypes;
 
       const mealsWithDates = mealsData.map((day: any, index: number) => {
         const dayDate = addDays(startDateObj, index);
@@ -424,7 +430,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       });
 
       // Clean mealTypes to only include name and time (strip DB fields like _id)
-      const cleanMealTypes = mealTypesData?.map(mt => ({
+      const cleanMealTypes = mealTypesData?.map((mt: any) => ({
         name: String(mt.name || ''),
         time: String(mt.time || '12:00 PM')
       }));
@@ -497,7 +503,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     } finally {
       draftSaveInProgressRef.current = false;
     }
-  }, [planTitle, description, startDate, endDate, duration, primaryGoal, selectedTemplate, draftPlanId, client._id, paymentCheck]);
+  }, [planTitle, description, startDate, endDate, duration, primaryGoal, selectedTemplate, draftPlanId, client._id, paymentCheck, resolveCurrentMealPayload]);
 
   // Keep the ref always pointing to the latest save function
   saveDraftRef.current = saveDraftToDB;
@@ -673,13 +679,26 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     // For diet templates with meals, switch to mapping view inside the same dialog
     if (template.meals && template.meals.length > 0) {
       setPendingTemplate(template);
-      // Initialize default mapping: sequentially map template days, skip rest
+
+      // CRITICAL FIX: Update duration to match template's meal count
+      // This ensures all template days are included when saving
       const templateDaysCount = template.meals.length;
+      console.log('[Template Load] Setting duration to template meal count:', templateDaysCount);
+      setDuration(templateDaysCount);
+
+      // Also update endDate to match the new duration
+      if (startDate) {
+        const newEndDate = addDays(new Date(startDate), templateDaysCount - 1);
+        setEndDate(format(newEndDate, 'yyyy-MM-dd'));
+      }
+
+      // Initialize default mapping: sequentially map ALL template days
       const defaultMapping: Record<number, number> = {};
-      for (let i = 0; i < duration; i++) {
-        defaultMapping[i] = i < templateDaysCount ? i : -1;
+      for (let i = 0; i < templateDaysCount; i++) {
+        defaultMapping[i] = i;
       }
       setTemplateDayMapping(defaultMapping);
+      console.log('[Template Load] Default mapping created for', templateDaysCount, 'days');
       // Dialog stays open — pendingTemplate switches the view to mapping
       return;
     }
@@ -690,10 +709,23 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
   // Apply template directly without date mapping (for plan templates)
   const applyTemplateDirectly = (template: DietTemplate) => {
-    // Only load title and description — keep user's duration, dates, meal types, and meals
+    // Load title and description
     setPlanTitle(template.name);
     setDescription(template.description || '');
     setSelectedTemplate(template);
+
+    // CRITICAL FIX: Update duration to match template if it has meals
+    if (template.meals && template.meals.length > 0) {
+      const templateDaysCount = template.meals.length;
+      console.log('[Template Apply Direct] Setting duration to template meal count:', templateDaysCount);
+      setDuration(templateDaysCount);
+
+      // Also update endDate to match the new duration
+      if (startDate) {
+        const newEndDate = addDays(new Date(startDate), templateDaysCount - 1);
+        setEndDate(format(newEndDate, 'yyyy-MM-dd'));
+      }
+    }
 
     if (template.mealTypes && template.mealTypes.length > 0) {
       setInitialMealTypes(template.mealTypes);
@@ -774,18 +806,27 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
   // Apply template with date→day mapping from the Date Selection modal
   const applyTemplateMappingToMeals = () => {
-    if (!pendingTemplate || !pendingTemplate.meals) {
+    if (!pendingTemplate?.meals || pendingTemplate.meals.length === 0) {
+      console.error('[Template Mapping] No pending template or meals');
       return;
     }
 
     const template = pendingTemplate;
-    const templateMeals = template.meals;
+    const templateMeals = template.meals!; // We've already checked it exists above
+    const templateMealsCount = templateMeals.length;
+
+    // CRITICAL FIX: Use the number of days from the mapping (which should match template meals count)
+    // This ensures all mapped days are included even if duration was somehow changed
+    const mappingKeys = Object.keys(templateDayMapping).map(Number).sort((a, b) => a - b);
+    const daysToProcess = mappingKeys.length > 0 ? Math.max(...mappingKeys) + 1 : templateMealsCount;
+
+    console.log('[Template Mapping] Processing', daysToProcess, 'days, template has', templateMealsCount, 'meals');
 
     // Build the mapped meals array based on user's day selection
     const mappedMeals: any[] = [];
     const baseDate = new Date(startDate);
 
-    for (let i = 0; i < duration; i++) {
+    for (let i = 0; i < daysToProcess; i++) {
       const templateDayIndex = templateDayMapping[i];
       const dayDate = addDays(baseDate, i);
       const dateStr = format(dayDate, 'yyyy-MM-dd');
@@ -860,7 +901,21 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       setInitialMealTypes(template.mealTypes);
     }
 
+    // CRITICAL FIX: Ensure duration matches the mapped meals count
+    // This prevents partial saves when duration was set differently
+    if (mappedMeals.length !== duration) {
+      console.log('[Template Mapping] Updating duration from', duration, 'to', mappedMeals.length);
+      setDuration(mappedMeals.length);
+
+      // Also update endDate to match
+      if (startDate) {
+        const newEndDate = addDays(new Date(startDate), mappedMeals.length - 1);
+        setEndDate(format(newEndDate, 'yyyy-MM-dd'));
+      }
+    }
+
     // Set the mapped meals — this triggers DietPlanDashboard to rebuild weekPlan
+    console.log('[Template Mapping] Setting', mappedMeals.length, 'meals to initialMeals');
     setInitialMeals(mappedMeals);
 
     // IMPORTANT: In edit mode, we also need to update editingPlan.meals
@@ -1019,9 +1074,23 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     try {
       setSaving(true);
 
+      // CRITICAL: Log meal data for debugging template save issues
+      console.log('[Publish Plan] Received mealsData:', {
+        length: mealsData?.length,
+        duration: duration,
+        hasMealTypes: !!mealTypesData,
+        mealTypesCount: mealTypesData?.length
+      });
+
       if (!hasMealContent(mealsData)) {
         toast.error('No meal data to publish. Add meals first.');
         return;
+      }
+
+      // CRITICAL VALIDATION: Ensure we're saving complete data
+      if (mealsData.length !== duration) {
+        console.warn('[Publish Plan] Mismatch: mealsData.length =', mealsData.length, 'but duration =', duration);
+        // Use the actual meals length to ensure complete save
       }
 
       // Calculate proper dates for each day based on startDate
@@ -1043,6 +1112,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
       const finalMealTypes = mealTypesData && mealTypesData.length > 0 ? mealTypesData : initialMealTypes;
 
+      // CRITICAL FIX: Use actual meals count for duration to ensure complete save
+      // This prevents partial saves when duration state doesn't match actual meal data
+      const actualDuration = mealsWithDates.length;
+      const actualEndDate = actualDuration > 0
+        ? format(addDays(new Date(startDate), actualDuration - 1), 'yyyy-MM-dd')
+        : endDate;
+
+      console.log('[Publish Plan] Saving with actualDuration:', actualDuration, 'meals:', mealsWithDates.length);
+
       let data: any;
 
       if (draftPlanId) {
@@ -1051,8 +1129,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           name: planTitle,
           description,
           startDate,
-          endDate,
-          duration,
+          endDate: actualEndDate,
+          duration: actualDuration,
           meals: mealsWithDates,
           mealTypes: finalMealTypes,
           customizations: {
@@ -1066,6 +1144,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           goals: { primaryGoal },
           status: 'active'
         };
+
+        console.log('[Publish Plan] Draft update payload:', { duration: payload.duration, mealsCount: payload.meals.length });
 
         const res = await fetch(`/api/client-meal-plans/${draftPlanId}`, {
           method: 'PUT',
@@ -1090,8 +1170,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           name: planTitle,
           description,
           startDate,
-          endDate,
-          duration,
+          endDate: actualEndDate,
+          duration: actualDuration,
           meals: mealsWithDates,
           mealTypes: finalMealTypes,
           customizations: {
@@ -1108,6 +1188,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
         if (selectedTemplate?._id) payload.templateId = selectedTemplate._id;
         if (paymentCheck?.purchase?._id) payload.purchaseId = paymentCheck.purchase._id;
+
+        console.log('[Publish Plan] New plan payload:', { duration: payload.duration, mealsCount: payload.meals.length });
 
         const res = await fetch('/api/client-meal-plans', {
           method: 'POST',
@@ -1143,7 +1225,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                 purchaseId: paymentCheck.purchase._id,
                 mealPlanId: data.mealPlan?._id,
                 mealPlanCreated: true,
-                addDaysUsed: duration  // ADD to existing days used
+                addDaysUsed: actualDuration  // ADD to existing days used - use actualDuration for accuracy
               })
             });
           } catch (updateError) {
@@ -1169,11 +1251,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         }
 
         // Calculate remaining days after this plan
-        const remainingAfterPlan = Math.max(0, (paymentCheck?.remainingDays || 0) - duration);
+        const remainingAfterPlan = Math.max(0, (paymentCheck?.remainingDays || 0) - actualDuration);
 
         // Show success dialog
         setCreatedPlanInfo({
-          days: duration,
+          days: actualDuration,
           remainingDays: remainingAfterPlan
         });
         setShowSuccessDialog(true);
@@ -1197,16 +1279,24 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
   // Manual draft save (triggered by Save Draft button)
   const handleManualDraftSave = useCallback(async () => {
-    if (!latestMealDataRef.current) {
-      toast.info('No changes to save');
+    // Use resolveCurrentMealPayload which has fallback logic for initial data
+    const mealPayload = resolveCurrentMealPayload();
+    if (!mealPayload || !mealPayload.meals?.length) {
+      toast.info('No meal data to save');
       return;
     }
+
+    // Update latestMealDataRef with resolved data if not already set
+    if (!latestMealDataRef.current) {
+      latestMealDataRef.current = mealPayload;
+    }
+
     draftSaveFailCountRef.current = 0; // Reset backoff on manual save
     await saveDraftToDB();
     if (draftSaveStatus !== 'error') {
       toast.success('Draft saved successfully');
     }
-  }, [saveDraftToDB, draftSaveStatus]);
+  }, [saveDraftToDB, draftSaveStatus, resolveCurrentMealPayload]);
 
   const resetForm = () => {
     setStep('list');
@@ -1328,6 +1418,14 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     try {
       setSaving(true);
 
+      // CRITICAL: Log meal data for debugging template save issues
+      console.log('[Update Plan] Received mealsData:', {
+        length: mealsData?.length,
+        duration: duration,
+        hasMealTypes: !!mealTypesData,
+        mealTypesCount: mealTypesData?.length
+      });
+
       // Calculate proper dates for each day based on startDate
       const startDateObj = new Date(startDate);
       const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1347,12 +1445,20 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
       const finalMealTypes = mealTypesData && mealTypesData.length > 0 ? mealTypesData : initialMealTypes;
 
+      // CRITICAL FIX: Use actual meals count for duration to ensure complete save
+      const actualDuration = mealsWithDates.length;
+      const actualEndDate = actualDuration > 0
+        ? format(addDays(new Date(startDate), actualDuration - 1), 'yyyy-MM-dd')
+        : endDate;
+
+      console.log('[Update Plan] Saving with actualDuration:', actualDuration, 'meals:', mealsWithDates.length);
+
       const payload: any = {
         name: planTitle,
         description,
         startDate,
-        endDate,
-        duration,
+        endDate: actualEndDate,
+        duration: actualDuration,
         meals: mealsWithDates,
         mealTypes: finalMealTypes,
         customizations: {
@@ -1367,6 +1473,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           primaryGoal
         }
       };
+
+      console.log('[Update Plan] Payload:', { duration: payload.duration, mealsCount: payload.meals.length });
 
       const res = await fetch(`/api/client-meal-plans/${editingPlan._id}`, {
         method: 'PUT',

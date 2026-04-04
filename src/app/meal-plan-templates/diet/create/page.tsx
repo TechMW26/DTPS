@@ -317,13 +317,18 @@ export default function CreateDietTemplatePage() {
   const loadTemplateData = (tmpl: any) => {
     if (!tmpl) return;
 
+    // CRITICAL FIX: Use meals length as source of truth for duration
+    // This ensures template loads completely even if duration field is incorrect
+    const templateDuration = tmpl.meals?.length || tmpl.duration || 7;
+    console.log('[Load Template] Template duration:', templateDuration, 'meals count:', tmpl.meals?.length);
+
     // Load basic info
     setTemplate(prev => ({
       ...prev,
       name: tmpl.name || prev.name,
       description: tmpl.description || '',
       category: tmpl.category || prev.category,
-      duration: Math.min(15, tmpl.duration || 7),
+      duration: Math.min(365, templateDuration), // Allow up to 365 days
       targetCalories: tmpl.targetCalories || prev.targetCalories,
       targetMacros: tmpl.targetMacros || prev.targetMacros,
       dietaryRestrictions: tmpl.dietaryRestrictions || [],
@@ -338,6 +343,7 @@ export default function CreateDietTemplatePage() {
 
     // Load meals if available
     if (tmpl.meals && tmpl.meals.length > 0) {
+      console.log('[Load Template] Setting', tmpl.meals.length, 'meals');
       setWeekPlanData(tmpl.meals);
     }
 
@@ -376,16 +382,32 @@ export default function CreateDietTemplatePage() {
     } catch (e) { console.error(e); }
   };
 
-  // --------- DURATION CHANGE RESET MEALS ---------
+  // --------- DURATION CHANGE - ADJUST MEALS ARRAY ---------
+  // IMPORTANT: This preserves existing meal data when duration changes
   useEffect(() => {
     setTemplate(prev => {
       const days = prev.duration;
       if (prev.meals.length === days) return prev;
-      const meals: DailyMeal[] = Array.from({ length: days }).map((_, i) => ({
-        day: i + 1, breakfast: [], lunch: [], dinner: [], morningSnack: [], afternoonSnack: [], eveningSnack: [],
-        totalNutrition: { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, sodium: 0 }, notes: ''
-      }));
-      return { ...prev, meals };
+
+      // If we need fewer days, truncate (keep first N days)
+      if (prev.meals.length > days) {
+        console.log('[Duration Change] Truncating meals from', prev.meals.length, 'to', days);
+        return { ...prev, meals: prev.meals.slice(0, days) };
+      }
+
+      // If we need more days, add empty days (preserve existing data)
+      console.log('[Duration Change] Extending meals from', prev.meals.length, 'to', days);
+      const existingMeals = [...prev.meals];
+      const newMeals: DailyMeal[] = Array.from({ length: days }).map((_, i) => {
+        // Preserve existing meal data if available
+        if (existingMeals[i]) return existingMeals[i];
+        // Create empty day for new positions
+        return {
+          day: i + 1, breakfast: [], lunch: [], dinner: [], morningSnack: [], afternoonSnack: [], eveningSnack: [],
+          totalNutrition: { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, sodium: 0 }, notes: ''
+        };
+      });
+      return { ...prev, meals: newMeals };
     });
   }, [template.duration]);
 
@@ -457,8 +479,19 @@ export default function CreateDietTemplatePage() {
 
       const mealsToSave = weekPlan || weekPlanData;
       const mealTypesToSave = mealTypes || mealTypesData;
+
+      // CRITICAL FIX: Use meals length as duration to ensure complete save
+      const actualDuration = mealsToSave.length || template.duration;
+
+      console.log('[Save Template] Saving with:', {
+        duration: actualDuration,
+        mealsCount: mealsToSave.length,
+        mealTypesCount: mealTypesToSave.length
+      });
+
       const submitPayload = {
         ...template,
+        duration: actualDuration, // Use actual meals count
         meals: mealsToSave,
         mealTypes: mealTypesToSave,
         // Ensure defaults
@@ -472,6 +505,7 @@ export default function CreateDietTemplatePage() {
       // Remove templateType as it's not needed for diet templates (separate collection)
       delete (submitPayload as any).templateType;
 
+      console.log('[Save Template] Payload duration:', submitPayload.duration, 'meals:', submitPayload.meals.length);
 
       const res = await fetch('/api/diet-templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(submitPayload) });
       if (res.ok) {

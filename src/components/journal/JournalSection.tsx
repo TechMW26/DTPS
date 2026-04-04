@@ -25,7 +25,6 @@ import {
   Download,
   Plus,
   TrendingUp,
-  Image as ImageIcon,
   Trash2,
   Loader2
 } from 'lucide-react';

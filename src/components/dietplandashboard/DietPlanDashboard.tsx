@@ -322,13 +322,20 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
 
     const currentDataStr = JSON.stringify({ weekPlan, mealTypeConfigs });
 
-    // Skip if no changes
-    if (previousDataRef.current === currentDataStr) return;
+    // Skip if no changes (but still notify parent on first render with data)
+    if (previousDataRef.current === currentDataStr && isInitializedRef.current) return;
 
-    // Skip initial render
+    // On initial render, still notify parent if we have data (for draft save to pick up)
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
       previousDataRef.current = currentDataStr;
+
+      // CRITICAL FIX: Notify parent with initial data so draft save works
+      // This ensures latestMealDataRef is populated even without user changes
+      if (weekPlan.length > 0 && onMealDataChange) {
+        console.log('[DietPlanDashboard] Initial data notification:', weekPlan.length, 'days');
+        onMealDataChange(weekPlan, mealTypeConfigs);
+      }
       return;
     }
 
