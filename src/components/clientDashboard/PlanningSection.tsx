@@ -680,25 +680,21 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     if (template.meals && template.meals.length > 0) {
       setPendingTemplate(template);
 
-      // CRITICAL FIX: Update duration to match template's meal count
-      // This ensures all template days are included when saving
+      // KEEP the meal plan duration as-is - do NOT change it to match template
+      // User will select which template days to copy into each plan day
+      const planDaysCount = duration; // Use existing plan duration
       const templateDaysCount = template.meals.length;
-      console.log('[Template Load] Setting duration to template meal count:', templateDaysCount);
-      setDuration(templateDaysCount);
+      console.log('[Template Load] Plan duration:', planDaysCount, 'Template has:', templateDaysCount, 'days');
 
-      // Also update endDate to match the new duration
-      if (startDate) {
-        const newEndDate = addDays(new Date(startDate), templateDaysCount - 1);
-        setEndDate(format(newEndDate, 'yyyy-MM-dd'));
-      }
-
-      // Initialize default mapping: sequentially map ALL template days
+      // Initialize default mapping: sequentially map first N days from template
+      // If template has fewer days than plan, cycle through template days
       const defaultMapping: Record<number, number> = {};
-      for (let i = 0; i < templateDaysCount; i++) {
-        defaultMapping[i] = i;
+      for (let i = 0; i < planDaysCount; i++) {
+        // Map each plan day to template day (cycle if template is shorter)
+        defaultMapping[i] = i < templateDaysCount ? i : i % templateDaysCount;
       }
       setTemplateDayMapping(defaultMapping);
-      console.log('[Template Load] Default mapping created for', templateDaysCount, 'days');
+      console.log('[Template Load] Default mapping created for', planDaysCount, 'plan days');
       // Dialog stays open — pendingTemplate switches the view to mapping
       return;
     }
@@ -815,12 +811,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     const templateMeals = template.meals!; // We've already checked it exists above
     const templateMealsCount = templateMeals.length;
 
-    // CRITICAL FIX: Use the number of days from the mapping (which should match template meals count)
-    // This ensures all mapped days are included even if duration was somehow changed
-    const mappingKeys = Object.keys(templateDayMapping).map(Number).sort((a, b) => a - b);
-    const daysToProcess = mappingKeys.length > 0 ? Math.max(...mappingKeys) + 1 : templateMealsCount;
+    // Use the PLAN duration (not template duration) - this keeps the meal plan duration as-is
+    // User selects which template days to copy into each plan day
+    const daysToProcess = duration;
 
-    console.log('[Template Mapping] Processing', daysToProcess, 'days, template has', templateMealsCount, 'meals');
+    console.log('[Template Mapping] Processing', daysToProcess, 'plan days, template has', templateMealsCount, 'days');
 
     // Build the mapped meals array based on user's day selection
     const mappedMeals: any[] = [];
@@ -901,19 +896,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       setInitialMealTypes(template.mealTypes);
     }
 
-    // CRITICAL FIX: Ensure duration matches the mapped meals count
-    // This prevents partial saves when duration was set differently
-    if (mappedMeals.length !== duration) {
-      console.log('[Template Mapping] Updating duration from', duration, 'to', mappedMeals.length);
-      setDuration(mappedMeals.length);
-
-      // Also update endDate to match
-      if (startDate) {
-        const newEndDate = addDays(new Date(startDate), mappedMeals.length - 1);
-        setEndDate(format(newEndDate, 'yyyy-MM-dd'));
-      }
-    }
-
+    // No need to change duration - we're using the plan duration
     // Set the mapped meals — this triggers DietPlanDashboard to rebuild weekPlan
     console.log('[Template Mapping] Setting', mappedMeals.length, 'meals to initialMeals');
     setInitialMeals(mappedMeals);
@@ -2582,39 +2565,267 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   }
 
   function ExtendPlanDialog({ plan, onExtend, showAsText = false, showAsButton = false }: { plan: any; onExtend: (plan: any, startDate: string, endDate: string) => void; showAsText?: boolean; showAsButton?: boolean }) {
-    // Show "Coming Soon" toast when clicking extend button
-    const handleComingSoon = (e: React.MouseEvent) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [extendInfo, setExtendInfo] = useState<{
+      canExtend: boolean;
+      maxExtendDays: number;
+      usedExtendDays: number;
+      remainingExtendDays: number;
+      currentEndDate: string;
+      planStatus: string;
+      servicePlanName: string;
+    } | null>(null);
+    const [selectedDays, setSelectedDays] = useState(1);
+
+    // Fetch extend info when dialog opens
+    const fetchExtendInfo = async () => {
+      if (!plan?._id) return;
+
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/client-meal-plans/${plan._id}/extend`);
+        if (res.ok) {
+          const data = await res.json();
+          setExtendInfo(data);
+          setSelectedDays(Math.min(1, data.remainingExtendDays || 0));
+        } else {
+          toast.error('Failed to fetch extend info');
+        }
+      } catch (error) {
+        console.error('Error fetching extend info:', error);
+        toast.error('Error loading extend information');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Handle extend action
+    const handleExtend = async () => {
+      if (!plan?._id || !selectedDays || selectedDays <= 0) {
+        toast.error('Please select number of days to extend');
+        return;
+      }
+
+      if (extendInfo && selectedDays > extendInfo.remainingExtendDays) {
+        toast.error(`Cannot extend by more than ${extendInfo.remainingExtendDays} days`);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/client-meal-plans/${plan._id}/extend`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ extendDays: selectedDays })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          toast.success(data.message || `Plan extended by ${selectedDays} days`);
+          setIsOpen(false);
+          // Refresh plans list
+          emitDataChange(DataEventTypes.MEAL_PLAN_UPDATED, { clientId: plan.clientId });
+          // Call onExtend to refresh parent
+          if (onExtend) {
+            onExtend(plan, plan.startDate, data.mealPlan?.endDate || format(addDays(new Date(plan.endDate), selectedDays), 'yyyy-MM-dd'));
+          }
+        } else {
+          toast.error(data.error || 'Failed to extend plan');
+        }
+      } catch (error) {
+        console.error('Error extending plan:', error);
+        toast.error('Error extending plan');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const handleOpenDialog = (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      toast.info('Coming Soon! This feature is under development.');
+      setIsOpen(true);
+      fetchExtendInfo();
     };
 
     return (
       <>
-        {showAsText ? (
-          <span className="text-sm cursor-pointer" onClick={handleComingSoon}>Extend</span>
-        ) : showAsButton ? (
-          <Button
-            size="sm"
-            variant="outline"
-            title="Extend plan dates"
-            className="flex items-center gap-1.5"
-            onClick={handleComingSoon}
-          >
-            <Repeat2 className="h-4 w-4" />
-            <span className="text-xs">Extend</span>
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            title="Extend plan dates"
-            className="text-blue-600 hover:text-blue-700"
-            onClick={handleComingSoon}
-          >
-            📅
-          </Button>
-        )}
+        <Dialog open={isOpen} onOpenChange={(open) => {
+          setIsOpen(open);
+          if (open) fetchExtendInfo();
+        }}>
+          <DialogTrigger asChild>
+            {showAsText ? (
+              <span className="text-sm cursor-pointer" onClick={handleOpenDialog}>Extend</span>
+            ) : showAsButton ? (
+              <Button
+                size="sm"
+                variant="outline"
+                title="Extend plan dates"
+                className="flex items-center gap-1.5"
+                onClick={handleOpenDialog}
+              >
+                <Repeat2 className="h-4 w-4" />
+                <span className="text-xs">Extend</span>
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                title="Extend plan dates"
+                className="text-blue-600 hover:text-blue-700"
+                onClick={handleOpenDialog}
+              >
+                📅
+              </Button>
+            )}
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Repeat2 className="h-5 w-5 text-blue-600" />
+                Extend Plan Duration
+              </DialogTitle>
+              <DialogDescription>
+                Extend the end date of &quot;{plan?.name || 'Meal Plan'}&quot;
+              </DialogDescription>
+            </DialogHeader>
+
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
+            ) : extendInfo ? (
+              <div className="space-y-4">
+                {/* Plan Status */}
+                {extendInfo.planStatus !== 'active' && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-yellow-800">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span className="text-sm font-medium">Plan must be active to extend</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Extend Info Card */}
+                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Service Plan</span>
+                    <span className="font-medium">{extendInfo.servicePlanName || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Current End Date</span>
+                    <span className="font-medium">
+                      {extendInfo.currentEndDate
+                        ? format(new Date(extendInfo.currentEndDate), 'MMM d, yyyy')
+                        : 'N/A'
+                      }
+                    </span>
+                  </div>
+                  <div className="h-px bg-gray-200 dark:bg-gray-700" />
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Total Extend Days Allowed</span>
+                    <span className="font-medium">{extendInfo.maxExtendDays} days</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Days Already Extended</span>
+                    <span className="font-medium">{extendInfo.usedExtendDays} days</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Remaining Extend Days</span>
+                    <span className={`font-medium ${extendInfo.remainingExtendDays > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {extendInfo.remainingExtendDays} days
+                    </span>
+                  </div>
+                </div>
+
+                {/* Extend Days Selector */}
+                {extendInfo.canExtend && extendInfo.remainingExtendDays > 0 ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="extendDays" className="text-sm font-medium">
+                      Days to Extend
+                    </Label>
+                    <div className="flex items-center gap-3">
+                      <Input
+                        id="extendDays"
+                        type="number"
+                        min={1}
+                        max={extendInfo.remainingExtendDays}
+                        value={selectedDays}
+                        onChange={(e) => setSelectedDays(Math.min(
+                          Math.max(1, parseInt(e.target.value) || 1),
+                          extendInfo.remainingExtendDays
+                        ))}
+                        className="w-24"
+                      />
+                      <span className="text-sm text-gray-500">
+                        (max: {extendInfo.remainingExtendDays})
+                      </span>
+                    </div>
+                    {selectedDays > 0 && extendInfo.currentEndDate && (
+                      <p className="text-sm text-gray-500 mt-2">
+                        New end date will be: <span className="font-medium text-blue-600">
+                          {format(addDays(new Date(extendInfo.currentEndDate), selectedDays), 'MMM d, yyyy')}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-red-800">
+                      <X className="h-4 w-4" />
+                      <span className="text-sm">
+                        {extendInfo.maxExtendDays === 0
+                          ? 'Extension is not available for this plan'
+                          : 'No extend days remaining'
+                        }
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsOpen(false)}
+                    disabled={isLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleExtend}
+                    disabled={
+                      isLoading ||
+                      !extendInfo.canExtend ||
+                      extendInfo.remainingExtendDays <= 0 ||
+                      selectedDays <= 0 ||
+                      selectedDays > extendInfo.remainingExtendDays
+                    }
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Extending...
+                      </>
+                    ) : (
+                      <>
+                        <Repeat2 className="h-4 w-4 mr-2" />
+                        Extend by {selectedDays} {selectedDays === 1 ? 'Day' : 'Days'}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                Failed to load extend information
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </>
     );
   }
@@ -2978,33 +3189,43 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                         </div>
                       </>
                     ) : (
-                      /* View 2: Day Mapping */
+                      /* View 2: Day Mapping - Select which template days to copy into your plan */
                       <>
                         <DialogHeader className="px-6 pt-6 pb-3">
-                          <DialogTitle className="text-lg font-semibold">Map Template Days to Diet Plan</DialogTitle>
-                          <DialogDescription className="sr-only">Select which template day to apply to each diet plan date</DialogDescription>
+                          <DialogTitle className="text-lg font-semibold">Select Template Days for Your Plan</DialogTitle>
+                          <DialogDescription className="sr-only">Choose which template day to copy for each day in your meal plan</DialogDescription>
                           <div className="space-y-2 mt-2">
                             <p className="text-sm font-medium text-gray-700">
                               Template: <span className="text-blue-700">{pendingTemplate.name}</span>
                             </p>
                             <div className="flex items-center gap-2">
                               <Badge variant="secondary" className="text-xs">
-                                Template: {pendingTemplate.meals?.length || 0} Days
+                                Template: {pendingTemplate.meals?.length || 0} Days Available
                               </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                Diet Plan: {duration} Days
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                Your Plan: {duration} Days
                               </Badge>
                             </div>
                             <p className="text-xs text-gray-500">
-                              Select which template day&apos;s meals to copy to each date, or choose &quot;Skip&quot; to leave empty.
+                              Your plan has {duration} days. Select which template day to copy for each plan day, or &quot;Skip&quot; to leave empty.
                             </p>
+                            {(pendingTemplate.meals?.length || 0) > duration && (
+                              <p className="text-xs text-amber-600 mt-1">
+                                ⚠️ Template has more days ({pendingTemplate.meals?.length}) than your plan ({duration}). Select which days to use.
+                              </p>
+                            )}
+                            {(pendingTemplate.meals?.length || 0) < duration && (
+                              <p className="text-xs text-blue-600 mt-1">
+                                💡 Template has fewer days ({pendingTemplate.meals?.length}) than your plan ({duration}). Days will cycle through template.
+                              </p>
+                            )}
                           </div>
                         </DialogHeader>
 
                         {/* Column Headers */}
                         <div className="flex items-center justify-between px-6 py-2 bg-gray-50 border-y text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                          <span className="flex-1">Diet Plan Date</span>
-                          <span className="w-40 text-right">Template Day</span>
+                          <span className="flex-1">Your Plan Day</span>
+                          <span className="w-48 text-right">Copy From Template</span>
                         </div>
 
                         {/* Scrollable Day List */}
@@ -3033,16 +3254,16 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                       setTemplateDayMapping(prev => ({ ...prev, [i]: parseInt(val, 10) }));
                                     }}
                                   >
-                                    <SelectTrigger className="w-40 h-9 text-sm">
-                                      <SelectValue />
+                                    <SelectTrigger className="w-48 h-9 text-sm">
+                                      <SelectValue placeholder="Select day..." />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="-1">
-                                        <span className="text-gray-400">— Skip —</span>
+                                        <span className="text-gray-400">— Skip (Empty) —</span>
                                       </SelectItem>
                                       {pendingTemplate?.meals?.map((_, tIdx) => (
                                         <SelectItem key={tIdx} value={String(tIdx)}>
-                                          Day {tIdx + 1}
+                                          Template Day {tIdx + 1}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
@@ -3355,33 +3576,43 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                         </div>
                       </>
                     ) : (
-                      /* View 2: Day Mapping */
+                      /* View 2: Day Mapping - Select which template days to copy into your plan */
                       <>
                         <DialogHeader className="px-6 pt-6 pb-3">
-                          <DialogTitle className="text-lg font-semibold">Map Template Days to Diet Plan</DialogTitle>
-                          <DialogDescription className="sr-only">Select which template day to apply to each diet plan date</DialogDescription>
+                          <DialogTitle className="text-lg font-semibold">Select Template Days for Your Plan</DialogTitle>
+                          <DialogDescription className="sr-only">Choose which template day to copy for each day in your meal plan</DialogDescription>
                           <div className="space-y-2 mt-2">
                             <p className="text-sm font-medium text-gray-700">
                               Template: <span className="text-blue-700">{pendingTemplate.name}</span>
                             </p>
                             <div className="flex items-center gap-2">
                               <Badge variant="secondary" className="text-xs">
-                                Template: {pendingTemplate.meals?.length || 0} Days
+                                Template: {pendingTemplate.meals?.length || 0} Days Available
                               </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                Diet Plan: {duration} Days
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                Your Plan: {duration} Days
                               </Badge>
                             </div>
                             <p className="text-xs text-gray-500">
-                              Select which template day&apos;s meals to copy to each date, or choose &quot;Skip&quot; to leave empty.
+                              Your plan has {duration} days. Select which template day to copy for each plan day, or &quot;Skip&quot; to leave empty.
                             </p>
+                            {(pendingTemplate.meals?.length || 0) > duration && (
+                              <p className="text-xs text-amber-600 mt-1">
+                                ⚠️ Template has more days ({pendingTemplate.meals?.length}) than your plan ({duration}). Select which days to use.
+                              </p>
+                            )}
+                            {(pendingTemplate.meals?.length || 0) < duration && (
+                              <p className="text-xs text-blue-600 mt-1">
+                                💡 Template has fewer days ({pendingTemplate.meals?.length}) than your plan ({duration}). Days will cycle through template.
+                              </p>
+                            )}
                           </div>
                         </DialogHeader>
 
                         {/* Column Headers */}
                         <div className="flex items-center justify-between px-6 py-2 bg-gray-50 border-y text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                          <span className="flex-1">Diet Plan Date</span>
-                          <span className="w-40 text-right">Template Day</span>
+                          <span className="flex-1">Your Plan Day</span>
+                          <span className="w-48 text-right">Copy From Template</span>
                         </div>
 
                         {/* Scrollable Day List */}
@@ -3410,16 +3641,16 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                       setTemplateDayMapping(prev => ({ ...prev, [i]: parseInt(val, 10) }));
                                     }}
                                   >
-                                    <SelectTrigger className="w-40 h-9 text-sm">
-                                      <SelectValue />
+                                    <SelectTrigger className="w-48 h-9 text-sm">
+                                      <SelectValue placeholder="Select day..." />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="-1">
-                                        <span className="text-gray-400">— Skip —</span>
+                                        <span className="text-gray-400">— Skip (Empty) —</span>
                                       </SelectItem>
                                       {pendingTemplate?.meals?.map((_, tIdx) => (
                                         <SelectItem key={tIdx} value={String(tIdx)}>
-                                          Day {tIdx + 1}
+                                          Template Day {tIdx + 1}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
