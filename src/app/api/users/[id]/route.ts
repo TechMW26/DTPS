@@ -365,16 +365,30 @@ export async function PUT(
     // Dietitian can update ONLY their assigned clients (including from assignedDietitians array)
     const isDietitianEditingClient =
       session.user.role === UserRole.DIETITIAN &&
+      targetUser.role === UserRole.CLIENT &&
       (targetUser.assignedDietitian?.toString() === session.user.id ||
-        targetUser.assignedDietitians?.some((d: any) => d.toString() === session.user.id));
+        targetUser.assignedDietitians?.some((d: any) => d?.toString() === session.user.id));
 
-    // Health Counselor can update ONLY their assigned clients
+    // Health Counselor can update ONLY their assigned clients (including from assignedHealthCounselors array)
     const isHealthCounselorEditingClient =
       session.user.role === UserRole.HEALTH_COUNSELOR &&
-      targetUser.assignedHealthCounselor?.toString() === session.user.id;
+      targetUser.role === UserRole.CLIENT &&
+      (targetUser.assignedHealthCounselor?.toString() === session.user.id ||
+        targetUser.assignedHealthCounselors?.some((hc: any) => hc?.toString() === session.user.id));
 
+    // Debug logging for permission issues
     if (!isAdmin && !isSelf && !isDietitianEditingClient && !isHealthCounselorEditingClient) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      console.log('[PUT /api/users] Permission denied:', {
+        sessionUserId: session.user.id,
+        sessionUserRole: session.user.role,
+        targetUserId: id,
+        targetUserRole: targetUser.role,
+        assignedDietitian: targetUser.assignedDietitian?.toString(),
+        assignedDietitians: targetUser.assignedDietitians?.map((d: any) => d?.toString()),
+        assignedHealthCounselor: targetUser.assignedHealthCounselor?.toString(),
+        assignedHealthCounselors: targetUser.assignedHealthCounselors?.map((hc: any) => hc?.toString()),
+      });
+      return NextResponse.json({ error: "Forbidden - You are not assigned to this client" }, { status: 403 });
     }
 
     // Admin-only fields that can be updated

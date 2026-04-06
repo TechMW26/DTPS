@@ -288,14 +288,22 @@ export async function DELETE(
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
+      console.log('[DELETE Client] No session found');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { clientId: rawClientId } = await params;
     clientId = rawClientId;
 
+    console.log('[DELETE Client] Request received:', {
+      clientId,
+      userRole: session.user.role,
+      userId: session.user.id,
+    });
+
     // Validate clientId format
     if (!clientId || !isValidObjectId(clientId)) {
+      console.log('[DELETE Client] Invalid client ID format:', clientId);
       return NextResponse.json({
         error: 'Invalid client ID format',
         details: 'The provided client ID is not a valid MongoDB ObjectId'
@@ -304,22 +312,40 @@ export async function DELETE(
 
     const userRole = session.user.role?.toLowerCase();
     if (!userRole || !userRole.includes('admin')) {
-      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+      console.log('[DELETE Client] Access denied - not admin. Role:', userRole);
+      return NextResponse.json({ error: 'Forbidden - Admin access required', details: `Your role: ${userRole}` }, { status: 403 });
     }
 
     await connectDB();
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action') || 'deactivate'; // 'deactivate' or 'delete'
 
+    console.log('[DELETE Client] Action requested:', action);
+
     // Fetch client details before delete/deactivate for logging
-    const targetClient = await User.findById(clientId).select('firstName lastName email').lean() as Record<string, any> | null;
+    const targetClient = await User.findById(clientId).select('firstName lastName email role').lean() as Record<string, any> | null;
+
+    if (!targetClient) {
+      console.log('[DELETE Client] Client not found:', clientId);
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    console.log('[DELETE Client] Target client:', {
+      id: clientId,
+      name: `${targetClient.firstName} ${targetClient.lastName}`,
+      email: targetClient.email,
+      role: targetClient.role,
+    });
 
     if (action === 'delete') {
       // Permanent delete - use with caution
+      console.log('[DELETE Client] Performing permanent delete...');
       const result = await User.findByIdAndDelete(clientId);
       if (!result) {
-        return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+        console.log('[DELETE Client] findByIdAndDelete returned null');
+        return NextResponse.json({ error: 'Client not found or already deleted' }, { status: 404 });
       }
+      console.log('[DELETE Client] Client deleted successfully');
       logActivity({
         userId: session.user.id,
         userRole: 'admin',
@@ -331,9 +357,9 @@ export async function DELETE(
         description: `Admin permanently deleted client ${targetClient?.firstName || ''} ${targetClient?.lastName || ''} (${targetClient?.email || clientId}).`,
         targetUserId: clientId,
         targetUserName: `${targetClient?.firstName || ''} ${targetClient?.lastName || ''} (${targetClient?.email || ''})`,
-      }).catch(() => { });
+      }).catch((err) => console.error('[DELETE Client] Activity log error:', err));
       clearCacheByTag('admin');
-      return NextResponse.json({ message: 'Client deleted permanently' });
+      return NextResponse.json({ message: 'Client deleted permanently', success: true });
     } else {
       // Deactivate (soft delete)
       const client = await User.findByIdAndUpdate(

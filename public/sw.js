@@ -2,7 +2,7 @@
 // Caches ONLY static assets for fast loads. Pages are always fetched from network.
 // Works alongside firebase-messaging-sw.js (which handles push notifications)
 
-const CACHE_VERSION = 'dtps-v2';
+const CACHE_VERSION = 'dtps-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 
@@ -14,13 +14,21 @@ const PRECACHE_URLS = [
 ];
 
 // URL patterns that should use cache-first strategy (immutable static assets)
+// Note: We only cache truly immutable assets (icons, images, fonts)
+// JS/CSS chunks are excluded to prevent stale module factory errors
 const STATIC_PATTERNS = [
-  /^\/_next\/static\//,
   /^\/icons\//,
   /^\/images\//,
   /^\/fonts\//,
   /\.woff2?$/,
   /\.ttf$/,
+];
+
+// Next.js chunks - use stale-while-revalidate for these
+// This ensures fresh modules while still being fast
+const NEXT_CHUNK_PATTERNS = [
+  /^\/_next\/static\/chunks\//,
+  /^\/_next\/static\/css\//,
 ];
 
 // API routes that can be briefly cached for offline resilience (GET only)
@@ -44,7 +52,7 @@ self.addEventListener('install', (event) => {
       .then((cache) => {
         // Don't fail install if some assets are missing
         return Promise.allSettled(
-          PRECACHE_URLS.map((url) => cache.add(url).catch(() => {}))
+          PRECACHE_URLS.map((url) => cache.add(url).catch(() => { }))
         );
       })
       .then(() => self.skipWaiting())
@@ -75,6 +83,12 @@ function getStrategy(url) {
     return 'network-only';
   }
 
+  // Next.js chunks: always fetch from network to prevent stale module errors
+  // These have hashed filenames so browsers will cache them anyway
+  if (NEXT_CHUNK_PATTERNS.some((p) => p.test(pathname))) {
+    return 'network-only';
+  }
+
   // Static assets: cache-first (immutable, hashed filenames)
   if (STATIC_PATTERNS.some((p) => p.test(pathname))) {
     return 'cache-first';
@@ -94,6 +108,7 @@ function getStrategy(url) {
 function getCacheName(strategy) {
   switch (strategy) {
     case 'cache-first':
+    case 'stale-while-revalidate':
       return STATIC_CACHE;
     case 'network-first':
       return API_CACHE;
@@ -144,6 +159,33 @@ async function networkFirst(request, cacheName) {
   }
 }
 
+// Stale-while-revalidate: serve from cache immediately, but revalidate in background
+// This prevents stale module factory errors for Next.js chunks
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await caches.match(request);
+
+  // Always fetch from network in background to update cache
+  const fetchPromise = fetch(request).then((response) => {
+    if (response.ok && !response.redirected) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  }).catch(() => null);
+
+  // Return cached version immediately if available, otherwise wait for network
+  if (cached) {
+    // Don't wait for background update, just return cached
+    return cached;
+  }
+
+  // No cache, wait for network
+  const networkResponse = await fetchPromise;
+  if (networkResponse) return networkResponse;
+
+  return new Response('Module not available', { status: 503, statusText: 'Service Unavailable' });
+}
+
 // Fetch event handler
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -171,6 +213,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(cacheFirst(request, cacheName));
   } else if (strategy === 'network-first') {
     event.respondWith(networkFirst(request, cacheName));
+  } else if (strategy === 'stale-while-revalidate') {
+    event.respondWith(staleWhileRevalidate(request, cacheName));
   }
 });
 
@@ -199,7 +243,7 @@ self.addEventListener('message', (event) => {
       // Pre-cache specific static URLs
       if (payload && Array.isArray(payload.urls)) {
         caches.open(STATIC_CACHE).then((cache) => {
-          payload.urls.forEach((url) => cache.add(url).catch(() => {}));
+          payload.urls.forEach((url) => cache.add(url).catch(() => { }));
         });
       }
       break;

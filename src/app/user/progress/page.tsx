@@ -690,9 +690,10 @@ export default function UserProgressPage() {
   }, [data.weightHistory]);
 
   const filteredMeasurementHistory = useMemo(() => {
-    const startDate = getDateRange(timeRange);
-    return (data.measurementHistory || []).filter(entry => new Date(entry.date) >= startDate);
-  }, [data.measurementHistory, timeRange]);
+    return [...(data.measurementHistory || [])].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [data.measurementHistory]);
 
   const filteredCalorieHistory = useMemo(() => {
     const startDate = getDateRange(timeRange);
@@ -992,7 +993,7 @@ export default function UserProgressPage() {
                     <div>
                       <p className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Weight</p>
                       <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                        {userProfile.weightKg} kg
+                        {data.currentWeight > 0 ? data.currentWeight : userProfile.weightKg} kg
                       </p>
                     </div>
                   </div>
@@ -1316,7 +1317,7 @@ export default function UserProgressPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredMeasurementHistory.slice(0, 10).map((entry, index) => (
+                      {filteredMeasurementHistory.map((entry, index) => (
                         <tr key={index} className={`border-b last:border-0 ${isDarkMode ? 'border-gray-700' : 'border-gray-50'}`}>
                           <td className={`px-1 py-2 text-xs ${isDarkMode ? 'text-gray-200' : 'text-gray-600'}`}>
                             {format(new Date(entry.date), 'MMM d')}
@@ -1427,7 +1428,7 @@ export default function UserProgressPage() {
                     <div>
                       <p className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Weight</p>
                       <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                        {userProfile.weightKg} kg
+                        {data.currentWeight > 0 ? data.currentWeight : userProfile.weightKg} kg
                       </p>
                     </div>
                   </div>

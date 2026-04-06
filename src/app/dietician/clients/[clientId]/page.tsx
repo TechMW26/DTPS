@@ -516,38 +516,64 @@ export default function ClientDetailPage() {
   }, []);
 
   const handleAdminDeactivateClient = async () => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      toast.error('Admin access required to deactivate clients');
+      return;
+    }
     const ok = window.confirm('Deactivate this client? They will not be able to login.');
     if (!ok) return;
 
     try {
       const res = await fetch(`/api/admin/clients/${params.clientId}?action=deactivate`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-      if (!res.ok) throw new Error('Failed to deactivate client');
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error('Deactivate failed:', data);
+        throw new Error(data.error || data.details || 'Failed to deactivate client');
+      }
+
       toast.success('Client deactivated successfully');
       router.push('/admin/allclients');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deactivating client:', error);
-      toast.error('Failed to deactivate client');
+      toast.error(error.message || 'Failed to deactivate client');
     }
   };
 
   const handleAdminDeleteClient = async () => {
-    if (!isAdmin) return;
-    const ok = window.confirm('Delete this client permanently? This cannot be undone.');
+    if (!isAdmin) {
+      toast.error('Admin access required to delete clients');
+      return;
+    }
+    const ok = window.confirm('Delete this client permanently? This action cannot be undone and will remove all their data.');
     if (!ok) return;
 
     try {
       const res = await fetch(`/api/admin/clients/${params.clientId}?action=delete`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-      if (!res.ok) throw new Error('Failed to delete client');
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error('Delete failed:', data);
+        throw new Error(data.error || data.details || 'Failed to delete client');
+      }
+
       toast.success('Client deleted permanently');
       router.push('/admin/allclients');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting client:', error);
-      toast.error('Failed to delete client');
+      toast.error(error.message || 'Failed to delete client');
     }
   };
 
@@ -650,18 +676,31 @@ export default function ClientDetailPage() {
         .map((entry: any) => ({
           _id: String(entry?._id || ''),
           weight: Number(entry?.value),
-          recordedAt: entry?.recordedAt || new Date().toISOString()
+          recordedAt: entry?.recordedAt || new Date().toISOString(),
+          createdAt: entry?.createdAt || entry?.recordedAt || new Date().toISOString()
         }))
         .filter((entry: ClientWeightLogEntry) => Number.isFinite(entry.weight) && entry.weight > 0)
-        .sort((a: ClientWeightLogEntry, b: ClientWeightLogEntry) =>
-          new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
-        );
+        .sort((a: ClientWeightLogEntry, b: ClientWeightLogEntry) => {
+          const timeA = new Date(a.recordedAt).getTime();
+          const timeB = new Date(b.recordedAt).getTime();
+          if (timeB !== timeA) return timeB - timeA;
+          // Tiebreaker: use createdAt for same timestamp
+          const createdA = (a as any).createdAt ? new Date((a as any).createdAt).getTime() : timeA;
+          const createdB = (b as any).createdAt ? new Date((b as any).createdAt).getTime() : timeB;
+          return createdB - createdA;
+        });
 
       setWeightLog(entries);
 
       if (entries.length > 0) {
         setCurrentWeightKg(entries[0].weight);
-        setFirstWeightKg(entries[entries.length - 1].weight);
+
+        // Keep first weight in sync with Basic Info baseline when available.
+        // Only use oldest tracker weight as fallback when baseline is not set.
+        const baselineWeight = Number(basicInfo?.weightKg || 0);
+        if (!(Number.isFinite(baselineWeight) && baselineWeight > 0)) {
+          setFirstWeightKg(entries[entries.length - 1].weight);
+        }
       }
     } catch (error) {
       if (!silent) {
@@ -1073,12 +1112,11 @@ export default function ClientDetailPage() {
         setClient(data?.user);
         setFormData(data?.user);
 
-        // Profile weightKg is the "first weight" / baseline - NOT current weight
-        // Current weight comes from weight log (fetchClientWeightLog)
-        // Only set firstWeightKg from profile as fallback if not already set from weight log
+        // Profile weightKg is the editable baseline "first weight" from Basic Info.
+        // Current weight comes from the weight log (fetchClientWeightLog).
         const profileWeight = Number(data?.user?.weightKg ?? data?.user?.weight ?? 0);
         if (Number.isFinite(profileWeight) && profileWeight > 0) {
-          setFirstWeightKg(prev => (prev && Number.isFinite(prev) && prev > 0 ? prev : profileWeight));
+          setFirstWeightKg(profileWeight);
         }
 
         // Load client tags
@@ -1328,9 +1366,10 @@ export default function ClientDetailPage() {
         sharePhotoConsent: basicInfo?.sharePhotoConsent,
         generalGoal: basicInfo?.generalGoal,
         healthGoals: basicInfo?.goalsList,
-        // Summary fields only
+        // Physical measurements - send both weight and weightKg for API to handle first weight logic
         height: parseFloat(basicInfo?.heightCm as string) || undefined,
         weight: parseFloat(basicInfo?.weightKg as string) || undefined,
+        weightKg: basicInfo?.weightKg || undefined, // Important: API uses this for first weight updates
       };
 
       const response = await fetch(`/api/users/${params.clientId}`, {
@@ -1340,7 +1379,9 @@ export default function ClientDetailPage() {
       });
 
       if (!response.ok) {
-        toast.error('Failed to update basic info');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to update basic info:', response.status, errorData);
+        toast.error(errorData?.error || 'Failed to update basic info');
         return;
       }
 
@@ -1383,7 +1424,9 @@ export default function ClientDetailPage() {
       });
 
       if (!lifestyleResponse.ok) {
-        console.error('Failed to save lifestyle data');
+        const lifestyleError = await lifestyleResponse.json().catch(() => ({}));
+        console.error('Failed to save lifestyle data:', lifestyleError);
+        // Continue with other saves, don't block
       }
 
       // 3. Save medical data to separate endpoint
@@ -1413,7 +1456,9 @@ export default function ClientDetailPage() {
       });
 
       if (!medicalResponse.ok) {
-        console.error('Failed to save medical data');
+        const medicalError = await medicalResponse.json().catch(() => ({}));
+        console.error('Failed to save medical data:', medicalError);
+        // Continue with other saves, don't block
       } else {
         // Immediately update client state with new medical data so PlanningSection has latest data
         setClient(prev => prev ? ({
@@ -1443,7 +1488,9 @@ export default function ClientDetailPage() {
         });
 
         if (!recallResponse.ok) {
-          console.error('Failed to save dietary recall entries');
+          const recallError = await recallResponse.json().catch(() => ({}));
+          console.error('Failed to save dietary recall entries:', recallError);
+          // Continue, don't block
         }
       }
 
@@ -1475,13 +1522,20 @@ export default function ClientDetailPage() {
 
       toast.success('Client details updated successfully');
 
+      // Reflect updated baseline first weight immediately in the header cards.
+      const updatedBaselineWeight = Number(basicInfo?.weightKg || 0);
+      if (Number.isFinite(updatedBaselineWeight) && updatedBaselineWeight > 0) {
+        setFirstWeightKg(updatedBaselineWeight);
+      }
+
       // Emit form data updated event for real-time sync
       emitDataChange(DataEventTypes.FORM_DATA_UPDATED, {
         clientId: params.clientId,
         updatedFields: ['basic', 'lifestyle', 'medical', 'recall']
       });
 
-      fetchClientDetails();
+      // Await fetchClientDetails to ensure data is refreshed before UI updates
+      await fetchClientDetails(true);
       setIsEditing(false);
     } catch (error) {
       console.error('Error updating client:', error);
@@ -1639,15 +1693,16 @@ export default function ClientDetailPage() {
   })();
 
   const displayFirstWeight = (() => {
-    // First weight comes from oldest weight log entry or profile baseline
+    // First weight should always prefer Basic Info baseline (editable by staff).
+    const basicWeight = parseFloat(String(basicInfo?.weightKg || ''));
+    if (Number.isFinite(basicWeight) && basicWeight > 0) return basicWeight;
+
+    // Fallbacks: stored baseline state, then oldest tracker entry
     if (firstWeightKg && Number.isFinite(firstWeightKg) && firstWeightKg > 0) return firstWeightKg;
     if (weightLog.length > 0) {
       const oldest = weightLog[weightLog.length - 1];
       if (Number.isFinite(oldest.weight) && oldest.weight > 0) return oldest.weight;
     }
-    // Fallback to profile baseline weight
-    const basicWeight = parseFloat(String(basicInfo?.weightKg || ''));
-    if (Number.isFinite(basicWeight) && basicWeight > 0) return basicWeight;
     return null;
   })();
 

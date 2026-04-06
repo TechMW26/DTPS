@@ -11,6 +11,7 @@ import { UserRole } from '@/types';
 import mongoose from 'mongoose';
 import { logHistoryServer } from '@/lib/server/history';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { emitClientWeightUpdate } from '@/lib/realtime/weight-notify';
 
 // BMI calculation: weight(kg) / (height(m))^2
 function calcBMI(weightKg: number, heightCm: number): number {
@@ -139,6 +140,7 @@ export async function GET(request: NextRequest) {
 
     // Build weight history rows from Weight Tracker (ProgressEntry model)
     const weightHistoryRows = weightEntries
+      .filter((entry: any) => entry?.metadata?.source !== 'progress_form')
       .map((entry: any) => {
         const wt = Number(entry?.value);
         if (!Number.isFinite(wt) || wt <= 0) return null;
@@ -147,6 +149,7 @@ export async function GET(request: NextRequest) {
           _id: `wt_${String(entry?._id || '')}`,
           source: 'weight_tracker',
           date: entry.recordedAt,
+          createdAt: entry.createdAt || entry.recordedAt, // Use createdAt for sorting tiebreaker
           weight: wt,
           bmi: calcBMI(wt, clientProfile.heightCm),
           bmr: calcBMR(wt, clientProfile.heightCm, clientProfile.age, clientProfile.gender),
@@ -160,34 +163,60 @@ export async function GET(request: NextRequest) {
     // Merge journal + weight tracker entries for unified history table
     const mergedProgress = [...allProgress, ...weightHistoryRows];
 
-    // Sort by date descending (latest first)
-    mergedProgress.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Sort by date descending (latest first), using createdAt as tiebreaker for same timestamps
+    mergedProgress.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateB !== dateA) return dateB - dateA;
+      // If dates are equal, use createdAt as tiebreaker (newest first)
+      const createdA = a.createdAt ? new Date(a.createdAt).getTime() : dateA;
+      const createdB = b.createdAt ? new Date(b.createdAt).getTime() : dateB;
+      return createdB - createdA;
+    });
 
     // Get first and current weight from Weight Tracker (ProgressEntry) as primary source
+    // Sort by recordedAt timestamp (not just date) to get correct order for same-day entries
     const sortedWeightEntriesAsc = [...weightEntries].sort(
-      (a: any, b: any) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
+      (a: any, b: any) => {
+        const timeA = new Date(a.recordedAt).getTime();
+        const timeB = new Date(b.recordedAt).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+        // Tiebreaker: use createdAt
+        const createdA = a.createdAt ? new Date(a.createdAt).getTime() : timeA;
+        const createdB = b.createdAt ? new Date(b.createdAt).getTime() : timeB;
+        return createdA - createdB;
+      }
     );
 
-    const firstWeightEntry = sortedWeightEntriesAsc.length > 0 ? sortedWeightEntriesAsc[0] : null;
-    const currentWeightEntry = weightEntries.length > 0 ? weightEntries[0] : null; // Already sorted desc
+    // Sort weight entries descending (most recent first) for current weight
+    const sortedWeightEntriesDesc = [...weightEntries].sort(
+      (a: any, b: any) => {
+        const timeA = new Date(a.recordedAt).getTime();
+        const timeB = new Date(b.recordedAt).getTime();
+        if (timeB !== timeA) return timeB - timeA;
+        // Tiebreaker: use createdAt
+        const createdA = a.createdAt ? new Date(a.createdAt).getTime() : timeA;
+        const createdB = b.createdAt ? new Date(b.createdAt).getTime() : timeB;
+        return createdB - createdA;
+      }
+    );
 
-    // Calculate started with - use weight tracker first, then journal progress, then profile
+    const currentWeightEntry = sortedWeightEntriesDesc.length > 0 ? sortedWeightEntriesDesc[0] : null;
+
+    // Calculate started with - ALWAYS use profile baseline (Basic Info weight) as primary source
+    // This is the "first weight" that dietitian sets in Basic Info form
     const sortedByDateAsc = [...allProgress].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // First weight from weight tracker or journal progress or profile
-    const firstWeight = firstWeightEntry
-      ? Number(firstWeightEntry.value)
-      : (sortedByDateAsc.length > 0 ? sortedByDateAsc[0].weight : profileWeight);
+    // First weight from profile (Basic Info) as primary source - this is the editable baseline
+    const firstWeight = profileWeight > 0 ? profileWeight :
+      (sortedWeightEntriesAsc.length > 0 ? Number(sortedWeightEntriesAsc[0].value) :
+        (sortedByDateAsc.length > 0 ? sortedByDateAsc[0].weight : 0));
 
     const startedWith = {
       weight: firstWeight,
-      bmr: firstWeightEntry
-        ? calcBMR(firstWeight, clientProfile.heightCm, clientProfile.age, clientProfile.gender)
-        : (sortedByDateAsc.length > 0 ? sortedByDateAsc[0].bmr : calcBMR(firstWeight, clientProfile.heightCm, clientProfile.age, clientProfile.gender)),
-      bmi: firstWeightEntry
-        ? calcBMI(firstWeight, clientProfile.heightCm)
-        : (sortedByDateAsc.length > 0 ? sortedByDateAsc[0].bmi : calcBMI(firstWeight, clientProfile.heightCm)),
-      bodyFat: firstWeightEntry ? 0 : (sortedByDateAsc.length > 0 ? sortedByDateAsc[0].bodyFat : 0)
+      bmr: calcBMR(firstWeight, clientProfile.heightCm, clientProfile.age, clientProfile.gender),
+      bmi: calcBMI(firstWeight, clientProfile.heightCm),
+      bodyFat: sortedByDateAsc.length > 0 ? sortedByDateAsc[0].bodyFat : 0
     };
 
     // Current weight from weight tracker (most recent) or journal progress or profile
@@ -259,8 +288,13 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    const progressDate = date ? new Date(date) : new Date();
-    progressDate.setHours(0, 0, 0, 0);
+    // Use current timestamp for entries added today, otherwise use the provided date at noon
+    const now = new Date();
+    const inputDate = date ? new Date(date) : new Date();
+    const isToday = inputDate.toDateString() === now.toDateString();
+
+    // For today's entries, use current time. For past dates, use noon to avoid timezone issues.
+    const progressDate = isToday ? now : new Date(inputDate.setHours(12, 0, 0, 0));
 
     // Convert userId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(userId);
@@ -319,6 +353,44 @@ export async function POST(request: NextRequest) {
     journal.progress.push(newProgress);
     await journal.save();
 
+    // Also add to ProgressEntry (Weight Tracker) if weight was provided
+    // This ensures it shows up in "Currently At" section and client-side weight tracker
+    if (finalWeight > 0) {
+      try {
+        await ProgressEntry.create({
+          user: clientObjectId,
+          type: 'weight',
+          value: finalWeight,
+          unit: 'kg',
+          notes: notes || 'Added via Progress Form',
+          recordedAt: progressDate,
+          metadata: {
+            bmi: finalBmi || 0,
+            bmr: finalBmr || 0,
+            bodyFat: bodyFat || 0,
+            source: 'progress_form',
+            addedBy: session.user.id
+          }
+        });
+
+        // Clear cache to ensure fresh data
+        clearCacheByTag('journal');
+        clearCacheByTag(`client-profile:${userId}`);
+        clearCacheByTag('weight');
+
+        // Emit real-time weight update to both client and staff dashboards
+        await emitClientWeightUpdate({
+          clientId: userId,
+          weightKg: finalWeight,
+          bmi: finalBmi,
+          source: 'staff_update'
+        });
+      } catch (weightError) {
+        console.error('Error adding weight to ProgressEntry:', weightError);
+        // Don't fail the request, just log the error
+      }
+    }
+
     // Log history for progress entry
     await logHistoryServer({
       userId: userId,
@@ -375,6 +447,40 @@ export async function DELETE(request: NextRequest) {
     // Convert clientId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(clientId);
 
+    // Check if this is a weight tracker entry (ID starts with 'wt_')
+    if (entryId.startsWith('wt_')) {
+      // Extract the actual ProgressEntry ID
+      const progressEntryId = entryId.replace('wt_', '');
+
+      // Delete from ProgressEntry model
+      const deleted = await ProgressEntry.findOneAndDelete({
+        _id: progressEntryId,
+        user: clientObjectId
+      });
+
+      if (!deleted) {
+        return NextResponse.json({ error: 'Progress entry not found' }, { status: 404 });
+      }
+
+      // Clear caches
+      clearCacheByTag('journal');
+      clearCacheByTag(`client-profile:${clientId}`);
+      clearCacheByTag('weight');
+
+      return NextResponse.json({
+        success: true,
+        message: 'Weight entry deleted'
+      });
+    }
+
+    // Otherwise, delete from JournalTracking.progress
+    const sourceJournal = await JournalTracking.findOne(
+      { client: clientObjectId, 'progress._id': entryId },
+      { progress: 1 }
+    ).lean() as any;
+
+    const sourceProgress = sourceJournal?.progress?.find((p: any) => String(p?._id) === String(entryId));
+
     const journal = await JournalTracking.findOneAndUpdate(
       { client: clientObjectId, 'progress._id': entryId },
       { $pull: { progress: { _id: entryId } } },
@@ -384,6 +490,28 @@ export async function DELETE(request: NextRequest) {
     if (!journal) {
       return NextResponse.json({ error: 'Progress entry not found' }, { status: 404 });
     }
+
+    // Also delete the corresponding mirrored ProgressEntry (created from progress form)
+    try {
+      if (sourceProgress) {
+        const sourceDate = new Date(sourceProgress.date || sourceProgress.createdAt || new Date());
+        const startWindow = new Date(sourceDate.getTime() - 60_000);
+        const endWindow = new Date(sourceDate.getTime() + 60_000);
+        await ProgressEntry.deleteOne({
+          user: clientObjectId,
+          type: 'weight',
+          value: Number(sourceProgress.weight || 0),
+          'metadata.source': 'progress_form',
+          recordedAt: { $gte: startWindow, $lte: endWindow }
+        });
+      }
+    } catch (err) {
+      // Ignore errors - this is just cleanup
+    }
+
+    // Clear caches
+    clearCacheByTag('journal');
+    clearCacheByTag(`client-profile:${clientId}`);
 
     return NextResponse.json({
       success: true,

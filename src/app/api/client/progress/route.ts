@@ -6,11 +6,13 @@ import User from "@/lib/db/models/User";
 import ProgressEntry from "@/lib/db/models/ProgressEntry";
 import FoodLog from "@/lib/db/models/FoodLog";
 import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
+import JournalTracking from "@/lib/db/models/JournalTracking";
 import { startOfDay, endOfDay, format } from 'date-fns';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { MEAL_TYPES, MEAL_TYPE_KEYS } from '@/lib/mealConfig';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { emitClientWeightUpdate } from '@/lib/realtime/weight-notify';
+import mongoose from 'mongoose';
 
 // Get all possible meal type keys (canonical + common variations for DB compatibility)
 const ALL_MEAL_KEYS = [...MEAL_TYPE_KEYS, ...MEAL_TYPE_KEYS.map(k => MEAL_TYPES[k].label)];
@@ -69,6 +71,16 @@ export async function GET(request: Request) {
       { ttl: 120000, tags: ['client'] }
     );
 
+    // Always fetch all body measurements history (independent of range)
+    const allMeasurementEntries = await withCache(
+      `client:progress:measurements:all:${JSON.stringify(session.user.id)}`,
+      async () => await ProgressEntry.find({
+        user: session.user.id,
+        type: { $in: ['waist', 'hips', 'chest', 'arms', 'thighs'] }
+      }).sort({ recordedAt: -1 }),
+      { ttl: 120000, tags: ['client'] }
+    );
+
     // Optionally fetch complete weight history independently from chart range
     const allWeightEntriesSource = includeAllWeights
       ? await withCache(
@@ -121,7 +133,7 @@ export async function GET(request: Request) {
     const measurements: Record<string, number> = {};
 
     for (const type of measurementTypes) {
-      const latestEntry = allProgressEntries.find(entry => entry.type === type);
+      const latestEntry = allMeasurementEntries.find(entry => entry.type === type);
       measurements[type] = latestEntry ? Number(latestEntry.value) : 0;
     }
 
@@ -130,22 +142,24 @@ export async function GET(request: Request) {
     const todayMeasurements: Record<string, number> = {};
 
     for (const type of measurementTypes) {
-      const todayEntry = allProgressEntries.find(entry => {
+      const todayEntry = allMeasurementEntries.find(entry => {
         const entryDate = new Date(entry.recordedAt).toISOString().split('T')[0];
         return entry.type === type && entryDate === todayStr;
       });
       todayMeasurements[type] = todayEntry ? Number(todayEntry.value) : 0;
     }
 
-    // Build measurement history - group by date
+    // Build measurement history - group by minute (keeps multiple entries on same day)
     const measurementHistoryMap = new Map<string, any>();
 
-    for (const entry of allProgressEntries) {
+    for (const entry of allMeasurementEntries) {
       if (measurementTypes.includes(entry.type)) {
-        const dateKey = new Date(entry.recordedAt).toISOString().split('T')[0];
+        const dateObj = new Date(entry.recordedAt);
+        const minuteBucket = new Date(Math.floor(dateObj.getTime() / 60000) * 60000);
+        const dateKey = minuteBucket.toISOString();
 
         if (!measurementHistoryMap.has(dateKey)) {
-          measurementHistoryMap.set(dateKey, { date: entry.recordedAt });
+          measurementHistoryMap.set(dateKey, { date: minuteBucket });
         }
 
         const existing = measurementHistoryMap.get(dateKey);
@@ -157,7 +171,7 @@ export async function GET(request: Request) {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // Get last measurement date for 7-day restriction check
-    const lastMeasurementEntry = allProgressEntries.find(entry =>
+    const lastMeasurementEntry = allMeasurementEntries.find(entry =>
       measurementTypes.includes(entry.type)
     );
     const lastMeasurementDate = lastMeasurementEntry?.recordedAt?.toISOString() || null;
@@ -556,6 +570,7 @@ export async function POST(request: Request) {
     if (type === 'measurements' && measurements) {
       const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
       const savedEntries = [];
+      const today = startOfDay(new Date());
 
       for (const measureType of measurementTypes) {
         if (measurements[measureType] && measurements[measureType] > 0) {
@@ -570,6 +585,56 @@ export async function POST(request: Request) {
           await progressEntry.save();
           savedEntries.push(progressEntry);
         }
+      }
+
+      // Also save to JournalTracking.measurements so it shows on dietitian's journal
+      try {
+        const clientObjectId = new mongoose.Types.ObjectId(session.user.id);
+
+        // Find or create journal entry for today
+        let journal = await JournalTracking.findOne({
+          client: clientObjectId,
+          date: today
+        });
+
+        if (!journal) {
+          journal = new JournalTracking({
+            client: clientObjectId,
+            date: today,
+            activities: [],
+            steps: [],
+            water: [],
+            sleep: [],
+            meals: [],
+            progress: [],
+            bca: [],
+            measurements: []
+          });
+        } else if (!journal.measurements) {
+          journal.measurements = [];
+        }
+
+        // Add measurement entry in journal format
+        const journalMeasurement = {
+          arm: measurements.arms || 0,
+          waist: measurements.waist || 0,
+          abd: 0, // Client app doesn't track abd
+          chest: measurements.chest || 0,
+          hips: measurements.hips || 0,
+          thigh: measurements.thighs || 0,
+          date: new Date(),
+          createdAt: new Date()
+        };
+
+        journal.measurements.push(journalMeasurement);
+        await journal.save();
+
+        // Clear caches
+        clearCacheByTag('journal');
+        clearCacheByTag('client');
+      } catch (journalError) {
+        console.error('Error saving to JournalTracking:', journalError);
+        // Don't fail the request
       }
 
       // Log activity

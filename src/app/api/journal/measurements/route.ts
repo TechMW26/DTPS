@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import JournalTracking from '@/lib/db/models/JournalTracking';
+import ProgressEntry from '@/lib/db/models/ProgressEntry';
 import { UserRole } from '@/types';
 import mongoose from 'mongoose';
 import { logHistoryServer } from '@/lib/server/history';
@@ -31,7 +32,6 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId') || session.user.id;
-    const dateParam = searchParams.get('date');
 
     if (!checkPermission(session, clientId)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -42,25 +42,90 @@ export async function GET(request: NextRequest) {
     // Convert clientId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(clientId);
 
-    // Always fetch ALL measurements entries for this client (for summary + graph)
-    const allJournals = await withCache(
-      `journal:measurements:all:${clientId}`,
-      async () => await JournalTracking.find({
-        client: clientObjectId,
-        'measurements.0': { $exists: true }
-      }).sort({ date: -1 }),
-      { ttl: 120000, tags: ['journal'] }
-    );
+    // Measurement types in ProgressEntry model (client app)
+    const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
 
-    // Flatten all measurement entries with their dates
+    // Fetch from BOTH sources in parallel:
+    // 1. JournalTracking.measurements (added by dietitian via journal)
+    // 2. ProgressEntry (added by client via progress page)
+    const [allJournals, progressMeasurements] = await Promise.all([
+      withCache(
+        `journal:measurements:all:${clientId}`,
+        async () => await JournalTracking.find({
+          client: clientObjectId,
+          'measurements.0': { $exists: true }
+        }).sort({ date: -1 }),
+        { ttl: 120000, tags: ['journal'] }
+      ),
+      // Fetch measurements from ProgressEntry (client app)
+      ProgressEntry.find({
+        user: clientObjectId,
+        type: { $in: measurementTypes }
+      }).sort({ recordedAt: -1 }).lean()
+    ]);
+
+    // Flatten all measurement entries from JournalTracking with their dates
     const allMeasurements: any[] = [];
     allJournals.forEach(journal => {
       journal.measurements.forEach((entry: any) => {
         allMeasurements.push({
           ...entry.toObject(),
-          journalDate: journal.date
+          journalDate: journal.date,
+          source: 'journal'
         });
       });
+    });
+
+    // Build a set of minute-buckets already present in JournalTracking
+    const journalMinuteBuckets = new Set<number>();
+    allMeasurements.forEach((m: any) => {
+      const t = new Date(m.date || m.journalDate || new Date()).getTime();
+      journalMinuteBuckets.add(Math.floor(t / 60000));
+    });
+
+    // Group ProgressEntry measurements by minute (keeps multiple entries per day)
+    const progressByDate = new Map<string, any>();
+    for (const entry of progressMeasurements) {
+      const recordedAt = new Date(entry.recordedAt);
+      const minuteBucket = new Date(Math.floor(recordedAt.getTime() / 60000) * 60000);
+      const minuteBucketKey = Math.floor(minuteBucket.getTime() / 60000);
+
+      // Skip mirrored entries when JournalTracking already has this timestamp bucket
+      if (journalMinuteBuckets.has(minuteBucketKey)) {
+        continue;
+      }
+
+      const dateKey = String(minuteBucket.getTime());
+      if (!progressByDate.has(dateKey)) {
+        progressByDate.set(dateKey, {
+          _id: `pe_${dateKey}`,
+          date: minuteBucket,
+          journalDate: minuteBucket,
+          source: 'progress_entry',
+          arm: 0,
+          waist: 0,
+          abd: 0,
+          chest: 0,
+          hips: 0,
+          thigh: 0
+        });
+      }
+      const record = progressByDate.get(dateKey)!;
+      // Map field names: arms -> arm, thighs -> thigh
+      const fieldMap: Record<string, string> = {
+        arms: 'arm',
+        thighs: 'thigh',
+        waist: 'waist',
+        hips: 'hips',
+        chest: 'chest'
+      };
+      const fieldName = fieldMap[entry.type] || entry.type;
+      record[fieldName] = Number(entry.value) || 0;
+    }
+
+    // Add progress entries to allMeasurements
+    progressByDate.forEach(entry => {
+      allMeasurements.push(entry);
     });
 
     // Sort by date descending
@@ -68,7 +133,7 @@ export async function GET(request: NextRequest) {
 
     // Calculate started with (first entry) and currently at (latest entry) — always across ALL entries
     const sortedByDateAsc = [...allMeasurements].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
+
     const startedWith = sortedByDateAsc.length > 0 ? {
       arm: sortedByDateAsc[0].arm,
       waist: sortedByDateAsc[0].waist,
@@ -181,6 +246,41 @@ export async function POST(request: NextRequest) {
     journal.measurements.push(newMeasurement);
     await journal.save();
 
+    // Also save to ProgressEntry model so it shows on client app
+    // Map journal fields to ProgressEntry types
+    const measurementMapping = [
+      { field: 'arm', type: 'arms', value: arm },
+      { field: 'waist', type: 'waist', value: waist },
+      { field: 'chest', type: 'chest', value: chest },
+      { field: 'hips', type: 'hips', value: hips },
+      { field: 'thigh', type: 'thighs', value: thigh }
+    ];
+
+    try {
+      for (const m of measurementMapping) {
+        if (m.value && m.value > 0) {
+          await ProgressEntry.create({
+            user: clientObjectId,
+            type: m.type,
+            value: m.value,
+            unit: 'cm',
+            notes: 'Added by dietitian',
+            recordedAt: measurementDate,
+            metadata: {
+              source: 'journal_measurements',
+              addedBy: session.user.id
+            }
+          });
+        }
+      }
+      // Clear caches to ensure fresh data on both sides
+      clearCacheByTag('journal');
+      clearCacheByTag('client');
+    } catch (progressError) {
+      console.error('Error saving to ProgressEntry:', progressError);
+      // Don't fail the request
+    }
+
     await logHistoryServer({
       userId,
       action: 'create',
@@ -239,6 +339,41 @@ export async function DELETE(request: NextRequest) {
     // Convert clientId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(clientId);
 
+    // Check if this is a ProgressEntry measurement (ID starts with 'pe_')
+    if (entryId.startsWith('pe_')) {
+      // Extract minute-bucket timestamp from ID (format: pe_<epoch_ms>)
+      const bucketMs = Number(entryId.replace('pe_', ''));
+      const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+
+      if (!Number.isFinite(bucketMs)) {
+        return NextResponse.json({ error: 'Invalid measurement entry id' }, { status: 400 });
+      }
+
+      // Delete all ProgressEntry measurements in this minute-bucket
+      const startWindow = new Date(bucketMs);
+      const endWindow = new Date(bucketMs + 59_999);
+
+      const deleted = await ProgressEntry.deleteMany({
+        user: clientObjectId,
+        type: { $in: measurementTypes },
+        recordedAt: { $gte: startWindow, $lte: endWindow }
+      });
+
+      if (deleted.deletedCount === 0) {
+        return NextResponse.json({ error: 'Measurement entry not found' }, { status: 404 });
+      }
+
+      // Clear caches
+      clearCacheByTag('journal');
+      clearCacheByTag('client');
+
+      return NextResponse.json({
+        success: true,
+        message: 'Measurement entries deleted'
+      });
+    }
+
+    // Otherwise, delete from JournalTracking.measurements
     const journal = await JournalTracking.findOneAndUpdate(
       { client: clientObjectId, 'measurements._id': entryId },
       { $pull: { measurements: { _id: entryId } } },
@@ -248,6 +383,22 @@ export async function DELETE(request: NextRequest) {
     if (!journal) {
       return NextResponse.json({ error: 'Measurement entry not found' }, { status: 404 });
     }
+
+    // Also try to delete corresponding ProgressEntry measurements
+    try {
+      const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+      await ProgressEntry.deleteMany({
+        user: clientObjectId,
+        type: { $in: measurementTypes },
+        'metadata.source': 'journal_measurements'
+      });
+    } catch (err) {
+      // Ignore errors - this is just cleanup
+    }
+
+    // Clear caches
+    clearCacheByTag('journal');
+    clearCacheByTag('client');
 
     return NextResponse.json({
       success: true,

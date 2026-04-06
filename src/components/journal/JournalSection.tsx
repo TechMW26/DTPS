@@ -741,18 +741,14 @@ function ProgressTab({ showAddProgress, setShowAddProgress, clientId, selectedDa
                     <td className="px-4 py-3 text-sm">{entry.dietPlan || '-'}</td>
                     <td className="px-4 py-3 text-sm">{entry.notes || '-'}</td>
                     <td className="px-4 py-3 text-sm">
-                      {entry.source === 'weight_tracker' ? (
-                        <span className="text-xs text-gray-400">-</span>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-500 hover:text-red-700"
-                          onClick={() => handleDeleteProgress(entry._id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => handleDeleteProgress(entry._id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </td>
                   </tr>
                 ))
