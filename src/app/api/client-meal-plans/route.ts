@@ -230,6 +230,7 @@ export async function GET(request: NextRequest) {
         .populate('clientId', 'firstName lastName email')
         .populate('dietitianId', 'firstName lastName')
         .populate('templateId', 'name category duration')
+        .populate('purchaseId', 'planName planCategory durationDays durationLabel status paymentStatus paidAt razorpayPaymentId transactionId finalAmount baseAmount paymentMethod')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -237,9 +238,76 @@ export async function GET(request: NextRequest) {
       ClientMealPlan.countDocuments(query)
     ]);
 
+    // For meal plans without purchaseId populated, try to find matching payment from UnifiedPayment
+    const enrichedMealPlans = await Promise.all(mealPlans.map(async (plan: any) => {
+      // If purchaseId is already populated with payment data, format it properly
+      if (plan.purchaseId && typeof plan.purchaseId === 'object') {
+        return {
+          ...plan,
+          paymentInfo: {
+            _id: plan.purchaseId._id,
+            planName: plan.purchaseId.planName || 'N/A',
+            planCategory: plan.purchaseId.planCategory || 'N/A',
+            durationDays: plan.purchaseId.durationDays || 0,
+            durationLabel: plan.purchaseId.durationLabel || 'N/A',
+            status: plan.purchaseId.status || plan.purchaseId.paymentStatus || 'N/A',
+            paymentStatus: plan.purchaseId.paymentStatus || 'N/A',
+            amount: plan.purchaseId.finalAmount || plan.purchaseId.baseAmount || 0,
+            paymentMethod: plan.purchaseId.paymentMethod || 'Online',
+            transactionId: plan.purchaseId.transactionId || plan.purchaseId.razorpayPaymentId || 'N/A',
+            paidAt: plan.purchaseId.paidAt || null
+          }
+        };
+      }
+
+      // Try to find payment from UnifiedPayment based on clientId and overlapping dates
+      try {
+        const payment = await UnifiedPayment.findOne({
+          client: plan.clientId?._id || plan.clientId,
+          paymentStatus: 'paid',
+          $or: [
+            // Payment that covers the meal plan period
+            { startDate: { $lte: plan.startDate }, endDate: { $gte: plan.startDate } },
+            // Payment made around the meal plan creation
+            { paidAt: { $gte: new Date(new Date(plan.createdAt).getTime() - 7 * 24 * 60 * 60 * 1000) } }
+          ]
+        })
+          .sort({ paidAt: -1 })
+          .select('planName planCategory durationDays durationLabel status paymentStatus paidAt razorpayPaymentId transactionId finalAmount baseAmount paymentMethod')
+          .lean();
+
+        if (payment) {
+          return {
+            ...plan,
+            paymentInfo: {
+              _id: payment._id,
+              planName: payment.planName || 'N/A',
+              planCategory: payment.planCategory || 'N/A',
+              durationDays: payment.durationDays || 0,
+              durationLabel: payment.durationLabel || 'N/A',
+              status: payment.status || payment.paymentStatus || 'N/A',
+              paymentStatus: payment.paymentStatus || 'N/A',
+              amount: payment.finalAmount || payment.baseAmount || 0,
+              paymentMethod: payment.paymentMethod || 'Online',
+              transactionId: payment.transactionId || payment.razorpayPaymentId || 'N/A',
+              paidAt: payment.paidAt || null
+            }
+          };
+        }
+      } catch (err) {
+        // Silently ignore errors in payment lookup
+      }
+
+      // No payment found
+      return {
+        ...plan,
+        paymentInfo: null
+      };
+    }));
+
     return NextResponse.json({
       success: true,
-      mealPlans,
+      mealPlans: enrichedMealPlans,
       pagination: {
         page,
         limit,

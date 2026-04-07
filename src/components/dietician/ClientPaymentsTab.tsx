@@ -61,7 +61,7 @@ export default function ClientPaymentsTab({ clientId, client }: ClientPaymentsTa
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  
+
   // Form state
   const [selectedPlan, setSelectedPlan] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'manual' | 'cash' | 'bank-transfer'>('razorpay');
@@ -124,12 +124,12 @@ export default function ClientPaymentsTab({ clientId, client }: ClientPaymentsTa
         const data = await response.json();
         setDialogOpen(false);
         fetchSubscriptions();
-        
+
         // Show payment link if generated
         if (data.subscription.paymentLink) {
           alert(`Payment link generated: ${data.subscription.paymentLink}`);
         }
-        
+
         // Reset form
         setSelectedPlan('');
         setPaymentMethod('razorpay');
@@ -149,7 +149,7 @@ export default function ClientPaymentsTab({ clientId, client }: ClientPaymentsTa
 
   const handleMarkAsPaid = async (subscriptionId: string) => {
     const transactionId = prompt('Enter transaction ID (optional):');
-    
+
     try {
       const response = await fetch(`/api/subscriptions/${subscriptionId}`, {
         method: 'PUT',
@@ -217,7 +217,7 @@ export default function ClientPaymentsTab({ clientId, client }: ClientPaymentsTa
             Manage subscriptions and payments for {client.firstName} {client.lastName}
           </p>
         </div>
-        
+
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button className="cursor-pointer">
@@ -232,7 +232,7 @@ export default function ClientPaymentsTab({ clientId, client }: ClientPaymentsTa
                 Create a subscription plan for {client.firstName} {client.lastName}
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>Select Plan</Label>
@@ -338,7 +338,7 @@ export default function ClientPaymentsTab({ clientId, client }: ClientPaymentsTa
                     <p className="text-gray-600">Amount</p>
                     <p className="font-medium text-lg flex items-center">
                       <IndianRupee className="h-4 w-4" />
-                      {subscription.amount}
+                      {subscription.amount?.toLocaleString('en-IN')}
                     </p>
                   </div>
                   <div>
@@ -376,9 +376,16 @@ export default function ClientPaymentsTab({ clientId, client }: ClientPaymentsTa
                 )}
 
                 {subscription.transactionId && (
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-sm text-gray-600 mb-1">Transaction ID</p>
+                    <p className="font-mono text-sm text-gray-900 break-all">{subscription.transactionId}</p>
+                  </div>
+                )}
+
+                {subscription.paidAt && (
                   <div className="text-sm">
-                    <span className="text-gray-600">Transaction ID: </span>
-                    <span className="font-mono">{subscription.transactionId}</span>
+                    <span className="text-gray-600">Paid On: </span>
+                    <span className="font-medium">{format(new Date(subscription.paidAt), 'MMM d, yyyy h:mm a')}</span>
                   </div>
                 )}
 

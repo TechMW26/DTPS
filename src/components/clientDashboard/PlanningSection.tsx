@@ -260,6 +260,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   const [viewingPlan, setViewingPlan] = useState<any | null>(null);
   const [planKey, setPlanKey] = useState(0); // Force re-mount of DietPlanDashboard
 
+  // Payment details visibility state - tracks which plan's payment info is shown
+  const [showPaymentForPlanId, setShowPaymentForPlanId] = useState<string | null>(null);
+
   // Payment check states
   const [paymentCheck, setPaymentCheck] = useState<PaymentCheckResult | null>(null);
   const [checkingPayment, setCheckingPayment] = useState(false);
@@ -693,7 +696,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         // Map each plan day to template day (cycle if template is shorter)
         defaultMapping[i] = i < templateDaysCount ? i : i % templateDaysCount;
       }
-      
+
       setTemplateDayMapping(defaultMapping);
       console.log('[Template Load] Default mapping created for', planDaysCount, 'plan days');
       // Dialog stays open — pendingTemplate switches the view to mapping
@@ -4312,6 +4315,62 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                           </Badge>
                         </div>
                       )}
+
+                      {/* Payment Info Section - Only show when toggled */}
+                      {plan.paymentInfo && showPaymentForPlanId === plan._id && (
+                        <div className="mt-3 p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-lg relative">
+                          {/* Close button */}
+                          <button
+                            onClick={() => setShowPaymentForPlanId(null)}
+                            className="absolute top-2 right-2 p-1 hover:bg-emerald-100 rounded-full transition-colors"
+                            title="Close payment details"
+                          >
+                            <X className="h-4 w-4 text-emerald-600" />
+                          </button>
+
+                          <div className="flex items-center gap-2 mb-2">
+                            <CreditCard className="h-4 w-4 text-emerald-600" />
+                            <span className="text-sm font-medium text-emerald-800">Payment Details</span>
+                            <Badge
+                              className={
+                                plan.paymentInfo.paymentStatus === 'paid'
+                                  ? 'bg-green-100 text-green-800 text-xs'
+                                  : 'bg-yellow-100 text-yellow-800 text-xs'
+                              }
+                            >
+                              {plan.paymentInfo.paymentStatus === 'paid' ? 'Paid' : plan.paymentInfo.paymentStatus}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                            <div>
+                              <span className="text-gray-500">Plan:</span>
+                              <p className="font-medium text-gray-900">{plan.paymentInfo.planName}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Amount:</span>
+                              <p className="font-medium text-gray-900">₹{plan.paymentInfo.amount?.toLocaleString('en-IN') || '0'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Paid On:</span>
+                              <p className="font-medium text-gray-900">
+                                {plan.paymentInfo.paidAt
+                                  ? format(new Date(plan.paymentInfo.paidAt), 'MMM d, yyyy h:mm a')
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Method:</span>
+                              <p className="font-medium text-gray-900 capitalize">{plan.paymentInfo.paymentMethod || 'Online'}</p>
+                            </div>
+                          </div>
+                          {plan.paymentInfo.transactionId && plan.paymentInfo.transactionId !== 'N/A' && (
+                            <div className="mt-2 pt-2 border-t border-emerald-200">
+                              <span className="text-xs text-gray-500">Transaction ID: </span>
+                              <span className="text-xs font-mono text-gray-800 break-all">{plan.paymentInfo.transactionId}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex gap-2 ml-4 items-center">
@@ -4428,6 +4487,20 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                   showAsText={false}
                                   showAsButton={true}
                                 />
+
+                                {/* Payment Details Toggle Button */}
+                                {plan.paymentInfo && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    title="View Payment Details"
+                                    onClick={() => setShowPaymentForPlanId(showPaymentForPlanId === plan._id ? null : plan._id)}
+                                    className="flex items-center gap-1.5"
+                                  >
+                                    <CreditCard className="h-4 w-4" />
+                                    <span className="text-xs">Payment</span>
+                                  </Button>
+                                )}
 
                                 <Button
                                   size="sm"

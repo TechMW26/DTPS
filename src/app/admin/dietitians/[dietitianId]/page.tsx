@@ -123,6 +123,8 @@ interface PaymentData {
   type: string;
   planName?: string;
   transactionId?: string;
+  razorpayPaymentId?: string;
+  paidAt?: string;
   createdAt: string;
 }
 
@@ -1112,7 +1114,7 @@ export default function AdminDietitianDetailPage() {
                         <TableHead>Type</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Transaction ID</TableHead>
-                        <TableHead>Date</TableHead>
+                        <TableHead>Paid On</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1126,14 +1128,14 @@ export default function AdminDietitianDetailPage() {
                           </TableCell>
                           <TableCell>{payment.planName || '-'}</TableCell>
                           <TableCell className="font-medium">
-                            {payment.currency} {payment.amount?.toLocaleString()}
+                            {payment.currency} {payment.amount?.toLocaleString('en-IN')}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{payment.type}</Badge>
                           </TableCell>
                           <TableCell>
                             <Badge className={
-                              payment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              payment.status === 'completed' || payment.status === 'paid' ? 'bg-green-100 text-green-800' :
                                 payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                   payment.status === 'failed' ? 'bg-red-100 text-red-800' :
                                     'bg-gray-100 text-gray-800'
@@ -1141,11 +1143,15 @@ export default function AdminDietitianDetailPage() {
                               {payment.status}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-xs text-gray-500">
-                            {payment.transactionId || '-'}
+                          <TableCell>
+                            <span className="text-xs font-mono text-gray-700 break-all max-w-[150px] block">
+                              {payment.transactionId || payment.razorpayPaymentId || '-'}
+                            </span>
                           </TableCell>
-                          <TableCell className="text-sm text-gray-500">
-                            {format(new Date(payment.createdAt), 'MMM dd, yyyy')}
+                          <TableCell className="text-sm text-gray-700">
+                            {payment.paidAt
+                              ? format(new Date(payment.paidAt), 'MMM dd, yyyy h:mm a')
+                              : format(new Date(payment.createdAt), 'MMM dd, yyyy')}
                           </TableCell>
                         </TableRow>
                       ))}
