@@ -267,8 +267,14 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     return findMealInDay(day, mealType) || null;
   };
 
+  // Helper function to check if a day is frozen (cannot be edited)
+  const isDayFrozen = (dayIndex: number): boolean => {
+    const day = weekPlan[dayIndex];
+    return day && (day as any).isFrozen === true;
+  };
+
   const addMealToCell = (dayIndex: number, mealType: string) => {
-    if (readOnly || !onUpdate) return;
+    if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
     const existingMeal = newWeekPlan[dayIndex].meals[mealType];
     if (!existingMeal) {
@@ -292,7 +298,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   };
 
   const updateMealTime = (dayIndex: number, mealType: string, time: string) => {
-    if (readOnly || !onUpdate) return;
+    if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
     if (newWeekPlan[dayIndex].meals[mealType]) {
       newWeekPlan[dayIndex].meals[mealType].time = time;
@@ -312,7 +318,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   };
 
   const toggleAlternatives = (dayIndex: number, mealType: string) => {
-    if (readOnly || !onUpdate) return;
+    if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
     if (newWeekPlan[dayIndex].meals[mealType]) {
       newWeekPlan[dayIndex].meals[mealType].showAlternatives =
@@ -322,7 +328,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   };
 
   const addFoodOption = (dayIndex: number, mealType: string, isAlternative: boolean = false) => {
-    if (readOnly || !onUpdate) return;
+    if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
     const meal = newWeekPlan[dayIndex].meals[mealType];
     if (meal) {
@@ -346,7 +352,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   };
 
   const removeFoodOption = (dayIndex: number, mealType: string, optionIndex: number) => {
-    if (readOnly || !onUpdate) return;
+    if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
     const meal = newWeekPlan[dayIndex].meals[mealType];
     if (meal) {
@@ -362,7 +368,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     field: keyof Omit<FoodOption, 'foods'>,
     value: string
   ) => {
-    if (readOnly || !onUpdate) return;
+    if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
     const meal = newWeekPlan[dayIndex].meals[mealType];
     if (meal && meal.foodOptions[optionIndex]) {
@@ -372,7 +378,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   };
 
   const updateDayInfo = (dayIndex: number, field: 'date' | 'note', value: string) => {
-    if (readOnly || !onUpdate) return;
+    if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
     newWeekPlan[dayIndex][field] = value;
     onUpdate(newWeekPlan);
@@ -394,8 +400,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
     const newWeekPlan = cloneWeekPlan(weekPlan);
 
-    // Copy to all selected day and meal combinations
-    selectedDays.forEach(targetDayIndex => {
+    // Copy to all selected day and meal combinations (skip frozen days)
+    selectedDays.filter(idx => !isDayFrozen(idx)).forEach(targetDayIndex => {
       selectedMeals.forEach(targetMealType => {
         // Deep copy the meal with fully new IDs
         newWeekPlan[targetDayIndex].meals[targetMealType] = {
@@ -429,8 +435,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     const newWeekPlan = cloneWeekPlan(weekPlan);
     const isAlternative = sourceOption.isAlternative || false;
 
-    // Copy to all selected day and meal combinations
-    selectedDaysForFoodCopy.forEach(targetDayIndex => {
+    // Copy to all selected day and meal combinations (skip frozen days)
+    selectedDaysForFoodCopy.filter(idx => !isDayFrozen(idx)).forEach(targetDayIndex => {
       selectedMealsForFoodCopy.forEach(targetMealType => {
         let targetMeal = newWeekPlan[targetDayIndex].meals[targetMealType];
 
@@ -534,8 +540,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
     const newWeekPlan = cloneWeekPlan(weekPlan);
 
-    // Copy to all selected day and meal combinations
-    selectedDaysForOptionCopy.forEach(targetDayIndex => {
+    // Copy to all selected day and meal combinations (skip frozen days)
+    selectedDaysForOptionCopy.filter(idx => !isDayFrozen(idx)).forEach(targetDayIndex => {
       selectedMealsForOptionCopy.forEach(targetMealType => {
         let targetMeal = newWeekPlan[targetDayIndex].meals[targetMealType];
 
@@ -719,9 +725,11 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     if (!name) return;
     const time = newMealTime || '12:00 PM';
 
-    // Create meal in all days if missing
+    // Create meal in all days if missing (skip frozen days)
     const newWeekPlan = cloneWeekPlan(weekPlan);
-    newWeekPlan.forEach(day => {
+    newWeekPlan.forEach((day, idx) => {
+      // Skip frozen days
+      if (isDayFrozen(idx)) return;
       if (!day.meals[name]) {
         day.meals[name] = {
           id: Math.random().toString(36).substr(2, 9),
@@ -955,6 +963,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
     const newWeekPlan = cloneWeekPlan(weekPlan);
     newWeekPlan.forEach((day, idx) => {
+      // Skip frozen days
+      if (isDayFrozen(idx)) return;
       if (!selectedDaysForReplace.includes(idx)) return;
       Object.keys(day.meals).forEach(mt => {
         if (!selectedMealTypesForReplace.includes(mt)) return;
@@ -1087,7 +1097,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   };
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, dayIndex: number, mealType: string, optionIndex: number, foodFilled: boolean) => {
-    if (!foodFilled) {
+    if (!foodFilled || isDayFrozen(dayIndex)) {
       e.preventDefault();
       return;
     }
@@ -1097,8 +1107,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLTableCellElement>, dayIndex: number, mealType: string) => {
-    // Allow drop only if drag source exists
-    if (dragSource) {
+    // Allow drop only if drag source exists and target day is not frozen
+    if (dragSource && !isDayFrozen(dayIndex)) {
       e.preventDefault();
       setDragOverTarget({ dayIndex, mealType });
       e.dataTransfer.dropEffect = 'move';
@@ -1117,7 +1127,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     setDragOverTarget(null);
     setDragSource(null);
     if (!source) return;
-    if (readOnly || !onUpdate) return;
+    if (readOnly || !onUpdate || isDayFrozen(targetDayIndex)) return;
 
     const newWeekPlan = cloneWeekPlan(weekPlan);
     const sourceMeal = newWeekPlan[source.dayIndex].meals[source.mealType];
@@ -1386,7 +1396,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                       <div className="space-y-2.5">
                         <div className="flex items-center justify-between">
                           <div className="text-slate-900 font-semibold text-base">{formatDayLabel()}</div>
-                          {!readOnly && onRemoveDay && weekPlan.length > 1 && (
+                          {!readOnly && onRemoveDay && weekPlan.length > 1 && !isFrozenDay && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1411,12 +1421,14 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                         <DatePicker
                           value={day.date}
                           onChange={(date) => updateDayInfo(actualDayIndex, 'date', date)}
+                          disabled={isFrozenDay}
                         />
                         <Button
                           variant="outline"
                           size="sm"
                           className="h-9 text-xs bg-white border-gray-300 hover:border-slate-500 justify-start font-normal text-left"
                           onClick={() => {
+                            if (isFrozenDay) return;
                             setNotesDialogDayIndex(actualDayIndex);
                             setNotesDialogValue(day.note || '');
                             setNotesDialogOpen(true);
@@ -1475,13 +1487,15 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                     onChange={(e) => updateMealTime(actualDayIndex, mealType, e.target.value)}
                                     placeholder="e.g., 8:00 AM"
                                     className="h-9 text-xs flex-1 bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500 font-mono"
+                                    disabled={isFrozenDay}
                                   />
                                   <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => addFoodOption(actualDayIndex, mealType, false)}
-                                    className="h-9 px-2.5 bg-green-600 text-white border-green-600 hover:bg-green-700"
+                                    className="h-9 px-2.5 bg-green-600 text-white border-green-600 hover:bg-green-700 disabled:opacity-50"
                                     title="Add normal food option"
+                                    disabled={isFrozenDay}
                                   >
                                     <Plus className="w-3.5 h-3.5" />
                                   </Button>
@@ -1489,18 +1503,23 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                     variant="outline"
                                     size="sm"
                                     onClick={() => addFoodOption(actualDayIndex, mealType, true)}
-                                    className="h-9 px-3 bg-orange-500 text-white border-orange-500 hover:bg-orange-600 font-medium"
+                                    className="h-9 px-3 bg-orange-500 text-white border-orange-500 hover:bg-orange-600 font-medium disabled:opacity-50"
                                     title="Add alternative food option"
+                                    disabled={isFrozenDay}
                                   >
                                     <span className="text-xs">🔄 Alt</span>
                                   </Button>
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => openCopyDialog(actualDayIndex, mealType)}
+                                    onClick={() => {
+                                      if (isFrozenDay) return;
+                                      openCopyDialog(actualDayIndex, mealType);
+                                    }}
                                     style={{ backgroundColor: '#00A63E', color: 'white', borderColor: '#00A63E' }}
-                                    className="h-9 px-2.5 hover:opacity-90"
+                                    className="h-9 px-2.5 hover:opacity-90 disabled:opacity-50"
                                     title="Copy meal to another day"
+                                    disabled={isFrozenDay}
                                   >
                                     <Copy className="w-3.5 h-3.5" />
                                   </Button>
@@ -1533,6 +1552,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                           variant="ghost"
                                           size="sm"
                                           onClick={() => {
+                                            if (isFrozenDay) return;
                                             setCopyOptionSource({
                                               dayIndex: actualDayIndex,
                                               mealType,
@@ -1543,8 +1563,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                             setSelectedMealsForOptionCopy([]);
                                             setCopyOptionDialogOpen(true);
                                           }}
-                                          className={`h-7 w-7 p-0 ${option.isAlternative ? 'text-orange-600 hover:text-orange-700 hover:bg-orange-50' : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'}`}
+                                          className={`h-7 w-7 p-0 disabled:opacity-50 ${option.isAlternative ? 'text-orange-600 hover:text-orange-700 hover:bg-orange-50' : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'}`}
                                           title={`Copy this ${option.isAlternative ? 'alternative' : 'main'} food option to other days/meals`}
+                                          disabled={isFrozenDay}
                                         >
                                           <Copy className="w-4 h-4" />
                                         </Button>
@@ -1555,8 +1576,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                             setCurrentFoodContext({ dayIndex: actualDayIndex, mealType, optionIndex });
                                             setFoodDatabaseOpen(true);
                                           }}
-                                          className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                          className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 disabled:opacity-50"
                                           title="Add more foods to this option"
+                                          disabled={isFrozenDay}
                                         >
                                           <Plus className="w-4 h-4" />
                                         </Button>
@@ -1564,8 +1586,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                           variant="ghost"
                                           size="sm"
                                           onClick={() => removeFoodOption(actualDayIndex, mealType, optionIndex)}
-                                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50"
                                           title="Remove this food option"
+                                          disabled={isFrozenDay}
                                         >
                                           <X className="w-4 h-4" />
                                         </Button>
@@ -1584,7 +1607,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                   <Input
                                                     value={foodItem.food}
                                                     onChange={(e) => {
-                                                      if (readOnly || !onUpdate) return;
+                                                      if (readOnly || !onUpdate || isFrozenDay) return;
                                                       const newWeekPlan = cloneWeekPlan(weekPlan);
                                                       const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                       if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
@@ -1596,6 +1619,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                     }}
                                                     placeholder="Food item"
                                                     className="h-9 text-sm bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500 font-medium flex-1"
+                                                    disabled={isFrozenDay}
                                                   />
                                                   {option.isAlternative && (
                                                     <span className="px-2.5 py-1 text-xs font-semibold text-orange-700 bg-orange-100 rounded-full whitespace-nowrap">
@@ -1609,13 +1633,15 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                   variant="ghost"
                                                   size="sm"
                                                   onClick={() => {
+                                                    if (isFrozenDay) return;
                                                     setSelectedDaysForFoodCopy([]);
                                                     setSelectedMealsForFoodCopy([]);
                                                     setCopyFoodSource({ dayIndex: actualDayIndex, mealType, optionIndex, foodIndex });
                                                     setCopyFoodDialogOpen(true);
                                                   }}
-                                                  className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                  className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-50"
                                                   title="Copy this food to other meals"
+                                                  disabled={isFrozenDay}
                                                 >
                                                   <Copy className="w-4 h-4" />
                                                 </Button>
@@ -1623,7 +1649,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                   variant="ghost"
                                                   size="sm"
                                                   onClick={() => {
-                                                    if (readOnly || !onUpdate) return;
+                                                    if (readOnly || !onUpdate || isFrozenDay) return;
                                                     const newWeekPlan = cloneWeekPlan(weekPlan);
                                                     const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                     if (meal?.foodOptions[optionIndex]?.foods) {
@@ -1650,8 +1676,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                       onUpdate(newWeekPlan);
                                                     }
                                                   }}
-                                                  className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                  className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:opacity-50"
                                                   title="Remove this food"
+                                                  disabled={isFrozenDay}
                                                 >
                                                   <Minus className="w-4 h-4" />
                                                 </Button>
@@ -1663,7 +1690,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                               <Input
                                                 value={foodItem.unit}
                                                 onChange={(e) => {
-                                                  if (readOnly || !onUpdate) return;
+                                                  if (readOnly || !onUpdate || isFrozenDay) return;
                                                   const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
@@ -1673,11 +1700,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 }}
                                                 placeholder="Unit (e.g., 100g)"
                                                 className="h-9 text-xs bg-gray-50 border-gray-300"
+                                                disabled={isFrozenDay}
                                               />
                                               <Input
                                                 value={foodItem.cal}
                                                 onChange={(e) => {
-                                                  if (readOnly || !onUpdate) return;
+                                                  if (readOnly || !onUpdate || isFrozenDay) return;
                                                   const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
@@ -1690,6 +1718,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 placeholder="Calories"
                                                 type="number"
                                                 className="h-9 text-xs bg-gray-50 border-gray-300 font-mono"
+                                                disabled={isFrozenDay}
                                               />
                                             </div>
 
@@ -1698,7 +1727,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                               <Input
                                                 value={foodItem.carbs}
                                                 onChange={(e) => {
-                                                  if (readOnly || !onUpdate) return;
+                                                  if (readOnly || !onUpdate || isFrozenDay) return;
                                                   const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
@@ -1711,11 +1740,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 placeholder="Carbs (g)"
                                                 type="number"
                                                 className="h-9 text-xs bg-gray-50 border-gray-300 font-mono"
+                                                disabled={isFrozenDay}
                                               />
                                               <Input
                                                 value={foodItem.fats}
                                                 onChange={(e) => {
-                                                  if (readOnly || !onUpdate) return;
+                                                  if (readOnly || !onUpdate || isFrozenDay) return;
                                                   const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
@@ -1728,6 +1758,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 placeholder="Fats (g)"
                                                 type="number"
                                                 className="h-9 text-xs bg-gray-50 border-gray-300 font-mono"
+                                                disabled={isFrozenDay}
                                               />
                                             </div>
 
@@ -1736,7 +1767,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                               <Input
                                                 value={foodItem.protein}
                                                 onChange={(e) => {
-                                                  if (readOnly || !onUpdate) return;
+                                                  if (readOnly || !onUpdate || isFrozenDay) return;
                                                   const newWeekPlan = cloneWeekPlan(weekPlan);
                                                   const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                   if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
@@ -1749,6 +1780,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 placeholder="Protein (g)"
                                                 type="number"
                                                 className="h-9 text-xs bg-gray-50 border-gray-300 font-mono"
+                                                disabled={isFrozenDay}
                                               />
                                             </div>
                                           </div>
@@ -2780,7 +2812,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
             if (currentFoodContext && foods.length > 0) {
               const { dayIndex, mealType, optionIndex } = currentFoodContext;
 
-              if (readOnly || !onUpdate) return;
+              // Skip if day is frozen
+              if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
 
               const newWeekPlan = cloneWeekPlan(weekPlan);
               const meal = newWeekPlan[dayIndex].meals[mealType];

@@ -33,6 +33,8 @@ export interface PaymentItem {
   _id: string;
   razorpayPaymentLinkUrl?: string;
   razorpayPaymentLinkShortUrl?: string;
+  razorpayPaymentId?: string;
+  transactionId?: string;
   amount: number;
   tax?: number;
   discount?: number;
@@ -93,6 +95,7 @@ export default function PaymentsSection({
     amount: true,
     final: true,
     status: true,
+    transactionId: true,
     expectedDates: true,
     link: true,
     notes: false,
@@ -585,6 +588,30 @@ export default function PaymentsSection({
     if (typeof value === 'string') return value;
     if (typeof value === 'object' && value._id) return String(value._id);
     return String(value);
+  };
+
+  const getTransactionIdForPayment = (payment: PaymentItem): string => {
+    const directTransactionId = payment.transactionId?.trim();
+    if (directTransactionId) return directTransactionId;
+
+    const directRazorpayPaymentId = payment.razorpayPaymentId?.trim();
+    if (directRazorpayPaymentId) return directRazorpayPaymentId;
+
+    const linkedPurchase = clientPurchases.find((purchase: any) =>
+      toIdString(purchase.paymentLink) === toIdString(payment._id)
+    );
+
+    const purchaseTransactionId = linkedPurchase?.transactionId;
+    if (typeof purchaseTransactionId === 'string' && purchaseTransactionId.trim()) {
+      return purchaseTransactionId.trim();
+    }
+
+    const purchaseRazorpayPaymentId = linkedPurchase?.razorpayPaymentId;
+    if (typeof purchaseRazorpayPaymentId === 'string' && purchaseRazorpayPaymentId.trim()) {
+      return purchaseRazorpayPaymentId.trim();
+    }
+
+    return '—';
   };
 
   // Platform options
@@ -1105,6 +1132,7 @@ export default function PaymentsSection({
                   {visibleColumns.amount && <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Amount</th>}
                   {visibleColumns.final && <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Final</th>}
                   {visibleColumns.status && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Status</th>}
+                  {visibleColumns.transactionId && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Transaction ID</th>}
                   {visibleColumns.expectedDates && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Expected Dates</th>}
                   {visibleColumns.link && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Link</th>}
                   <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-center">Actions</th>
@@ -1154,6 +1182,13 @@ export default function PaymentsSection({
                       <td className="p-3 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${getStatusBadge(p.status)}`}>
                           {p.status || "—"}
+                        </span>
+                      </td>
+                    )}
+                    {visibleColumns.transactionId && (
+                      <td className="p-3">
+                        <span className="text-xs font-mono text-gray-700 break-all max-w-[170px] block">
+                          {getTransactionIdForPayment(p)}
                         </span>
                       </td>
                     )}

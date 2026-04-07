@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Calendar, Plus, Edit, Trash2, Copy, ArrowLeft, ArrowRight, Utensils, Dumbbell, Eye, FileText, Image as ImageIcon, Video, Search, Loader2, Check, X, AlertTriangle, CreditCard, Clock, RefreshCw, MoreVertical, Repeat2, Pause, Play, Zap, Snowflake, Save } from 'lucide-react';
+import { Calendar, Plus, Edit, Trash2, ArrowLeft, ArrowRight, Utensils, Dumbbell, Eye, FileText, Image as ImageIcon, Video, Search, Loader2, Check, X, AlertTriangle, CreditCard, Clock, RefreshCw, MoreVertical, Repeat2, Pause, Play, Zap, Snowflake, Save } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1497,39 +1497,27 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     }
   };
 
-  // Duplicate plan
-  const handleDuplicatePlan = (plan: any) => {
-    // Check if client has active payment
-    if (!paymentCheck?.hasPaidPlan) {
-      toast.error('Client needs to purchase a plan first before duplicating meal plans');
-      return;
-    }
-
-    // Check if client has remaining days
-    if (paymentCheck.remainingDays <= 0) {
-      toast.error('All plan days have been used. Client needs to purchase a new plan.');
-      return;
-    }
-
-    setPlanTitle(`${plan.name} (Copy)`);
-    setDescription(plan.description || '');
-    setStartDate(format(new Date(), 'yyyy-MM-dd'));
-    // Use stored duration if available, otherwise calculate from dates
-    const planDuration = plan.duration || Math.ceil((new Date(plan.endDate).getTime() - new Date(plan.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    setDuration(planDuration);
-    setPrimaryGoal(plan.goals?.primaryGoal || 'health-improvement');
-    setInitialMeals(plan.meals || []);
-    setInitialMealTypes(plan.mealTypes || DEFAULT_MEAL_TYPES_LIST);
-    setIsEditMode(false);
-    setEditingPlan(null);
-    setStep('form');
-    toast.info('Plan duplicated. Make changes and save as new.');
-  };
-
   // Helper function to parse date string to Date object (handles timezone)
   const parseDate = (dateStr: string): Date => {
     const [year, month, day] = dateStr.split('-');
     return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  };
+
+  const isPlanEnded = (plan: any): boolean => {
+    const normalizedStatus = String(plan?.status || '').toLowerCase();
+    if (normalizedStatus === 'completed' || normalizedStatus === 'cancelled' || normalizedStatus === 'expired') {
+      return true;
+    }
+
+    if (!plan?.endDate) return false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const planEndDate = new Date(plan.endDate);
+    planEndDate.setHours(23, 59, 59, 999);
+
+    return planEndDate < today;
   };
 
   // Extend plan with cascading date adjustments for ALL meal plans
@@ -2875,22 +2863,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => handleEditPlan(viewingPlan)}
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Plan
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleDuplicatePlan(viewingPlan)}
-                  disabled={!paymentCheck?.hasPaidPlan || paymentCheck.remainingDays <= 0}
-                  title={!paymentCheck?.hasPaidPlan || paymentCheck.remainingDays <= 0 ? 'Client needs active payment to duplicate plans' : 'Duplicate'}
-                >
-                  <Copy className="h-4 w-4 mr-2" />
-                  Duplicate
-                </Button>
+                {!viewOnly && !isPlanEnded(viewingPlan) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => handleEditPlan(viewingPlan)}
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Plan
+                  </Button>
+                )}
                 {/* Delete button — only for draft plans */}
                 {viewingPlan.status === 'draft' && (
                   <AlertDialog open={deletingPlanId === viewingPlan._id} onOpenChange={(open) => { if (!open) setDeletingPlanId(null); }}>
@@ -4374,13 +4355,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     </div>
 
                     <div className="flex gap-2 ml-4 items-center">
-                      {/* Check if plan has ended (completed status OR end date passed) */}
+                      {/* Check if plan has ended (completed/cancelled/expired OR end date passed) */}
                       {(() => {
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const planEndDate = new Date(plan.endDate);
-                        planEndDate.setHours(23, 59, 59, 999);
-                        const isPlanEnded = plan.status === 'completed' || plan.status === 'cancelled' || planEndDate < today;
+                        const planEnded = isPlanEnded(plan);
 
                         return (
                           <>
@@ -4394,7 +4371,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                             </Button>
 
                             {/* Only show Edit and More options if plan has NOT ended */}
-                            {!isPlanEnded && (
+                            {!planEnded && (
                               <>
                                 <Button
                                   size="sm"
@@ -4445,14 +4422,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                         );
                       })()}
 
-                      {/* Three Dot Dropdown Menu - Only show if plan has NOT ended */}
+                      {/* Three Dot Dropdown Menu */}
                       {(() => {
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const planEndDate = new Date(plan.endDate);
-                        planEndDate.setHours(23, 59, 59, 999);
-                        const isPlanEnded = plan.status === 'completed' || plan.status === 'cancelled' || planEndDate < today;
-                        if (isPlanEnded) return null;
+                        const planEnded = isPlanEnded(plan);
                         return (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -4466,52 +4438,46 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="p-3 w-48">
                               <div className="flex flex-col gap-2">
-                                <ExtendPlanDialog
-                                  plan={plan}
-                                  onExtend={handleExtendPlan}
-                                  showAsText={false}
-                                  showAsButton={true}
-                                />
+                                {!planEnded && (
+                                  <>
+                                    <ExtendPlanDialog
+                                      plan={plan}
+                                      onExtend={handleExtendPlan}
+                                      showAsText={false}
+                                      showAsButton={true}
+                                    />
 
-                                <PausePlanDialog
-                                  plan={plan}
-                                  onPause={handlePausePlan}
-                                  onResume={handleResumePlan}
-                                  showAsText={false}
-                                  showAsButton={true}
-                                />
+                                    <PausePlanDialog
+                                      plan={plan}
+                                      onPause={handlePausePlan}
+                                      onResume={handleResumePlan}
+                                      showAsText={false}
+                                      showAsButton={true}
+                                    />
 
-                                <FreezePlanDialog
-                                  plan={plan}
-                                  onFreeze={fetchClientPlans}
-                                  showAsText={false}
-                                  showAsButton={true}
-                                />
-
-                                {/* Payment Details Toggle Button */}
-                                {plan.paymentInfo && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    title="View Payment Details"
-                                    onClick={() => setShowPaymentForPlanId(showPaymentForPlanId === plan._id ? null : plan._id)}
-                                    className="flex items-center gap-1.5"
-                                  >
-                                    <CreditCard className="h-4 w-4" />
-                                    <span className="text-xs">Payment</span>
-                                  </Button>
+                                    <FreezePlanDialog
+                                      plan={plan}
+                                      onFreeze={fetchClientPlans}
+                                      showAsText={false}
+                                      showAsButton={true}
+                                    />
+                                  </>
                                 )}
 
+                                {/* Payment Details Toggle Button */}
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  title={!paymentCheck?.hasPaidPlan || paymentCheck.remainingDays <= 0 ? 'Client needs active payment to duplicate plans' : 'Duplicate'}
-                                  onClick={() => handleDuplicatePlan(plan)}
-                                  disabled={!paymentCheck?.hasPaidPlan || paymentCheck.remainingDays <= 0}
+                                  title={plan.paymentInfo ? 'View Payment Details' : 'Payment details not available'}
+                                  onClick={() => {
+                                    if (!plan.paymentInfo) return;
+                                    setShowPaymentForPlanId(showPaymentForPlanId === plan._id ? null : plan._id);
+                                  }}
+                                  disabled={!plan.paymentInfo}
                                   className="flex items-center gap-1.5"
                                 >
-                                  <Copy className="h-4 w-4" />
-                                  <span className="text-xs">Duplicate</span>
+                                  <CreditCard className="h-4 w-4" />
+                                  <span className="text-xs">Payment</span>
                                 </Button>
                               </div>
                             </DropdownMenuContent>
@@ -4582,9 +4548,6 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       <div className="flex gap-2 ml-4">
                         <Button size="sm" variant="outline">
                           <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <Copy className="h-4 w-4" />
                         </Button>
                         <Button size="sm" variant="outline">
                           <Trash2 className="h-4 w-4" />
