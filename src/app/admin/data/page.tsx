@@ -227,7 +227,7 @@ export default function DataManagementPage() {
   // Export state
   const [selectedExportModel, setSelectedExportModel] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
-  const [exporting, setExporting] = useState(false);
+  const [exportingModel, setExportingModel] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
   // Update state
@@ -271,6 +271,10 @@ export default function DataManagementPage() {
   const { visibleIndices: visibleTableRows, observeElement: observeTableRow } = useLazyLoad(0.3);
   const [visibleExportModels, setVisibleExportModels] = useState<Set<string>>(new Set());
 
+  // Export filter state
+  const [exportSearchQuery, setExportSearchQuery] = useState('');
+  const [exportingAll, setExportingAll] = useState(false);
+
   // API abort controllers
   const searchAbortRef = useRef<AbortController | null>(null);
   const detailsAbortRef = useRef<AbortController | null>(null);
@@ -308,6 +312,23 @@ export default function DataManagementPage() {
     [recordFields]
   );
 
+  // Filtered models for export based on search
+  const filteredExportModels = useMemo(() => {
+    if (!exportSearchQuery.trim()) return models;
+    const query = exportSearchQuery.toLowerCase();
+    return models.filter(m =>
+      m.name.toLowerCase().includes(query) ||
+      m.displayName.toLowerCase().includes(query) ||
+      m.description.toLowerCase().includes(query)
+    );
+  }, [models, exportSearchQuery]);
+
+  // Total records count across all models
+  const totalRecordsCount = useMemo(() =>
+    models.reduce((sum, m) => sum + m.documentCount, 0),
+    [models]
+  );
+
   const fetchModels = async () => {
     setLoading(true);
     try {
@@ -327,7 +348,7 @@ export default function DataManagementPage() {
 
   // Export handler
   const handleExport = async (modelName: string) => {
-    setExporting(true);
+    setExportingModel(modelName);
     try {
       const url = `/api/admin/data/export?model=${modelName}&format=${exportFormat}&download=true`;
       const res = await fetch(url);
@@ -360,7 +381,66 @@ export default function DataManagementPage() {
     } catch (error: any) {
       toast.error(error.message || 'Export failed');
     } finally {
-      setExporting(false);
+      setExportingModel(null);
+    }
+  };
+
+  // Export All Models - Download all models data as a single JSON file
+  const handleExportAll = async () => {
+    setExportingAll(true);
+    const modelsWithData = models.filter(m => m.documentCount > 0);
+
+    if (modelsWithData.length === 0) {
+      toast.error('No data to export');
+      setExportingAll(false);
+      return;
+    }
+
+    try {
+      const allData: Record<string, any[]> = {};
+      let successCount = 0;
+      let failCount = 0;
+
+      // Fetch data for each model
+      for (const model of modelsWithData) {
+        try {
+          const res = await fetch(`/api/admin/data/export?model=${model.name}&format=json&download=true`);
+          if (res.ok) {
+            const data = await res.json();
+            allData[model.name] = data;
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch {
+          failCount++;
+        }
+      }
+
+      // Create combined export file
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        modelCount: Object.keys(allData).length,
+        totalRecords: Object.values(allData).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0),
+        data: allData
+      };
+
+      const jsonContent = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonContent], { type: 'application/json' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `DTPS_full_export_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
+      toast.success(`Exported ${successCount} models successfully!${failCount > 0 ? ` (${failCount} failed)` : ''}`);
+    } catch (error: any) {
+      toast.error('Export All failed');
+    } finally {
+      setExportingAll(false);
     }
   };
 
@@ -926,8 +1006,8 @@ export default function DataManagementPage() {
         <button
           onClick={() => handleSectionChange('export')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 font-medium ${activeSection === 'export'
-              ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-teal-100 dark:hover:bg-teal-900/20'
+            ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
+            : 'text-gray-700 dark:text-gray-300 hover:bg-teal-100 dark:hover:bg-teal-900/20'
             }`}
         >
           <Download className="w-5 h-5 flex-shrink-0" />
@@ -944,8 +1024,8 @@ export default function DataManagementPage() {
         <button
           onClick={() => handleSectionChange('updates')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 font-medium ${activeSection === 'updates'
-              ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-teal-100 dark:hover:bg-teal-900/20'
+            ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
+            : 'text-gray-700 dark:text-gray-300 hover:bg-teal-100 dark:hover:bg-teal-900/20'
             }`}
         >
           <Edit3 className="w-5 h-5 flex-shrink-0" />
@@ -994,50 +1074,122 @@ export default function DataManagementPage() {
   const renderExportSection = () => (
     <div className="p-8">
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-3 bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
-            <Download className="w-6 h-6 text-white" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
+              <Download className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                Export Data
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 mt-1">
+                Download your data in CSV or JSON format
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Export Data
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Download your data in CSV or JSON format
-            </p>
+          {/* Stats Summary */}
+          <div className="hidden md:flex items-center gap-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-[#3AB1A0]">{models.length}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Models</p>
+            </div>
+            <div className="w-px h-10 bg-gray-200 dark:bg-gray-700"></div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-orange-500">{totalRecordsCount.toLocaleString()}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Total Records</p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Export Format Selector */}
+      {/* Export Controls */}
       <div className="mb-8 bg-white dark:bg-gray-800 rounded-lg border-2 border-teal-200 dark:border-teal-900 p-6">
-        <span className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide block mb-4">
-          Export Format
-        </span>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setExportFormat('csv')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${exportFormat === 'csv'
-                ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
-                : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400'
-              }`}
-          >
-            <Table className="w-5 h-5" />
-            CSV Format
-          </button>
-          <button
-            onClick={() => setExportFormat('json')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${exportFormat === 'json'
-                ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
-                : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400'
-              }`}
-          >
-            <FileJson className="w-5 h-5" />
-            JSON Format
-          </button>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          {/* Format Selector */}
+          <div>
+            <span className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide block mb-3">
+              Export Format
+            </span>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setExportFormat('csv')}
+                className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${exportFormat === 'csv'
+                  ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
+                  : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400'
+                  }`}
+              >
+                <Table className="w-5 h-5" />
+                CSV Format
+              </button>
+              <button
+                onClick={() => setExportFormat('json')}
+                className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${exportFormat === 'json'
+                  ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
+                  : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400'
+                  }`}
+              >
+                <FileJson className="w-5 h-5" />
+                JSON Format
+              </button>
+            </div>
+          </div>
+
+          {/* Export All Button */}
+          <div>
+            <span className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide block mb-3">
+              Bulk Export
+            </span>
+            <button
+              onClick={handleExportAll}
+              disabled={exportingAll || !!exportingModel || models.length === 0}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${exportingAll || !!exportingModel
+                  ? 'bg-orange-400 text-white cursor-wait'
+                  : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-lg shadow-orange-500/30'
+                }`}
+            >
+              {exportingAll ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Exporting All...
+                </>
+              ) : (
+                <>
+                  <Download className="w-5 h-5" />
+                  Export All Models (JSON)
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* Search/Filter Models */}
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search models by name or description..."
+            value={exportSearchQuery}
+            onChange={(e) => setExportSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all"
+          />
+          {exportSearchQuery && (
+            <button
+              onClick={() => setExportSearchQuery('')}
+              className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+        {exportSearchQuery && (
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Showing {filteredExportModels.length} of {models.length} models
+          </p>
+        )}
+      </div>
       {/* Models Grid */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
@@ -1046,10 +1198,28 @@ export default function DataManagementPage() {
             <p className="text-gray-600 dark:text-gray-400 font-medium">Loading models...</p>
           </div>
         </div>
+      ) : filteredExportModels.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <Database className="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4" />
+          <p className="text-lg font-medium text-gray-600 dark:text-gray-400">No models found</p>
+          <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
+            {exportSearchQuery ? 'Try a different search term' : 'No data models available'}
+          </p>
+          {exportSearchQuery && (
+            <button
+              onClick={() => setExportSearchQuery('')}
+              className="mt-4 text-teal-600 hover:text-teal-700 font-medium text-sm"
+            >
+              Clear search
+            </button>
+          )}
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {models.map((model, index) => {
+          {filteredExportModels.map((model, index) => {
             const isVisible = visibleExportModels.has(model.name);
+            const isModelExporting = exportingModel === model.name;
+            const disableModelExport = isModelExporting || !!exportingModel || exportingAll || syncing || model.documentCount === 0;
             return (
               <div
                 key={model.name}
@@ -1064,15 +1234,15 @@ export default function DataManagementPage() {
                   }
                 }}
                 className={`bg-white dark:bg-gray-800 border-2 rounded-xl p-6 transition-all ${selectedExportModel === model.name
-                    ? 'border-teal-500 shadow-xl shadow-teal-500/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-teal-400 dark:hover:border-teal-600'
+                  ? 'border-teal-500 shadow-xl shadow-teal-500/20'
+                  : 'border-gray-200 dark:border-gray-700 hover:border-teal-400 dark:hover:border-teal-600'
                   }`}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className={`p-3 rounded-lg ${selectedExportModel === model.name
-                        ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white'
-                        : 'bg-teal-100 dark:bg-teal-900/30'
+                      ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white'
+                      : 'bg-teal-100 dark:bg-teal-900/30'
                       }`}>
                       {isVisible ? getModelIcon(model.name) : <Database className="w-5 h-5 text-gray-400 animate-pulse" />}
                     </div>
@@ -1102,15 +1272,15 @@ export default function DataManagementPage() {
 
                     <button
                       onClick={() => handleExport(model.name)}
-                      disabled={exporting || syncing}
-                      className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors ${exporting || syncing
-                          ? 'bg-teal-400 text-white cursor-wait'
-                          : model.documentCount === 0
-                            ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 hover:bg-teal-200 dark:hover:bg-teal-900/50'
-                            : 'bg-[#3AB1A0] hover:bg-[#2A9A8B] text-white'
+                      disabled={disableModelExport}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors ${isModelExporting || !!exportingModel || exportingAll || syncing
+                        ? 'bg-teal-400 text-white cursor-wait'
+                        : model.documentCount === 0
+                          ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 hover:bg-teal-200 dark:hover:bg-teal-900/50'
+                          : 'bg-[#3AB1A0] hover:bg-[#2A9A8B] text-white'
                         }`}
                     >
-                      {exporting ? (
+                      {isModelExporting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
                           Exporting...
@@ -1127,10 +1297,10 @@ export default function DataManagementPage() {
                     {model.name === 'Payment' && (
                       <button
                         onClick={handleSyncPaymentStatus}
-                        disabled={syncing || exporting}
-                        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors mt-3 ${syncing || exporting
-                            ? 'bg-orange-400 text-white cursor-wait'
-                            : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
+                        disabled={syncing || !!exportingModel || exportingAll}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors mt-3 ${syncing || !!exportingModel || exportingAll
+                          ? 'bg-orange-400 text-white cursor-wait'
+                          : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
                           }`}
                       >
                         {syncing ? (
@@ -1326,8 +1496,8 @@ export default function DataManagementPage() {
                         </select>
                         <div className="flex items-center gap-2 pt-1">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${editingRecord[field.path] === true || editingRecord[field.path] === 'true'
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                              : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                            : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                             }`}>
                             {editingRecord[field.path] === true || editingRecord[field.path] === 'true' ? '✓ Yes' : '✗ No'}
                           </span>
@@ -1533,8 +1703,8 @@ export default function DataManagementPage() {
                   <label
                     htmlFor="bulk-update-file"
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium cursor-pointer transition-all shadow-md hover:shadow-lg ${bulkUpdateLoading
-                        ? 'bg-gray-400 cursor-wait'
-                        : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
+                      ? 'bg-gray-400 cursor-wait'
+                      : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
                       } text-white`}
                   >
                     {bulkUpdateLoading ? (
@@ -1739,8 +1909,8 @@ export default function DataManagementPage() {
             {/* Result Summary */}
             {bulkUpdateResult && (
               <div className={`mb-6 p-4 rounded-xl border-2 ${bulkUpdateResult.success
-                  ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
-                  : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
+                ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
+                : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
                 }`}>
                 <div className="flex items-center gap-3 mb-3">
                   {bulkUpdateResult.success ? (
@@ -1933,8 +2103,8 @@ export default function DataManagementPage() {
                     <p
                       key={idx}
                       className={`text-sm ${detail.startsWith('•')
-                          ? 'text-gray-600 dark:text-gray-400 pl-2 font-mono'
-                          : 'text-gray-800 dark:text-gray-200 font-semibold mt-2'
+                        ? 'text-gray-600 dark:text-gray-400 pl-2 font-mono'
+                        : 'text-gray-800 dark:text-gray-200 font-semibold mt-2'
                         }`}
                     >
                       {detail}
