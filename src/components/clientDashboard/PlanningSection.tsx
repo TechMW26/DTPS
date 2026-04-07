@@ -693,6 +693,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         // Map each plan day to template day (cycle if template is shorter)
         defaultMapping[i] = i < templateDaysCount ? i : i % templateDaysCount;
       }
+      
       setTemplateDayMapping(defaultMapping);
       console.log('[Template Load] Default mapping created for', planDaysCount, 'plan days');
       // Dialog stays open — pendingTemplate switches the view to mapping
