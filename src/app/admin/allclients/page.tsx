@@ -170,6 +170,14 @@ export default function AdminAllClientsPage() {
   const [dietitianSearchTerm, setDietitianSearchTerm] = useState('');
   const [healthCounselorSearchTerm, setHealthCounselorSearchTerm] = useState('');
 
+  // New: Primary & Secondary selection state
+  const [primaryDietitianId, setPrimaryDietitianId] = useState('');
+  const [secondaryDietitianIds, setSecondaryDietitianIds] = useState<string[]>([]);
+  const [primaryHealthCounselorId, setPrimaryHealthCounselorId] = useState('');
+  const [secondaryHealthCounselorIds, setSecondaryHealthCounselorIds] = useState<string[]>([]);
+  const [primaryDietitianSearchTerm, setPrimaryDietitianSearchTerm] = useState('');
+  const [primaryHealthCounselorSearchTerm, setPrimaryHealthCounselorSearchTerm] = useState('');
+
   // Transfer dialog state (bulk transfer)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
@@ -265,7 +273,11 @@ export default function AdminAllClientsPage() {
       if (response.ok) {
         const data = await response.json();
         console.log('Fetched dietitians:', data.dietitians?.length || 0);
-        setDietitians(data.dietitians || []);
+        // Deduplicate by _id
+        const uniqueDietitians = (data.dietitians || []).filter(
+          (d: Dietitian, index: number, arr: Dietitian[]) => arr.findIndex(x => x._id === d._id) === index
+        );
+        setDietitians(uniqueDietitians);
       } else {
         console.error('Failed to fetch dietitians:', response.status);
         toast.error('Failed to load dietitians');
@@ -282,7 +294,11 @@ export default function AdminAllClientsPage() {
       if (response.ok) {
         const data = await response.json();
         console.log('Fetched health counselors:', data.healthCounselors?.length || 0);
-        setHealthCounselors(data.healthCounselors || []);
+        // Deduplicate by _id
+        const uniqueHealthCounselors = (data.healthCounselors || []).filter(
+          (hc: HealthCounselor, index: number, arr: HealthCounselor[]) => arr.findIndex(x => x._id === hc._id) === index
+        );
+        setHealthCounselors(uniqueHealthCounselors);
       } else {
         console.error('Failed to fetch health counselors:', response.status);
         toast.error('Failed to load health counselors');
@@ -308,6 +324,32 @@ export default function AdminAllClientsPage() {
     setAssignMode('add');
     setDietitianSearchTerm('');
     setHealthCounselorSearchTerm('');
+    setPrimaryDietitianSearchTerm('');
+    setPrimaryHealthCounselorSearchTerm('');
+
+    // Initialize Primary/Secondary from existing assignments
+    // Primary Dietitian
+    const existingPrimaryDietitian = client.assignedDietitian && typeof client.assignedDietitian === 'object'
+      ? client.assignedDietitian._id : '';
+    setPrimaryDietitianId(existingPrimaryDietitian);
+
+    // Secondary Dietitians (from array, excluding primary)
+    const existingSecondaryDietitians = (client.assignedDietitians || [])
+      .filter(d => d && typeof d === 'object' && d._id !== existingPrimaryDietitian)
+      .map(d => d._id);
+    setSecondaryDietitianIds(existingSecondaryDietitians);
+
+    // Primary Health Counselor
+    const existingPrimaryHC = client.assignedHealthCounselor && typeof client.assignedHealthCounselor === 'object'
+      ? client.assignedHealthCounselor._id : '';
+    setPrimaryHealthCounselorId(existingPrimaryHC);
+
+    // Secondary Health Counselors (from array, excluding primary)
+    const existingSecondaryHCs = (client.assignedHealthCounselors || [])
+      .filter(hc => hc && typeof hc === 'object' && hc._id !== existingPrimaryHC)
+      .map(hc => hc._id);
+    setSecondaryHealthCounselorIds(existingSecondaryHCs);
+
     setAssignDialogOpen(true);
   };
 
@@ -316,10 +358,18 @@ export default function AdminAllClientsPage() {
 
     try {
       setAssigning(true);
-      const payload = {
-        dietitianId: selectedDietitianId || null,
-        healthCounselorIds: selectedHealthCounselorIds.length > 0 ? selectedHealthCounselorIds : null,
-        mode: assignMode
+
+      // Build the payload with explicit primary and secondary assignments
+      const payload: any = {
+        // Primary dietitian goes to assignedDietitian field
+        primaryDietitianId: primaryDietitianId || null,
+        // Secondary dietitians go to assignedDietitians array (combined with primary)
+        secondaryDietitianIds: secondaryDietitianIds.length > 0 ? secondaryDietitianIds : [],
+        // Primary health counselor goes to assignedHealthCounselor field
+        primaryHealthCounselorId: primaryHealthCounselorId || null,
+        // Secondary health counselors go to assignedHealthCounselors array (combined with primary)
+        secondaryHealthCounselorIds: secondaryHealthCounselorIds.length > 0 ? secondaryHealthCounselorIds : [],
+        mode: 'primary_secondary' // New mode for explicit primary/secondary handling
       };
 
       console.log('Sending assignment payload:', payload);
@@ -920,9 +970,12 @@ export default function AdminAllClientsPage() {
                                 ? client.assignedDietitian : null;
 
                               // Secondary dietitians (from array, excluding primary)
-                              const secondaryDietitians = client.assignedDietitians?.filter(d =>
-                                d && typeof d === 'object' && d.firstName && d._id !== primaryDietitian?._id
-                              ) || [];
+                              const secondaryDietitians = (client.assignedDietitians || [])
+                                .filter(d =>
+                                  d && typeof d === 'object' && d.firstName && d._id !== primaryDietitian?._id
+                                )
+                                // Deduplicate by _id
+                                .filter((d, index, arr) => arr.findIndex(x => x._id === d._id) === index);
 
                               if (primaryDietitian || secondaryDietitians.length > 0) {
                                 return (
@@ -943,8 +996,8 @@ export default function AdminAllClientsPage() {
                                         </div>
                                       </div>
                                     )}
-                                    {secondaryDietitians.map((dietitian) => (
-                                      <div key={dietitian._id} className="flex items-center gap-2 p-1.5 bg-gray-50 rounded border border-gray-200">
+                                    {secondaryDietitians.map((dietitian, index) => (
+                                      <div key={`secondary-dietitian-${dietitian._id}-${index}`} className="flex items-center gap-2 p-1.5 bg-gray-50 rounded border border-gray-200">
                                         <span className="px-1.5 py-0.5 text-xs font-bold rounded bg-gray-400 text-white shrink-0">S</span>
                                         <Avatar className="h-5 w-5">
                                           <AvatarImage src={dietitian.avatar} />
@@ -978,9 +1031,12 @@ export default function AdminAllClientsPage() {
                                 ? client.assignedHealthCounselor : null;
 
                               // Secondary health counselors (from array, excluding primary)
-                              const secondaryCounselors = client.assignedHealthCounselors?.filter(hc =>
-                                hc && typeof hc === 'object' && hc.firstName && hc._id !== primaryCounselor?._id
-                              ) || [];
+                              const secondaryCounselors = (client.assignedHealthCounselors || [])
+                                .filter(hc =>
+                                  hc && typeof hc === 'object' && hc.firstName && hc._id !== primaryCounselor?._id
+                                )
+                                // Deduplicate by _id
+                                .filter((hc, index, arr) => arr.findIndex(x => x._id === hc._id) === index);
 
                               if (primaryCounselor || secondaryCounselors.length > 0) {
                                 return (
@@ -1001,8 +1057,8 @@ export default function AdminAllClientsPage() {
                                         </div>
                                       </div>
                                     )}
-                                    {secondaryCounselors.map((hc) => (
-                                      <div key={hc._id} className="flex items-center gap-2 p-1.5 bg-gray-50 rounded border border-gray-200">
+                                    {secondaryCounselors.map((hc, index) => (
+                                      <div key={`secondary-hc-${hc._id}-${index}`} className="flex items-center gap-2 p-1.5 bg-gray-50 rounded border border-gray-200">
                                         <span className="px-1.5 py-0.5 text-xs font-bold rounded bg-gray-400 text-white shrink-0">S</span>
                                         <Avatar className="h-5 w-5">
                                           <AvatarImage src={hc.avatar} />
@@ -1166,195 +1222,130 @@ export default function AdminAllClientsPage() {
 
         {/* Assignment Dialog */}
         <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-          <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
             <DialogHeader className="shrink-0">
-              <DialogTitle>Manage Professionals</DialogTitle>
+              <DialogTitle>Manage Professional Assignments</DialogTitle>
               <DialogDescription>
                 {selectedClient && (
                   <>
-                    Assign dietitians and health counselors for <strong>{selectedClient.firstName} {selectedClient.lastName}</strong>
+                    Assign primary and secondary dietitians/health counselors for <strong>{selectedClient.firstName} {selectedClient.lastName}</strong>
+                    <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                      {selectedClient.clientId || selectedClient._id.slice(-6).toUpperCase()}
+                    </span>
                   </>
                 )}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-4 overflow-y-auto flex-1 pr-2">
-              {/* Summary Section */}
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total Dietitians</p>
-                  <p className="text-2xl font-bold text-blue-900">
-                    {(() => {
-                      const dietitians = new Set();
-                      if (selectedClient?.assignedDietitian && typeof selectedClient.assignedDietitian === 'object' && selectedClient.assignedDietitian._id) {
-                        dietitians.add(selectedClient.assignedDietitian._id);
-                      }
-                      if (selectedClient?.assignedDietitians && Array.isArray(selectedClient.assignedDietitians)) {
-                        selectedClient.assignedDietitians.forEach(d => {
-                          if (d && d._id) dietitians.add(d._id);
-                        });
-                      }
-                      return dietitians.size;
-                    })()}
-                  </p>
-                </div>
-                <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                  <p className="text-xs text-purple-600 uppercase tracking-wide font-semibold">Total Health Counselors</p>
-                  <p className="text-2xl font-bold text-purple-900">
-                    {(() => {
-                      const hcs = new Set();
-                      if (selectedClient?.assignedHealthCounselor && typeof selectedClient.assignedHealthCounselor === 'object' && selectedClient.assignedHealthCounselor._id) {
-                        hcs.add(selectedClient.assignedHealthCounselor._id);
-                      }
-                      if (selectedClient?.assignedHealthCounselors && Array.isArray(selectedClient.assignedHealthCounselors)) {
-                        selectedClient.assignedHealthCounselors.forEach(h => {
-                          if (h && h._id) hcs.add(h._id);
-                        });
-                      }
-                      return hcs.size;
-                    })()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Currently assigned professionals */}
-              <div className="space-y-3">
-                {/* Dietitians - show both singular and array */}
-                {(() => {
-                  const allDietitians: { _id: string; firstName: string; lastName: string; email: string; avatar?: string }[] = [];
-                  if (selectedClient?.assignedDietitian && typeof selectedClient.assignedDietitian === 'object' && selectedClient.assignedDietitian._id) {
-                    allDietitians.push(selectedClient.assignedDietitian);
-                  }
-                  if (selectedClient?.assignedDietitians && Array.isArray(selectedClient.assignedDietitians)) {
-                    selectedClient.assignedDietitians.forEach(d => {
-                      if (d && d._id && !allDietitians.some(existing => existing._id === d._id)) {
-                        allDietitians.push(d);
-                      }
-                    });
-                  }
-
-                  return allDietitians.length > 0 ? (
-                    <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                      <p className="text-sm text-green-900 mb-2 font-medium">Currently assigned dietitians ({allDietitians.length}):</p>
-                      <div className="space-y-2">
-                        {allDietitians.map((dietitian) => (
-                          <div key={dietitian._id} className="flex items-center justify-between bg-white p-2 rounded border">
-                            <div className="flex items-center">
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage src={dietitian.avatar} />
-                                <AvatarFallback className="bg-green-200 text-green-800 text-xs">
-                                  {dietitian.firstName?.[0]}{dietitian.lastName?.[0]}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="ml-2">
-                                <p className="text-sm font-medium text-gray-900">
-                                  {dietitian.firstName} {dietitian.lastName}
-                                </p>
-                                <p className="text-xs text-gray-500">{dietitian.email}</p>
-                              </div>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => selectedClient && handleRemoveDietitian(selectedClient._id, dietitian._id)}
-                              disabled={assigning}
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <p className="text-sm text-gray-600">No dietitians assigned yet</p>
-                    </div>
-                  );
-                })()}
-
-                {/* Health Counselors - show both singular and array */}
-                {(() => {
-                  const allHCs: { _id: string; firstName: string; lastName: string; email: string; avatar?: string }[] = [];
-                  if (selectedClient?.assignedHealthCounselor && typeof selectedClient.assignedHealthCounselor === 'object' && selectedClient.assignedHealthCounselor._id) {
-                    allHCs.push(selectedClient.assignedHealthCounselor);
-                  }
-                  if (selectedClient?.assignedHealthCounselors && Array.isArray(selectedClient.assignedHealthCounselors)) {
-                    selectedClient.assignedHealthCounselors.forEach(h => {
-                      if (h && h._id && !allHCs.some(existing => existing._id === h._id)) {
-                        allHCs.push(h);
-                      }
-                    });
-                  }
-
-                  return allHCs.length > 0 ? (
-                    <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                      <p className="text-sm text-purple-900 mb-2 font-medium">Currently assigned health counselors ({allHCs.length}):</p>
-                      <div className="space-y-2">
-                        {allHCs.map((hc) => (
-                          <div key={hc._id} className="flex items-center justify-between bg-white p-2 rounded border">
-                            <div className="flex items-center">
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage src={hc.avatar} />
-                                <AvatarFallback className="bg-purple-200 text-purple-800 text-xs">
-                                  {hc.firstName?.[0]}{hc.lastName?.[0]}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="ml-2">
-                                <p className="text-sm font-medium text-gray-900">
-                                  {hc.firstName} {hc.lastName}
-                                </p>
-                                <p className="text-xs text-gray-500">{hc.email}</p>
-                              </div>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => selectedClient && handleRemoveHealthCounselor(selectedClient._id, hc._id)}
-                              disabled={assigning}
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <p className="text-sm text-gray-600">No health counselors assigned yet</p>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Assignment mode */}
-              <div>
-                <label className="text-sm font-medium mb-2 block">Assignment Mode</label>
-                <Select value={assignMode} onValueChange={(v) => setAssignMode(v as 'add' | 'replace')}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="add">Add to existing dietitians</SelectItem>
-                    <SelectItem value="replace">Replace all with selected</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Dietitian Selection Section */}
-              <div className="border-t pt-4">
-                <h4 className="font-semibold text-gray-900 mb-3">Dietitian Assignment</h4>
+            <div className="space-y-6 py-4 overflow-y-auto flex-1 pr-2">
+              {/* ========== DIETITIAN SECTION ========== */}
+              <div className="border rounded-lg p-4 bg-green-50/50">
+                <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold">D</span>
+                  Dietitian Assignment
+                </h4>
 
                 {dietitians.length === 0 ? (
                   <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                     <p className="text-sm text-yellow-700">No dietitians available. Please add dietitians first.</p>
                   </div>
                 ) : (
-                  <>
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">
-                        Select Dietitian to Add
+                  <div className="space-y-4">
+                    {/* Primary Dietitian */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        <span className="px-2 py-0.5 text-xs font-bold rounded bg-blue-500 text-white">PRIMARY</span>
+                        Select Primary Dietitian
+                        <span className="text-gray-400 font-normal">(saved to assignedDietitian)</span>
+                      </label>
+                      <div className="relative mb-2">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          placeholder="Search primary dietitian..."
+                          value={primaryDietitianSearchTerm}
+                          onChange={(e) => setPrimaryDietitianSearchTerm(e.target.value)}
+                          className="pl-9 bg-white"
+                        />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto border rounded-lg bg-white">
+                        {/* No primary option */}
+                        <div
+                          className={`flex items-center gap-2 p-2 cursor-pointer transition-colors border-b ${!primaryDietitianId ? 'bg-green-100' : 'hover:bg-gray-50'}`}
+                          onClick={() => setPrimaryDietitianId('')}
+                        >
+                          <input type="radio" checked={!primaryDietitianId} onChange={() => { }} className="h-4 w-4 text-green-600" />
+                          <span className="text-gray-400">No primary dietitian</span>
+                        </div>
+                        {dietitians
+                          .filter(d => {
+                            if (!primaryDietitianSearchTerm.trim()) return true;
+                            const searchLower = primaryDietitianSearchTerm.toLowerCase();
+                            const fullName = `${d.firstName} ${d.lastName}`.toLowerCase();
+                            return fullName.includes(searchLower) || d.email?.toLowerCase().includes(searchLower);
+                          })
+                          .map((dietitian) => (
+                            <div
+                              key={dietitian._id}
+                              className={`flex items-center gap-2 p-2 cursor-pointer transition-colors ${primaryDietitianId === dietitian._id ? 'bg-green-100 border-l-4 border-l-green-500' : 'hover:bg-gray-50'}`}
+                              onClick={() => {
+                                setPrimaryDietitianId(dietitian._id);
+                                // Auto-remove from secondary if being selected as primary
+                                setSecondaryDietitianIds(prev => prev.filter(id => id !== dietitian._id));
+                              }}
+                            >
+                              <input type="radio" checked={primaryDietitianId === dietitian._id} onChange={() => { }} className="h-4 w-4 text-green-600" />
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={dietitian.avatar} />
+                                <AvatarFallback className="bg-green-200 text-green-800 text-xs">
+                                  {dietitian.firstName?.[0]}{dietitian.lastName?.[0]}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">{dietitian.firstName} {dietitian.lastName}</p>
+                                <p className="text-xs text-gray-500">{dietitian.email}</p>
+                              </div>
+                              <Badge variant="outline" className="text-xs">
+                                {dietitian.clientCount} clients
+                              </Badge>
+                            </div>
+                          ))}
+                        {dietitians.filter(d => {
+                          if (!primaryDietitianSearchTerm.trim()) return true;
+                          const searchLower = primaryDietitianSearchTerm.toLowerCase();
+                          const fullName = `${d.firstName} ${d.lastName}`.toLowerCase();
+                          return fullName.includes(searchLower) || d.email?.toLowerCase().includes(searchLower);
+                        }).length === 0 && (
+                            <p className="text-sm text-gray-500 text-center py-3">No dietitians found</p>
+                          )}
+                      </div>
+                      {primaryDietitianId && (
+                        <div className="flex items-center gap-2 p-2 bg-green-100 rounded-lg border border-green-300">
+                          <span className="px-1.5 py-0.5 text-xs font-bold rounded bg-blue-500 text-white">P</span>
+                          {(() => {
+                            const d = dietitians.find(dt => dt._id === primaryDietitianId);
+                            return d ? (
+                              <>
+                                <Avatar className="h-6 w-6">
+                                  <AvatarImage src={d.avatar} />
+                                  <AvatarFallback className="bg-green-200 text-green-800 text-xs">
+                                    {d.firstName?.[0]}{d.lastName?.[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="text-sm font-medium">{d.firstName} {d.lastName}</span>
+                                <span className="text-xs text-gray-500">{d.email}</span>
+                              </>
+                            ) : null;
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Secondary Dietitians */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        <span className="px-2 py-0.5 text-xs font-bold rounded bg-gray-400 text-white">SECONDARY</span>
+                        Select Secondary Dietitians
+                        <span className="text-gray-400 font-normal">(saved to assignedDietitians array)</span>
                       </label>
                       <div className="relative mb-2">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -1362,82 +1353,201 @@ export default function AdminAllClientsPage() {
                           placeholder="Search dietitians..."
                           value={dietitianSearchTerm}
                           onChange={(e) => setDietitianSearchTerm(e.target.value)}
-                          className="pl-9"
+                          className="pl-9 bg-white"
                         />
                       </div>
-                      <Select value={selectedDietitianId} onValueChange={setSelectedDietitianId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose a dietitian..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {dietitians
-                            .filter(d => assignMode === 'replace' || !selectedClient?.assignedDietitians?.some(ad => ad._id === d._id))
-                            .filter(d => {
-                              if (!dietitianSearchTerm.trim()) return true;
-                              const searchLower = dietitianSearchTerm.toLowerCase();
-                              const fullName = `${d.firstName} ${d.lastName}`.toLowerCase();
-                              return fullName.includes(searchLower) || d.email?.toLowerCase().includes(searchLower);
-                            })
-                            .map((dietitian) => (
-                              <SelectItem key={dietitian._id} value={dietitian._id}>
-                                <div className="flex items-center justify-between w-full">
-                                  <span>{dietitian.firstName} {dietitian.lastName}</span>
-                                  <Badge variant="outline" className="ml-2">
-                                    {dietitian.clientCount} clients
-                                  </Badge>
-                                </div>
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {selectedDietitianId && (
-                      <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                        {(() => {
-                          const dietitian = dietitians.find(d => d._id === selectedDietitianId);
-                          if (!dietitian) return null;
-                          return (
-                            <div>
-                              <p className="text-sm text-green-900 mb-1">Selected dietitian:</p>
-                              <div className="flex items-center">
-                                <Avatar className="h-8 w-8">
+                      <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1 bg-white">
+                        {dietitians
+                          .filter(d => d._id !== primaryDietitianId) // Exclude primary from secondary list
+                          .filter(d => {
+                            if (!dietitianSearchTerm.trim()) return true;
+                            const searchLower = dietitianSearchTerm.toLowerCase();
+                            const fullName = `${d.firstName} ${d.lastName}`.toLowerCase();
+                            return fullName.includes(searchLower) || d.email?.toLowerCase().includes(searchLower);
+                          })
+                          .map((dietitian) => (
+                            <div
+                              key={dietitian._id}
+                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${secondaryDietitianIds.includes(dietitian._id)
+                                ? 'bg-green-100 border border-green-300'
+                                : 'hover:bg-gray-50 border border-transparent'
+                                }`}
+                              onClick={() => {
+                                setSecondaryDietitianIds(prev =>
+                                  prev.includes(dietitian._id)
+                                    ? prev.filter(id => id !== dietitian._id)
+                                    : [...prev, dietitian._id]
+                                );
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={secondaryDietitianIds.includes(dietitian._id)}
+                                  onChange={() => { }}
+                                  className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                />
+                                <Avatar className="h-6 w-6">
                                   <AvatarImage src={dietitian.avatar} />
                                   <AvatarFallback className="bg-green-200 text-green-800 text-xs">
                                     {dietitian.firstName?.[0]}{dietitian.lastName?.[0]}
                                   </AvatarFallback>
                                 </Avatar>
-                                <div className="ml-2">
-                                  <p className="text-sm font-medium text-green-900">
-                                    {dietitian.firstName} {dietitian.lastName}
-                                  </p>
-                                  <p className="text-xs text-green-700">
-                                    {dietitian.email} • {dietitian.clientCount} clients
-                                  </p>
+                                <div>
+                                  <p className="text-sm font-medium">{dietitian.firstName} {dietitian.lastName}</p>
+                                  <p className="text-xs text-gray-500">{dietitian.email}</p>
                                 </div>
                               </div>
+                              <Badge variant="outline" className="text-xs">
+                                {dietitian.clientCount} clients
+                              </Badge>
                             </div>
-                          );
-                        })()}
+                          ))}
+                        {dietitians.filter(d => d._id !== primaryDietitianId).length === 0 && (
+                          <p className="text-sm text-gray-500 text-center py-2">No other dietitians available</p>
+                        )}
                       </div>
-                    )}
-                  </>
+                      {secondaryDietitianIds.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {secondaryDietitianIds.map(id => {
+                            const d = dietitians.find(dt => dt._id === id);
+                            if (!d) return null;
+                            return (
+                              <Badge
+                                key={id}
+                                variant="secondary"
+                                className="flex items-center gap-1 bg-gray-100 text-gray-800"
+                              >
+                                <span className="px-1 py-0.5 text-[10px] font-bold rounded bg-gray-400 text-white">S</span>
+                                {d.firstName} {d.lastName}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSecondaryDietitianIds(prev => prev.filter(i => i !== id));
+                                  }}
+                                  className="ml-1 hover:text-gray-900"
+                                >
+                                  <XCircle className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Health Counselor Selection Section */}
-              <div className="border-t pt-4">
-                <h4 className="font-semibold text-gray-900 mb-3">Health Counselor Assignment</h4>
+              {/* ========== HEALTH COUNSELOR SECTION ========== */}
+              <div className="border rounded-lg p-4 bg-purple-50/50">
+                <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs font-bold">H</span>
+                  Health Counselor Assignment
+                </h4>
 
                 {healthCounselors.length === 0 ? (
                   <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                     <p className="text-sm text-yellow-700">No health counselors available. Please add health counselors first.</p>
                   </div>
                 ) : (
-                  <>
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">
-                        Select Health Counselors to Add (Multiple Selection)
+                  <div className="space-y-4">
+                    {/* Primary Health Counselor */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        <span className="px-2 py-0.5 text-xs font-bold rounded bg-blue-500 text-white">PRIMARY</span>
+                        Select Primary Health Counselor
+                        <span className="text-gray-400 font-normal">(saved to assignedHealthCounselor)</span>
+                      </label>
+                      <div className="relative mb-2">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          placeholder="Search primary health counselor..."
+                          value={primaryHealthCounselorSearchTerm}
+                          onChange={(e) => setPrimaryHealthCounselorSearchTerm(e.target.value)}
+                          className="pl-9 bg-white"
+                        />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto border rounded-lg bg-white">
+                        {/* No primary option */}
+                        <div
+                          className={`flex items-center gap-2 p-2 cursor-pointer transition-colors border-b ${!primaryHealthCounselorId ? 'bg-purple-100' : 'hover:bg-gray-50'}`}
+                          onClick={() => setPrimaryHealthCounselorId('')}
+                        >
+                          <input type="radio" checked={!primaryHealthCounselorId} onChange={() => { }} className="h-4 w-4 text-purple-600" />
+                          <span className="text-gray-400">No primary health counselor</span>
+                        </div>
+                        {healthCounselors
+                          .filter(hc => {
+                            if (!primaryHealthCounselorSearchTerm.trim()) return true;
+                            const searchLower = primaryHealthCounselorSearchTerm.toLowerCase();
+                            const fullName = `${hc.firstName} ${hc.lastName}`.toLowerCase();
+                            return fullName.includes(searchLower) || hc.email?.toLowerCase().includes(searchLower);
+                          })
+                          .map((hc) => (
+                            <div
+                              key={hc._id}
+                              className={`flex items-center gap-2 p-2 cursor-pointer transition-colors ${primaryHealthCounselorId === hc._id ? 'bg-purple-100 border-l-4 border-l-purple-500' : 'hover:bg-gray-50'}`}
+                              onClick={() => {
+                                setPrimaryHealthCounselorId(hc._id);
+                                // Auto-remove from secondary if being selected as primary
+                                setSecondaryHealthCounselorIds(prev => prev.filter(id => id !== hc._id));
+                              }}
+                            >
+                              <input type="radio" checked={primaryHealthCounselorId === hc._id} onChange={() => { }} className="h-4 w-4 text-purple-600" />
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={hc.avatar} />
+                                <AvatarFallback className="bg-purple-200 text-purple-800 text-xs">
+                                  {hc.firstName?.[0]}{hc.lastName?.[0]}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">{hc.firstName} {hc.lastName}</p>
+                                <p className="text-xs text-gray-500">{hc.email}</p>
+                              </div>
+                              <Badge variant="outline" className="text-xs">
+                                {hc.clientCount} clients
+                              </Badge>
+                            </div>
+                          ))}
+                        {healthCounselors.filter(hc => {
+                          if (!primaryHealthCounselorSearchTerm.trim()) return true;
+                          const searchLower = primaryHealthCounselorSearchTerm.toLowerCase();
+                          const fullName = `${hc.firstName} ${hc.lastName}`.toLowerCase();
+                          return fullName.includes(searchLower) || hc.email?.toLowerCase().includes(searchLower);
+                        }).length === 0 && (
+                            <p className="text-sm text-gray-500 text-center py-3">No health counselors found</p>
+                          )}
+                      </div>
+                      {primaryHealthCounselorId && (
+                        <div className="flex items-center gap-2 p-2 bg-purple-100 rounded-lg border border-purple-300">
+                          <span className="px-1.5 py-0.5 text-xs font-bold rounded bg-blue-500 text-white">P</span>
+                          {(() => {
+                            const hc = healthCounselors.find(h => h._id === primaryHealthCounselorId);
+                            return hc ? (
+                              <>
+                                <Avatar className="h-6 w-6">
+                                  <AvatarImage src={hc.avatar} />
+                                  <AvatarFallback className="bg-purple-200 text-purple-800 text-xs">
+                                    {hc.firstName?.[0]}{hc.lastName?.[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="text-sm font-medium">{hc.firstName} {hc.lastName}</span>
+                                <span className="text-xs text-gray-500">{hc.email}</span>
+                              </>
+                            ) : null;
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Secondary Health Counselors */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        <span className="px-2 py-0.5 text-xs font-bold rounded bg-gray-400 text-white">SECONDARY</span>
+                        Select Secondary Health Counselors
+                        <span className="text-gray-400 font-normal">(saved to assignedHealthCounselors array)</span>
                       </label>
                       <div className="relative mb-2">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -1445,25 +1555,13 @@ export default function AdminAllClientsPage() {
                           placeholder="Search health counselors..."
                           value={healthCounselorSearchTerm}
                           onChange={(e) => setHealthCounselorSearchTerm(e.target.value)}
-                          className="pl-9"
+                          className="pl-9 bg-white"
                         />
                       </div>
-                      <div className="max-h-48 overflow-y-auto border rounded-lg p-2 space-y-1">
+                      <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1 bg-white">
                         {healthCounselors
+                          .filter(hc => hc._id !== primaryHealthCounselorId) // Exclude primary from secondary list
                           .filter(hc => {
-                            // Filter out already assigned health counselors in 'add' mode
-                            if (assignMode === 'add') {
-                              const currentlyAssigned = new Set<string>();
-                              if (selectedClient?.assignedHealthCounselor && typeof selectedClient.assignedHealthCounselor === 'object') {
-                                currentlyAssigned.add(selectedClient.assignedHealthCounselor._id);
-                              }
-                              if (selectedClient?.assignedHealthCounselors && Array.isArray(selectedClient.assignedHealthCounselors)) {
-                                selectedClient.assignedHealthCounselors.forEach(h => {
-                                  if (h && h._id) currentlyAssigned.add(h._id);
-                                });
-                              }
-                              if (currentlyAssigned.has(hc._id)) return false;
-                            }
                             if (!healthCounselorSearchTerm.trim()) return true;
                             const searchLower = healthCounselorSearchTerm.toLowerCase();
                             const fullName = `${hc.firstName} ${hc.lastName}`.toLowerCase();
@@ -1472,35 +1570,33 @@ export default function AdminAllClientsPage() {
                           .map((hc) => (
                             <div
                               key={hc._id}
-                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${selectedHealthCounselorIds.includes(hc._id)
+                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${secondaryHealthCounselorIds.includes(hc._id)
                                 ? 'bg-purple-100 border border-purple-300'
                                 : 'hover:bg-gray-50 border border-transparent'
                                 }`}
                               onClick={() => {
-                                setSelectedHealthCounselorIds(prev =>
+                                setSecondaryHealthCounselorIds(prev =>
                                   prev.includes(hc._id)
                                     ? prev.filter(id => id !== hc._id)
                                     : [...prev, hc._id]
                                 );
                               }}
                             >
-                              <div className="flex items-center">
+                              <div className="flex items-center gap-2">
                                 <input
                                   type="checkbox"
-                                  checked={selectedHealthCounselorIds.includes(hc._id)}
+                                  checked={secondaryHealthCounselorIds.includes(hc._id)}
                                   onChange={() => { }}
-                                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 mr-3"
+                                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                 />
-                                <Avatar className="h-8 w-8">
+                                <Avatar className="h-6 w-6">
                                   <AvatarImage src={hc.avatar} />
                                   <AvatarFallback className="bg-purple-200 text-purple-800 text-xs">
                                     {hc.firstName?.[0]}{hc.lastName?.[0]}
                                   </AvatarFallback>
                                 </Avatar>
-                                <div className="ml-2">
-                                  <p className="text-sm font-medium text-gray-900">
-                                    {hc.firstName} {hc.lastName}
-                                  </p>
+                                <div>
+                                  <p className="text-sm font-medium">{hc.firstName} {hc.lastName}</p>
                                   <p className="text-xs text-gray-500">{hc.email}</p>
                                 </div>
                               </div>
@@ -1509,54 +1605,30 @@ export default function AdminAllClientsPage() {
                               </Badge>
                             </div>
                           ))}
-                        {healthCounselors.filter(hc => {
-                          if (assignMode === 'add') {
-                            const currentlyAssigned = new Set<string>();
-                            if (selectedClient?.assignedHealthCounselor && typeof selectedClient.assignedHealthCounselor === 'object') {
-                              currentlyAssigned.add(selectedClient.assignedHealthCounselor._id);
-                            }
-                            if (selectedClient?.assignedHealthCounselors && Array.isArray(selectedClient.assignedHealthCounselors)) {
-                              selectedClient.assignedHealthCounselors.forEach(h => {
-                                if (h && h._id) currentlyAssigned.add(h._id);
-                              });
-                            }
-                            if (currentlyAssigned.has(hc._id)) return false;
-                          }
-                          if (!healthCounselorSearchTerm.trim()) return true;
-                          const searchLower = healthCounselorSearchTerm.toLowerCase();
-                          const fullName = `${hc.firstName} ${hc.lastName}`.toLowerCase();
-                          return fullName.includes(searchLower) || hc.email?.toLowerCase().includes(searchLower);
-                        }).length === 0 && (
-                            <p className="text-sm text-gray-500 text-center py-2">
-                              {assignMode === 'add' ? 'All health counselors are already assigned' : 'No health counselors match your search'}
-                            </p>
-                          )}
+                        {healthCounselors.filter(hc => hc._id !== primaryHealthCounselorId).length === 0 && (
+                          <p className="text-sm text-gray-500 text-center py-2">No other health counselors available</p>
+                        )}
                       </div>
-                    </div>
-
-                    {selectedHealthCounselorIds.length > 0 && (
-                      <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                        <p className="text-sm text-purple-900 mb-2 font-medium">
-                          Selected health counselors ({selectedHealthCounselorIds.length}):
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedHealthCounselorIds.map(id => {
+                      {secondaryHealthCounselorIds.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {secondaryHealthCounselorIds.map(id => {
                             const hc = healthCounselors.find(h => h._id === id);
                             if (!hc) return null;
                             return (
                               <Badge
                                 key={id}
                                 variant="secondary"
-                                className="flex items-center gap-1 bg-purple-100 text-purple-800"
+                                className="flex items-center gap-1 bg-gray-100 text-gray-800"
                               >
+                                <span className="px-1 py-0.5 text-[10px] font-bold rounded bg-gray-400 text-white">S</span>
                                 {hc.firstName} {hc.lastName}
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setSelectedHealthCounselorIds(prev => prev.filter(i => i !== id));
+                                    setSecondaryHealthCounselorIds(prev => prev.filter(i => i !== id));
                                   }}
-                                  className="ml-1 hover:text-purple-900"
+                                  className="ml-1 hover:text-gray-900"
                                 >
                                   <XCircle className="h-3 w-3" />
                                 </button>
@@ -1564,10 +1636,31 @@ export default function AdminAllClientsPage() {
                             );
                           })}
                         </div>
-                      </div>
-                    )}
-                  </>
+                      )}
+                    </div>
+                  </div>
                 )}
+              </div>
+
+              {/* Summary of changes */}
+              <div className="border rounded-lg p-4 bg-gray-50">
+                <h4 className="font-semibold text-gray-900 mb-3">Assignment Summary</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-600 mb-1">Dietitians:</p>
+                    <p className="font-medium">
+                      {primaryDietitianId ? '1 Primary' : 'No Primary'}
+                      {secondaryDietitianIds.length > 0 ? ` + ${secondaryDietitianIds.length} Secondary` : ''}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600 mb-1">Health Counselors:</p>
+                    <p className="font-medium">
+                      {primaryHealthCounselorId ? '1 Primary' : 'No Primary'}
+                      {secondaryHealthCounselorIds.length > 0 ? ` + ${secondaryHealthCounselorIds.length} Secondary` : ''}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1582,8 +1675,9 @@ export default function AdminAllClientsPage() {
               <Button
                 onClick={handleAssignDietitian}
                 disabled={assigning}
+                className="bg-blue-600 hover:bg-blue-700"
               >
-                {assigning ? 'Assigning...' : 'Save Assignments'}
+                {assigning ? 'Saving...' : 'Save Assignments'}
               </Button>
             </DialogFooter>
           </DialogContent>

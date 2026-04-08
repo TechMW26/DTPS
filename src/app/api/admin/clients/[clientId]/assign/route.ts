@@ -33,13 +33,26 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { dietitianId, healthCounselorId, healthCounselorIds, action, mode, dietitianIds } = body;
+    const {
+      dietitianId,
+      healthCounselorId,
+      healthCounselorIds,
+      action,
+      mode,
+      dietitianIds,
+      // New fields for explicit primary/secondary assignment
+      primaryDietitianId,
+      secondaryDietitianIds,
+      primaryHealthCounselorId,
+      secondaryHealthCounselorIds
+    } = body;
     // Support both 'action' and 'mode' for backwards compatibility
     const assignAction = action || mode || 'replace';
     // action/mode: 'replace' (default) - replace primary dietitian
     // action/mode: 'add' - add to assignedDietitians array
     // action/mode: 'remove' - remove from assignedDietitians array
     // action/mode: 'transfer' - transfer client to new primary dietitian (keeping history)
+    // action/mode: 'primary_secondary' - explicit primary/secondary assignment (new)
 
     await connectDB();
 
@@ -52,6 +65,143 @@ export async function PATCH(
       return NextResponse.json({ error: 'User is not a client' }, { status: 400 });
     }
 
+    // ========== NEW: Handle explicit primary/secondary mode ==========
+    if (assignAction === 'primary_secondary') {
+      const updateData: any = {};
+
+      // Handle Dietitian assignments
+      // Primary dietitian -> assignedDietitian field
+      if (primaryDietitianId) {
+        const primaryDietitian = await User.findById(primaryDietitianId);
+        if (!primaryDietitian || primaryDietitian.role !== UserRole.DIETITIAN) {
+          return NextResponse.json({ error: 'Invalid primary dietitian' }, { status: 400 });
+        }
+        updateData.assignedDietitian = primaryDietitianId;
+      } else {
+        updateData.assignedDietitian = null;
+      }
+
+      // Build assignedDietitians array: ONLY secondaries (primary is separate in assignedDietitian)
+      const allDietitianIds: string[] = [];
+      if (secondaryDietitianIds && Array.isArray(secondaryDietitianIds)) {
+        for (const sdId of secondaryDietitianIds) {
+          // Skip if it's the primary dietitian (should never happen but safety check)
+          if (sdId && sdId !== primaryDietitianId) {
+            const sd = await User.findById(sdId);
+            if (sd && sd.role === UserRole.DIETITIAN) {
+              allDietitianIds.push(sdId);
+            }
+          }
+        }
+      }
+      updateData.assignedDietitians = allDietitianIds;
+
+      // Handle Health Counselor assignments
+      // Primary health counselor -> assignedHealthCounselor field
+      if (primaryHealthCounselorId) {
+        const primaryHC = await User.findById(primaryHealthCounselorId);
+        if (!primaryHC || primaryHC.role !== UserRole.HEALTH_COUNSELOR) {
+          return NextResponse.json({ error: 'Invalid primary health counselor' }, { status: 400 });
+        }
+        updateData.assignedHealthCounselor = primaryHealthCounselorId;
+      } else {
+        updateData.assignedHealthCounselor = null;
+      }
+
+      // Build assignedHealthCounselors array: ONLY secondaries (primary is separate in assignedHealthCounselor)
+      const allHCIds: string[] = [];
+      if (secondaryHealthCounselorIds && Array.isArray(secondaryHealthCounselorIds)) {
+        for (const shcId of secondaryHealthCounselorIds) {
+          // Skip if it's the primary health counselor (should never happen but safety check)
+          if (shcId && shcId !== primaryHealthCounselorId) {
+            const shc = await User.findById(shcId);
+            if (shc && shc.role === UserRole.HEALTH_COUNSELOR) {
+              allHCIds.push(shcId);
+            }
+          }
+        }
+      }
+      updateData.assignedHealthCounselors = allHCIds;
+
+      // Update the client
+      const updatedClient = await User.findByIdAndUpdate(
+        clientId,
+        { $set: updateData },
+        { new: true }
+      );
+
+      // Sync dietitian assignment to UnifiedPayment records
+      if (updatedClient.assignedDietitian) {
+        await UnifiedPayment.updateMany(
+          {
+            client: updatedClient._id,
+            status: { $in: ['active', 'pending', 'on_hold', 'paid'] }
+          },
+          { $set: { dietitian: updatedClient.assignedDietitian } }
+        );
+      }
+
+      // Populate the assigned professionals
+      await updatedClient.populate('assignedDietitian', 'firstName lastName email avatar');
+      await updatedClient.populate('assignedDietitians', 'firstName lastName email avatar');
+      await updatedClient.populate('assignedHealthCounselor', 'firstName lastName email avatar');
+      await updatedClient.populate('assignedHealthCounselors', 'firstName lastName email avatar');
+
+      // Log activity
+      await logActivity({
+        userId: session.user.id,
+        userRole: session.user.role as any,
+        userName: session.user.name || 'Unknown',
+        userEmail: session.user.email || '',
+        action: 'Client Professional Assignments Updated',
+        actionType: 'assign',
+        category: 'client_assignment',
+        description: `Updated assignments for ${updatedClient.firstName} ${updatedClient.lastName}: ${allDietitianIds.length} dietitian(s), ${allHCIds.length} health counselor(s)`,
+        targetUserId: clientId,
+        targetUserName: `${updatedClient.firstName} ${updatedClient.lastName}`,
+        details: { primaryDietitianId, secondaryDietitianIds, primaryHealthCounselorId, secondaryHealthCounselorIds }
+      });
+
+      // Broadcast real-time update
+      const total = await User.countDocuments({ role: UserRole.CLIENT });
+      const assignedCount = await User.countDocuments({
+        role: UserRole.CLIENT,
+        $or: [
+          { assignedDietitian: { $ne: null } },
+          { assignedDietitians: { $exists: true, $not: { $size: 0 } } }
+        ]
+      });
+      const unassignedCount = await User.countDocuments({
+        role: UserRole.CLIENT,
+        assignedDietitian: null,
+        $or: [
+          { assignedDietitians: { $exists: false } },
+          { assignedDietitians: { $size: 0 } }
+        ]
+      });
+
+      socketManager.broadcastClientUpdate('client_updated', {
+        client: updatedClient.toObject(),
+        action: 'primary_secondary',
+        stats: { total, assigned: assignedCount, unassigned: unassignedCount },
+        timestamp: Date.now()
+      });
+
+      // Clear cache
+      clearCacheByTag('clients');
+      clearCacheByTag('stats');
+      clearCacheByTag('admin');
+      clearCacheByTag('users');
+      clearCacheByTag('dashboard');
+
+      return NextResponse.json({
+        success: true,
+        message: 'Professional assignments saved successfully',
+        client: updatedClient
+      });
+    }
+
+    // ========== Original logic for other modes ==========
     // Build update object for MongoDB
     // We need to separate direct field updates ($set) from array operators ($addToSet, $pull)
     const setFields: any = {};
