@@ -1,15 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="5" failures="0" errors="0" time="1.044">
-  <testsuite name="tests/integration/template-loading.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-03T08:29:39" time="0.919" tests="5">
-    <testcase classname="template loading integration" name="should deep clone meal data when applying template mapping" time="0.037">
+<testsuites name="jest tests" tests="19" failures="0" errors="0" time="32.211">
+  <testsuite name="tests/integration/hc-primary-dietitian-restriction.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-08T12:40:55" time="31.976" tests="19">
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should return primaryDietitianOnly=true for Health Counselor role" time="1.438">
     </testcase>
-    <testcase classname="template loading integration" name="should normalize meal keys from canonical form to display names" time="0.002">
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should mark primary dietitian with isPrimary=true for Health Counselor" time="1.449">
     </testcase>
-    <testcase classname="template loading integration" name="should update editingPlan.meals when loading template in edit mode" time="0.002">
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should mark secondary dietitian with isSecondary=true for Health Counselor" time="1.395">
     </testcase>
-    <testcase classname="template loading integration" name="should map template meals to correct days based on day mapping" time="0.001">
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should NOT set primaryDietitianOnly for Admin role" time="1.46">
     </testcase>
-    <testcase classname="template loading integration" name="should merge template meals with existing meals without overwriting" time="0.001">
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should return all active dietitians for HC (including both primary &amp; secondary markers)" time="1.378">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should allow HC to replace primary dietitian (mode=replace)" time="1.68">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should allow HC to set primary dietitian when none exists (mode=add)" time="1.931">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should BLOCK HC from adding secondary dietitian (mode=add when primary exists)" time="1.662">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should BLOCK HC from assigning multiple dietitians at once" time="2.169">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should allow Admin to add secondary dietitian (mode=add when primary exists)" time="1.922">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should allow Admin to assign multiple dietitians at once" time="2.237">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should reject HC assignment if client is not assigned to the HC" time="1.932">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Role-Based Access Control" name="should return 403 if user has no assign permission" time="1.663">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Role-Based Access Control" name="should return 401 for unauthenticated request" time="1.467">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Edge Cases" name="should handle assignment when client has no primary or secondary dietitians" time="0.562">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Edge Cases" name="should validate that dietitianId references an actual dietitian" time="1.421">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Edge Cases" name="should handle client that is not found" time="1.385">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Database Integrity" name="should correctly update assignedDietitian field on replace" time="1.655">
+    </testcase>
+    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Database Integrity" name="should not alter secondary dietitians when Admin replaces primary" time="1.679">
     </testcase>
   </testsuite>
 </testsuites>

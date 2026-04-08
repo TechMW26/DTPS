@@ -1554,7 +1554,6 @@ export default function UserMessagesPage() {
                                     }}
                                     src={url}
                                     preload="metadata"
-                                    crossOrigin="anonymous"
                                     onTimeUpdate={(event) => {
                                       const audio = event.currentTarget;
                                       if (audio.duration && isFinite(audio.duration)) {

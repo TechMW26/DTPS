@@ -8,6 +8,7 @@ import { PermissionKey } from '@/lib/db/models/Permission';
 import { UserRole } from '@/types';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
+import { logActivity } from '@/lib/utils/activityLogger';
 
 // PATCH /api/clients/[clientId]/assign - Assign dietitian/health counselor to client
 // Permission-based - any role with proper permission can use this
@@ -86,6 +87,65 @@ export async function PATCH(
             if (!isAssignedToUser) {
                 return NextResponse.json({
                     error: 'You can only modify assignments for clients assigned to you'
+                }, { status: 403 });
+            }
+        }
+
+        // ===== Health Counselor Restriction: PRIMARY dietitian only =====
+        // Health Counselors can ONLY assign clients to the primary dietitian.
+        // They cannot add secondary dietitians (via 'add' mode with dietitianIds/dietitianId).
+        if (userRole === UserRole.HEALTH_COUNSELOR && (dietitianId || (dietitianIds && dietitianIds.length > 0))) {
+            // HC must use 'replace' mode (sets primary) — block 'add' mode which adds secondaries
+            if (assignAction === 'add' && client.assignedDietitian) {
+                // Client already has a primary dietitian; HC is trying to add a secondary — block it
+                // Log the attempt for audit trail
+                try {
+                    await logActivity({
+                        userId,
+                        userRole: userRole as any,
+                        userName: session.user.name || 'Unknown',
+                        userEmail: session.user.email || '',
+                        action: 'Secondary Dietitian Assignment Blocked',
+                        actionType: 'assign',
+                        category: 'client_assignment',
+                        description: `Health Counselor attempted to add secondary dietitian to client ${client.firstName} ${client.lastName}. Only primary dietitian assignment is allowed.`,
+                        targetUserId: clientId,
+                        targetUserName: `${client.firstName} ${client.lastName}`,
+                        details: { attemptedDietitianId: dietitianId || dietitianIds, mode: assignAction, blocked: true },
+                    });
+                } catch (logError) {
+                    console.error('Error logging blocked assignment attempt:', logError);
+                }
+
+                return NextResponse.json({
+                    error: 'Only Primary Dietitian assignment is allowed for Health Counselors. You cannot add secondary dietitians.',
+                    code: 'SECONDARY_ASSIGNMENT_BLOCKED',
+                }, { status: 403 });
+            }
+
+            // HC cannot assign multiple dietitians at once (that would create secondaries)
+            if (dietitianIds && Array.isArray(dietitianIds) && dietitianIds.length > 1) {
+                try {
+                    await logActivity({
+                        userId,
+                        userRole: userRole as any,
+                        userName: session.user.name || 'Unknown',
+                        userEmail: session.user.email || '',
+                        action: 'Multiple Dietitian Assignment Blocked',
+                        actionType: 'assign',
+                        category: 'client_assignment',
+                        description: `Health Counselor attempted to assign multiple dietitians to client ${client.firstName} ${client.lastName}. Only single primary dietitian assignment is allowed.`,
+                        targetUserId: clientId,
+                        targetUserName: `${client.firstName} ${client.lastName}`,
+                        details: { attemptedDietitianIds: dietitianIds, mode: assignAction, blocked: true },
+                    });
+                } catch (logError) {
+                    console.error('Error logging blocked assignment attempt:', logError);
+                }
+
+                return NextResponse.json({
+                    error: 'Health Counselors can only assign one primary dietitian at a time.',
+                    code: 'MULTIPLE_DIETITIAN_BLOCKED',
                 }, { status: 403 });
             }
         }
@@ -281,6 +341,8 @@ export async function GET(
             },
         };
 
+        const { clientId } = await params;
+
         // Fetch available staff based on permissions
         if (canAssignDietitians) {
             const dietitians = await User.find({
@@ -289,7 +351,28 @@ export async function GET(
             })
                 .select('firstName lastName email avatar phone')
                 .lean();
-            result.dietitians = dietitians;
+
+            // Health Counselors can only assign to PRIMARY dietitian
+            // Show all dietitians but mark which is primary, and only allow replacing primary
+            if (userRole === UserRole.HEALTH_COUNSELOR) {
+                const clientDoc = await User.findById(clientId)
+                    .select('assignedDietitian assignedDietitians')
+                    .lean() as any;
+
+                const primaryDietitianId = clientDoc?.assignedDietitian?.toString() || null;
+                const secondaryDietitianIds = (clientDoc?.assignedDietitians || []).map((d: any) => d.toString());
+
+                // Mark each dietitian as primary/secondary/unassigned
+                result.dietitians = dietitians.map((d: any) => ({
+                    ...d,
+                    isPrimary: d._id.toString() === primaryDietitianId,
+                    isSecondary: secondaryDietitianIds.includes(d._id.toString()),
+                }));
+                result.primaryDietitianOnly = true;
+                result.assignmentMessage = 'Health Counselors can only assign to Primary Dietitian';
+            } else {
+                result.dietitians = dietitians;
+            }
         }
 
         if (canAssignHealthCounselors) {

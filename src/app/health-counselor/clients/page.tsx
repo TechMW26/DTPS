@@ -55,6 +55,8 @@ interface Dietitian {
   lastName: string;
   email: string;
   avatar?: string;
+  isPrimary?: boolean;
+  isSecondary?: boolean;
 }
 
 interface HealthCounselor {
@@ -170,6 +172,8 @@ export default function HealthCounselorClientsPage() {
   const [selectedHealthCounselorId, setSelectedHealthCounselorId] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [assignMode, setAssignMode] = useState<'add' | 'replace'>('add');
+  const [primaryDietitianOnly, setPrimaryDietitianOnly] = useState(false);
+  const [assignmentMessage, setAssignmentMessage] = useState('');
 
   // Fetch available staff for assignment
   const fetchAvailableStaff = useCallback(async (clientId: string) => {
@@ -177,8 +181,18 @@ export default function HealthCounselorClientsPage() {
       const response = await fetch(`/api/clients/${clientId}/assign`);
       if (response.ok) {
         const data = await response.json();
-        if (data.dietitians) setAvailableDietitians(data.dietitians);
+        if (data.dietitians) {
+          // If primaryDietitianOnly is set, filter out secondary dietitians from the dropdown
+          if (data.primaryDietitianOnly) {
+            const filtered = data.dietitians.filter((d: Dietitian) => !d.isSecondary);
+            setAvailableDietitians(filtered);
+          } else {
+            setAvailableDietitians(data.dietitians);
+          }
+        }
         if (data.healthCounselors) setAvailableHealthCounselors(data.healthCounselors);
+        setPrimaryDietitianOnly(!!data.primaryDietitianOnly);
+        setAssignmentMessage(data.assignmentMessage || '');
       }
     } catch (error) {
       console.error('Error fetching staff:', error);
@@ -190,7 +204,8 @@ export default function HealthCounselorClientsPage() {
     setSelectedClientForAssign(client);
     setSelectedDietitianId('');
     setSelectedHealthCounselorId('');
-    setAssignMode('add');
+    // HC defaults to 'replace' (primary only); other roles can choose
+    setAssignMode('replace');
     setAssignDialogOpen(true);
     await fetchAvailableStaff(client._id);
   };
@@ -201,7 +216,9 @@ export default function HealthCounselorClientsPage() {
 
     try {
       setAssigning(true);
-      const payload: any = { mode: assignMode };
+      // HC is always forced to 'replace' for dietitian (primary only assignment)
+      const effectiveMode = primaryDietitianOnly && selectedDietitianId ? 'replace' : assignMode;
+      const payload: any = { mode: effectiveMode };
 
       if (selectedDietitianId && canAssignDietitians) {
         payload.dietitianId = selectedDietitianId;
@@ -888,24 +905,46 @@ export default function HealthCounselorClientsPage() {
             </DialogHeader>
 
             <div className="space-y-4 py-4">
-              {/* Assignment Mode */}
-              <div>
-                <label className="text-sm font-medium text-gray-700">Assignment Mode</label>
-                <Select value={assignMode} onValueChange={(v: 'add' | 'replace') => setAssignMode(v)}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="add">Add to existing</SelectItem>
-                    <SelectItem value="replace">Replace existing</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Primary Dietitian Only Notice for Health Counselors */}
+              {primaryDietitianOnly && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+                    {assignmentMessage || 'Health Counselors can only assign to Primary Dietitian'}
+                  </p>
+                  <p className="text-xs text-amber-600 mt-1">
+                    Secondary dietitian assignments are managed by Admin only.
+                  </p>
+                </div>
+              )}
+
+              {/* Assignment Mode - Hidden for HC when primaryDietitianOnly */}
+              {!primaryDietitianOnly && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Assignment Mode</label>
+                  <Select value={assignMode} onValueChange={(v: 'add' | 'replace') => setAssignMode(v)}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="add">Add to existing</SelectItem>
+                      <SelectItem value="replace">Replace existing</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {/* Dietitian Selection - Only if has permission */}
               {canAssignDietitians && (
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Assign Dietitian</label>
+                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    {primaryDietitianOnly ? 'Primary Dietitian (Assigned Dietitian)' : 'Assign Dietitian'}
+                    {primaryDietitianOnly && (
+                      <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                        PRIMARY
+                      </Badge>
+                    )}
+                  </label>
                   <Select value={selectedDietitianId} onValueChange={setSelectedDietitianId}>
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Select a dietitian" />
@@ -922,13 +961,18 @@ export default function HealthCounselorClientsPage() {
                               </AvatarFallback>
                             </Avatar>
                             <span>Dt. {d.firstName} {d.lastName}</span>
+                            {d.isPrimary && (
+                              <Badge variant="outline" className="text-[10px] px-1 py-0 bg-green-50 text-green-700 border-green-300">
+                                Current Primary
+                              </Badge>
+                            )}
                           </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   {availableDietitians.length === 0 && (
-                    <p className="text-xs text-gray-500 mt-1">No dietitians available</p>
+                    <p className="text-xs text-gray-500 mt-1">No Primary Dietitians available for assignment</p>
                   )}
                 </div>
               )}
@@ -970,14 +1014,20 @@ export default function HealthCounselorClientsPage() {
                   <p className="text-xs font-medium text-gray-600 mb-2">Current Assignments:</p>
                   <div className="space-y-1 text-xs text-gray-500">
                     <p>
-                      Dietitian: {
-                        selectedClientForAssign.assignedDietitian?.firstName
-                          ? `Dt. ${selectedClientForAssign.assignedDietitian.firstName} ${selectedClientForAssign.assignedDietitian.lastName}`
-                          : selectedClientForAssign.assignedDietitians?.[0]?.firstName
-                            ? `Dt. ${selectedClientForAssign.assignedDietitians[0].firstName} ${selectedClientForAssign.assignedDietitians[0].lastName}`
-                            : 'Not assigned'
-                      }
+                      <span className="font-medium">Primary Dietitian:</span>{' '}
+                      {selectedClientForAssign.assignedDietitian?.firstName
+                        ? `Dt. ${selectedClientForAssign.assignedDietitian.firstName} ${selectedClientForAssign.assignedDietitian.lastName}`
+                        : 'Not assigned'}
                     </p>
+                    {!primaryDietitianOnly && selectedClientForAssign.assignedDietitians && selectedClientForAssign.assignedDietitians.length > 0 && (
+                      <p>
+                        <span className="font-medium">Secondary Dietitian(s):</span>{' '}
+                        {selectedClientForAssign.assignedDietitians
+                          .filter(d => d._id !== selectedClientForAssign.assignedDietitian?._id)
+                          .map(d => `Dt. ${d.firstName} ${d.lastName}`)
+                          .join(', ') || 'None'}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

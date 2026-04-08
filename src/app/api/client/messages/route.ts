@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       if (updateResult.modifiedCount > 0) {
         const sm = socketManager;
         if (sm) {
-          sm.emitToUser(conversationWith, SOCKET_EVENTS.MESSAGE_READ, {
+          sm.sendToUser(conversationWith, SOCKET_EVENTS.MESSAGE_READ, {
             conversationWith: session.user.id,
             readBy: session.user.id,
             readAt: new Date().toISOString()
