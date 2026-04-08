@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
     // Get all WooCommerce clients
     const wooClients = await WooCommerceClient.find({}).lean();
-    
+
 
 
     let migratedCount = 0;
@@ -71,7 +71,11 @@ export async function POST(request: NextRequest) {
             status: 'active',
             phone: wooClient.phone,
             emailVerified: true, // WooCommerce clients are considered verified
-            
+            // Track that this was migrated from WooCommerce
+            createdBy: {
+              userId: session.user.id, // Admin who ran the migration
+              role: 'admin',
+            },
             // WooCommerce-specific data
             wooCommerceData: {
               customerId: wooClient.wooCommerceCustomerId,
@@ -135,17 +139,17 @@ export async function GET(request: NextRequest) {
     const totalWooClients = await WooCommerceClient.countDocuments({});
     const totalUsers = await User.countDocuments({});
     const clientUsers = await User.countDocuments({ role: 'client' });
-    const wooCommerceUsers = await User.countDocuments({ 
-      'wooCommerceData': { $exists: true } 
+    const wooCommerceUsers = await User.countDocuments({
+      'wooCommerceData': { $exists: true }
     });
 
     // Get sample migrated clients
-    const sampleClients = await User.find({ 
-      'wooCommerceData': { $exists: true } 
+    const sampleClients = await User.find({
+      'wooCommerceData': { $exists: true }
     })
-    .select('firstName lastName email wooCommerceData.totalOrders wooCommerceData.totalSpent')
-    .limit(5)
-    .lean();
+      .select('firstName lastName email wooCommerceData.totalOrders wooCommerceData.totalSpent')
+      .limit(5)
+      .lean();
 
     return NextResponse.json({
       totalWooClients,

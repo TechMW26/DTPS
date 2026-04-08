@@ -106,8 +106,8 @@ export const authOptions: NextAuthOptions = {
             // Update lastLoginAt
             await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
 
-            // Use user's email from DB, fallback to token email
-            const userEmail = user.email || decoded.email || `${decoded.userId}@phone.dtps.tech`;
+            // Use user's real email from DB, or token email — never generate a fake email
+            const userEmail = user.email || decoded.email || '';
 
             return {
               id: user._id.toString(),

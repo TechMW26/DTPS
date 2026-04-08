@@ -141,18 +141,25 @@ export async function POST(request: NextRequest) {
             // Generate a random password for the user (they will use OTP to login)
             const randomPassword = crypto.randomBytes(16).toString('hex');
 
-            // Create user
+            // Only use email if the client actually provided one — never auto-generate fake emails
+            const clientEmail = signupData.email?.toLowerCase() || undefined;
+
+            // Create user with proper tracking
             user = new User({
                 firstName: signupData.firstName,
                 lastName: signupData.lastName,
-                email: signupData.email?.toLowerCase() || `${normalizedPhone.replace(/\+/g, '')}@phone.dtps.tech`,
+                ...(clientEmail ? { email: clientEmail } : {}), // Only set email if provided
                 phone: normalizedPhone,
                 password: randomPassword,
                 role: UserRole.CLIENT,
                 status: 'active',
-                emailVerified: !signupData.email, // Auto-verify if using phone-based email
+                emailVerified: false,
                 onboardingCompleted: false,
                 isNewUser: true,
+                // Track who/what created this user
+                createdBy: {
+                    role: 'self', // Self-registered via OTP
+                },
             });
 
             await user.save();
@@ -200,13 +207,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Ensure user has an email (fallback for users without one)
-        const userEmail = user.email || `${normalizedPhone.replace(/\+/g, '')}@phone.dtps.tech`;
-
-        // If user didn't have an email in DB, set it now so NextAuth can always find them
-        if (!user.email) {
-            await User.findByIdAndUpdate(user._id, { email: userEmail });
-        }
+        // Use real email if available, otherwise leave empty (phone is the primary identifier)
+        const userEmail = user.email || '';
 
         const token = sign(
             {
