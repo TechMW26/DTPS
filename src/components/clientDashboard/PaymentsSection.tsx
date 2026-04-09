@@ -1109,173 +1109,235 @@ export default function PaymentsSection({
       </CardHeader>
 
       <CardContent>
-        {loading ? (
+        {loading || loadingPurchases ? (
           <div className="py-12 text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-400" />
-            <p className="mt-2 text-sm text-gray-500">Loading payment links...</p>
+            <p className="mt-2 text-sm text-gray-500">Loading payments...</p>
           </div>
-        ) : paymentsState.length === 0 ? (
-          <div className="py-6 text-center text-sm text-gray-600">No payment links yet.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead className="bg-gray-50">
-                <tr className="text-left">
-                  {visibleColumns.created && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Created</th>}
-                  {visibleColumns.customerName && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Customer</th>}
-                  {visibleColumns.phone && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Phone</th>}
-                  {visibleColumns.email && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Email</th>}
-                  {visibleColumns.catalogue && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Catalogue</th>}
-                  {visibleColumns.duration && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Duration</th>}
-                  {visibleColumns.expireDate && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Expire</th>}
-                  {visibleColumns.plan && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Plan</th>}
-                  {visibleColumns.amount && <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Amount</th>}
-                  {visibleColumns.final && <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Final</th>}
-                  {visibleColumns.status && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Status</th>}
-                  {visibleColumns.transactionId && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Transaction ID</th>}
-                  {visibleColumns.expectedDates && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Expected Dates</th>}
-                  {visibleColumns.link && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Link</th>}
-                  <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paymentsState.map((p) => (
-                  <tr key={p._id} className="border-t hover:bg-gray-50">
-                    {visibleColumns.created && (
-                      <td className="p-3 whitespace-nowrap">
-                        {formatDate ? formatDate(p.createdAt) : formatDateIST(p.createdAt)}
-                      </td>
-                    )}
-                    {visibleColumns.customerName && (
-                      <td className="p-3 whitespace-nowrap font-medium">{getCustomerName(p)}</td>
-                    )}
-                    {visibleColumns.phone && (
-                      <td className="p-3 whitespace-nowrap">{p.client?.phone || "—"}</td>
-                    )}
-                    {visibleColumns.email && (
-                      <td className="p-3">{p.client?.email || "—"}</td>
-                    )}
-                    {visibleColumns.catalogue && (
-                      <td className="p-3 whitespace-nowrap">{p.catalogue || "—"}</td>
-                    )}
-                    {visibleColumns.duration && (
-                      <td className="p-3 whitespace-nowrap">{p.duration || "—"}</td>
-                    )}
-                    {visibleColumns.expireDate && (
-                      <td className="p-3 whitespace-nowrap">
-                        {p.expireDate ? (formatDate ? formatDate(p.expireDate) : formatDateIST(p.expireDate)) : "—"}
-                      </td>
-                    )}
-                    {visibleColumns.plan && (
-                      <td className="p-3">
-                        <div className="font-medium">{p.planName || "—"}</div>
-                        {p.planCategory && <div className="text-xs text-gray-500">{p.planCategory}</div>}
-                      </td>
-                    )}
-                    {visibleColumns.amount && (
-                      <td className="p-3 whitespace-nowrap text-right">₹{p.amount?.toLocaleString()}</td>
-                    )}
-                    {visibleColumns.final && (
-                      <td className="p-3 whitespace-nowrap text-right font-semibold text-blue-600">₹{p.finalAmount?.toLocaleString()}</td>
-                    )}
-                    {visibleColumns.status && (
-                      <td className="p-3 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${getStatusBadge(p.status)}`}>
-                          {p.status || "—"}
-                        </span>
-                      </td>
-                    )}
-                    {visibleColumns.transactionId && (
-                      <td className="p-3">
-                        <span className="text-xs font-mono text-gray-700 break-all max-w-[170px] block">
-                          {getTransactionIdForPayment(p)}
-                        </span>
-                      </td>
-                    )}
-                    {visibleColumns.expectedDates && (
-                      <td className="p-3 whitespace-nowrap">
-                        {(() => {
-                          // Only show expected dates for PAID payments
-                          if (p.status !== 'paid') {
-                            return "—";
-                          }
+        ) : (() => {
+          // Combine payment links and imported purchases (without payment links) into unified view
+          const importedPurchases = clientPurchases.filter(purchase => {
+            if (!purchase.paymentLink) return true;
+            const linkId = typeof purchase.paymentLink === 'object' ? purchase.paymentLink._id : purchase.paymentLink;
+            return !paymentsState.some(p => p._id === linkId || p._id === String(linkId));
+          });
 
-                          // Find the purchase for this payment - ONLY match by paymentLink ID to avoid confusion
-                          const purchase = clientPurchases.find(pur =>
-                            toIdString(pur.paymentLink) === toIdString(p._id)
-                          );
-                          if (purchase?.expectedStartDate) {
-                            const startDate = new Date(purchase.expectedStartDate);
-                            const endDate = purchase.expectedEndDate ? new Date(purchase.expectedEndDate) : null;
-                            return (
-                              <div className="text-xs">
-                                <div className="text-green-600 font-medium">
-                                  {startDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}
-                                  {endDate && ` - ${endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}`}
-                                </div>
-                              </div>
-                            );
-                          }
+          // Convert imported purchases to PaymentItem format for unified display
+          const convertedImports: PaymentItem[] = importedPurchases.map(purchase => ({
+            _id: purchase._id,
+            amount: purchase.amount || 0,
+            finalAmount: purchase.finalAmount || purchase.amount || 0,
+            tax: purchase.tax,
+            discount: purchase.discount,
+            planCategory: purchase.planCategory,
+            planName: purchase.planName,
+            catalogue: purchase.catalogue,
+            duration: purchase.durationLabel || (purchase.durationDays ? `${purchase.durationDays} Days` : undefined),
+            durationDays: purchase.durationDays,
+            createdAt: purchase.purchaseDate || purchase.createdAt,
+            status: purchase.status || purchase.paymentStatus || 'paid',
+            paidAt: purchase.paidAt || purchase.purchaseDate,
+            transactionId: purchase.transactionId,
+            razorpayPaymentId: purchase.razorpayPaymentId,
+            notes: purchase.notes,
+            client: purchase.client,
+            dietitian: purchase.dietitian,
+            // Mark as imported purchase (no Razorpay link)
+            _isImportedPurchase: true,
+            _purchaseData: purchase, // Keep original purchase data for actions
+          } as PaymentItem & { _isImportedPurchase?: boolean; _purchaseData?: any }));
 
-                          if (canEditExpectedDates) {
-                            return (
-                              <button
-                                type="button"
-                                className="text-xs text-orange-600 hover:text-orange-700 hover:underline"
-                                onClick={() => openExpectedDatesModalForPayment(p)}
-                              >
-                                Not set
-                              </button>
-                            );
-                          }
+          const allPayments = [...paymentsState, ...convertedImports].sort((a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
 
-                          return <span className="text-xs text-orange-500">Not set</span>;
-                        })()}
-                      </td>
-                    )}
-                    {visibleColumns.link && (
-                      <td className="p-3 whitespace-nowrap">
-                        {getPaymentLink(p) ? (
-                          <button
-                            className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                            onClick={() => window.open(getPaymentLink(p), "_blank")}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            Open
-                          </button>
-                        ) : "—"}
-                      </td>
-                    )}
-                    <td className="p-3 text-center">
-                      <button
-                        onClick={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const dropdownHeight = 280;
-                          const spaceBelow = window.innerHeight - rect.bottom;
-                          const spaceAbove = rect.top;
+          if (allPayments.length === 0) {
+            return <div className="py-6 text-center text-sm text-gray-600">No payments yet.</div>;
+          }
 
-                          let top = rect.bottom + 4;
-                          if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
-                            top = rect.top - dropdownHeight - 4;
-                          }
-
-                          let left = rect.left - 150;
-                          if (left < 10) left = 10;
-
-                          setDropdownPosition({ top, left });
-                          setOpenRowMenuId(openRowMenuId === p._id ? null : p._id);
-                        }}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                      >
-                        <MoreVertical className="h-4 w-4 text-gray-600" />
-                      </button>
-                    </td>
+          return (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead className="bg-gray-50">
+                  <tr className="text-left">
+                    {visibleColumns.created && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Created</th>}
+                    {visibleColumns.customerName && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Customer</th>}
+                    {visibleColumns.phone && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Phone</th>}
+                    {visibleColumns.email && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Email</th>}
+                    {visibleColumns.catalogue && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Catalogue</th>}
+                    {visibleColumns.duration && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Duration</th>}
+                    {visibleColumns.expireDate && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Expire</th>}
+                    {visibleColumns.plan && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Plan</th>}
+                    {visibleColumns.amount && <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Amount</th>}
+                    {visibleColumns.final && <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Final</th>}
+                    {visibleColumns.status && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Status</th>}
+                    {visibleColumns.transactionId && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Transaction ID</th>}
+                    {visibleColumns.expectedDates && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Expected Dates</th>}
+                    {visibleColumns.link && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Link</th>}
+                    <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-center">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {allPayments.map((p) => {
+                    const isImported = (p as any)._isImportedPurchase;
+                    const purchaseData = (p as any)._purchaseData;
+                    return (
+                      <tr key={p._id} className="border-t hover:bg-gray-50">
+                        {visibleColumns.created && (
+                          <td className="p-3 whitespace-nowrap">
+                            {formatDate ? formatDate(p.createdAt) : formatDateIST(p.createdAt)}
+                            {isImported && (
+                              <span className="ml-1 text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">Import</span>
+                            )}
+                          </td>
+                        )}
+                        {visibleColumns.customerName && (
+                          <td className="p-3 whitespace-nowrap font-medium">{getCustomerName(p)}</td>
+                        )}
+                        {visibleColumns.phone && (
+                          <td className="p-3 whitespace-nowrap">{p.client?.phone || "—"}</td>
+                        )}
+                        {visibleColumns.email && (
+                          <td className="p-3">{p.client?.email || "—"}</td>
+                        )}
+                        {visibleColumns.catalogue && (
+                          <td className="p-3 whitespace-nowrap">{p.catalogue || "—"}</td>
+                        )}
+                        {visibleColumns.duration && (
+                          <td className="p-3 whitespace-nowrap">{p.duration || "—"}</td>
+                        )}
+                        {visibleColumns.expireDate && (
+                          <td className="p-3 whitespace-nowrap">
+                            {p.expireDate ? (formatDate ? formatDate(p.expireDate) : formatDateIST(p.expireDate)) : "—"}
+                          </td>
+                        )}
+                        {visibleColumns.plan && (
+                          <td className="p-3">
+                            <div className="font-medium">{p.planName || "—"}</div>
+                            {p.planCategory && <div className="text-xs text-gray-500">{p.planCategory}</div>}
+                          </td>
+                        )}
+                        {visibleColumns.amount && (
+                          <td className="p-3 whitespace-nowrap text-right">₹{p.amount?.toLocaleString()}</td>
+                        )}
+                        {visibleColumns.final && (
+                          <td className="p-3 whitespace-nowrap text-right font-semibold text-blue-600">₹{p.finalAmount?.toLocaleString()}</td>
+                        )}
+                        {visibleColumns.status && (
+                          <td className="p-3 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${getStatusBadge(p.status)}`}>
+                              {p.status || "—"}
+                            </span>
+                          </td>
+                        )}
+                        {visibleColumns.transactionId && (
+                          <td className="p-3">
+                            <span className="text-xs font-mono text-gray-700 break-all max-w-44 block">
+                              {isImported
+                                ? (purchaseData?.transactionId || purchaseData?.razorpayPaymentId || "—")
+                                : getTransactionIdForPayment(p)
+                              }
+                            </span>
+                          </td>
+                        )}
+                        {visibleColumns.expectedDates && (
+                          <td className="p-3 whitespace-nowrap">
+                            {(() => {
+                              // Only show expected dates for PAID payments
+                              if (p.status !== 'paid') {
+                                return "—";
+                              }
+
+                              // For imported purchases, use the purchaseData directly
+                              // For payment links, find the linked purchase
+                              const purchase = isImported
+                                ? purchaseData
+                                : clientPurchases.find(pur =>
+                                  toIdString(pur.paymentLink) === toIdString(p._id)
+                                );
+
+                              if (purchase?.expectedStartDate) {
+                                const startDate = new Date(purchase.expectedStartDate);
+                                const endDate = purchase.expectedEndDate ? new Date(purchase.expectedEndDate) : null;
+                                return (
+                                  <div className="text-xs">
+                                    <div className="text-green-600 font-medium">
+                                      {startDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}
+                                      {endDate && ` - ${endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}`}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              if (canEditExpectedDates) {
+                                return (
+                                  <button
+                                    type="button"
+                                    className="text-xs text-orange-600 hover:text-orange-700 hover:underline"
+                                    onClick={() => {
+                                      if (isImported && purchaseData) {
+                                        openExpectedDatesModal(purchaseData);
+                                      } else {
+                                        openExpectedDatesModalForPayment(p);
+                                      }
+                                    }}
+                                  >
+                                    Not set
+                                  </button>
+                                );
+                              }
+
+                              return <span className="text-xs text-orange-500">Not set</span>;
+                            })()}
+                          </td>
+                        )}
+                        {visibleColumns.link && (
+                          <td className="p-3 whitespace-nowrap">
+                            {isImported ? (
+                              <span className="text-xs text-gray-400">Direct Import</span>
+                            ) : getPaymentLink(p) ? (
+                              <button
+                                className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                onClick={() => window.open(getPaymentLink(p), "_blank")}
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                Open
+                              </button>
+                            ) : "—"}
+                          </td>
+                        )}
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const dropdownHeight = 280;
+                              const spaceBelow = window.innerHeight - rect.bottom;
+                              const spaceAbove = rect.top;
+
+                              let top = rect.bottom + 4;
+                              if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
+                                top = rect.top - dropdownHeight - 4;
+                              }
+
+                              let left = rect.left - 150;
+                              if (left < 10) left = 10;
+
+                              setDropdownPosition({ top, left });
+                              setOpenRowMenuId(openRowMenuId === p._id ? null : p._id);
+                            }}
+                            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                          >
+                            <MoreVertical className="h-4 w-4 text-gray-600" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </CardContent>
 
       {/* Action Dropdown - Fixed position portal */}
@@ -1290,15 +1352,30 @@ export default function PaymentsSection({
             style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
           >
             {(() => {
+              // Check if this is a payment link or an imported purchase
               const payment = paymentsState.find(p => p._id === openRowMenuId);
-              const isPaid = payment?.status === 'paid';
-              const isPending = payment?.status === 'pending' || payment?.status === 'created';
+              const importedPurchase = clientPurchases.find(p =>
+                p._id === openRowMenuId && (!p.paymentLink || !paymentsState.some(pl => pl._id === p.paymentLink?._id || pl._id === p.paymentLink))
+              );
+
+              const isImported = !payment && importedPurchase;
+              const activeItem = payment || (importedPurchase ? {
+                _id: importedPurchase._id,
+                status: importedPurchase.status || importedPurchase.paymentStatus || 'paid',
+                amount: importedPurchase.amount,
+                finalAmount: importedPurchase.finalAmount || importedPurchase.amount,
+              } : null);
+
+              if (!activeItem) return null;
+
+              const isPaid = activeItem.status === 'paid';
+              const isPending = activeItem.status === 'pending' || activeItem.status === 'created';
 
               return (
                 <>
 
-                  {/* Only show payment link options if NOT paid */}
-                  {!isPaid && (
+                  {/* Only show payment link options if NOT imported and NOT paid */}
+                  {!isImported && !isPaid && (
                     <>
                       <button
                         onClick={() => viewPayment(payment!)}
@@ -1319,8 +1396,17 @@ export default function PaymentsSection({
                     </>
                   )}
 
+                  {/* Invoice options - available for both payment links and imported purchases */}
                   <button
-                    onClick={() => generateInvoice(payment!)}
+                    onClick={() => {
+                      if (isImported && importedPurchase) {
+                        // Direct invoice for imported purchase
+                        window.open(`/api/invoices/${importedPurchase._id}`, '_blank');
+                        setOpenRowMenuId(null);
+                      } else {
+                        generateInvoice(payment!);
+                      }
+                    }}
                     className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                   >
                     <Printer className="h-4 w-4" />
@@ -1329,7 +1415,29 @@ export default function PaymentsSection({
 
                   {isPaid && canEmailInvoice && (
                     <button
-                      onClick={() => sendInvoiceEmail(payment!)}
+                      onClick={async () => {
+                        if (isImported && importedPurchase) {
+                          // Send invoice email for imported purchase
+                          try {
+                            const response = await fetch(`/api/invoices/${importedPurchase._id}`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                            });
+                            const data = await response.json();
+                            if (data.success) {
+                              toast.success(`Invoice sent to ${data.sentTo}`);
+                            } else {
+                              toast.error(data.error || 'Failed to send invoice');
+                            }
+                          } catch (error) {
+                            console.error('Error sending invoice:', error);
+                            toast.error('Failed to send invoice');
+                          }
+                          setOpenRowMenuId(null);
+                        } else {
+                          sendInvoiceEmail(payment!);
+                        }
+                      }}
                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                     >
                       <Mail className="h-4 w-4" />
@@ -1339,8 +1447,8 @@ export default function PaymentsSection({
 
                   {/* Set Expected Dates - only for paid payments */}
                   {isPaid && (() => {
-                    // Find the purchase for this payment - ONLY match by paymentLink ID
-                    const purchase = clientPurchases.find(p =>
+                    // For imported purchases, use the purchase directly; for payment links, find linked purchase
+                    const purchase = isImported ? importedPurchase : clientPurchases.find(p =>
                       p.paymentLink?._id === payment?._id ||
                       p.paymentLink === payment?._id
                     );
@@ -1358,7 +1466,15 @@ export default function PaymentsSection({
 
                     return (
                       <button
-                        onClick={() => openExpectedDatesModalForPayment(payment!)}
+                        onClick={() => {
+                          if (isImported && importedPurchase) {
+                            // For imported purchases, directly open with the purchase
+                            setOpenRowMenuId(null);
+                            openExpectedDatesModal(importedPurchase);
+                          } else {
+                            openExpectedDatesModalForPayment(payment!);
+                          }
+                        }}
                         className="w-full px-4 py-2 text-left text-sm text-green-600 hover:bg-green-50 flex items-center gap-2"
                       >
                         <Calendar className="h-4 w-4" />
@@ -1367,7 +1483,8 @@ export default function PaymentsSection({
                     );
                   })()}
 
-                  {isPending && (
+                  {/* Pending payment link options - NOT for imported purchases */}
+                  {!isImported && isPending && (
                     <button
                       onClick={() => sendReminder(payment!)}
                       disabled={sendingReminder}
@@ -1382,8 +1499,8 @@ export default function PaymentsSection({
                     </button>
                   )}
 
-                  {/* Sync Status - for pending/created payments */}
-                  {isPending && (
+                  {/* Sync Status - for pending/created payment links only, NOT imported */}
+                  {!isImported && isPending && (
                     <button
                       onClick={() => syncPaymentStatus(payment!)}
                       disabled={syncingPayment === payment!._id}
@@ -1405,10 +1522,11 @@ export default function PaymentsSection({
                     className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                   >
                     <RefreshCw className="h-4 w-4" />
-                    Refresh Status
+                    Refresh
                   </button>
 
-                  {!isPaid && (
+                  {/* Cancel options - for payment links only, NOT imported */}
+                  {!isImported && !isPaid && (
                     <>
                       <div className="border-t border-gray-100 my-1"></div>
                       <button
