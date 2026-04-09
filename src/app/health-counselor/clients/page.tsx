@@ -175,6 +175,19 @@ export default function HealthCounselorClientsPage() {
   const [primaryDietitianOnly, setPrimaryDietitianOnly] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState('');
 
+  // Primary/Secondary dietitian selection state (like admin)
+  const [primaryDietitianId, setPrimaryDietitianId] = useState('');
+  const [secondaryDietitianIds, setSecondaryDietitianIds] = useState<string[]>([]);
+  const [dietitianSearchTerm, setDietitianSearchTerm] = useState('');
+  const [primaryDietitianSearchTerm, setPrimaryDietitianSearchTerm] = useState('');
+
+  // Auto-remove primary from secondary list when primary changes
+  useEffect(() => {
+    if (primaryDietitianId) {
+      setSecondaryDietitianIds(prev => prev.filter(id => id !== primaryDietitianId));
+    }
+  }, [primaryDietitianId]);
+
   // Fetch available staff for assignment
   const fetchAvailableStaff = useCallback(async (clientId: string) => {
     try {
@@ -204,25 +217,40 @@ export default function HealthCounselorClientsPage() {
     setSelectedClientForAssign(client);
     setSelectedDietitianId('');
     setSelectedHealthCounselorId('');
-    // HC defaults to 'replace' (primary only); other roles can choose
     setAssignMode('replace');
+    setDietitianSearchTerm('');
+    setPrimaryDietitianSearchTerm('');
+
+    // Initialize Primary/Secondary from existing assignments
+    const existingPrimaryDietitian = client.assignedDietitian && typeof client.assignedDietitian === 'object'
+      ? (client.assignedDietitian._id || '') : '';
+    setPrimaryDietitianId(existingPrimaryDietitian);
+
+    // Secondary Dietitians (from array, excluding primary)
+    const existingSecondaryDietitians = (client.assignedDietitians || [])
+      .filter(d => d && typeof d === 'object' && d._id && d._id !== existingPrimaryDietitian)
+      .map(d => d._id);
+    setSecondaryDietitianIds(existingSecondaryDietitians);
+
     setAssignDialogOpen(true);
     await fetchAvailableStaff(client._id);
   };
 
-  // Handle assignment
+  // Handle assignment - now supports primary/secondary like admin
   const handleAssign = async () => {
     if (!selectedClientForAssign) return;
 
     try {
       setAssigning(true);
-      // HC is always forced to 'replace' for dietitian (primary only assignment)
-      const effectiveMode = primaryDietitianOnly && selectedDietitianId ? 'replace' : assignMode;
-      const payload: any = { mode: effectiveMode };
 
-      if (selectedDietitianId && canAssignDietitians) {
-        payload.dietitianId = selectedDietitianId;
-      }
+      // Build payload with primary/secondary assignments (same as admin)
+      const payload: any = {
+        primaryDietitianId: primaryDietitianId || null,
+        secondaryDietitianIds: secondaryDietitianIds.length > 0 ? secondaryDietitianIds : [],
+        mode: 'primary_secondary'
+      };
+
+      // Add health counselor if selected
       if (selectedHealthCounselorId && canAssignHealthCounselors) {
         payload.healthCounselorId = selectedHealthCounselorId;
       }
@@ -888,10 +916,10 @@ export default function HealthCounselorClientsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Assignment Dialog - Permission Based */}
+      {/* Assignment Dialog - Primary/Secondary Selection like Admin */}
       {canAssign && (
         <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <UserPlus className="h-5 w-5" />
@@ -899,87 +927,227 @@ export default function HealthCounselorClientsPage() {
               </DialogTitle>
               <DialogDescription>
                 {selectedClientForAssign && (
-                  <>Assign staff to {selectedClientForAssign.firstName} {selectedClientForAssign.lastName}</>
+                  <>Assign dietitians to {selectedClientForAssign.firstName} {selectedClientForAssign.lastName}</>
                 )}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 py-4">
-              {/* Primary Dietitian Only Notice for Health Counselors */}
-              {primaryDietitianOnly && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
-                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
-                    {assignmentMessage || 'Health Counselors can only assign to Primary Dietitian'}
-                  </p>
-                  <p className="text-xs text-amber-600 mt-1">
-                    Secondary dietitian assignments are managed by Admin only.
-                  </p>
-                </div>
-              )}
-
-              {/* Assignment Mode - Hidden for HC when primaryDietitianOnly */}
-              {!primaryDietitianOnly && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Assignment Mode</label>
-                  <Select value={assignMode} onValueChange={(v: 'add' | 'replace') => setAssignMode(v)}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="add">Add to existing</SelectItem>
-                      <SelectItem value="replace">Replace existing</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Dietitian Selection - Only if has permission */}
+            <div className="space-y-6 py-4">
+              {/* Dietitian Assignment Section */}
               {canAssignDietitians && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    {primaryDietitianOnly ? 'Primary Dietitian (Assigned Dietitian)' : 'Assign Dietitian'}
-                    {primaryDietitianOnly && (
-                      <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                        PRIMARY
-                      </Badge>
-                    )}
-                  </label>
-                  <Select value={selectedDietitianId} onValueChange={setSelectedDietitianId}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select a dietitian" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {availableDietitians.map((d) => (
-                        <SelectItem key={d._id} value={d._id}>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                              {d.avatar && <AvatarImage src={d.avatar} />}
-                              <AvatarFallback className="text-xs">
-                                {d.firstName?.[0]}{d.lastName?.[0]}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span>Dt. {d.firstName} {d.lastName}</span>
-                            {d.isPrimary && (
-                              <Badge variant="outline" className="text-[10px] px-1 py-0 bg-green-50 text-green-700 border-green-300">
-                                Current Primary
-                              </Badge>
-                            )}
+                <div className="border rounded-lg p-4 bg-green-50/50">
+                  <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold">D</span>
+                    Dietitian Assignment
+                  </h4>
+
+                  {availableDietitians.length === 0 ? (
+                    <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <p className="text-sm text-yellow-700">No dietitians available.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Primary Dietitian */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium flex items-center gap-2">
+                          <span className="px-2 py-0.5 text-xs font-bold rounded bg-blue-500 text-white">PRIMARY</span>
+                          Select Primary Dietitian
+                          <span className="text-gray-400 font-normal">(saved to assignedDietitian)</span>
+                        </label>
+                        <div className="relative mb-2">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Search primary dietitian..."
+                            value={primaryDietitianSearchTerm}
+                            onChange={(e) => setPrimaryDietitianSearchTerm(e.target.value)}
+                            className="pl-9 bg-white"
+                          />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border rounded-lg bg-white">
+                          {/* No primary option */}
+                          <div
+                            className={`flex items-center gap-2 p-2 cursor-pointer transition-colors border-b ${!primaryDietitianId ? 'bg-green-100' : 'hover:bg-gray-50'}`}
+                            onClick={() => setPrimaryDietitianId('')}
+                          >
+                            <input type="radio" checked={!primaryDietitianId} onChange={() => { }} className="h-4 w-4 text-green-600" />
+                            <span className="text-gray-400">No primary dietitian</span>
                           </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {availableDietitians.length === 0 && (
-                    <p className="text-xs text-gray-500 mt-1">No Primary Dietitians available for assignment</p>
+                          {availableDietitians
+                            .filter(d => {
+                              if (!primaryDietitianSearchTerm.trim()) return true;
+                              const searchLower = primaryDietitianSearchTerm.toLowerCase();
+                              const fullName = `${d.firstName} ${d.lastName}`.toLowerCase();
+                              return fullName.includes(searchLower) || d.email?.toLowerCase().includes(searchLower);
+                            })
+                            .map((dietitian) => (
+                              <div
+                                key={dietitian._id}
+                                className={`flex items-center gap-2 p-2 cursor-pointer transition-colors ${primaryDietitianId === dietitian._id ? 'bg-green-100 border-l-4 border-l-green-500' : 'hover:bg-gray-50'}`}
+                                onClick={() => {
+                                  setPrimaryDietitianId(dietitian._id);
+                                  // Auto-remove from secondary if being selected as primary
+                                  setSecondaryDietitianIds(prev => prev.filter(id => id !== dietitian._id));
+                                }}
+                              >
+                                <input type="radio" checked={primaryDietitianId === dietitian._id} onChange={() => { }} className="h-4 w-4 text-green-600" />
+                                <Avatar className="h-6 w-6">
+                                  <AvatarImage src={dietitian.avatar} />
+                                  <AvatarFallback className="bg-green-200 text-green-800 text-xs">
+                                    {dietitian.firstName?.[0]}{dietitian.lastName?.[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium">Dt. {dietitian.firstName} {dietitian.lastName}</p>
+                                  <p className="text-xs text-gray-500">{dietitian.email}</p>
+                                </div>
+                                {dietitian.isPrimary && (
+                                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300">
+                                    Current
+                                  </Badge>
+                                )}
+                              </div>
+                            ))}
+                        </div>
+                        {primaryDietitianId && (
+                          <div className="flex items-center gap-2 p-2 bg-green-100 rounded-lg border border-green-300">
+                            <span className="px-1.5 py-0.5 text-xs font-bold rounded bg-blue-500 text-white">P</span>
+                            {(() => {
+                              const d = availableDietitians.find(dt => dt._id === primaryDietitianId);
+                              return d ? (
+                                <>
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={d.avatar} />
+                                    <AvatarFallback className="bg-green-200 text-green-800 text-xs">
+                                      {d.firstName?.[0]}{d.lastName?.[0]}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="text-sm font-medium">Dt. {d.firstName} {d.lastName}</span>
+                                  <span className="text-xs text-gray-500">{d.email}</span>
+                                </>
+                              ) : null;
+                            })()}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Secondary Dietitians */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium flex items-center gap-2">
+                          <span className="px-2 py-0.5 text-xs font-bold rounded bg-gray-400 text-white">SECONDARY</span>
+                          Select Secondary Dietitians
+                          <span className="text-gray-400 font-normal">(saved to assignedDietitians array)</span>
+                        </label>
+                        <div className="relative mb-2">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Search dietitians..."
+                            value={dietitianSearchTerm}
+                            onChange={(e) => setDietitianSearchTerm(e.target.value)}
+                            className="pl-9 bg-white"
+                          />
+                        </div>
+                        <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1 bg-white">
+                          {availableDietitians
+                            .filter(d => !primaryDietitianId || d._id !== primaryDietitianId) // Exclude primary from secondary list
+                            .filter(d => {
+                              if (!dietitianSearchTerm.trim()) return true;
+                              const searchLower = dietitianSearchTerm.toLowerCase();
+                              const fullName = `${d.firstName} ${d.lastName}`.toLowerCase();
+                              return fullName.includes(searchLower) || d.email?.toLowerCase().includes(searchLower);
+                            })
+                            .map((dietitian) => (
+                              <div
+                                key={dietitian._id}
+                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${secondaryDietitianIds.includes(dietitian._id)
+                                  ? 'bg-green-100 border border-green-300'
+                                  : 'hover:bg-gray-50 border border-transparent'
+                                  }`}
+                                onClick={() => {
+                                  setSecondaryDietitianIds(prev =>
+                                    prev.includes(dietitian._id)
+                                      ? prev.filter(id => id !== dietitian._id)
+                                      : [...prev, dietitian._id]
+                                  );
+                                }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={secondaryDietitianIds.includes(dietitian._id)}
+                                    onChange={() => { }}
+                                    className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                  />
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={dietitian.avatar} />
+                                    <AvatarFallback className="bg-green-200 text-green-800 text-xs">
+                                      {dietitian.firstName?.[0]}{dietitian.lastName?.[0]}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <p className="text-sm font-medium">Dt. {dietitian.firstName} {dietitian.lastName}</p>
+                                    <p className="text-xs text-gray-500">{dietitian.email}</p>
+                                  </div>
+                                </div>
+                                {dietitian.isSecondary && (
+                                  <Badge variant="outline" className="text-xs">Current</Badge>
+                                )}
+                              </div>
+                            ))}
+                          {/* Show message when no secondary dietitians available */}
+                          {availableDietitians.filter(d => d._id !== primaryDietitianId).length === 0 && (
+                            <p className="text-sm text-gray-500 text-center py-4">
+                              {primaryDietitianId
+                                ? 'No other dietitians available for secondary assignment'
+                                : 'No dietitians available'}
+                            </p>
+                          )}
+                          {!primaryDietitianId && availableDietitians.length > 0 && (
+                            <p className="text-sm text-amber-600 text-center py-2 bg-amber-50 rounded">
+                              💡 Select a primary dietitian first to see available secondary options
+                            </p>
+                          )}
+                        </div>
+                        {secondaryDietitianIds.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {secondaryDietitianIds.map(id => {
+                              const d = availableDietitians.find(dt => dt._id === id);
+                              if (!d) return null;
+                              return (
+                                <Badge
+                                  key={id}
+                                  variant="secondary"
+                                  className="flex items-center gap-1 bg-gray-100 text-gray-800"
+                                >
+                                  <span className="px-1 py-0.5 text-[10px] font-bold rounded bg-gray-400 text-white">S</span>
+                                  Dt. {d.firstName} {d.lastName}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSecondaryDietitianIds(prev => prev.filter(i => i !== id));
+                                    }}
+                                    className="ml-1 hover:text-gray-900"
+                                  >
+                                    ×
+                                  </button>
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
 
               {/* Health Counselor Selection - Only if has permission */}
               {canAssignHealthCounselors && (
-                <div>
+                <div className="border rounded-lg p-4 bg-purple-50/50">
+                  <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs font-bold">H</span>
+                    Health Counselor Assignment
+                  </h4>
                   <label className="text-sm font-medium text-gray-700">Assign Health Counselor</label>
                   <Select value={selectedHealthCounselorId} onValueChange={setSelectedHealthCounselorId}>
                     <SelectTrigger className="mt-1">
@@ -1008,29 +1176,25 @@ export default function HealthCounselorClientsPage() {
                 </div>
               )}
 
-              {/* Current Assignments Info */}
-              {selectedClientForAssign && (
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <p className="text-xs font-medium text-gray-600 mb-2">Current Assignments:</p>
-                  <div className="space-y-1 text-xs text-gray-500">
-                    <p>
-                      <span className="font-medium">Primary Dietitian:</span>{' '}
-                      {selectedClientForAssign.assignedDietitian?.firstName
-                        ? `Dt. ${selectedClientForAssign.assignedDietitian.firstName} ${selectedClientForAssign.assignedDietitian.lastName}`
-                        : 'Not assigned'}
+              {/* Assignment Summary */}
+              <div className="border rounded-lg p-4 bg-gray-50">
+                <h4 className="font-semibold text-gray-900 mb-3">Assignment Summary</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-600 mb-1">Dietitians:</p>
+                    <p className="font-medium">
+                      {primaryDietitianId ? '1 Primary' : 'No Primary'}
+                      {secondaryDietitianIds.length > 0 ? ` + ${secondaryDietitianIds.length} Secondary` : ''}
                     </p>
-                    {!primaryDietitianOnly && selectedClientForAssign.assignedDietitians && selectedClientForAssign.assignedDietitians.length > 0 && (
-                      <p>
-                        <span className="font-medium">Secondary Dietitian(s):</span>{' '}
-                        {selectedClientForAssign.assignedDietitians
-                          .filter(d => d._id !== selectedClientForAssign.assignedDietitian?._id)
-                          .map(d => `Dt. ${d.firstName} ${d.lastName}`)
-                          .join(', ') || 'None'}
-                      </p>
-                    )}
+                  </div>
+                  <div>
+                    <p className="text-gray-600 mb-1">Health Counselor:</p>
+                    <p className="font-medium">
+                      {selectedHealthCounselorId ? 'Selected' : 'Not changed'}
+                    </p>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
 
             <DialogFooter>
@@ -1039,15 +1203,16 @@ export default function HealthCounselorClientsPage() {
               </Button>
               <Button
                 onClick={handleAssign}
-                disabled={assigning || (!selectedDietitianId && !selectedHealthCounselorId)}
+                disabled={assigning}
+                className="bg-blue-600 hover:bg-blue-700"
               >
                 {assigning ? (
                   <>
                     <LoadingSpinner size="sm" className="mr-2" />
-                    Assigning...
+                    Saving...
                   </>
                 ) : (
-                  'Assign'
+                  'Save Assignments'
                 )}
               </Button>
             </DialogFooter>

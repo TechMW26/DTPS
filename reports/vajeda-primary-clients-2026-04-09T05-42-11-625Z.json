@@ -1,0 +1,92 @@
+{
+  "generatedAt": "2026-04-09T05:42:11.634Z",
+  "dietitian": {
+    "_id": "694a6b12d1360ee7bdb7ef0d",
+    "name": "Vajeda Rehman",
+    "email": "vajeda.rahaman@mushroomworldgroup.com",
+    "dtps_id": null
+  },
+  "totalClients": 10,
+  "clients": [
+    {
+      "_id": "6989ae3350337039a928c1c6",
+      "email": "void37005@gmail.com",
+      "firstName": "sweta",
+      "lastName": "Patel",
+      "phone": "+919429844693",
+      "clientId": "C-1059"
+    },
+    {
+      "_id": "69b53560cccf425aab7dd9f3",
+      "email": "rakshapateriya2@gmail.com",
+      "firstName": "Raksha",
+      "lastName": "pateriya",
+      "phone": "+917987464891",
+      "clientId": "C-2478"
+    },
+    {
+      "_id": "69b8f5f895f084621640fdac",
+      "email": "deepikaarose@gmail.com",
+      "firstName": "Deepika",
+      "lastName": "agarwal",
+      "phone": "+918433299022",
+      "clientId": "C-2577"
+    },
+    {
+      "_id": "69b910f5444e4ceeb18e0dad",
+      "email": "sumit123@gmail.com",
+      "firstName": "sumit",
+      "lastName": "khurana",
+      "phone": "+919899380610",
+      "clientId": "C-2593"
+    },
+    {
+      "_id": "6989b3dd50337039a928deb2",
+      "email": "void31693@gmail.com",
+      "firstName": "varun",
+      "lastName": "kapoor",
+      "phone": "+919810851518",
+      "clientId": "C-351"
+    },
+    {
+      "_id": "6989b3dd50337039a928de66",
+      "email": "void37138@gmail.com",
+      "firstName": "Daisy",
+      "lastName": "Sood",
+      "phone": "+919810817735",
+      "clientId": "C-427"
+    },
+    {
+      "_id": "6989b3dd50337039a928de09",
+      "email": "void34847@gmail.com",
+      "firstName": "Neelam",
+      "lastName": "0",
+      "phone": "+917618184848",
+      "clientId": "C-520"
+    },
+    {
+      "_id": "6989b3fa50337039a928e12c",
+      "email": "void14747@gmail.com",
+      "firstName": "sumit",
+      "lastName": "maheshwari",
+      "phone": "9411010124",
+      "clientId": "C-73"
+    },
+    {
+      "_id": "694a6d1cd1360ee7bdb7f0a8",
+      "email": "vajeda.rahaman@gmail.com",
+      "firstName": "vajeda",
+      "lastName": "shafi khan",
+      "phone": "8889775162",
+      "clientId": "C-8"
+    },
+    {
+      "_id": "6989b04050337039a928c8cf",
+      "email": "void31714@gmail.com",
+      "firstName": "Randhir",
+      "lastName": "Jha",
+      "phone": "+917057336983",
+      "clientId": "C-830"
+    }
+  ]
+}
