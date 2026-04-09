@@ -105,7 +105,7 @@ export class FileParser {
     fileName: string
   ): Promise<ParseResult> {
     const content = await this.getFileContent(file);
-    
+
     // Parse CSV manually without xlsx
     const lines = content.split(/\r?\n/);
     if (lines.length === 0) {
@@ -125,7 +125,7 @@ export class FileParser {
       const result: string[] = [];
       let current = '';
       let inQuotes = false;
-      
+
       for (let i = 0; i < line.length; i++) {
         const char = line[i];
         if (char === '"') {
@@ -158,16 +158,16 @@ export class FileParser {
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-      
+
       const values = parseCSVLine(line);
       const rowData: Record<string, any> = {};
-      
+
       headers.forEach((header, index) => {
         rowData[header] = values[index] || '';
       });
 
       const processedData = this.processRow(rowData, headers);
-      
+
       if (!this.isEmptyRow(processedData) || !this.options.skipEmptyRows) {
         rows.push({
           rowIndex: i + 1,
@@ -198,10 +198,10 @@ export class FileParser {
     const buffer = await this.getFileBuffer(file);
     const ExcelJS = await getExcelJS();
     const workbook = new ExcelJS.Workbook();
-    
+
     // Use Uint8Array for exceljs compatibility
     await workbook.xlsx.load(new Uint8Array(buffer) as any);
-    
+
     const worksheet = workbook.worksheets[0];
     if (!worksheet) {
       return {
@@ -267,7 +267,7 @@ export class FileParser {
       });
 
       const processedData = this.processRow(rowData, headers);
-      
+
       if (!this.isEmptyRow(processedData) || !this.options.skipEmptyRows) {
         rows.push({
           rowIndex: rowNumber,
@@ -296,10 +296,10 @@ export class FileParser {
     fileName: string
   ): Promise<ParseResult> {
     const content = await this.getFileContent(file);
-    
+
     try {
       let data = JSON.parse(content);
-      
+
       // Handle if root is an object with a data array
       if (!Array.isArray(data)) {
         if (data.data && Array.isArray(data.data)) {
@@ -472,10 +472,10 @@ export class FileParser {
 
     // Date detection (common formats)
     const headerLower = header.toLowerCase();
-    if (headerLower.includes('date') || 
-        headerLower.includes('time') || 
-        headerLower.includes('at') ||
-        headerLower.endsWith('_at')) {
+    if (headerLower.includes('date') ||
+      headerLower.includes('time') ||
+      headerLower.includes('at') ||
+      headerLower.endsWith('_at')) {
       const date = this.parseDate(strValue);
       if (date) return date;
     }
@@ -483,17 +483,17 @@ export class FileParser {
     // Array detection (comma-separated)
     if (strValue.includes(',') && !strValue.includes('"')) {
       // Check if header suggests array
-      if (headerLower.includes('tags') || 
-          headerLower.includes('list') || 
-          headerLower.includes('items') ||
-          headerLower.endsWith('s')) {
+      if (headerLower.includes('tags') ||
+        headerLower.includes('list') ||
+        headerLower.includes('items') ||
+        headerLower.endsWith('s')) {
         return strValue.split(',').map(s => s.trim()).filter(s => s);
       }
     }
 
     // JSON object/array detection
     if ((strValue.startsWith('{') && strValue.endsWith('}')) ||
-        (strValue.startsWith('[') && strValue.endsWith(']'))) {
+      (strValue.startsWith('[') && strValue.endsWith(']'))) {
       try {
         return JSON.parse(strValue);
       } catch {
@@ -557,7 +557,7 @@ export class FileParser {
 
     // Convert snake_case to camelCase only for simple fields
     let camelCased = this.snakeToCamelCase(cleaned);
-    
+
     return camelCased;
   }
 
@@ -570,7 +570,7 @@ export class FileParser {
     let result = str.toLowerCase().replace(/_([a-z0-9])/g, (match, letter) => {
       return letter.toUpperCase();
     });
-    
+
     return result;
   }
 
@@ -589,7 +589,7 @@ export class FileParser {
       if (arrayMatch) {
         const fieldName = arrayMatch[1];
         const index = parseInt(arrayMatch[2], 10);
-        
+
         if (!arrayFields.has(fieldName)) {
           arrayFields.set(fieldName, []);
         }
@@ -607,7 +607,7 @@ export class FileParser {
         const parts = key.split('.');
         const rootField = parts[0];
         const nestedPath = parts.slice(1).join('.');
-        
+
         if (!nestedFields.has(rootField)) {
           nestedFields.set(rootField, {});
         }
@@ -638,7 +638,7 @@ export class FileParser {
   private setNestedValue(obj: Record<string, any>, path: string, value: any): void {
     const parts = path.split('.');
     let current = obj;
-    
+
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       if (!current[part] || typeof current[part] !== 'object') {
@@ -646,7 +646,7 @@ export class FileParser {
       }
       current = current[part];
     }
-    
+
     current[parts[parts.length - 1]] = value;
   }
 
@@ -654,7 +654,7 @@ export class FileParser {
    * Check if a row is empty
    */
   private isEmptyRow(row: Record<string, any>): boolean {
-    return Object.values(row).every(v => 
+    return Object.values(row).every(v =>
       v === null || v === undefined || v === ''
     );
   }
@@ -700,9 +700,15 @@ export const fileParser = new FileParser();
 // FILE GENERATOR - Generate CSV/JSON files
 // ============================================
 
+import {
+  generateHeaderFromField,
+  formatValueForCSV,
+  escapeCSV as escapeCSVUtil
+} from '@/lib/utils/csvExport';
+
 export class FileGenerator {
   /**
-   * Generate a CSV string from data
+   * Generate a CSV string from data with proper headers
    */
   static generateCSV(
     data: Record<string, any>[],
@@ -711,24 +717,28 @@ export class FileGenerator {
     if (data.length === 0) return '';
 
     // Get headers from data if not provided
-    const csvHeaders = headers || this.extractHeaders(data);
+    const fieldNames = headers || this.extractHeaders(data);
 
-    // Build CSV
+    // Generate clean header names
+    const cleanHeaders = fieldNames.map(f => generateHeaderFromField(f) || f);
+
+    // Build CSV with BOM for Excel
     const rows: string[] = [];
-    
-    // Header row
-    rows.push(csvHeaders.map(h => this.escapeCSV(h)).join(','));
 
-    // Data rows
+    // Header row with clean names
+    rows.push(cleanHeaders.map(h => this.escapeCSV(h)).join(','));
+
+    // Data rows with proper value formatting
     for (const row of data) {
-      const values = csvHeaders.map(header => {
-        const value = row[header];
-        return this.escapeCSV(this.formatValue(value));
+      const values = fieldNames.map(field => {
+        const value = row[field];
+        const formatted = formatValueForCSV(value);
+        return this.escapeCSV(formatted);
       });
       rows.push(values.join(','));
     }
 
-    return rows.join('\n');
+    return '\ufeff' + rows.join('\r\n');
   }
 
   /**
@@ -758,10 +768,10 @@ export class FileGenerator {
 
     // Extract headers from data
     const headers = this.extractHeaders(data);
-    
+
     // Add header row
     worksheet.addRow(headers);
-    
+
     // Add data rows
     data.forEach(row => {
       const rowValues = headers.map(header => {

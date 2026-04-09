@@ -8,53 +8,253 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/db/connection';
 import { modelRegistry } from '@/lib/import';
+import {
+  generateHeaderFromField,
+  formatValueForCSV,
+  escapeCSV,
+} from '@/lib/utils/csvExport';
 
 export const runtime = 'nodejs';
 
-// Helper to convert data to CSV - handles all field types properly
+/**
+ * Check if a value is a Buffer
+ */
+function isBuffer(value: any): boolean {
+  if (!value) return false;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return true;
+  if (value.type === 'Buffer' && Array.isArray(value.data)) return true;
+  if (value._bsontype === 'Binary') return true;
+  return false;
+}
+
+/**
+ * Check if a value is an ObjectId
+ */
+function isObjectId(value: any): boolean {
+  if (!value) return false;
+  if (typeof value === 'string' && /^[a-f0-9]{24}$/i.test(value)) return true;
+  if (value._bsontype === 'ObjectId' || value._bsontype === 'ObjectID') return true;
+  if (value.constructor?.name === 'ObjectId') return true;
+  return false;
+}
+
+/**
+ * Format ingredient object for display
+ */
+function formatIngredient(ing: any): string {
+  if (!ing) return '';
+  const parts = [];
+  if (ing.quantity) parts.push(ing.quantity);
+  if (ing.unit) parts.push(ing.unit);
+  if (ing.name) parts.push(ing.name);
+  if (ing.remarks) parts.push(`(${ing.remarks})`);
+  return parts.join(' ').trim() || '';
+}
+
+/**
+ * Flatten an object for CSV export - extracts all scalar values
+ */
+function flattenObject(obj: any, prefix: string = '', result: Record<string, any> = {}): Record<string, any> {
+  if (!obj || typeof obj !== 'object') {
+    return result;
+  }
+
+  Object.keys(obj).forEach(key => {
+    // Skip internal mongoose/mongo fields
+    if (key.startsWith('$') || key === '__v' || key === '__t') return;
+
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    const value = obj[key];
+
+    // Handle null/undefined
+    if (value === null || value === undefined) {
+      result[fullKey] = '';
+      return;
+    }
+
+    // Handle Buffer - skip or convert (never show Buffer in export)
+    if (isBuffer(value)) {
+      result[fullKey] = '';
+      return;
+    }
+
+    // Handle ObjectId
+    if (isObjectId(value)) {
+      result[fullKey] = value.toString();
+      return;
+    }
+
+    // Handle Date
+    if (value instanceof Date) {
+      result[fullKey] = value.toISOString();
+      return;
+    }
+
+    // Handle Array
+    if (Array.isArray(value)) {
+      // Empty arrays
+      if (value.length === 0) {
+        result[fullKey] = '';
+        return;
+      }
+
+      // Check for special ingredient arrays (recipe ingredients)
+      if (key === 'ingredients' && value[0] && typeof value[0] === 'object' && 'name' in value[0]) {
+        result[fullKey] = value.map(formatIngredient).filter(v => v).join('; ');
+        return;
+      }
+
+      // For arrays, join values with semicolon
+      const formatted = value.map(item => {
+        if (item === null || item === undefined) return '';
+        if (isBuffer(item)) return '';
+        if (isObjectId(item)) return item.toString();
+        if (typeof item === 'object') {
+          // Try to get display value from object
+          if (item.name && item.quantity && item.unit) {
+            return formatIngredient(item);
+          }
+          if (item.name) return item.name;
+          if (item.firstName && item.lastName) return `${item.firstName} ${item.lastName}`;
+          if (item.firstName) return item.firstName;
+          if (item.title) return item.title;
+          if (item.email) return item.email;
+          if (item._id) return item._id.toString();
+          // For complex objects, try to create readable representation
+          try {
+            // Try common patterns
+            const keys = Object.keys(item).filter(k => !k.startsWith('_'));
+            if (keys.length <= 3) {
+              return keys.map(k => `${k}: ${item[k]}`).join(', ');
+            }
+            return JSON.stringify(item);
+          } catch {
+            return '';
+          }
+        }
+        return String(item);
+      }).filter(v => v !== '');
+      result[fullKey] = formatted.join('; ');
+      return;
+    }
+
+    // Handle nested object (but not too deep)
+    if (typeof value === 'object') {
+      // Check if it's a populated reference (has _id and other fields)
+      if (value._id) {
+        // Try to get display value
+        if (value.name) {
+          result[fullKey] = value.name;
+        } else if (value.firstName && value.lastName) {
+          result[fullKey] = `${value.firstName} ${value.lastName}`;
+        } else if (value.firstName) {
+          result[fullKey] = value.firstName;
+        } else if (value.email) {
+          result[fullKey] = value.email;
+        } else if (value.title) {
+          result[fullKey] = value.title;
+        } else if (value.displayId) {
+          result[fullKey] = value.displayId;
+        } else {
+          result[fullKey] = value._id.toString();
+        }
+        return;
+      }
+
+      // For simple nested objects, flatten one level
+      if (prefix.split('.').length < 3) {
+        flattenObject(value, fullKey, result);
+      } else {
+        // Too deep, create readable representation
+        try {
+          const keys = Object.keys(value).filter(k => !k.startsWith('_'));
+          if (keys.length <= 3) {
+            result[fullKey] = keys.map(k => `${k}: ${value[k]}`).join(', ');
+          } else {
+            result[fullKey] = JSON.stringify(value);
+          }
+        } catch {
+          result[fullKey] = '';
+        }
+      }
+      return;
+    }
+
+    // Handle primitives
+    if (typeof value === 'boolean') {
+      result[fullKey] = value ? 'Yes' : 'No';
+    } else {
+      result[fullKey] = String(value);
+    }
+  });
+
+  return result;
+}
+
+/**
+ * Convert data to CSV with proper headers and value formatting
+ */
 function convertToCSV(data: any[], fields: string[]): string {
   if (!data || data.length === 0) return '';
 
-  // Header row
-  const header = fields.map(f => `"${f}"`).join(',');
+  // Generate clean header names from field paths
+  const fieldMappings = fields.map(field => ({
+    field,
+    header: generateHeaderFromField(field) || field
+  }));
 
-  // Data rows
+  // Header row with clean names
+  const header = fieldMappings.map(f => escapeCSV(f.header, ',', '"', true)).join(',');
+
+  // Data rows with proper value formatting
   const rows = data.map(item => {
-    return fields.map(field => {
-      let value = getNestedValue(item, field);
+    // Flatten the item first
+    const flattened = flattenObject(item);
 
-      // Handle different types
-      if (value === null || value === undefined) {
-        return '';
+    return fieldMappings.map(({ field }) => {
+      // Try direct field access first
+      let value = flattened[field];
+
+      // If not found, try getting from original item
+      if (value === undefined) {
+        value = getNestedValue(item, field);
       }
-      if (typeof value === 'object') {
-        if (value instanceof Date) {
-          return `"${value.toISOString()}"`;
-        }
-        if (Array.isArray(value)) {
-          // For arrays, stringify the whole thing to preserve structure
-          const arrayStr = JSON.stringify(value).replace(/"/g, '""');
-          return `"${arrayStr}"`;
-        }
-        // For nested objects, stringify to preserve all data
-        const objStr = JSON.stringify(value).replace(/"/g, '""');
-        return `"${objStr}"`;
-      }
-      if (typeof value === 'boolean') {
-        return value ? 'true' : 'false';
-      }
-      if (typeof value === 'number') {
-        return String(value);
-      }
-      if (typeof value === 'string') {
-        // Always wrap strings in quotes and escape internal quotes
-        return `"${value.replace(/"/g, '""')}"`;
-      }
-      return `"${String(value).replace(/"/g, '""')}"`;
+
+      const formatted = formatValueForCSV(value);
+      return escapeCSV(formatted, ',', '"', false);
     }).join(',');
   });
 
-  return [header, ...rows].join('\n');
+  // Add BOM for Excel compatibility
+  return '\ufeff' + [header, ...rows].join('\r\n');
+}
+
+/**
+ * Convert pre-flattened data to CSV (more efficient)
+ */
+function convertToCSVFromFlattened(flattenedData: Record<string, any>[], fields: string[]): string {
+  if (!flattenedData || flattenedData.length === 0) return '';
+
+  // Generate clean header names from field paths
+  const fieldMappings = fields.map(field => ({
+    field,
+    header: generateHeaderFromField(field) || field
+  }));
+
+  // Header row with clean names
+  const header = fieldMappings.map(f => escapeCSV(f.header, ',', '"', true)).join(',');
+
+  // Data rows - data is already flattened
+  const rows = flattenedData.map(item => {
+    return fieldMappings.map(({ field }) => {
+      const value = item[field] ?? '';
+      // Value is already formatted from flattenObject, just escape it
+      return escapeCSV(String(value), ',', '"', false);
+    }).join(',');
+  });
+
+  // Add BOM for Excel compatibility
+  return '\ufeff' + [header, ...rows].join('\r\n');
 }
 
 function getNestedValue(obj: any, path: string): any {
@@ -171,42 +371,42 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // For CSV export - extract ALL unique field paths from actual data
+    // For CSV export - flatten all documents and extract unique field paths
     const allFieldPaths = new Set<string>();
+    const flattenedData: Record<string, any>[] = [];
 
-    // Helper to extract all paths from an object recursively
-    const extractPaths = (obj: any, prefix: string = '') => {
-      if (!obj || typeof obj !== 'object') return;
-
-      Object.keys(obj).forEach(key => {
-        const fullPath = prefix ? `${prefix}.${key}` : key;
-        const value = obj[key];
-
-        // Skip internal mongoose fields except _id
-        if (key.startsWith('$') || (key.startsWith('_') && key !== '_id')) return;
-
-        if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-          // For nested objects, add both the parent path and recurse
-          allFieldPaths.add(fullPath);
-          extractPaths(value, fullPath);
-        } else {
-          allFieldPaths.add(fullPath);
+    // Flatten each document and collect all field paths
+    data.forEach(doc => {
+      const flattened = flattenObject(doc);
+      flattenedData.push(flattened);
+      Object.keys(flattened).forEach(key => {
+        // Skip internal fields
+        if (!key.startsWith('$') && !key.startsWith('__')) {
+          allFieldPaths.add(key);
         }
       });
-    };
+    });
 
-    // Extract paths from all documents to ensure we capture all fields
-    data.forEach(doc => extractPaths(doc));
-
-    // Convert to sorted array, with _id first
+    // Convert to sorted array, with _id first, then common fields, then rest alphabetically
+    const priorityFields = ['_id', 'displayId', 'firstName', 'lastName', 'name', 'email', 'phone', 'role', 'status'];
     const fields = Array.from(allFieldPaths).sort((a, b) => {
-      if (a === '_id') return -1;
-      if (b === '_id') return 1;
+      const aIndex = priorityFields.indexOf(a);
+      const bIndex = priorityFields.indexOf(b);
+
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+
+      // createdAt and updatedAt at the end
+      if (a === 'createdAt' || a === 'updatedAt') return 1;
+      if (b === 'createdAt' || b === 'updatedAt') return -1;
+
       return a.localeCompare(b);
     });
 
     if (download) {
-      const csvContent = convertToCSV(data, fields);
+      // Use flattened data for CSV generation
+      const csvContent = convertToCSVFromFlattened(flattenedData, fields);
       return new NextResponse(csvContent, {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
