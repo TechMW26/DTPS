@@ -75,10 +75,13 @@ export async function POST(
     // Clear all related cache tags
     await clearCacheByTag('users');
     await clearCacheByTag(`users:id:${id}`);
+    await clearCacheByTag(`users:id:${JSON.stringify(id)}`);
     await clearCacheByTag(`users:id:medical:${id}`);
+    await clearCacheByTag(`users:id:medical:${JSON.stringify({ userId: id })}`);
     // Also clear client cache tags for real-time sync
     await clearCacheByTag('client');
     await clearCacheByTag(`client:medical-info:${id}`);
+    await clearCacheByTag(`client:${id}`);
 
     return NextResponse.json({ medicalInfo });
   } catch (error) {

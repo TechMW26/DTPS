@@ -611,6 +611,11 @@ export async function PUT(
 
     // Clear cache after update
     await clearCacheByTag('users');
+    await clearCacheByTag(`users:id:${id}`);
+    await clearCacheByTag(`users:id:${JSON.stringify(id)}`);
+    // Clear related caches
+    await clearCacheByTag('client');
+    await clearCacheByTag(`client:${id}`);
 
     // Log admin action if admin made changes
     if (isAdmin && Object.keys(changedFields).length > 0) {

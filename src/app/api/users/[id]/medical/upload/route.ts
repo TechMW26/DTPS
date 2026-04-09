@@ -82,8 +82,12 @@ export async function POST(
     }
 
     // Clear cache so profile page shows updated reports
-    clearCacheByTag('client');
-    clearCacheByTag(`client:medical-info:${id}`);
+    await clearCacheByTag('users');
+    await clearCacheByTag(`users:id:${id}`);
+    await clearCacheByTag(`users:id:medical:${id}`);
+    await clearCacheByTag('client');
+    await clearCacheByTag(`client:medical-info:${id}`);
+    await clearCacheByTag(`client:${id}`);
 
     return NextResponse.json({
       success: true,

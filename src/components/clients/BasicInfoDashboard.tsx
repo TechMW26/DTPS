@@ -27,13 +27,39 @@ function InfoItem({ label, value, icon: Icon }: { label: string; value: React.Re
 }
 
 export default function BasicInfoDashboard({ data, onEdit }: BasicInfoDashboardProps) {
-  const feetNum = parseFloat(data.heightFeet || '0');
-  const inchNum = parseFloat(data.heightInch || '0');
-  const computedCm = feetNum > 0 || inchNum > 0 ? ((feetNum * 12 + inchNum) * 2.54).toFixed(1) : data.heightCm;
-  const hMeters = parseFloat(computedCm || '0') / 100;
+  // Parse height values - ensure they are valid numbers
+  const feetNum = Math.floor(parseFloat(data.heightFeet || '0') || 0);
+  const inchNum = Math.min(11, Math.max(0, Math.round(parseFloat(data.heightInch || '0') || 0)));
+
+  // Use stored heightCm if available, otherwise compute from ft/inch
+  const storedCm = parseFloat(data.heightCm || '0');
+  const computedFromFtIn = feetNum > 0 || inchNum > 0 ? (feetNum * 12 + inchNum) * 2.54 : 0;
+  const finalCm = storedCm > 0 ? storedCm : computedFromFtIn;
+  const displayCm = finalCm > 0 ? finalCm.toFixed(1) : '';
+
+  const hMeters = finalCm / 100;
   const wKg = parseFloat(data.weightKg || '0');
-  const computedBmi = hMeters > 0 && wKg > 0 ? (wKg / (hMeters * hMeters)).toFixed(1) : data.bmi;
-  const computedIdeal = hMeters > 0 ? (parseFloat(computedCm || '0') - 100).toFixed(1) : data.idealWeightKg;
+
+  // Use stored BMI if available, otherwise compute
+  const storedBmi = parseFloat(data.bmi || '0');
+  const computedBmi = hMeters > 0 && wKg > 0 ? wKg / (hMeters * hMeters) : 0;
+  const finalBmi = storedBmi > 0 ? storedBmi : computedBmi;
+  const displayBmi = finalBmi > 0 ? finalBmi.toFixed(1) : '';
+
+  // Use stored idealWeightKg if available, otherwise compute (height in cm - 100)
+  const storedIdeal = parseFloat(data.idealWeightKg || '0');
+  const computedIdeal = finalCm > 0 ? finalCm - 100 : 0;
+  const finalIdeal = storedIdeal > 0 ? storedIdeal : computedIdeal;
+  const displayIdeal = finalIdeal > 0 ? finalIdeal.toFixed(1) : '';
+
+  // For display, derive feet/inch from stored cm if ft/inch are invalid
+  let displayFeet = feetNum;
+  let displayInch = inchNum;
+  if (storedCm > 0 && (feetNum === 0 && inchNum === 0 || inchNum > 11 || String(data.heightFeet).includes('.'))) {
+    const totalInches = storedCm / 2.54;
+    displayFeet = Math.floor(totalInches / 12);
+    displayInch = Math.round(totalInches % 12);
+  }
 
   const formattedDOB = data.dateOfBirth
     ? new Date(data.dateOfBirth).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
@@ -95,10 +121,10 @@ export default function BasicInfoDashboard({ data, onEdit }: BasicInfoDashboardP
               <Ruler className="h-4 w-4 mx-auto text-blue-500 mb-1" />
               <p className="text-xs text-gray-500">Height</p>
               <p className="text-sm font-bold text-gray-900">
-                {feetNum > 0 ? `${feetNum}'${inchNum}"` : '—'}
+                {displayFeet > 0 || displayInch > 0 ? `${displayFeet}'${displayInch}"` : '—'}
               </p>
-              {computedCm && parseFloat(computedCm) > 0 && (
-                <p className="text-xs text-gray-400">{computedCm} cm</p>
+              {displayCm && (
+                <p className="text-xs text-gray-400">{displayCm} cm</p>
               )}
             </div>
             <div className="bg-green-50 rounded-lg p-3 text-center">
@@ -113,11 +139,11 @@ export default function BasicInfoDashboard({ data, onEdit }: BasicInfoDashboardP
             </div>
             <div className="bg-purple-50 rounded-lg p-3 text-center">
               <p className="text-xs text-gray-500 mb-1">BMI</p>
-              <p className="text-sm font-bold text-gray-900">{computedBmi && parseFloat(computedBmi) > 0 ? computedBmi : '—'}</p>
+              <p className="text-sm font-bold text-gray-900">{displayBmi || '—'}</p>
             </div>
             <div className="bg-cyan-50 rounded-lg p-3 text-center">
               <p className="text-xs text-gray-500 mb-1">Ideal Weight</p>
-              <p className="text-sm font-bold text-gray-900">{computedIdeal && parseFloat(computedIdeal) > 0 ? `${computedIdeal} kg` : '—'}</p>
+              <p className="text-sm font-bold text-gray-900">{displayIdeal ? `${displayIdeal} kg` : '—'}</p>
             </div>
             <div className="bg-amber-50 rounded-lg p-3 text-center">
               <Activity className="h-4 w-4 mx-auto text-amber-500 mb-1" />

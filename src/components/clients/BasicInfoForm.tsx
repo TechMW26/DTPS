@@ -125,33 +125,58 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
     return bmiVal.toFixed(1);
   };
 
+  // Ideal weight calculation (height in cm - 100)
+  const calculateIdealWeight = (heightCmVal: string): string => {
+    const h = parseFloat(heightCmVal || '0');
+    if (!h || h === 0) return '';
+    return (h - 100).toFixed(1);
+  };
+
   const hCmNum = parseFloat(displayHeightCm || '0');
   const wKg = parseFloat(weightKg || '0');
   const computedBmi = calculateBMI(weightKg, displayHeightCm || heightCm);
   const computedIdeal = hCmNum > 0 ? (hCmNum - 100).toFixed(1) : idealWeightKg;
 
+  // Update BMI and ideal weight when height or weight changes
+  const updateDerivedValues = (newHeightCm: string, newWeightKg?: string) => {
+    const w = newWeightKg !== undefined ? newWeightKg : weightKg;
+    const newBmi = calculateBMI(w, newHeightCm);
+    const newIdeal = calculateIdealWeight(newHeightCm);
+    if (newBmi) onChange('bmi', newBmi);
+    if (newIdeal) onChange('idealWeightKg', newIdeal);
+  };
+
   const handleHeightFeetChange = (value: string) => {
-    const ft = parseFloat(value) || 0;
-    const inch = parseFloat(String(heightInch)) || 0;
+    // Parse as integer for feet - only accept whole numbers
+    const ft = Math.floor(Math.abs(parseFloat(value) || 0));
+    const inch = Math.min(11, Math.max(0, Math.round(parseFloat(String(heightInch)) || 0)));
     const totalInches = (ft * 12) + inch;
     const cm = Math.round(totalInches * 2.54);
 
-    // Set feet value - keep empty if user clears it
-    onChange('heightFeet', value);
+    // Always store as integer string
+    onChange('heightFeet', ft > 0 ? String(ft) : '');
     // Set cm - only show value if conversion produces non-zero result
-    onChange('heightCm', cm > 0 ? String(cm) : '');
+    const newCm = cm > 0 ? String(cm) : '';
+    onChange('heightCm', newCm);
+    // Update BMI and ideal weight
+    if (newCm) updateDerivedValues(newCm);
   };
 
   const handleHeightInchChange = (value: string) => {
-    const ft = parseFloat(String(heightFeet)) || 0;
-    const inch = parseFloat(value) || 0;
+    // Parse and clamp inches to 0-11 as integer
+    const ft = Math.floor(Math.abs(parseFloat(String(heightFeet)) || 0));
+    let inch = Math.round(Math.abs(parseFloat(value) || 0));
+    inch = Math.min(11, Math.max(0, inch));
     const totalInches = (ft * 12) + inch;
     const cm = Math.round(totalInches * 2.54);
 
-    // Set inch value - keep empty if user clears it
-    onChange('heightInch', value);
+    // Always store as clamped integer string
+    onChange('heightInch', String(inch));
     // Set cm - only show value if conversion produces non-zero result
-    onChange('heightCm', cm > 0 ? String(cm) : '');
+    const newCm = cm > 0 ? String(cm) : '';
+    onChange('heightCm', newCm);
+    // Update BMI and ideal weight
+    if (newCm) updateDerivedValues(newCm);
   };
 
   const handleHeightCmChange = (value: string) => {
@@ -164,7 +189,20 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
     onChange('heightCm', value);
     // Set ft and inch - only show values if conversion produces non-zero results
     onChange('heightFeet', ft > 0 ? String(ft) : '');
-    onChange('heightInch', inch > 0 ? String(inch) : '');
+    onChange('heightInch', inch >= 0 ? String(inch) : '');
+    // Update BMI and ideal weight
+    if (value) updateDerivedValues(value);
+  };
+
+  // Handle weight change - also update BMI
+  const handleWeightChange = (value: string) => {
+    onChange('weightKg', value);
+    // Update BMI with current height
+    const currentCm = displayHeightCm || heightCm;
+    if (currentCm && value) {
+      const newBmi = calculateBMI(value, currentCm);
+      if (newBmi) onChange('bmi', newBmi);
+    }
   };
 
   return (
@@ -512,7 +550,7 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
                   <Input
                     type="number"
                     value={weightKg}
-                    onChange={e => onChange("weightKg", e.target.value)}
+                    onChange={e => handleWeightChange(e.target.value)}
                     placeholder="70"
                     className={`h-10 ${disableFirstWeight ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                     disabled={disableFirstWeight}

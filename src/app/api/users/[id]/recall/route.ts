@@ -202,10 +202,14 @@ export async function POST(
     }
 
     // Clear caches for real-time sync
-    clearCacheByTag('users');
-    clearCacheByTag(`users:id:${userId}`);
-    clearCacheByTag('client');
-    clearCacheByTag(`client:dietary-recall:${userId}`);
+    await clearCacheByTag('users');
+    await clearCacheByTag(`users:id:${userId}`);
+    await clearCacheByTag(`users:id:${JSON.stringify(userId)}`);
+    await clearCacheByTag(`users:id:recall:${userId}`);
+    await clearCacheByTag(`users:id:recall:${JSON.stringify(userId)}`);
+    await clearCacheByTag('client');
+    await clearCacheByTag(`client:dietary-recall:${userId}`);
+    await clearCacheByTag(`client:${userId}`);
 
     return NextResponse.json(
       { success: true, recall, recallId: recall._id },

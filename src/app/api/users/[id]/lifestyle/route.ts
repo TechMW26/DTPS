@@ -61,12 +61,15 @@ export async function POST(
       { upsert: true, new: true, runValidators: true }
     );
 
-    clearCacheByTag('users');
-    clearCacheByTag(`users:id:${id}`);
-    clearCacheByTag(`users:id:lifestyle:${id}`);
+    await clearCacheByTag('users');
+    await clearCacheByTag(`users:id:${id}`);
+    await clearCacheByTag(`users:id:${JSON.stringify(id)}`);
+    await clearCacheByTag(`users:id:lifestyle:${id}`);
+    await clearCacheByTag(`users:id:lifestyle:${JSON.stringify({ userId: id })}`);
     // Also clear client cache tags for real-time sync
-    clearCacheByTag('client');
-    clearCacheByTag(`client:lifestyle-info:${id}`);
+    await clearCacheByTag('client');
+    await clearCacheByTag(`client:lifestyle-info:${id}`);
+    await clearCacheByTag(`client:${id}`);
 
     return NextResponse.json({ lifestyleInfo });
   } catch (error) {

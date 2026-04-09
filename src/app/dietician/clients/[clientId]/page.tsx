@@ -1141,33 +1141,31 @@ export default function ClientDetailPage() {
         const savedInch = parseFloat(data?.user?.heightInch || lifestyleInfo?.heightInch || '0') || 0;
         const savedCm = parseFloat(data?.user?.heightCm || lifestyleInfo?.heightCm || data?.user?.height || '0') || 0;
 
+        // Validate ft/inch values - feet should be integer, inches should be 0-11
+        const isValidFtInch = Number.isInteger(savedFt) && savedInch >= 0 && savedInch <= 11;
+
         // Height conversion on load - auto-fill missing fields
         let finalHeightFeet = '';
         let finalHeightInch = '';
         let finalHeightCm = '';
 
-        if (savedCm > 0 && savedFt === 0 && savedInch === 0) {
-          // Convert cm to ft and inch
+        if (savedCm > 0) {
+          // Always derive ft/inch from cm for consistency
           const totalInches = savedCm / 2.54;
           const ft = Math.floor(totalInches / 12);
           const inch = Math.round(totalInches % 12);
           finalHeightFeet = ft > 0 ? String(ft) : '';
-          finalHeightInch = inch > 0 ? String(inch) : '';
+          finalHeightInch = inch >= 0 ? String(inch) : '';
           finalHeightCm = String(savedCm);
-        } else if ((savedFt > 0 || savedInch > 0) && savedCm === 0) {
-          // Convert ft+inch to cm
+        } else if ((savedFt > 0 || savedInch > 0) && isValidFtInch) {
+          // Convert valid ft+inch to cm
           const totalInches = (savedFt * 12) + savedInch;
           const cm = Math.round(totalInches * 2.54);
           finalHeightCm = cm > 0 ? String(cm) : '';
           finalHeightFeet = savedFt > 0 ? String(savedFt) : '';
           finalHeightInch = savedInch > 0 ? String(savedInch) : '';
-        } else if (savedFt > 0 || savedInch > 0 || savedCm > 0) {
-          // All values exist or partial - display them as-is
-          finalHeightFeet = savedFt > 0 ? String(savedFt) : '';
-          finalHeightInch = savedInch > 0 ? String(savedInch) : '';
-          finalHeightCm = savedCm > 0 ? String(savedCm) : '';
         }
-        // If all are 0/empty, keep all fields empty (no default 0)
+        // If all are 0/empty or invalid, keep all fields empty (no default 0)
 
         // Get weight value
         const savedWeight = parseFloat(data?.user?.weightKg || lifestyleInfo?.weightKg || data?.user?.weight || '0') || 0;
