@@ -695,7 +695,7 @@ export default function UnifiedAppointmentBookingPage() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     {appointmentModes.map((mode) => {
                       const isOnlineMode = mode.requiresMeetingLink || 
-                        ['google meet', 'zoom', 'video', 'online'].some(m => 
+                        ['google meet', 'video', 'online'].some(m => 
                           mode.name.toLowerCase().includes(m)
                         );
                       
@@ -743,7 +743,7 @@ export default function UnifiedAppointmentBookingPage() {
                   
                   {/* Meeting link info */}
                   {selectedMode && (selectedMode.requiresMeetingLink || 
-                    ['google meet', 'zoom', 'video', 'online'].some(m => 
+                    ['google meet', 'video', 'online'].some(m => 
                       selectedMode.name.toLowerCase().includes(m)
                     )) && (
                     <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-lg">
@@ -752,10 +752,8 @@ export default function UnifiedAppointmentBookingPage() {
                         <div>
                           <p className="font-medium text-blue-800">Online Appointment</p>
                           <p className="text-sm text-blue-600 mt-1">
-                            {selectedMode.name.toLowerCase().includes('google') || selectedMode.name.toLowerCase().includes('meet') 
+                            {selectedMode.name.toLowerCase().includes('google') || selectedMode.name.toLowerCase().includes('meet')
                               ? 'A Google Meet link will be generated and sent to both you and the client.'
-                              : selectedMode.name.toLowerCase().includes('zoom')
-                              ? 'A Zoom meeting link will be generated and sent to both you and the client.'
                               : 'A meeting link will be generated and included in the confirmation email.'}
                           </p>
                         </div>

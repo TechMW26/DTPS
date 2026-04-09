@@ -143,19 +143,22 @@ export async function POST(
 
     await appointment.save();
 
-    // Update meeting link if applicable
-    if (appointment.zoomMeeting?.meetingId) {
+    // Update meeting link if applicable (Google Meet currently requires no update)
+    const meetingProvider = ((appointment as any).meetingProvider || 'google_meet') as 'zoom' | 'google_meet';
+    const meetingId = appointment.zoomMeeting?.meetingId || appointment.meetingLink;
+
+    if (meetingId) {
       try {
         await updateMeetingLink(
-          appointment.zoomMeeting.meetingId,
-          'zoom',
+          meetingId,
+          meetingProvider,
           {
             scheduledAt: newScheduledAt,
             duration: newDuration
           }
         );
       } catch (meetingError) {
-        console.error('Failed to update Zoom meeting:', meetingError);
+        console.error('Failed to update meeting link:', meetingError);
       }
     }
 

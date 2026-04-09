@@ -228,7 +228,7 @@ export default function FlexibleBookingPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Flexible Appointment Booking</h1>
           <p className="text-gray-600 mt-1">
-            Book appointments at any time with any dietitian and client. Zoom meetings will be automatically created.
+            Book appointments at any time with any dietitian and client. Meeting links will be automatically created for online modes.
           </p>
         </div>
 
@@ -239,11 +239,11 @@ export default function FlexibleBookingPage() {
           </Alert>
         )}
 
-        {/* Zoom Meeting Info */}
+        {/* Meeting Info */}
         <Alert>
           <Video className="h-4 w-4" />
           <AlertDescription>
-            <strong>Video Meeting:</strong> A secure Zoom meeting link will be automatically created for this appointment. 
+            <strong>Video Meeting:</strong> A secure Google Meet link will be automatically created for this appointment. 
             Both the dietitian and client will receive the meeting details.
           </AlertDescription>
         </Alert>
@@ -509,7 +509,7 @@ export default function FlexibleBookingPage() {
                 ) : (
                   <>
                     <Video className="mr-2 h-4 w-4" />
-                    Book Appointment with Zoom Meeting
+                    Book Appointment
                   </>
                 )}
               </Button>

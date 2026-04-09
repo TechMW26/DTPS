@@ -32,8 +32,6 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from 'next/link';
-import { ZoomMeetingCard } from '@/components/appointments/ZoomMeetingCard';
-import { IZoomMeetingDetails } from '@/types';
 import dynamic from 'next/dynamic';
 
 // Import mobile version for clients
@@ -49,7 +47,9 @@ interface Appointment {
   duration: number;
   notes?: string;
   meetingLink?: string;
-  zoomMeeting?: IZoomMeetingDetails;
+  zoomMeeting?: {
+    joinUrl?: string;
+  };
   dietitian: {
     _id: string;
     firstName: string;
@@ -444,25 +444,12 @@ function DesktopAppointmentDetailPage() {
                   </div>
                 )}
 
-                {/* Zoom Meeting */}
-                {appointment.zoomMeeting && (
-                  <div>
-                    <h3 className="font-medium text-gray-900 mb-3">Video Meeting</h3>
-                    <ZoomMeetingCard
-                      zoomMeeting={appointment.zoomMeeting}
-                      scheduledAt={new Date(appointment.scheduledAt)}
-                      duration={appointment.duration}
-                      isHost={session?.user?.role === 'dietitian'}
-                    />
-                  </div>
-                )}
-
-                {/* Legacy Meeting Link (fallback) */}
-                {!appointment.zoomMeeting && appointment.meetingLink && isUpcoming(appointment.scheduledAt) && (
+                {/* Meeting Link */}
+                {meetingLink && isUpcoming(appointment.scheduledAt) && (
                   <div>
                     <h3 className="font-medium text-gray-900 mb-2">Meeting Link</h3>
                     <Button asChild>
-                      <a href={appointment.meetingLink} target="_blank" rel="noopener noreferrer">
+                      <a href={meetingLink} target="_blank" rel="noopener noreferrer">
                         <Video className="h-4 w-4 mr-2" />
                         Join Video Call
                       </a>

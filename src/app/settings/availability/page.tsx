@@ -199,7 +199,7 @@ export default function AvailabilityPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Availability Settings</h1>
           <p className="text-gray-600 mt-1">
-            Set your available hours for client appointments. Zoom meetings will be automatically created for booked slots.
+            Set your available hours for client appointments. Meeting links will be automatically created for online bookings.
           </p>
         </div>
 
@@ -374,7 +374,7 @@ export default function AvailabilityPage() {
           <CardContent className="space-y-3 text-sm text-gray-600">
             <p>• Set your available hours for each day of the week</p>
             <p>• Clients can only book appointments during your available slots</p>
-            <p>• Zoom meetings are automatically created for all booked appointments</p>
+            <p>• Meeting links are automatically created for online appointments</p>
             <p>• You can modify your availability anytime</p>
             <p>• Existing appointments won't be affected by availability changes</p>
           </CardContent>

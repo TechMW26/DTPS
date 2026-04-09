@@ -212,7 +212,7 @@ function DesktopBookAppointmentPage() {
             <CardHeader>
               <CardTitle>Appointment Details</CardTitle>
               <CardDescription>
-                Fill in the details for your appointment. A Zoom meeting link will be automatically created for your session.
+                Fill in the details for your appointment. A meeting link will be automatically created for your online session.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -224,11 +224,11 @@ function DesktopBookAppointmentPage() {
                   </Alert>
                 )}
 
-                {/* Zoom Meeting Info */}
+                {/* Meeting Info */}
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    <strong>Video Meeting:</strong> A secure Zoom meeting link will be automatically created for your appointment.
+                    <strong>Video Meeting:</strong> A secure Google Meet link will be automatically created for your appointment.
                     You'll receive the meeting details once your booking is confirmed.
                   </AlertDescription>
                 </Alert>

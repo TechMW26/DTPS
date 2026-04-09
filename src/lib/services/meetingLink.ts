@@ -1,4 +1,3 @@
-import zoomService from '@/lib/services/zoom';
 import { google, calendar_v3 } from 'googleapis';
 import User from '@/lib/db/models/User';
 import { getBaseUrl } from '@/lib/config';
@@ -13,14 +12,14 @@ export interface MeetingLinkResult {
     startUrl?: string;
     password?: string;
     hostEmail?: string;
-    provider: 'zoom' | 'google_meet';
+    provider: 'google_meet';
   };
   error?: string;
 }
 
 /**
  * Generate a meeting link based on the appointment mode
- * Supports Zoom and Google Meet
+ * Zoom is deprecated; all online/video modes generate Google Meet links.
  */
 export async function generateMeetingLink(
   modeName: string,
@@ -35,14 +34,14 @@ export async function generateMeetingLink(
 ): Promise<MeetingLinkResult> {
   const lowerModeName = modeName.toLowerCase();
 
-  // Check if it's a video meeting mode
-  if (lowerModeName.includes('zoom')) {
-    return generateZoomMeeting(meetingConfig);
-  }
-
-  // Generate Google Meet for google meet, video, or online modes
-  if (lowerModeName.includes('google') || lowerModeName.includes('meet') || 
-      lowerModeName.includes('video') || lowerModeName.includes('online')) {
+  // Generate Google Meet for all online/video modes (including legacy zoom mode names)
+  if (
+    lowerModeName.includes('zoom') ||
+    lowerModeName.includes('google') ||
+    lowerModeName.includes('meet') ||
+    lowerModeName.includes('video') ||
+    lowerModeName.includes('online')
+  ) {
     return generateGoogleMeetLink(meetingConfig);
   }
 
@@ -52,49 +51,6 @@ export async function generateMeetingLink(
     meetingLink: undefined,
     meetingDetails: undefined,
   };
-}
-
-/**
- * Generate a Zoom meeting link
- */
-async function generateZoomMeeting(config: {
-  topic: string;
-  scheduledAt: Date;
-  duration: number;
-  description?: string;
-  hostEmail: string;
-  attendees: { email: string; name: string }[];
-}): Promise<MeetingLinkResult> {
-  try {
-    const meetingConfig = zoomService.generateMeetingConfig(
-      config.topic,
-      config.scheduledAt,
-      config.duration,
-      config.description || `Meeting: ${config.topic}`
-    );
-
-    const zoomMeeting = await zoomService.createMeeting(config.hostEmail, meetingConfig);
-
-    return {
-      success: true,
-      meetingLink: zoomMeeting.join_url,
-      meetingDetails: {
-        meetingId: zoomMeeting.id.toString(),
-        meetingUuid: zoomMeeting.uuid,
-        joinUrl: zoomMeeting.join_url,
-        startUrl: zoomMeeting.start_url,
-        password: zoomMeeting.password,
-        hostEmail: zoomMeeting.host_email,
-        provider: 'zoom',
-      },
-    };
-  } catch (error: any) {
-    console.error('Failed to create Zoom meeting:', error);
-    return {
-      success: false,
-      error: error.message || 'Failed to create Zoom meeting',
-    };
-  }
 }
 
 /**
@@ -278,18 +234,16 @@ export function requiresMeetingLink(modeName: string): boolean {
 }
 
 /**
- * Delete a Zoom meeting
+ * Delete a meeting link
  */
 export async function deleteMeetingLink(
   meetingId: string,
   provider: 'zoom' | 'google_meet'
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (provider === 'zoom') {
-      await zoomService.deleteMeeting(meetingId);
-    }
-    // Google Meet links don't need to be explicitly deleted
-    // They expire automatically
+    // Zoom support removed. Google Meet links don't need explicit deletion.
+    void meetingId;
+    void provider;
     
     return { success: true };
   } catch (error: any) {
@@ -302,7 +256,7 @@ export async function deleteMeetingLink(
 }
 
 /**
- * Update a Zoom meeting
+ * Update a meeting link
  */
 export async function updateMeetingLink(
   meetingId: string,
@@ -314,14 +268,10 @@ export async function updateMeetingLink(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (provider === 'zoom' && meetingId) {
-      await zoomService.updateMeeting(meetingId, {
-        topic: config.topic,
-        start_time: config.scheduledAt?.toISOString(),
-        duration: config.duration,
-      } as any);
-    }
-    // Google Meet links don't need to be updated
+    // Zoom support removed. Google Meet links don't require update.
+    void meetingId;
+    void provider;
+    void config;
     
     return { success: true };
   } catch (error: any) {

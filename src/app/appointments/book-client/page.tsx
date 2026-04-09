@@ -331,7 +331,7 @@ function BookClientAppointmentContent() {
                 <span>Appointment Details</span>
               </CardTitle>
               <CardDescription>
-                Set the date, time, and details for the appointment. A Zoom meeting will be automatically created.
+                Set the date, time, and details for the appointment. A meeting link will be automatically created for online modes.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -342,11 +342,11 @@ function BookClientAppointmentContent() {
                 </Alert>
               )}
 
-              {/* Zoom Meeting Info */}
+              {/* Meeting Info */}
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  <strong>Video Meeting:</strong> A secure Zoom meeting link will be automatically created for this appointment.
+                  <strong>Video Meeting:</strong> A secure Google Meet link will be automatically created for this appointment.
                   Both you and your client will receive the meeting details.
                 </AlertDescription>
               </Alert>

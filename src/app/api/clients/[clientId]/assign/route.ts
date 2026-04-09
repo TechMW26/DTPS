@@ -8,7 +8,6 @@ import { PermissionKey } from '@/lib/db/models/Permission';
 import { UserRole } from '@/types';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
-import { logActivity } from '@/lib/utils/activityLogger';
 
 // PATCH /api/clients/[clientId]/assign - Assign dietitian/health counselor to client
 // Permission-based - any role with proper permission can use this
@@ -102,9 +101,48 @@ export async function PATCH(
             }
         }
 
-        // ===== Health Counselor: Full dietitian assignment capability =====
-        // Health Counselors can now assign both primary (assignedDietitian) and 
-        // secondary (assignedDietitians) dietitians, same as admin.
+        // ===== Health Counselor restriction: primary-only dietitian assignment =====
+        if (userRole === UserRole.HEALTH_COUNSELOR) {
+            const hasDietitianPayload =
+                dietitianId !== undefined ||
+                (Array.isArray(dietitianIds) && dietitianIds.length > 0) ||
+                primaryDietitianId !== undefined ||
+                (Array.isArray(secondaryDietitianIds) && secondaryDietitianIds.length > 0);
+
+            if (hasDietitianPayload) {
+                const hasExistingPrimary = !!client.assignedDietitian;
+
+                if (assignAction === 'add' && hasExistingPrimary) {
+                    return NextResponse.json(
+                        {
+                            error: 'Only Primary Dietitian assignment is allowed for Health Counselors',
+                            code: 'SECONDARY_ASSIGNMENT_BLOCKED',
+                        },
+                        { status: 403 }
+                    );
+                }
+
+                if (Array.isArray(dietitianIds) && dietitianIds.length > 1) {
+                    return NextResponse.json(
+                        {
+                            error: 'Health Counselors can only assign one primary dietitian',
+                            code: 'MULTIPLE_DIETITIAN_BLOCKED',
+                        },
+                        { status: 403 }
+                    );
+                }
+
+                if (Array.isArray(secondaryDietitianIds) && secondaryDietitianIds.length > 0) {
+                    return NextResponse.json(
+                        {
+                            error: 'Only Primary Dietitian assignment is allowed for Health Counselors',
+                            code: 'SECONDARY_ASSIGNMENT_BLOCKED',
+                        },
+                        { status: 403 }
+                    );
+                }
+            }
+        }
 
         // Build update object
         const setFields: any = {};
@@ -385,8 +423,7 @@ export async function GET(
                 .select('firstName lastName email avatar phone')
                 .lean();
 
-            // Health Counselors now have full access to assign primary and secondary dietitians
-            // Mark each dietitian with their current assignment status
+            // Health Counselor sees markers, but can assign primary only
             if (userRole === UserRole.HEALTH_COUNSELOR) {
                 const clientDoc = await User.findById(clientId)
                     .select('assignedDietitian assignedDietitians')
@@ -401,8 +438,8 @@ export async function GET(
                     isPrimary: d._id.toString() === primaryDietitianId,
                     isSecondary: secondaryDietitianIds.includes(d._id.toString()),
                 }));
-                // HC now has full primary/secondary assignment capability
-                result.primaryDietitianOnly = false;
+                result.primaryDietitianOnly = true;
+                result.assignmentMessage = 'Health Counselors can only assign to Primary Dietitian';
             } else {
                 result.dietitians = dietitians;
             }

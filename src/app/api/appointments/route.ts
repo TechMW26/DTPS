@@ -5,7 +5,6 @@ import connectDB from '@/lib/db/connection';
 import Appointment from '@/lib/db/models/Appointment';
 import User from '@/lib/db/models/User';
 import { AppointmentType, AppointmentMode } from '@/lib/db/models/AppointmentConfig';
-import zoomService from '@/lib/services/zoom';
 import { syncAppointmentToCalendars } from '@/lib/services/googleCalendar';
 import { UserRole, AppointmentStatus, AppointmentActorRole } from '@/types';
 import { logHistoryServer } from '@/lib/server/history';
@@ -371,7 +370,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get dietitian details for Zoom meeting (client already fetched above)
+    // Get dietitian details for meeting link generation (client already fetched above)
     const dietitian = await User.findById(dietitianId);
 
     if (!dietitian || !client) {
@@ -491,16 +490,6 @@ export async function POST(request: NextRequest) {
           appointment.meetingLink = meetingResult.meetingLink;
 
           if (meetingResult.meetingDetails) {
-            if (meetingResult.meetingDetails.provider === 'zoom') {
-              appointment.zoomMeeting = {
-                meetingId: meetingResult.meetingDetails.meetingId,
-                meetingUuid: meetingResult.meetingDetails.meetingUuid,
-                joinUrl: meetingResult.meetingDetails.joinUrl,
-                startUrl: meetingResult.meetingDetails.startUrl,
-                password: meetingResult.meetingDetails.password,
-                hostEmail: meetingResult.meetingDetails.hostEmail
-              };
-            }
             appointment.meetingProvider = meetingResult.meetingDetails.provider;
           }
           console.log('[Appointment POST] Meeting link saved to appointment:', generatedMeetingLink);

@@ -50,7 +50,7 @@ import WooCommerceClient from '@/lib/db/models/WooCommerceClient';
 // Additional missing models
 import Payment from '@/lib/db/models/Payment';
 import AdminAuditLog from '@/lib/db/models/AdminAuditLog';
-import AppointmentConfig from '@/lib/db/models/AppointmentConfig';
+import { AppointmentType, AppointmentMode, ProviderAvailability } from '@/lib/db/models/AppointmentConfig';
 import Counter from '@/lib/db/models/Counter';
 import GroupMessage from '@/lib/db/models/GroupMessage';
 import MessageGroup from '@/lib/db/models/MessageGroup';
@@ -506,11 +506,29 @@ class ModelRegistry {
     });
 
     this.registerModel({
-      name: 'AppointmentConfig',
-      model: AppointmentConfig,
+      name: 'AppointmentType',
+      model: AppointmentType,
       importable: true,
-      displayName: 'Appointment Config',
-      description: 'Appointment configuration settings',
+      displayName: 'Appointment Types',
+      description: 'Appointment type configuration settings',
+      uniqueIdentifiers: ['slug']
+    });
+
+    this.registerModel({
+      name: 'AppointmentMode',
+      model: AppointmentMode,
+      importable: true,
+      displayName: 'Appointment Modes',
+      description: 'Appointment mode configuration settings',
+      uniqueIdentifiers: ['slug']
+    });
+
+    this.registerModel({
+      name: 'ProviderAvailability',
+      model: ProviderAvailability,
+      importable: true,
+      displayName: 'Provider Availability',
+      description: 'Provider day/time availability settings',
       uniqueIdentifiers: []
     });
 
