@@ -118,7 +118,7 @@ function DesktopBookAppointmentPage() {
     const slots: TimeSlot[] = [];
     const startTime = new Date(`2000-01-01T${availability.startTime}`);
     const endTime = new Date(`2000-01-01T${availability.endTime}`);
-    
+
     // Generate 60-minute slots
     const current = new Date(startTime);
     while (current < endTime) {
@@ -135,7 +135,7 @@ function DesktopBookAppointmentPage() {
 
   const handleBookAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedDietitian || !selectedDate || !selectedTime) {
       setError('Please fill in all required fields');
       return;
@@ -181,10 +181,10 @@ function DesktopBookAppointmentPage() {
   const isDateDisabled = (date: Date) => {
     // Disable past dates
     if (isBefore(date, new Date())) return true;
-    
+
     // Disable dates more than 30 days in the future
     if (isAfter(date, addDays(new Date(), 30))) return true;
-    
+
     // If dietitian is selected, check availability
     if (selectedDietitian) {
       const dayOfWeek = date.getDay();
@@ -193,7 +193,7 @@ function DesktopBookAppointmentPage() {
       );
       return !hasAvailability;
     }
-    
+
     return false;
   };
 
@@ -265,7 +265,7 @@ function DesktopBookAppointmentPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  
+
                   {selectedDietitian && (
                     <div className="mt-2 p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm font-medium">
@@ -339,9 +339,9 @@ function DesktopBookAppointmentPage() {
                 </div>
 
                 {/* Submit Button */}
-                <Button 
-                  type="submit" 
-                  className="w-full" 
+                <Button
+                  type="submit"
+                  className="w-full"
                   disabled={loading || !selectedDietitian || !selectedDate || !selectedTime}
                 >
                   {loading ? (
@@ -376,7 +376,7 @@ function DesktopBookAppointmentPage() {
                 disabled={isDateDisabled}
                 className="rounded-md border"
               />
-              
+
               {selectedDate && (
                 <div className="mt-4 p-3 bg-green-50 rounded-lg">
                   <p className="text-sm font-medium text-green-800">

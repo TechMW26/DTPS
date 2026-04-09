@@ -58,7 +58,7 @@ export async function generateMeetingLink(
  */
 async function getOAuth2ClientForUser(userId: string) {
   const user = await User.findById(userId);
-  
+
   if (!user || !user.googleCalendarAccessToken) {
     return null;
   }
@@ -123,13 +123,13 @@ async function generateGoogleMeetLink(config: {
   try {
     // Try to get OAuth2 client for the host
     const hostResult = await getOAuth2ClientByEmail(config.hostEmail);
-    
+
     if (hostResult?.client) {
       // Use Google Calendar API to create event with Google Meet
       const calendar = google.calendar({ version: 'v3', auth: hostResult.client });
-      
+
       const endTime = new Date(config.scheduledAt.getTime() + config.duration * 60 * 1000);
-      
+
       const event: calendar_v3.Schema$Event = {
         summary: config.topic,
         description: config.description || `Meeting: ${config.topic}`,
@@ -244,7 +244,7 @@ export async function deleteMeetingLink(
     // Zoom support removed. Google Meet links don't need explicit deletion.
     void meetingId;
     void provider;
-    
+
     return { success: true };
   } catch (error: any) {
     console.error(`Failed to delete ${provider} meeting:`, error);
@@ -272,7 +272,7 @@ export async function updateMeetingLink(
     void meetingId;
     void provider;
     void config;
-    
+
     return { success: true };
   } catch (error: any) {
     console.error(`Failed to update ${provider} meeting:`, error);

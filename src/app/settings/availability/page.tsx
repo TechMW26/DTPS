@@ -10,10 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { 
-  Clock, 
-  Plus, 
-  Trash2, 
+import {
+  Clock,
+  Plus,
+  Trash2,
   Save,
   AlertCircle,
   CheckCircle

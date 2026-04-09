@@ -15,9 +15,9 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
-import { 
-  Calendar as CalendarIcon, 
-  Clock, 
+import {
+  Calendar as CalendarIcon,
+  Clock,
   User,
   AlertCircle,
   Search
@@ -77,7 +77,7 @@ function BookClientAppointmentContent() {
   useEffect(() => {
     // Filter clients based on search term
     if (searchTerm) {
-      const filtered = clients.filter(client => 
+      const filtered = clients.filter(client =>
         `${client.firstName} ${client.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
         client.email.toLowerCase().includes(searchTerm.toLowerCase())
       );
@@ -128,7 +128,7 @@ function BookClientAppointmentContent() {
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const response = await fetch(`/api/appointments/available-slots?dietitianId=${session.user.id}&date=${dateStr}&duration=${duration}`);
-      
+
       if (response.ok) {
         const data = await response.json();
         setAvailableSlots(data.availableSlots || []);
@@ -288,11 +288,10 @@ function BookClientAppointmentContent() {
                       <div
                         key={client._id}
                         onClick={() => setSelectedClient(client)}
-                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                          selectedClient?._id === client._id
+                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedClient?._id === client._id
                             ? 'border-blue-500 bg-blue-50'
                             : 'border-gray-200 hover:border-gray-300'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center space-x-3">
                           <Avatar className="h-10 w-10">

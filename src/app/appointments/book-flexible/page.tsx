@@ -57,7 +57,7 @@ const TIME_SLOTS = [
 export default function FlexibleBookingPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  
+
   // State
   const [dietitians, setDietitians] = useState<Dietitian[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -70,7 +70,7 @@ export default function FlexibleBookingPage() {
   const [notes, setNotes] = useState('');
   const [searchDietitian, setSearchDietitian] = useState('');
   const [searchClient, setSearchClient] = useState('');
-  
+
   // Loading states
   const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState(false);
@@ -243,7 +243,7 @@ export default function FlexibleBookingPage() {
         <Alert>
           <Video className="h-4 w-4" />
           <AlertDescription>
-            <strong>Video Meeting:</strong> A secure Google Meet link will be automatically created for this appointment. 
+            <strong>Video Meeting:</strong> A secure Google Meet link will be automatically created for this appointment.
             Both the dietitian and client will receive the meeting details.
           </AlertDescription>
         </Alert>
@@ -309,11 +309,10 @@ export default function FlexibleBookingPage() {
                       <div
                         key={dietitian._id}
                         onClick={() => setSelectedDietitian(dietitian)}
-                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                          selectedDietitian?._id === dietitian._id
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedDietitian?._id === dietitian._id
                             ? 'border-green-500 bg-green-50'
                             : 'border-gray-200 hover:border-gray-300'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center space-x-3">
                           <Avatar className="w-10 h-10">
@@ -359,7 +358,7 @@ export default function FlexibleBookingPage() {
                   value={searchClient}
                   onChange={(e) => setSearchClient(e.target.value)}
                   className="pl-10"
-                />  
+                />
               </div>
 
               {/* Client List */}
@@ -371,11 +370,10 @@ export default function FlexibleBookingPage() {
                     <div
                       key={client._id}
                       onClick={() => setSelectedClient(client)}
-                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                        selectedClient?._id === client._id
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedClient?._id === client._id
                           ? 'border-green-500 bg-green-50'
                           : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center space-x-3">
                         <Avatar className="w-10 h-10">

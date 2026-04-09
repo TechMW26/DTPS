@@ -98,7 +98,7 @@ function DesktopAppointmentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const appointmentId = params?.id as string;
-  
+
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
@@ -122,8 +122,8 @@ function DesktopAppointmentDetailPage() {
       const createdEvent = appointment.lifecycleHistory.find(e => e.action === 'created');
       if (createdEvent) {
         const roleLabel = createdEvent.performedByRole === 'dietitian' ? 'Dietitian' :
-                         createdEvent.performedByRole === 'health_counselor' ? 'Health Counselor' :
-                         createdEvent.performedByRole === 'admin' ? 'Admin' : 'Client';
+          createdEvent.performedByRole === 'health_counselor' ? 'Health Counselor' :
+            createdEvent.performedByRole === 'admin' ? 'Admin' : 'Client';
         return `Created by ${roleLabel}`;
       }
     }
@@ -133,8 +133,8 @@ function DesktopAppointmentDetailPage() {
   const getCancelledByLabel = (): string | null => {
     if (appointment?.status === 'cancelled' && appointment?.cancelledBy) {
       const roleLabel = appointment.cancelledBy.role === 'dietitian' ? 'Dietitian' :
-                       appointment.cancelledBy.role === 'health_counselor' ? 'Health Counselor' :
-                       appointment.cancelledBy.role === 'admin' ? 'Admin' : 'Client';
+        appointment.cancelledBy.role === 'health_counselor' ? 'Health Counselor' :
+          appointment.cancelledBy.role === 'admin' ? 'Admin' : 'Client';
       return `Cancelled by ${roleLabel}${appointment.cancelledBy.name ? ` (${appointment.cancelledBy.name})` : ''}`;
     }
     return null;
@@ -143,8 +143,8 @@ function DesktopAppointmentDetailPage() {
   const getRescheduledByLabel = (): string | null => {
     if (appointment?.rescheduledBy) {
       const roleLabel = appointment.rescheduledBy.role === 'dietitian' ? 'Dietitian' :
-                       appointment.rescheduledBy.role === 'health_counselor' ? 'Health Counselor' :
-                       appointment.rescheduledBy.role === 'admin' ? 'Admin' : 'Client';
+        appointment.rescheduledBy.role === 'health_counselor' ? 'Health Counselor' :
+          appointment.rescheduledBy.role === 'admin' ? 'Admin' : 'Client';
       return `Rescheduled by ${roleLabel}${appointment.rescheduledBy.name ? ` (${appointment.rescheduledBy.name})` : ''}`;
     }
     return null;
@@ -185,13 +185,13 @@ function DesktopAppointmentDetailPage() {
 
   const handleCancelAppointment = async () => {
     if (!appointment) return;
-    
+
     setCancelling(true);
     try {
       const response = await fetch(`/api/appointments/${appointmentId}`, {
         method: 'DELETE',
       });
-      
+
       if (response.ok) {
         setMessage('Appointment cancelled successfully');
         setTimeout(() => {
@@ -330,7 +330,7 @@ function DesktopAppointmentDetailPage() {
               Back
             </Link>
           </Button>
-          
+
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Appointment Details</h1>
             <p className="text-gray-600 mt-1">View and manage appointment information</p>
@@ -383,7 +383,7 @@ function DesktopAppointmentDetailPage() {
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center space-x-3">
                     <Clock className="h-5 w-5 text-gray-400" />
                     <div>
@@ -398,7 +398,7 @@ function DesktopAppointmentDetailPage() {
                 {/* Participants */}
                 <div className="space-y-4">
                   <h3 className="font-medium text-gray-900">Participants</h3>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Dietitian */}
                     <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
@@ -480,11 +480,10 @@ function DesktopAppointmentDetailPage() {
 
                 {/* Message */}
                 <Button variant="outline" className="w-full" asChild>
-                  <Link href={`/messages?user=${
-                    session?.user?.role === 'client' 
-                      ? appointment.dietitian._id 
+                  <Link href={`/messages?user=${session?.user?.role === 'client'
+                      ? appointment.dietitian._id
                       : appointment.client._id
-                  }`}>
+                    }`}>
                     <MessageCircle className="h-4 w-4 mr-2" />
                     Send Message
                   </Link>
@@ -514,8 +513,8 @@ function DesktopAppointmentDetailPage() {
 
                 {/* Cancel */}
                 {canCancel(appointment) && (
-                  <Button 
-                    variant="destructive" 
+                  <Button
+                    variant="destructive"
                     className="w-full cursor-pointer"
                     onClick={handleCancelAppointment}
                     disabled={cancelling}
@@ -586,19 +585,19 @@ function DesktopAppointmentDetailPage() {
                   <span className="text-gray-600">Created:</span>
                   <span>{format(new Date(appointment.createdAt), 'MMM d, yyyy')}</span>
                 </div>
-                
+
                 <div className="flex justify-between">
                   <span className="text-gray-600">Duration:</span>
                   <span>{appointment.duration} minutes</span>
                 </div>
-                
+
                 {appointment.dietitian.consultationFee && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Fee:</span>
                     <span>${appointment.dietitian.consultationFee}</span>
                   </div>
                 )}
-                
+
                 <div className="flex justify-between">
                   <span className="text-gray-600">Status:</span>
                   <Badge className={getStatusColor(appointment.status)}>
@@ -610,9 +609,9 @@ function DesktopAppointmentDetailPage() {
                 {meetingLink && (
                   <div className="pt-2 border-t mt-2">
                     <span className="text-gray-600 block mb-1">Meeting Link:</span>
-                    <a 
-                      href={meetingLink} 
-                      target="_blank" 
+                    <a
+                      href={meetingLink}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:text-blue-800 text-xs break-all flex items-center gap-1"
                     >

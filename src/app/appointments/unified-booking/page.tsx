@@ -14,12 +14,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar } from '@/components/ui/calendar';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useRealtime } from '@/hooks/useRealtime';
-import { 
-  CalendarPlus, 
-  User, 
-  Clock, 
-  Video, 
-  Phone, 
+import {
+  CalendarPlus,
+  User,
+  Clock,
+  Video,
+  Phone,
   MapPin,
   ArrowLeft,
   ArrowRight,
@@ -125,7 +125,7 @@ export default function UnifiedAppointmentBookingPage() {
     onMessage: (event) => {
       // Refresh slots when appointment is booked/cancelled/rescheduled
       if (
-        event.type === 'appointment_booked' || 
+        event.type === 'appointment_booked' ||
         event.type === 'appointment_cancelled' ||
         event.type === 'appointment_rescheduled'
       ) {
@@ -133,11 +133,11 @@ export default function UnifiedAppointmentBookingPage() {
         if (step === 3 && selectedDate) {
           fetchAvailableSlots();
           toast.info(
-            event.type === 'appointment_booked' 
-              ? '🔔 A slot was just booked - refreshing availability' 
+            event.type === 'appointment_booked'
+              ? '🔔 A slot was just booked - refreshing availability'
               : event.type === 'appointment_cancelled'
-              ? '🔔 A slot was just freed - refreshing availability'
-              : '🔔 An appointment was rescheduled - refreshing availability'
+                ? '🔔 A slot was just freed - refreshing availability'
+                : '🔔 An appointment was rescheduled - refreshing availability'
           );
         }
       }
@@ -152,18 +152,18 @@ export default function UnifiedAppointmentBookingPage() {
     try {
       setLoadingSlots(true);
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      
+
       // Build URL with appointmentTypeId if selected (for duration-based slots)
       let url = `/api/appointments/available-slots?providerId=${providerId}&date=${dateStr}`;
       if (selectedType?._id) {
         url += `&appointmentTypeId=${selectedType._id}`;
       }
-      
+
       const res = await fetch(url);
-      
+
       if (res.ok) {
         const data = await res.json();
-        
+
         // Map slots to include booked status
         const mappedSlots: TimeSlot[] = (data.slots || []).map((slot: any) => ({
           time: slot.time,
@@ -171,10 +171,10 @@ export default function UnifiedAppointmentBookingPage() {
           available: slot.available,
           isBooked: !slot.available
         }));
-        
+
         setTimeSlots(mappedSlots);
         setLunchBreakInfo(data.lunchBreak || null);
-        
+
         // Clear selected time if it's no longer available
         if (selectedTime) {
           const stillAvailable = mappedSlots.find(s => s.time === selectedTime && s.available);
@@ -208,7 +208,7 @@ export default function UnifiedAppointmentBookingPage() {
   const fetchInitialData = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch appointment types and modes
       const configRes = await fetch('/api/admin/appointment-config?activeOnly=true');
       if (configRes.ok) {
@@ -226,10 +226,10 @@ export default function UnifiedAppointmentBookingPage() {
           fetch('/api/users/dietitians'),
           fetch('/api/users/health-counselors')
         ]);
-        
+
         const allProviders: Provider[] = [];
         const seenIds = new Set<string>();
-        
+
         if (dietRes.ok) {
           const dietData = await dietRes.json();
           (dietData.dietitians || []).forEach((d: any) => {
@@ -263,7 +263,7 @@ export default function UnifiedAppointmentBookingPage() {
     try {
       let url = '/api/users/clients?limit=100';
       if (search) url += `&search=${encodeURIComponent(search)}`;
-      
+
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -398,20 +398,17 @@ export default function UnifiedAppointmentBookingPage() {
               const isCompleted = step > s.id;
               return (
                 <div key={s.id} className="flex items-center">
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                    isActive ? 'bg-blue-600 text-white' : 
-                    isCompleted ? 'bg-green-500 text-white' : 
-                    'bg-gray-200 text-gray-500'
-                  }`}>
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-full ${isActive ? 'bg-blue-600 text-white' :
+                      isCompleted ? 'bg-green-500 text-white' :
+                        'bg-gray-200 text-gray-500'
+                    }`}>
                     {isCompleted ? <Check className="h-5 w-5" /> : <StepIcon className="h-5 w-5" />}
                   </div>
-                  <span className={`ml-2 text-sm font-medium hidden sm:block ${
-                    isActive ? 'text-blue-600' : 'text-gray-500'
-                  }`}>{s.name}</span>
+                  <span className={`ml-2 text-sm font-medium hidden sm:block ${isActive ? 'text-blue-600' : 'text-gray-500'
+                    }`}>{s.name}</span>
                   {idx < STEPS.length - 1 && (
-                    <div className={`w-8 sm:w-16 h-1 mx-2 ${
-                      isCompleted ? 'bg-green-500' : 'bg-gray-200'
-                    }`} />
+                    <div className={`w-8 sm:w-16 h-1 mx-2 ${isCompleted ? 'bg-green-500' : 'bg-gray-200'
+                      }`} />
                   )}
                 </div>
               );
@@ -446,11 +443,10 @@ export default function UnifiedAppointmentBookingPage() {
                       clients.map((client) => (
                         <div
                           key={client._id}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                            selectedClient?._id === client._id 
-                              ? 'border-blue-500 bg-blue-50' 
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedClient?._id === client._id
+                              ? 'border-blue-500 bg-blue-50'
                               : 'hover:bg-gray-50'
-                          }`}
+                            }`}
                           onClick={() => setSelectedClient(client)}
                         >
                           <div className="flex items-center gap-3">
@@ -483,11 +479,10 @@ export default function UnifiedAppointmentBookingPage() {
                       {providers.map((provider, index) => (
                         <div
                           key={`${provider._id}-${provider.role}-${index}`}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                            selectedProvider?._id === provider._id 
-                              ? 'border-blue-500 bg-blue-50' 
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedProvider?._id === provider._id
+                              ? 'border-blue-500 bg-blue-50'
                               : 'hover:bg-gray-50'
-                          }`}
+                            }`}
                           onClick={() => setSelectedProvider(provider)}
                         >
                           <div className="flex items-center gap-3">
@@ -518,15 +513,14 @@ export default function UnifiedAppointmentBookingPage() {
                   {appointmentTypes.map((type) => (
                     <div
                       key={type._id}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                        selectedType?._id === type._id 
-                          ? 'border-blue-500 bg-blue-50' 
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedType?._id === type._id
+                          ? 'border-blue-500 bg-blue-50'
                           : 'hover:bg-gray-50'
-                      }`}
+                        }`}
                       onClick={() => setSelectedType(type)}
                     >
                       <div className="flex items-center gap-3">
-                        <div 
+                        <div
                           className="w-12 h-12 rounded-lg flex items-center justify-center"
                           style={{ backgroundColor: type.color || '#3B82F6' }}
                         >
@@ -589,7 +583,7 @@ export default function UnifiedAppointmentBookingPage() {
                       )}
                     </div>
                   </div>
-                  
+
                   {/* Duration info */}
                   {selectedType && (
                     <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
@@ -599,7 +593,7 @@ export default function UnifiedAppointmentBookingPage() {
                       </p>
                     </div>
                   )}
-                  
+
                   {/* Lunch break info */}
                   {lunchBreakInfo && (
                     <div className="mb-4 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg">
@@ -609,7 +603,7 @@ export default function UnifiedAppointmentBookingPage() {
                       </p>
                     </div>
                   )}
-                  
+
                   {!selectedDate ? (
                     <p className="text-gray-500">Please select a date first</p>
                   ) : loadingSlots ? (
@@ -621,14 +615,14 @@ export default function UnifiedAppointmentBookingPage() {
                       <Clock className="h-12 w-12 mx-auto mb-3 text-amber-400" />
                       <p className="text-gray-700 font-medium">No available slots for this date</p>
                       <p className="text-sm text-gray-500 mt-1 mb-4">
-                        {isAdmin 
+                        {isAdmin
                           ? 'The provider has not set availability for this day.'
                           : 'You need to set your availability first.'
                         }
                       </p>
                       {!isAdmin && (
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           size="sm"
                           onClick={() => router.push('/appointments?tab=slots')}
                         >
@@ -653,19 +647,18 @@ export default function UnifiedAppointmentBookingPage() {
                           Selected
                         </span>
                       </div>
-                      
+
                       <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
                         {timeSlots.map((slot) => (
                           <button
                             key={slot.time}
                             disabled={!slot.available}
-                            className={`p-2 text-sm border rounded-lg transition-all ${
-                              selectedTime === slot.time
+                            className={`p-2 text-sm border rounded-lg transition-all ${selectedTime === slot.time
                                 ? 'border-blue-500 bg-blue-500 text-white font-medium shadow-md'
                                 : slot.available
-                                ? 'border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-300 text-green-800'
-                                : 'border-red-200 bg-red-50 text-red-400 cursor-not-allowed line-through'
-                            }`}
+                                  ? 'border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-300 text-green-800'
+                                  : 'border-red-200 bg-red-50 text-red-400 cursor-not-allowed line-through'
+                              }`}
                             onClick={() => slot.available && setSelectedTime(slot.time)}
                             title={slot.available ? `Available: ${slot.time} - ${slot.endTime || ''}` : 'Already booked'}
                           >
@@ -676,7 +669,7 @@ export default function UnifiedAppointmentBookingPage() {
                           </button>
                         ))}
                       </div>
-                      
+
                       {/* Available count */}
                       <p className="text-xs text-gray-500 text-center mt-2">
                         {timeSlots.filter(s => s.available).length} of {timeSlots.length} slots available
@@ -694,25 +687,23 @@ export default function UnifiedAppointmentBookingPage() {
                   <h3 className="text-lg font-medium mb-4">Select Appointment Mode</h3>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {appointmentModes.map((mode) => {
-                      const isOnlineMode = mode.requiresMeetingLink || 
-                        ['google meet', 'video', 'online'].some(m => 
+                      const isOnlineMode = mode.requiresMeetingLink ||
+                        ['google meet', 'video', 'online'].some(m =>
                           mode.name.toLowerCase().includes(m)
                         );
-                      
+
                       return (
                         <div
                           key={mode._id}
-                          className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                            selectedMode?._id === mode._id 
-                              ? 'border-blue-500 bg-blue-50' 
+                          className={`p-4 border rounded-lg cursor-pointer transition-colors ${selectedMode?._id === mode._id
+                              ? 'border-blue-500 bg-blue-50'
                               : 'hover:bg-gray-50'
-                          }`}
+                            }`}
                           onClick={() => setSelectedMode(mode)}
                         >
                           <div className="flex items-center gap-3">
-                            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                              isOnlineMode ? 'bg-blue-100' : 'bg-green-100'
-                            }`}>
+                            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${isOnlineMode ? 'bg-blue-100' : 'bg-green-100'
+                              }`}>
                               {mode.icon === 'video' && <Video className={`h-6 w-6 ${isOnlineMode ? 'text-blue-600' : 'text-green-600'}`} />}
                               {mode.icon === 'phone' && <Phone className={`h-6 w-6 ${isOnlineMode ? 'text-blue-600' : 'text-green-600'}`} />}
                               {mode.icon === 'map-pin' && <MapPin className="h-6 w-6 text-green-600" />}
@@ -740,26 +731,26 @@ export default function UnifiedAppointmentBookingPage() {
                       );
                     })}
                   </div>
-                  
+
                   {/* Meeting link info */}
-                  {selectedMode && (selectedMode.requiresMeetingLink || 
-                    ['google meet', 'video', 'online'].some(m => 
+                  {selectedMode && (selectedMode.requiresMeetingLink ||
+                    ['google meet', 'video', 'online'].some(m =>
                       selectedMode.name.toLowerCase().includes(m)
                     )) && (
-                    <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-lg">
-                      <div className="flex items-start gap-3">
-                        <Video className="h-5 w-5 text-blue-600 mt-0.5" />
-                        <div>
-                          <p className="font-medium text-blue-800">Online Appointment</p>
-                          <p className="text-sm text-blue-600 mt-1">
-                            {selectedMode.name.toLowerCase().includes('google') || selectedMode.name.toLowerCase().includes('meet')
-                              ? 'A Google Meet link will be generated and sent to both you and the client.'
-                              : 'A meeting link will be generated and included in the confirmation email.'}
-                          </p>
+                      <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <Video className="h-5 w-5 text-blue-600 mt-0.5" />
+                          <div>
+                            <p className="font-medium text-blue-800">Online Appointment</p>
+                            <p className="text-sm text-blue-600 mt-1">
+                              {selectedMode.name.toLowerCase().includes('google') || selectedMode.name.toLowerCase().includes('meet')
+                                ? 'A Google Meet link will be generated and sent to both you and the client.'
+                                : 'A meeting link will be generated and included in the confirmation email.'}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
 
                 {/* Location input for offline appointments */}
@@ -781,7 +772,7 @@ export default function UnifiedAppointmentBookingPage() {
             {step === 5 && (
               <div className="space-y-6">
                 <h3 className="text-lg font-medium">Confirm Appointment</h3>
-                
+
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Client:</span>
@@ -856,7 +847,7 @@ export default function UnifiedAppointmentBookingPage() {
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back
               </Button>
-              
+
               {step < 5 ? (
                 <Button
                   onClick={nextStep}
