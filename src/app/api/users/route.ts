@@ -21,6 +21,28 @@ function isValidObjectId(id: any): boolean {
   return Types.ObjectId.isValid(id) && String(new Types.ObjectId(id)) === id;
 }
 
+function normalizeObjectId(id: unknown): string | null {
+  if (!id) return null;
+
+  if (id instanceof Types.ObjectId) {
+    return id.toString();
+  }
+
+  if (typeof id === 'string' && Types.ObjectId.isValid(id)) {
+    try {
+      return new Types.ObjectId(id).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  if (typeof id === 'object' && id !== null && '_id' in (id as Record<string, unknown>)) {
+    return normalizeObjectId((id as Record<string, unknown>)._id);
+  }
+
+  return null;
+}
+
 // Helper function to recompute client statuses for a list of clients
 async function recomputeClientStatuses(clients: any[]): Promise<any[]> {
   const today = new Date();
@@ -107,9 +129,7 @@ export async function GET(request: NextRequest) {
     let query: any = {};
 
     const sessionUserId = session.user.id;
-    const normalizedSessionUserId = isValidObjectId(sessionUserId)
-      ? new Types.ObjectId(String(sessionUserId))
-      : null;
+    const normalizedSessionUserId = normalizeObjectId(sessionUserId);
 
     // Role-based access control
     if (session.user.role === UserRole.DIETITIAN) {
@@ -152,10 +172,11 @@ export async function GET(request: NextRequest) {
       const currentUserRaw = await User.findById(normalizedSessionUserId).select('assignedDietitian').lean();
       const currentUser = currentUserRaw as { _id: unknown; assignedDietitian?: unknown } | null;
 
-      if (currentUser?.assignedDietitian && isValidObjectId(currentUser.assignedDietitian)) {
+      const assignedDietitianId = normalizeObjectId(currentUser?.assignedDietitian);
+      if (assignedDietitianId) {
         // Show only assigned dietitian
         query = {
-          _id: new Types.ObjectId(String(currentUser.assignedDietitian))
+          _id: assignedDietitianId
         };
       } else {
         // If no assigned dietitian, show all dietitians and health counselors
@@ -301,29 +322,23 @@ export async function GET(request: NextRequest) {
         const relatedUserIds = new Set<string>();
 
         for (const user of rawUsers as any[]) {
-          const assignedDietitianId = isValidObjectId(user?.assignedDietitian)
-            ? String(new Types.ObjectId(String(user.assignedDietitian)))
-            : null;
+          const assignedDietitianId = normalizeObjectId(user?.assignedDietitian);
           if (assignedDietitianId) relatedUserIds.add(assignedDietitianId);
 
-          const assignedHealthCounselorId = isValidObjectId(user?.assignedHealthCounselor)
-            ? String(new Types.ObjectId(String(user.assignedHealthCounselor)))
-            : null;
+          const assignedHealthCounselorId = normalizeObjectId(user?.assignedHealthCounselor);
           if (assignedHealthCounselorId) relatedUserIds.add(assignedHealthCounselorId);
 
           if (Array.isArray(user?.assignedDietitians)) {
             for (const id of user.assignedDietitians) {
-              if (isValidObjectId(id)) {
-                relatedUserIds.add(String(new Types.ObjectId(String(id))));
-              }
+              const normalizedId = normalizeObjectId(id);
+              if (normalizedId) relatedUserIds.add(normalizedId);
             }
           }
 
           if (Array.isArray(user?.assignedHealthCounselors)) {
             for (const id of user.assignedHealthCounselors) {
-              if (isValidObjectId(id)) {
-                relatedUserIds.add(String(new Types.ObjectId(String(id))));
-              }
+              const normalizedId = normalizeObjectId(id);
+              if (normalizedId) relatedUserIds.add(normalizedId);
             }
           }
         }
@@ -337,25 +352,21 @@ export async function GET(request: NextRequest) {
         const relatedUsersMap = new Map((relatedUsers as any[]).map((u) => [u._id.toString(), u]));
 
         const users = (rawUsers as any[]).map((user: any) => {
-          const assignedDietitianId = isValidObjectId(user?.assignedDietitian)
-            ? String(new Types.ObjectId(String(user.assignedDietitian)))
-            : null;
-          const assignedHealthCounselorId = isValidObjectId(user?.assignedHealthCounselor)
-            ? String(new Types.ObjectId(String(user.assignedHealthCounselor)))
-            : null;
+          const assignedDietitianId = normalizeObjectId(user?.assignedDietitian);
+          const assignedHealthCounselorId = normalizeObjectId(user?.assignedHealthCounselor);
 
           const assignedDietitians = Array.isArray(user?.assignedDietitians)
             ? user.assignedDietitians
-              .filter((id: unknown) => isValidObjectId(id))
-              .map((id: unknown) => String(new Types.ObjectId(String(id))))
+              .map((id: unknown) => normalizeObjectId(id))
+              .filter((id: string | null): id is string => !!id)
               .map((id: string) => relatedUsersMap.get(id))
               .filter(Boolean)
             : [];
 
           const assignedHealthCounselors = Array.isArray(user?.assignedHealthCounselors)
             ? user.assignedHealthCounselors
-              .filter((id: unknown) => isValidObjectId(id))
-              .map((id: unknown) => String(new Types.ObjectId(String(id))))
+              .map((id: unknown) => normalizeObjectId(id))
+              .filter((id: string | null): id is string => !!id)
               .map((id: string) => relatedUsersMap.get(id))
               .filter(Boolean)
             : [];
