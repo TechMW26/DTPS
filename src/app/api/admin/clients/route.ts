@@ -5,6 +5,21 @@ import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { Types } from 'mongoose';
+
+function isValidObjectId(id: unknown): boolean {
+  if (!id) return false;
+  if (id instanceof Types.ObjectId) return true;
+  if (typeof id !== 'string') return false;
+  return Types.ObjectId.isValid(id) && String(new Types.ObjectId(id)) === id;
+}
+
+function normalizeObjectId(id: unknown): string | null {
+  if (!id) return null;
+  if (id instanceof Types.ObjectId) return id.toString();
+  if (typeof id === 'string' && isValidObjectId(id)) return id;
+  return null;
+}
 
 // GET /api/admin/clients - Get all clients for admin (OPTIMIZED)
 export async function GET(request: NextRequest) {
@@ -30,6 +45,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status') || '';
     const assigned = searchParams.get('assigned') || ''; // 'true', 'false', or ''
+    const dateFrom = searchParams.get('dateFrom') || ''; // ISO date string
+    const dateTo = searchParams.get('dateTo') || ''; // ISO date string
+    const dietitianId = searchParams.get('dietitianId') || ''; // primary dietitian ObjectId
+    const healthCounselorId = searchParams.get('healthCounselorId') || ''; // primary HC ObjectId
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100); // Cap at 100
     const page = Math.max(parseInt(searchParams.get('page') || '1'), 1);
 
@@ -60,8 +79,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Add search filter
-    if (search) {
-      const searchRegex = { $regex: search, $options: 'i' };
+    if (search && search.trim()) {
+      // Escape special regex characters
+      const normalizedSearch = search.trim();
+      const escapedSearch = normalizedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = { $regex: escapedSearch, $options: 'i' };
       const searchConditions: any[] = [
         { firstName: searchRegex },
         { lastName: searchRegex },
@@ -69,17 +91,71 @@ export async function GET(request: NextRequest) {
         { phone: searchRegex },
         { clientId: searchRegex },
       ];
+
+      // Phone-friendly search (ignores formatting characters)
+      const digitsOnly = normalizedSearch.replace(/\D/g, '');
+      if (digitsOnly.length >= 6) {
+        const phonePatterns = Array.from(new Set([
+          digitsOnly,
+          `+91${digitsOnly}`,
+          `91${digitsOnly}`
+        ]));
+        for (const pattern of phonePatterns) {
+          searchConditions.push({ phone: { $regex: pattern, $options: 'i' } });
+        }
+      }
+
       // Search by full name (first + last combined)
-      const nameParts = search.trim().split(/\s+/);
+      const nameParts = normalizedSearch.split(/\s+/);
       if (nameParts.length >= 2) {
+        const firstNameRegex = { $regex: nameParts[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+        const lastNameRegex = { $regex: nameParts.slice(1).join(' ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
         searchConditions.push({
           $and: [
-            { firstName: { $regex: nameParts[0], $options: 'i' } },
-            { lastName: { $regex: nameParts.slice(1).join(' '), $options: 'i' } }
+            { firstName: firstNameRegex },
+            { lastName: lastNameRegex }
+          ]
+        });
+
+        // Also support reversed input: "Last First"
+        const reversedFirstNameRegex = { $regex: nameParts.slice(1).join(' ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+        const reversedLastNameRegex = { $regex: nameParts[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+        searchConditions.push({
+          $and: [
+            { firstName: reversedFirstNameRegex },
+            { lastName: reversedLastNameRegex }
           ]
         });
       }
       andConditions.push({ $or: searchConditions });
+    }
+
+    // Date range filter on createdAt
+    if (dateFrom || dateTo) {
+      const dateCondition: any = {};
+      if (dateFrom) dateCondition.$gte = new Date(dateFrom);
+      if (dateTo) {
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        dateCondition.$lte = toDate;
+      }
+      andConditions.push({ createdAt: dateCondition });
+    }
+
+    // Primary dietitian filter
+    if (dietitianId) {
+      if (!isValidObjectId(dietitianId)) {
+        return NextResponse.json({ error: 'Invalid dietitianId' }, { status: 400 });
+      }
+      andConditions.push({ assignedDietitian: new Types.ObjectId(dietitianId) });
+    }
+
+    // Primary health counselor filter
+    if (healthCounselorId) {
+      if (!isValidObjectId(healthCounselorId)) {
+        return NextResponse.json({ error: 'Invalid healthCounselorId' }, { status: 400 });
+      }
+      andConditions.push({ assignedHealthCounselor: new Types.ObjectId(healthCounselorId) });
     }
 
     const query = andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
@@ -92,24 +168,93 @@ export async function GET(request: NextRequest) {
       cacheKey,
       async () => {
         // Get total count and clients in parallel
-        const [total, clients] = await Promise.all([
+        const [total, rawClients] = await Promise.all([
           User.countDocuments(query),
           User.find(query)
             .select('-password -__v')
-            .populate('assignedDietitian', 'firstName lastName email avatar')
-            .populate('assignedDietitians', 'firstName lastName email avatar')
-            .populate('assignedHealthCounselor', 'firstName lastName email avatar')
-            .populate('assignedHealthCounselors', 'firstName lastName email avatar')
-            .populate({
-              path: 'createdBy.userId',
-              select: 'firstName lastName role',
-              strictPopulate: false
-            })
             .sort({ createdAt: -1 })
             .limit(limit)
             .skip((page - 1) * limit)
             .lean()
         ]);
+
+        const userIdsToHydrate = new Set<string>();
+
+        for (const client of rawClients as any[]) {
+          const assignedDietitianId = normalizeObjectId(client?.assignedDietitian);
+          if (assignedDietitianId) userIdsToHydrate.add(assignedDietitianId);
+
+          const assignedHealthCounselorId = normalizeObjectId(client?.assignedHealthCounselor);
+          if (assignedHealthCounselorId) userIdsToHydrate.add(assignedHealthCounselorId);
+
+          if (Array.isArray(client?.assignedDietitians)) {
+            for (const id of client.assignedDietitians) {
+              const normalized = normalizeObjectId(id);
+              if (normalized) userIdsToHydrate.add(normalized);
+            }
+          }
+
+          if (Array.isArray(client?.assignedHealthCounselors)) {
+            for (const id of client.assignedHealthCounselors) {
+              const normalized = normalizeObjectId(id);
+              if (normalized) userIdsToHydrate.add(normalized);
+            }
+          }
+
+          const createdByUserId = normalizeObjectId(client?.createdBy?.userId);
+          if (createdByUserId) userIdsToHydrate.add(createdByUserId);
+        }
+
+        const hydratedUsers = userIdsToHydrate.size > 0
+          ? await User.find({
+            _id: {
+              $in: Array.from(userIdsToHydrate).map((id) => new Types.ObjectId(id))
+            }
+          })
+            .select('firstName lastName email avatar role')
+            .lean()
+          : [];
+
+        const hydratedUsersMap = new Map(
+          (hydratedUsers as any[]).map((u) => [u._id.toString(), u])
+        );
+
+        const clients = (rawClients as any[]).map((client: any) => {
+          const assignedDietitianId = normalizeObjectId(client.assignedDietitian);
+          const assignedHealthCounselorId = normalizeObjectId(client.assignedHealthCounselor);
+
+          const assignedDietitians = Array.isArray(client.assignedDietitians)
+            ? client.assignedDietitians
+              .map((id: unknown) => normalizeObjectId(id))
+              .filter((id: string | null): id is string => !!id)
+              .map((id: string) => hydratedUsersMap.get(id))
+              .filter(Boolean)
+            : [];
+
+          const assignedHealthCounselors = Array.isArray(client.assignedHealthCounselors)
+            ? client.assignedHealthCounselors
+              .map((id: unknown) => normalizeObjectId(id))
+              .filter((id: string | null): id is string => !!id)
+              .map((id: string) => hydratedUsersMap.get(id))
+              .filter(Boolean)
+            : [];
+
+          const createdByUserId = normalizeObjectId(client?.createdBy?.userId);
+
+          return {
+            ...client,
+            assignedDietitian: assignedDietitianId ? hydratedUsersMap.get(assignedDietitianId) || null : null,
+            assignedDietitians,
+            assignedHealthCounselor: assignedHealthCounselorId ? hydratedUsersMap.get(assignedHealthCounselorId) || null : null,
+            assignedHealthCounselors,
+            createdBy: client?.createdBy
+              ? {
+                ...client.createdBy,
+                userId: createdByUserId ? hydratedUsersMap.get(createdByUserId) || null : null
+              }
+              : client?.createdBy
+          };
+        });
 
         console.log('[Admin Clients] Query:', JSON.stringify(query), 'Total found:', total, 'Page:', page, 'Limit:', limit);
         return { clients, total };

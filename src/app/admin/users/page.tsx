@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { formatDateIST, formatDateTimeIST } from '@/lib/utils/formatDateIST';
@@ -124,9 +124,18 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [dietitianFilter, setDietitianFilter] = useState<string>("all");
+  const [healthCounselorFilter, setHealthCounselorFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Dietitians and health counselors lists for filter dropdowns
+  const [dietitiansList, setDietitiansList] = useState<{ _id: string; firstName: string; lastName: string }[]>([]);
+  const [healthCounselorsList, setHealthCounselorsList] = useState<{ _id: string; firstName: string; lastName: string }[]>([]);
 
   // Pagination and counts
   const [page, setPage] = useState(1);
@@ -175,7 +184,7 @@ export default function AdminUsersPage() {
     expectedEndDate: "",
   });
 
-  const filtered = useMemo(() => users, [users]);
+  const filtered = users;
 
   async function fetchUsers() {
     try {
@@ -186,6 +195,11 @@ export default function AdminUsersPage() {
       params.set('page', String(page));
       if (search.trim()) params.set('search', search.trim());
       if (roleFilter !== 'all') params.set('role', roleFilter);
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      if (dietitianFilter !== 'all') params.set('dietitianId', dietitianFilter);
+      if (healthCounselorFilter !== 'all') params.set('healthCounselorId', healthCounselorFilter);
       const res = await fetch(`/api/users?${params.toString()}`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -207,7 +221,30 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [page, search, roleFilter]);
+  }, [page, search, roleFilter, statusFilter, dateFrom, dateTo, dietitianFilter, healthCounselorFilter]);
+
+  // Fetch dietitians and health counselors for filter dropdowns
+  useEffect(() => {
+    async function fetchFilterOptions() {
+      try {
+        const [dtRes, hcRes] = await Promise.all([
+          fetch('/api/admin/dietitians'),
+          fetch('/api/admin/health-counselors')
+        ]);
+        if (dtRes.ok) {
+          const dtData = await dtRes.json();
+          setDietitiansList((dtData.dietitians || []).map((d: any) => ({ _id: d._id, firstName: d.firstName, lastName: d.lastName })));
+        }
+        if (hcRes.ok) {
+          const hcData = await hcRes.json();
+          setHealthCounselorsList((hcData.healthCounselors || []).map((hc: any) => ({ _id: hc._id, firstName: hc.firstName, lastName: hc.lastName })));
+        }
+      } catch (e) {
+        console.error('Error fetching filter options:', e);
+      }
+    }
+    fetchFilterOptions();
+  }, []);
 
 
 
@@ -518,25 +555,108 @@ export default function AdminUsersPage() {
       <div className="space-y-6 p-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Manage Users</h1>
-
-
-          <div className="flex gap-2">
-            <Input placeholder="Search users..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
-            <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Filter by role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="admin">Admins</SelectItem>
-                <SelectItem value="dietitian">Dietitians</SelectItem>
-                <SelectItem value="health_counselor">Health Counselors</SelectItem>
-                <SelectItem value="client">Clients</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={openCreate}>New User</Button>
-          </div>
+          <Button onClick={openCreate}>New User</Button>
         </div>
+
+        {/* Filters */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Search */}
+              <Input placeholder="Search users..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+
+              {/* Role Filter */}
+              <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setPage(1); }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Roles</SelectItem>
+                  <SelectItem value="admin">Admins</SelectItem>
+                  <SelectItem value="dietitian">Dietitians</SelectItem>
+                  <SelectItem value="health_counselor">Health Counselors</SelectItem>
+                  <SelectItem value="client">Clients</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Status Filter */}
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="lead">Lead</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Primary Dietitian Filter */}
+              <Select value={dietitianFilter} onValueChange={(v) => { setDietitianFilter(v); setPage(1); }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Primary Dietitian" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Dietitians</SelectItem>
+                  {dietitiansList.map((d) => (
+                    <SelectItem key={d._id} value={d._id}>
+                      {d.firstName} {d.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Primary Health Counselor Filter */}
+              <Select value={healthCounselorFilter} onValueChange={(v) => { setHealthCounselorFilter(v); setPage(1); }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Primary Health Counselor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Health Counselors</SelectItem>
+                  {healthCounselorsList.map((hc) => (
+                    <SelectItem key={hc._id} value={hc._id}>
+                      {hc.firstName} {hc.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Date From */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Created From</label>
+                <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+              </div>
+
+              {/* Date To */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Created To</label>
+                <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+              </div>
+
+              {/* Clear Filters */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-end"
+                onClick={() => {
+                  setSearch("");
+                  setRoleFilter("all");
+                  setStatusFilter("all");
+                  setDateFrom("");
+                  setDateTo("");
+                  setDietitianFilter("all");
+                  setHealthCounselorFilter("all");
+                  setPage(1);
+                }}
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Clear Filters
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">

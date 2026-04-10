@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -145,6 +145,10 @@ export default function AdminAllClientsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterAssigned, setFilterAssigned] = useState('all');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterDietitianId, setFilterDietitianId] = useState('all');
+  const [filterHealthCounselorId, setFilterHealthCounselorId] = useState('all');
   const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0 });
   const [isSSEConnected, setIsSSEConnected] = useState(false);
 
@@ -198,6 +202,10 @@ export default function AdminAllClientsPage() {
       if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (filterStatus !== 'all') params.append('status', filterStatus);
       if (filterAssigned !== 'all') params.append('assigned', filterAssigned);
+      if (filterDateFrom) params.append('dateFrom', filterDateFrom);
+      if (filterDateTo) params.append('dateTo', filterDateTo);
+      if (filterDietitianId !== 'all') params.append('dietitianId', filterDietitianId);
+      if (filterHealthCounselorId !== 'all') params.append('healthCounselorId', filterHealthCounselorId);
       params.append('page', resetPage ? '1' : String(currentPage));
       params.append('limit', String(pageSize));
 
@@ -225,7 +233,7 @@ export default function AdminAllClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filterStatus, filterAssigned, currentPage, pageSize]);
+  }, [debouncedSearchTerm, filterStatus, filterAssigned, filterDateFrom, filterDateTo, filterDietitianId, filterHealthCounselorId, currentPage, pageSize]);
 
   // Initial load
   useEffect(() => {
@@ -265,7 +273,7 @@ export default function AdminAllClientsPage() {
     if (status === 'authenticated') {
       setCurrentPage(1);
     }
-  }, [filterStatus, filterAssigned, status]);
+  }, [filterStatus, filterAssigned, filterDateFrom, filterDateTo, filterDietitianId, filterHealthCounselorId, status]);
 
   const fetchDietitians = async () => {
     try {
@@ -699,7 +707,7 @@ export default function AdminAllClientsPage() {
         {/* Filters */}
         <Card>
           <CardContent className="p-4 sm:p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Search */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -735,6 +743,68 @@ export default function AdminAllClientsPage() {
                   <SelectItem value="false">Unassigned Only</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Primary Dietitian Filter */}
+              <Select value={filterDietitianId} onValueChange={setFilterDietitianId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Primary Dietitian" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Dietitians</SelectItem>
+                  {dietitians.map((d) => (
+                    <SelectItem key={d._id} value={d._id}>
+                      {d.firstName} {d.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Primary Health Counselor Filter */}
+              <Select value={filterHealthCounselorId} onValueChange={setFilterHealthCounselorId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Primary Health Counselor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Health Counselors</SelectItem>
+                  {healthCounselors.map((hc) => (
+                    <SelectItem key={hc._id} value={hc._id}>
+                      {hc.firstName} {hc.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Date From */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Joined From</label>
+                <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} />
+              </div>
+
+              {/* Date To */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Joined To</label>
+                <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} />
+              </div>
+
+              {/* Clear Filters */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-end"
+                onClick={() => {
+                  setSearchTerm('');
+                  setFilterStatus('all');
+                  setFilterAssigned('all');
+                  setFilterDateFrom('');
+                  setFilterDateTo('');
+                  setFilterDietitianId('all');
+                  setFilterHealthCounselorId('all');
+                  setCurrentPage(1);
+                }}
+              >
+                <XCircle className="h-4 w-4 mr-1" />
+                Clear Filters
+              </Button>
             </div>
           </CardContent>
         </Card>

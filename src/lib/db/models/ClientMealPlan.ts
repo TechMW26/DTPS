@@ -49,6 +49,15 @@ export interface IClientMealPlan extends Document {
   // Purchase tracking (for shared freeze days across plan phases)
   purchaseId?: mongoose.Types.ObjectId;
 
+  // Phase tracking (for payment-linked phase tagging)
+  phaseNumber?: number;  // 1, 2, 3, etc.
+  phaseTag?: string;     // PHASE-1, PHASE-2, PHASE-3, etc.
+  previousPhaseId?: mongoose.Types.ObjectId;  // Links to prior phase meal plan
+
+  // Extension tracking (when creating new plan from extend)
+  isExtendedPlan?: boolean;  // true if this plan was created from extend
+  extendedFromPlanId?: mongoose.Types.ObjectId;  // Original plan this was extended from
+
   // Plan details
   name: string;
   startDate: Date;
@@ -190,8 +199,36 @@ const ClientMealPlanSchema = new Schema({
   // Purchase tracking (for shared freeze days across plan phases)
   purchaseId: {
     type: Schema.Types.ObjectId,
-    ref: 'ClientPurchase',
+    ref: 'UnifiedPayment',
     required: false
+  },
+
+  // Phase tracking (for payment-linked phase tagging)
+  phaseNumber: {
+    type: Number,
+    min: 1,
+    required: false
+  },
+  phaseTag: {
+    type: String,
+    trim: true,
+    required: false  // e.g., PHASE-1, PHASE-2
+  },
+  previousPhaseId: {
+    type: Schema.Types.ObjectId,
+    ref: 'ClientMealPlan',
+    required: false  // Links to prior phase meal plan
+  },
+
+  // Extension tracking (when creating new plan from extend)
+  isExtendedPlan: {
+    type: Boolean,
+    default: false
+  },
+  extendedFromPlanId: {
+    type: Schema.Types.ObjectId,
+    ref: 'ClientMealPlan',
+    required: false  // Original plan this was extended from
   },
 
   name: {
@@ -349,6 +386,8 @@ ClientMealPlanSchema.index({ dietitianId: 1, status: 1 });
 ClientMealPlanSchema.index({ startDate: 1, endDate: 1 });
 ClientMealPlanSchema.index({ 'progress.date': 1 });
 ClientMealPlanSchema.index({ 'mealCompletions.date': 1 });
+ClientMealPlanSchema.index({ clientId: 1, phaseNumber: 1 });  // Phase tracking index
+ClientMealPlanSchema.index({ purchaseId: 1 });  // Payment-linked index
 
 // Virtual for calculated duration (fallback if duration field is not set)
 ClientMealPlanSchema.virtual('calculatedDuration').get(function () {

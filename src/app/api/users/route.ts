@@ -11,6 +11,15 @@ import { computeClientStatus } from '@/lib/status/computeClientStatus';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { validateOptionalEmail, validatePhoneNumber } from '@/lib/validations/contact';
+import { Types } from 'mongoose';
+
+// Helper function to validate if a string is a valid ObjectId
+function isValidObjectId(id: any): boolean {
+  if (!id) return false;
+  if (typeof id === 'object' && id instanceof Types.ObjectId) return true;
+  if (typeof id !== 'string') return false;
+  return Types.ObjectId.isValid(id) && String(new Types.ObjectId(id)) === id;
+}
 
 // Helper function to recompute client statuses for a list of clients
 async function recomputeClientStatuses(clients: any[]): Promise<any[]> {
@@ -86,23 +95,41 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const role = searchParams.get('role');
     const search = searchParams.get('search');
+    const statusFilter = searchParams.get('status'); // active, inactive, lead, suspended
+    const dateFrom = searchParams.get('dateFrom'); // ISO date string
+    const dateTo = searchParams.get('dateTo'); // ISO date string
+    const dietitianId = searchParams.get('dietitianId'); // primary dietitian filter
+    const healthCounselorId = searchParams.get('healthCounselorId'); // primary HC filter
     const limit = parseInt(searchParams.get('limit') || '50');
     const page = parseInt(searchParams.get('page') || '1');
     const viewAll = searchParams.get('viewAll') === 'true';
 
     let query: any = {};
 
+    const sessionUserId = session.user.id;
+    const normalizedSessionUserId = isValidObjectId(sessionUserId)
+      ? new Types.ObjectId(String(sessionUserId))
+      : null;
+
     // Role-based access control
     if (session.user.role === UserRole.DIETITIAN) {
+      if (!normalizedSessionUserId) {
+        return NextResponse.json({ error: 'Invalid user id in session' }, { status: 400 });
+      }
+
       // Dietitians can see only their assigned clients (including from array)
       query = {
         role: UserRole.CLIENT,
         $or: [
-          { assignedDietitian: session.user.id },
-          { assignedDietitians: session.user.id }
+          { assignedDietitian: normalizedSessionUserId },
+          { assignedDietitians: normalizedSessionUserId }
         ]
       };
     } else if (session.user.role === UserRole.HEALTH_COUNSELOR) {
+      if (!normalizedSessionUserId) {
+        return NextResponse.json({ error: 'Invalid user id in session' }, { status: 400 });
+      }
+
       // Health Counselors can see all clients when role=client is passed
       if (role === 'client') {
         query = { role: UserRole.CLIENT };
@@ -111,20 +138,24 @@ export async function GET(request: NextRequest) {
         query = {
           role: UserRole.CLIENT,
           $or: [
-            { assignedDietitian: session.user.id },
-            { assignedDietitians: session.user.id }
+            { assignedDietitian: normalizedSessionUserId },
+            { assignedDietitians: normalizedSessionUserId }
           ]
         };
       }
     } else if (session.user.role === UserRole.CLIENT) {
+      if (!normalizedSessionUserId) {
+        return NextResponse.json({ error: 'Invalid user id in session' }, { status: 400 });
+      }
+
       // Clients can see only their assigned dietitian
-      const currentUserRaw = await User.findById(session.user.id).select('assignedDietitian').lean();
+      const currentUserRaw = await User.findById(normalizedSessionUserId).select('assignedDietitian').lean();
       const currentUser = currentUserRaw as { _id: unknown; assignedDietitian?: unknown } | null;
 
-      if (currentUser?.assignedDietitian) {
+      if (currentUser?.assignedDietitian && isValidObjectId(currentUser.assignedDietitian)) {
         // Show only assigned dietitian
         query = {
-          _id: currentUser.assignedDietitian
+          _id: new Types.ObjectId(String(currentUser.assignedDietitian))
         };
       } else {
         // If no assigned dietitian, show all dietitians and health counselors
@@ -141,29 +172,111 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Admin-level filters: status, date range, assigned dietitian, assigned health counselor
+    if (session.user.role === UserRole.ADMIN) {
+      // Status filter (supports clientStatus for clients, account status for staff)
+      if (statusFilter) {
+        if (!query.$and) query.$and = [];
+        query.$and.push({
+          $or: [
+            { clientStatus: statusFilter },
+            { status: statusFilter }
+          ]
+        });
+      }
+
+      // Date range filter on createdAt
+      if (dateFrom || dateTo) {
+        const dateCondition: any = {};
+        if (dateFrom) dateCondition.$gte = new Date(dateFrom);
+        if (dateTo) {
+          const toDate = new Date(dateTo);
+          toDate.setHours(23, 59, 59, 999);
+          dateCondition.$lte = toDate;
+        }
+        if (!query.$and) query.$and = [];
+        query.$and.push({ createdAt: dateCondition });
+      }
+
+      // Primary dietitian filter
+      if (dietitianId) {
+        if (!isValidObjectId(dietitianId)) {
+          return NextResponse.json({ error: 'Invalid dietitianId' }, { status: 400 });
+        }
+        if (!query.$and) query.$and = [];
+        query.$and.push({ assignedDietitian: new Types.ObjectId(dietitianId) });
+      }
+
+      // Primary health counselor filter
+      if (healthCounselorId) {
+        if (!isValidObjectId(healthCounselorId)) {
+          return NextResponse.json({ error: 'Invalid healthCounselorId' }, { status: 400 });
+        }
+        if (!query.$and) query.$and = [];
+        query.$and.push({ assignedHealthCounselor: new Types.ObjectId(healthCounselorId) });
+      }
+    }
+
     // Search functionality
-    if (search) {
+    if (search && search.trim()) {
+      // Escape special regex characters to avoid regex errors
+      const normalizedSearch = search.trim();
+      const escapedSearch = normalizedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const searchCondition = {
         $or: [
-          { firstName: { $regex: search, $options: 'i' } },
-          { lastName: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } },
-          { phone: { $regex: search, $options: 'i' } },
-          { clientId: { $regex: search, $options: 'i' } }
+          { firstName: { $regex: escapedSearch, $options: 'i' } },
+          { lastName: { $regex: escapedSearch, $options: 'i' } },
+          { email: { $regex: escapedSearch, $options: 'i' } },
+          { phone: { $regex: escapedSearch, $options: 'i' } },
+          { clientId: { $regex: escapedSearch, $options: 'i' } }
         ]
       };
 
-      if (query.$or) {
-        // Preserve assignment $or by wrapping both in $and
-        query = {
-          ...query,
-          $or: undefined,
+      // Phone-friendly search (ignores formatting characters)
+      const digitsOnly = normalizedSearch.replace(/\D/g, '');
+      if (digitsOnly.length >= 6) {
+        const phonePatterns = Array.from(new Set([
+          digitsOnly,
+          `+91${digitsOnly}`,
+          `91${digitsOnly}`
+        ]));
+        for (const pattern of phonePatterns) {
+          searchCondition.$or.push({ phone: { $regex: pattern, $options: 'i' } });
+        }
+      }
+
+      // Also try full name search (first + last combined)
+      const nameParts = normalizedSearch.split(/\s+/);
+      if (nameParts.length >= 2) {
+        const firstNameRegex = nameParts[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const lastNameRegex = nameParts.slice(1).join(' ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        searchCondition.$or.push({
           $and: [
-            { $or: query.$or },
-            searchCondition
+            { firstName: { $regex: firstNameRegex, $options: 'i' } },
+            { lastName: { $regex: lastNameRegex, $options: 'i' } }
           ]
-        };
+        });
+
+        // Also support reversed input: "Last First"
+        searchCondition.$or.push({
+          $and: [
+            { firstName: { $regex: lastNameRegex, $options: 'i' } },
+            { lastName: { $regex: firstNameRegex, $options: 'i' } }
+          ]
+        });
+      }
+
+      if (query.$or) {
+        // If query has $or (from role-based access), preserve it and add search to $and
+        if (!query.$and) query.$and = [];
+        query.$and.push({ $or: query.$or });
+        query.$and.push(searchCondition);
+        delete query.$or;
+      } else if (query.$and) {
+        // If query already has $and (from admin filters), add search condition to it
+        query.$and.push(searchCondition);
       } else {
+        // Otherwise, merge search with existing query conditions
         query = { ...query, ...searchCondition };
       }
     }
@@ -173,21 +286,88 @@ export async function GET(request: NextRequest) {
     const selectFields = session.user.role === UserRole.ADMIN ? '+clientStatus' : '-password +clientStatus';
 
     // Generate cache key based on role and query params
-    const cacheKey = `users:${session.user.role}:${role || 'all'}:${search || ''}:${page}:${limit}`;
+    const cacheKey = `users:${session.user.role}:${role || 'all'}:${search || ''}:${statusFilter || ''}:${dateFrom || ''}:${dateTo || ''}:${dietitianId || ''}:${healthCounselorId || ''}:${page}:${limit}`;
 
     const { users, total, adminsCount, dietitiansCount, healthCounselorsCount, clientsCount } = await withCache(
       cacheKey,
       async () => {
-        const users = await User.find(query)
+        const rawUsers = await User.find(query)
           .select(selectFields)
-          .populate('assignedDietitian', 'firstName lastName')
-          .populate('assignedDietitians', 'firstName lastName')
-          .populate('assignedHealthCounselor', 'firstName lastName')
-          .populate('assignedHealthCounselors', 'firstName lastName')
           .sort({ createdAt: -1 })
           .limit(limit)
           .skip((page - 1) * limit)
           .lean();
+
+        const relatedUserIds = new Set<string>();
+
+        for (const user of rawUsers as any[]) {
+          const assignedDietitianId = isValidObjectId(user?.assignedDietitian)
+            ? String(new Types.ObjectId(String(user.assignedDietitian)))
+            : null;
+          if (assignedDietitianId) relatedUserIds.add(assignedDietitianId);
+
+          const assignedHealthCounselorId = isValidObjectId(user?.assignedHealthCounselor)
+            ? String(new Types.ObjectId(String(user.assignedHealthCounselor)))
+            : null;
+          if (assignedHealthCounselorId) relatedUserIds.add(assignedHealthCounselorId);
+
+          if (Array.isArray(user?.assignedDietitians)) {
+            for (const id of user.assignedDietitians) {
+              if (isValidObjectId(id)) {
+                relatedUserIds.add(String(new Types.ObjectId(String(id))));
+              }
+            }
+          }
+
+          if (Array.isArray(user?.assignedHealthCounselors)) {
+            for (const id of user.assignedHealthCounselors) {
+              if (isValidObjectId(id)) {
+                relatedUserIds.add(String(new Types.ObjectId(String(id))));
+              }
+            }
+          }
+        }
+
+        const relatedUsers = relatedUserIds.size > 0
+          ? await User.find({ _id: { $in: Array.from(relatedUserIds).map((id) => new Types.ObjectId(id)) } })
+            .select('firstName lastName')
+            .lean()
+          : [];
+
+        const relatedUsersMap = new Map((relatedUsers as any[]).map((u) => [u._id.toString(), u]));
+
+        const users = (rawUsers as any[]).map((user: any) => {
+          const assignedDietitianId = isValidObjectId(user?.assignedDietitian)
+            ? String(new Types.ObjectId(String(user.assignedDietitian)))
+            : null;
+          const assignedHealthCounselorId = isValidObjectId(user?.assignedHealthCounselor)
+            ? String(new Types.ObjectId(String(user.assignedHealthCounselor)))
+            : null;
+
+          const assignedDietitians = Array.isArray(user?.assignedDietitians)
+            ? user.assignedDietitians
+              .filter((id: unknown) => isValidObjectId(id))
+              .map((id: unknown) => String(new Types.ObjectId(String(id))))
+              .map((id: string) => relatedUsersMap.get(id))
+              .filter(Boolean)
+            : [];
+
+          const assignedHealthCounselors = Array.isArray(user?.assignedHealthCounselors)
+            ? user.assignedHealthCounselors
+              .filter((id: unknown) => isValidObjectId(id))
+              .map((id: unknown) => String(new Types.ObjectId(String(id))))
+              .map((id: string) => relatedUsersMap.get(id))
+              .filter(Boolean)
+            : [];
+
+          return {
+            ...user,
+            assignedDietitian: assignedDietitianId ? relatedUsersMap.get(assignedDietitianId) || null : null,
+            assignedDietitians,
+            assignedHealthCounselor: assignedHealthCounselorId ? relatedUsersMap.get(assignedHealthCounselorId) || null : null,
+            assignedHealthCounselors
+          };
+        });
 
         const total = await User.countDocuments(query);
 

@@ -61,13 +61,8 @@ async function getExtendDaysFromPurchase(purchaseId: string | null, durationDays
     return 0;
 }
 
-// Helper function to get total extend days used from meal plan
-function getExtendDaysUsed(mealPlan: any): number {
-    const extensionHistory = (mealPlan.customizations as any)?.extensionHistory || [];
-    return extensionHistory.reduce((total: number, ext: any) => total + (ext.extendedDays || 0), 0);
-}
-
-// POST - Extend meal plan by specified days
+// POST - Extend meal plan by creating a NEW meal plan for the extra days
+// Does NOT modify the original meal plan's end date
 export async function POST(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
@@ -126,8 +121,19 @@ export async function POST(
             );
         }
 
-        // Track how many days have already been extended
-        const alreadyExtended = getExtendDaysUsed(mealPlan);
+        // Track how many days have already been extended (across all extended plans for this payment)
+        // Count extension history from ALL plans linked to this payment
+        let alreadyExtended = 0;
+        if (purchaseId) {
+            const allLinkedPlans = await ClientMealPlan.find({
+                purchaseId: purchaseId,
+                isExtendedPlan: true
+            }).lean();
+            alreadyExtended = allLinkedPlans.reduce((total: number, plan: any) => {
+                return total + (plan.durationDays || 0);
+            }, 0);
+        }
+
         const remainingExtendDays = Math.max(0, maxExtendDays - alreadyExtended);
 
         if (remainingExtendDays <= 0) {
@@ -148,33 +154,54 @@ export async function POST(
             );
         }
 
-        // Calculate new end date
-        const currentEndDate = new Date(mealPlan.endDate);
-        const newEndDate = addDays(currentEndDate, extendDays);
+        // ====== Extend the CURRENT meal plan in-place ======
+        const originalEndDate = new Date(mealPlan.endDate);
+        const newEndDate = addDays(originalEndDate, extendDays);
+        const originalDuration = mealPlan.duration || Math.ceil((originalEndDate.getTime() - new Date(mealPlan.startDate).getTime()) / (1000 * 60 * 60 * 24));
+        const newDuration = originalDuration + extendDays;
 
-        // Update the meal plan end date
+        // Update the meal plan's endDate and duration
         mealPlan.endDate = newEndDate;
-
-        // Track extension in customizations
+        mealPlan.duration = newDuration;
         if (!mealPlan.customizations) {
             mealPlan.customizations = {};
         }
-        const previousExtensions = (mealPlan.customizations as any).extensionHistory || [];
-        (mealPlan.customizations as any).extensionHistory = [
-            ...previousExtensions,
-            {
-                extendedDays: extendDays,
-                previousEndDate: currentEndDate,
-                newEndDate: newEndDate,
-                extendedAt: new Date(),
-                extendedBy: session.user.id
-            }
-        ];
-
+        (mealPlan.customizations as any).lastExtension = {
+            extendedDays: extendDays,
+            previousEndDate: originalEndDate,
+            extendedAt: new Date(),
+            extendedBy: session.user.id
+        };
         await mealPlan.save();
+
+        // ====== Update the linked purchase so totalPurchasedDays / expectedEndDate stay in sync ======
+        if (purchaseId) {
+            const purchaseUpdate: any = {
+                $inc: { durationDays: extendDays }
+            };
+
+            // Also extend expectedEndDate if it exists
+            const purchase: any = await UnifiedPayment.findById(purchaseId).lean();
+            if (purchase) {
+                if (purchase.expectedEndDate) {
+                    purchaseUpdate.$set = {
+                        ...(purchaseUpdate.$set || {}),
+                        expectedEndDate: addDays(new Date(purchase.expectedEndDate), extendDays)
+                    };
+                }
+                if (purchase.endDate) {
+                    purchaseUpdate.$set = {
+                        ...(purchaseUpdate.$set || {}),
+                        endDate: addDays(new Date(purchase.endDate), extendDays)
+                    };
+                }
+            }
+            await UnifiedPayment.updateOne({ _id: purchaseId }, purchaseUpdate);
+        }
 
         // Clear caches
         clearCacheByTag('client_meal_plans');
+        clearCacheByTag('client_purchases');
         clearCacheByTag(`client:${mealPlan.clientId}`);
 
         // Log history
@@ -182,37 +209,46 @@ export async function POST(
             userId: mealPlan.clientId.toString(),
             action: 'update',
             category: 'diet',
-            description: `Meal plan "${mealPlan.name}" extended by ${extendDays} days`,
+            description: `Extended meal plan "${mealPlan.name}" by ${extendDays} days (new end: ${format(newEndDate, 'yyyy-MM-dd')})`,
             performedById: session.user.id,
             metadata: {
                 mealPlanId: id,
                 extendDays,
-                previousEndDate: format(currentEndDate, 'yyyy-MM-dd'),
+                previousEndDate: format(originalEndDate, 'yyyy-MM-dd'),
                 newEndDate: format(newEndDate, 'yyyy-MM-dd'),
+                newDuration,
                 remainingExtendDays: remainingExtendDays - extendDays
             }
         });
 
         return NextResponse.json({
             success: true,
-            message: `Plan extended by ${extendDays} days`,
-            mealPlan: {
+            message: `Extended meal plan by ${extendDays} days. New end date: ${format(newEndDate, 'MMM d, yyyy')}`,
+            plan: {
                 _id: mealPlan._id,
                 name: mealPlan.name,
                 startDate: mealPlan.startDate,
                 endDate: newEndDate,
+                duration: newDuration,
                 status: mealPlan.status
             },
             extendInfo: {
                 maxExtendDays,
                 usedExtendDays: alreadyExtended + extendDays,
-                remainingExtendDays: remainingExtendDays - extendDays
+                remainingExtendDays: remainingExtendDays - extendDays,
+                previousEndDate: originalEndDate,
+                newEndDate
             }
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error extending meal plan:', error);
+        console.error('Error details:', error?.message, error?.errors);
         return NextResponse.json(
-            { success: false, error: 'Failed to extend meal plan' },
+            {
+                success: false,
+                error: error?.message || 'Failed to extend meal plan',
+                details: error?.errors ? Object.keys(error.errors).map(k => `${k}: ${error.errors[k].message}`).join(', ') : undefined
+            },
             { status: 500 }
         );
     }
@@ -253,8 +289,18 @@ export async function GET(
         const purchaseId = mealPlan.purchaseId?.toString() || null;
         const maxExtendDays = await getExtendDaysFromPurchase(purchaseId, durationDays);
 
-        // Get used extend days from meal plan extension history
-        const usedExtendDays = getExtendDaysUsed(mealPlan);
+        // Calculate used extend days from all extended plans linked to this payment
+        let usedExtendDays = 0;
+        if (purchaseId) {
+            const extendedPlans = await ClientMealPlan.find({
+                purchaseId: purchaseId,
+                isExtendedPlan: true
+            }).lean();
+            usedExtendDays = extendedPlans.reduce((total: number, plan: any) => {
+                return total + (plan.durationDays || 0);
+            }, 0);
+        }
+
         const remainingExtendDays = Math.max(0, maxExtendDays - usedExtendDays);
 
         // Get plan name if available
@@ -277,7 +323,10 @@ export async function GET(
             remainingExtendDays,
             currentEndDate: mealPlan.endDate,
             planStatus: mealPlan.status,
-            servicePlanName
+            servicePlanName,
+            // Additional info for UI
+            isExtendedPlan: mealPlan.isExtendedPlan || false,
+            willCreateNewPlan: true // Inform UI that extend creates a new plan
         });
     } catch (error) {
         console.error('Error getting extend info:', error);

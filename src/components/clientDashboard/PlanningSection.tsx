@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Calendar, Plus, Edit, Trash2, ArrowLeft, ArrowRight, Utensils, Dumbbell, Eye, FileText, Image as ImageIcon, Video, Search, Loader2, Check, X, AlertTriangle, CreditCard, Clock, RefreshCw, MoreVertical, Repeat2, Pause, Play, Zap, Snowflake, Save } from 'lucide-react';
+import { Calendar, Plus, Edit, Trash2, ArrowLeft, ArrowRight, Utensils, Dumbbell, Eye, FileText, Image as ImageIcon, Video, Search, Loader2, Check, X, AlertTriangle, CreditCard, Clock, RefreshCw, MoreVertical, Repeat2, Pause, Play, Zap, Snowflake, Save, CalendarPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
@@ -1520,166 +1520,6 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     return planEndDate < today;
   };
 
-  // Extend plan with cascading date adjustments for ALL meal plans
-  const handleExtendPlan = async (plan: any, newStartDate?: string, newEndDate?: string) => {
-    if (!newStartDate || !newEndDate) {
-      toast.error('Please select dates');
-      return;
-    }
-
-    // Validate date range on frontend (using parseDate for consistent handling)
-    if (parseDate(newStartDate) > parseDate(newEndDate)) {
-      toast.error('Start date cannot be after end date');
-      return;
-    }
-
-    try {
-      // Validate date range on frontend (using parseDate for consistent handling)
-      if (parseDate(newStartDate) > parseDate(newEndDate)) {
-        toast.error('Start date cannot be after end date');
-        return;
-      }
-
-      // Calculate original duration - ALWAYS PRESERVE THIS
-      const originalDuration = Math.ceil(
-        (new Date(plan.endDate).getTime() - new Date(plan.startDate).getTime()) / (1000 * 60 * 60 * 24)
-      ) + 1;
-
-      let finalStartDate = newStartDate;
-      let finalEndDate: string;
-
-      // Always calculate end date based on new start date and ORIGINAL duration
-      // This ensures duration NEVER changes
-      finalEndDate = format(addDays(parseDate(newStartDate), Math.max(0, originalDuration - 1)), 'yyyy-MM-dd');
-
-      // Final validation - make sure start is not after end
-      const finalStart = parseDate(finalStartDate);
-      const finalEnd = parseDate(finalEndDate);
-      if (finalStart > finalEnd) {
-        toast.error('Invalid date range calculated. Start date cannot be after end date.');
-        return;
-      }
-
-      // Update current plan
-      const payload = {
-        startDate: finalStartDate,
-        endDate: finalEndDate
-      };
-
-      const res = await fetch(`/api/client-meal-plans/${plan._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('Failed to extend plan:', res.status, errorText);
-        toast.error('Failed to extend plan. Server error.');
-        return;
-      }
-      const data = await res.json();
-
-      if (data.success) {
-        toast.success('Plan dates extended successfully!');
-
-        // AUTO-ADJUST ALL MEAL PLANS IN THE CHAIN (BOTH BEFORE AND AFTER)
-        try {
-          const allPlansRes = await fetch(`/api/client-meal-plans?clientId=${client._id}`);
-          if (!allPlansRes.ok) {
-            console.error('Failed to fetch all plans:', allPlansRes.status);
-            return;
-          }
-          const allPlansDataResponse = await allPlansRes.json();
-
-          if (allPlansDataResponse.success && allPlansDataResponse.mealPlans) {
-            // Sort all plans by start date
-            const sortedPlans = allPlansDataResponse.mealPlans.sort((a: any, b: any) =>
-              new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-            );
-
-            const currentPlanIndex = sortedPlans.findIndex((p: any) => p._id === plan._id);
-
-            if (currentPlanIndex !== -1) {
-              // ADJUST ALL PLANS BEFORE THE CURRENT PLAN (BACKWARD CASCADE)
-              for (let i = currentPlanIndex - 1; i >= 0; i--) {
-                const planToAdjust = sortedPlans[i];
-                const nextPlan = sortedPlans[i + 1];
-
-                // Calculate this plan's original duration
-                const planOriginalDuration = Math.ceil(
-                  (new Date(planToAdjust.endDate).getTime() - new Date(planToAdjust.startDate).getTime()) / (1000 * 60 * 60 * 24)
-                ) + 1;
-
-                // This plan ends one day before the next plan starts
-                const newEndDate_adjusted = format(addDays(new Date(nextPlan.startDate), -1), 'yyyy-MM-dd');
-
-                // This plan's start = end - duration + 1
-                const newStartDate_adjusted = format(addDays(new Date(newEndDate_adjusted), -(planOriginalDuration - 1)), 'yyyy-MM-dd');
-
-                // Update this plan in the chain
-                await fetch(`/api/client-meal-plans/${planToAdjust._id}`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    startDate: newStartDate_adjusted,
-                    endDate: newEndDate_adjusted
-                  })
-                });
-
-                // Update the reference for next iteration
-                sortedPlans[i].startDate = newStartDate_adjusted;
-                sortedPlans[i].endDate = newEndDate_adjusted;
-              }
-
-              // ADJUST ALL PLANS AFTER THE CURRENT PLAN (FORWARD CASCADE)
-              for (let i = currentPlanIndex + 1; i < sortedPlans.length; i++) {
-                const planToAdjust = sortedPlans[i];
-                const prevPlan = sortedPlans[i - 1];
-
-                // Calculate plan's original duration
-                const planOriginalDuration = Math.ceil(
-                  (new Date(planToAdjust.endDate).getTime() - new Date(planToAdjust.startDate).getTime()) / (1000 * 60 * 60 * 24)
-                ) + 1;
-
-                // New plan starts the day after previous plan ends
-                const newStartDate_adjusted = format(addDays(new Date(prevPlan.endDate), 1), 'yyyy-MM-dd');
-
-                // New end date = start + original duration
-                const newEndDate_adjusted = format(addDays(new Date(newStartDate_adjusted), Math.max(0, planOriginalDuration - 1)), 'yyyy-MM-dd');
-
-                // Update this plan in the chain
-                await fetch(`/api/client-meal-plans/${planToAdjust._id}`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    startDate: newStartDate_adjusted,
-                    endDate: newEndDate_adjusted
-                  })
-                });
-
-                // Update the reference for next iteration
-                sortedPlans[i].startDate = newStartDate_adjusted;
-                sortedPlans[i].endDate = newEndDate_adjusted;
-              }
-            }
-          }
-        } catch (adjustError) {
-          console.error('Error auto-adjusting meal plans:', adjustError);
-        }
-
-        // Emit event to trigger automatic refresh
-        emitDataChange(DataEventTypes.MEAL_PLAN_EXTENDED, { planId: plan._id });
-        fetchClientPlans();
-      } else {
-        toast.error(data.error || 'Failed to extend plan');
-      }
-    } catch (error) {
-      console.error('Error extending plan:', error);
-      toast.error('Failed to extend plan');
-    }
-  };
-
   // Pause/Hold plan
   const handlePausePlan = async (plan: any, pauseDays: number) => {
     try {
@@ -2556,9 +2396,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     );
   }
 
-  function ExtendPlanDialog({ plan, onExtend, showAsText = false, showAsButton = false }: { plan: any; onExtend: (plan: any, startDate: string, endDate: string) => void; showAsText?: boolean; showAsButton?: boolean }) {
+  // Extend Plan Dialog Component
+  function ExtendPlanDialog({ plan, onExtend, showAsButton = false }: { plan: any; onExtend: () => void; showAsButton?: boolean }) {
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [isFetching, setIsFetching] = useState(false);
     const [extendInfo, setExtendInfo] = useState<{
       canExtend: boolean;
       maxExtendDays: number;
@@ -2566,259 +2408,206 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       remainingExtendDays: number;
       currentEndDate: string;
       planStatus: string;
-      servicePlanName: string;
+      servicePlanName?: string;
     } | null>(null);
-    const [selectedDays, setSelectedDays] = useState(1);
+    const [error, setError] = useState<string | null>(null);
 
     // Fetch extend info when dialog opens
     const fetchExtendInfo = async () => {
-      if (!plan?._id) return;
-
-      setIsLoading(true);
+      setIsFetching(true);
+      setError(null);
       try {
         const res = await fetch(`/api/client-meal-plans/${plan._id}/extend`);
-        if (res.ok) {
-          const data = await res.json();
+        const data = await res.json();
+        if (data.success) {
           setExtendInfo(data);
-          setSelectedDays(Math.min(1, data.remainingExtendDays || 0));
         } else {
-          toast.error('Failed to fetch extend info');
+          setError(data.error || 'Failed to load extend information');
         }
-      } catch (error) {
-        console.error('Error fetching extend info:', error);
-        toast.error('Error loading extend information');
+      } catch (err) {
+        console.error('Error fetching extend info:', err);
+        setError('Failed to load extend information');
       } finally {
-        setIsLoading(false);
+        setIsFetching(false);
       }
     };
 
-    // Handle extend action
-    const handleExtend = async () => {
-      if (!plan?._id || !selectedDays || selectedDays <= 0) {
-        toast.error('Please select number of days to extend');
-        return;
+    const handleOpenChange = (open: boolean) => {
+      setIsOpen(open);
+      if (open) {
+        setExtendInfo(null);
+        setError(null);
+        fetchExtendInfo();
       }
+    };
 
-      if (extendInfo && selectedDays > extendInfo.remainingExtendDays) {
-        toast.error(`Cannot extend by more than ${extendInfo.remainingExtendDays} days`);
-        return;
-      }
+    const handleExtend = async () => {
+      if (!extendInfo || extendInfo.remainingExtendDays <= 0) return;
 
       setIsLoading(true);
       try {
         const res = await fetch(`/api/client-meal-plans/${plan._id}/extend`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ extendDays: selectedDays })
+          body: JSON.stringify({ extendDays: extendInfo.remainingExtendDays })
         });
 
         const data = await res.json();
 
-        if (res.ok && data.success) {
-          toast.success(data.message || `Plan extended by ${selectedDays} days`);
+        if (data.success) {
+          toast.success(data.message || `Plan extended by ${extendInfo.remainingExtendDays} days`);
           setIsOpen(false);
-          // Refresh plans list
-          emitDataChange(DataEventTypes.MEAL_PLAN_UPDATED, { clientId: plan.clientId });
-          // Call onExtend to refresh parent
-          if (onExtend) {
-            onExtend(plan, plan.startDate, data.mealPlan?.endDate || format(addDays(new Date(plan.endDate), selectedDays), 'yyyy-MM-dd'));
-          }
+          // Emit event to trigger automatic refresh across all components
+          emitDataChange(DataEventTypes.MEAL_PLAN_EXTENDED, { planId: plan._id });
+          // Refresh plans and payment status to sync UI
+          onExtend();
+          checkPaymentStatus();
         } else {
           toast.error(data.error || 'Failed to extend plan');
         }
-      } catch (error) {
-        console.error('Error extending plan:', error);
-        toast.error('Error extending plan');
+      } catch (err) {
+        console.error('Error extending plan:', err);
+        toast.error('Failed to extend plan');
       } finally {
         setIsLoading(false);
       }
     };
 
-    const handleOpenDialog = (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsOpen(true);
-      fetchExtendInfo();
-    };
-
     return (
-      <>
-        <Dialog open={isOpen} onOpenChange={(open) => {
-          setIsOpen(open);
-          if (open) fetchExtendInfo();
-        }}>
-          <DialogTrigger asChild>
-            {showAsText ? (
-              <span className="text-sm cursor-pointer" onClick={handleOpenDialog}>Extend</span>
-            ) : showAsButton ? (
-              <Button
-                size="sm"
-                variant="outline"
-                title="Extend plan dates"
-                className="flex items-center gap-1.5"
-                onClick={handleOpenDialog}
-              >
-                <Repeat2 className="h-4 w-4" />
-                <span className="text-xs">Extend</span>
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                title="Extend plan dates"
-                className="text-blue-600 hover:text-blue-700"
-                onClick={handleOpenDialog}
-              >
-                📅
-              </Button>
-            )}
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Repeat2 className="h-5 w-5 text-blue-600" />
-                Extend Plan Duration
-              </DialogTitle>
-              <DialogDescription>
-                Extend the end date of &quot;{plan?.name || 'Meal Plan'}&quot;
-              </DialogDescription>
-            </DialogHeader>
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+        <DialogTrigger asChild>
+          {showAsButton ? (
+            <Button
+              size="sm"
+              variant="outline"
+              title="Extend plan duration"
+              className="flex items-center gap-1.5"
+            >
+              <CalendarPlus className="h-4 w-4" />
+              <span className="text-xs">Extend</span>
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              title="Extend plan"
+              className="text-green-600 hover:text-green-700"
+            >
+              <CalendarPlus className="h-4 w-4" />
+            </Button>
+          )}
+        </DialogTrigger>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarPlus className="h-5 w-5 text-green-500" />
+              Extend Plan Duration
+            </DialogTitle>
+            <DialogDescription>
+              Add extra days to the current meal plan from the service plan.
+            </DialogDescription>
+          </DialogHeader>
 
-            {isLoading ? (
+          <div className="space-y-4 py-4">
+            {isFetching ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                <Loader2 className="h-6 w-6 animate-spin text-green-500" />
+                <span className="ml-2 text-gray-600">Loading extend information...</span>
+              </div>
+            ) : error ? (
+              <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
               </div>
             ) : extendInfo ? (
-              <div className="space-y-4">
-                {/* Plan Status */}
-                {extendInfo.planStatus !== 'active' && (
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-yellow-800">
-                      <AlertTriangle className="h-4 w-4" />
-                      <span className="text-sm font-medium">Plan must be active to extend</span>
-                    </div>
+              <>
+                {/* Service Plan Info */}
+                {extendInfo.servicePlanName && (
+                  <div className="bg-gray-50 p-3 rounded-lg border">
+                    <p className="text-xs text-gray-500">Service Plan</p>
+                    <p className="text-sm font-medium">{extendInfo.servicePlanName}</p>
                   </div>
                 )}
 
-                {/* Extend Info Card */}
-                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Service Plan</span>
-                    <span className="font-medium">{extendInfo.servicePlanName || 'N/A'}</span>
+                {/* Extend Days Summary */}
+                <div className="bg-green-50 p-4 rounded-lg border border-green-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Total Extend Days Allowed</span>
+                    <span className="font-semibold">{extendInfo.maxExtendDays} days</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Current End Date</span>
-                    <span className="font-medium">
-                      {extendInfo.currentEndDate
-                        ? format(new Date(extendInfo.currentEndDate), 'MMM d, yyyy')
-                        : 'N/A'
-                      }
+                  {extendInfo.usedExtendDays > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Already Extended</span>
+                      <span className="font-semibold text-orange-600">{extendInfo.usedExtendDays} days</span>
+                    </div>
+                  )}
+                  <div className="border-t border-green-300 pt-2 flex items-center justify-between">
+                    <span className="text-sm font-medium text-green-800">Days to Extend</span>
+                    <span className="text-lg font-bold text-green-700">{extendInfo.remainingExtendDays} days</span>
+                  </div>
+                </div>
+
+                {/* Current & New End Date Preview */}
+                <div className="bg-gray-50 p-3 rounded-lg border space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Current End Date</span>
+                    <span className="text-sm font-medium">
+                      {format(new Date(extendInfo.currentEndDate), 'MMM dd, yyyy')}
                     </span>
                   </div>
-                  <div className="h-px bg-gray-200 dark:bg-gray-700" />
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Total Extend Days Allowed</span>
-                    <span className="font-medium">{extendInfo.maxExtendDays} days</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Days Already Extended</span>
-                    <span className="font-medium">{extendInfo.usedExtendDays} days</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Remaining Extend Days</span>
-                    <span className={`font-medium ${extendInfo.remainingExtendDays > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {extendInfo.remainingExtendDays} days
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">New End Date</span>
+                    <span className="text-sm font-medium text-green-700">
+                      {format(addDays(new Date(extendInfo.currentEndDate), extendInfo.remainingExtendDays), 'MMM dd, yyyy')}
                     </span>
                   </div>
                 </div>
 
-                {/* Extend Days Selector */}
-                {extendInfo.canExtend && extendInfo.remainingExtendDays > 0 ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="extendDays" className="text-sm font-medium">
-                      Days to Extend
-                    </Label>
-                    <div className="flex items-center gap-3">
-                      <Input
-                        id="extendDays"
-                        type="number"
-                        min={1}
-                        max={extendInfo.remainingExtendDays}
-                        value={selectedDays}
-                        onChange={(e) => setSelectedDays(Math.min(
-                          Math.max(1, parseInt(e.target.value) || 1),
-                          extendInfo.remainingExtendDays
-                        ))}
-                        className="w-24"
-                      />
-                      <span className="text-sm text-gray-500">
-                        (max: {extendInfo.remainingExtendDays})
-                      </span>
-                    </div>
-                    {selectedDays > 0 && extendInfo.currentEndDate && (
-                      <p className="text-sm text-gray-500 mt-2">
-                        New end date will be: <span className="font-medium text-blue-600">
-                          {format(addDays(new Date(extendInfo.currentEndDate), selectedDays), 'MMM d, yyyy')}
-                        </span>
-                      </p>
-                    )}
+                {!extendInfo.canExtend && (
+                  <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                    <p className="text-sm text-yellow-700">
+                      ⚠️ No extend days remaining for this plan.
+                    </p>
                   </div>
+                )}
+              </>
+            ) : null}
+          </div>
+
+          {/* Actions */}
+          {extendInfo && extendInfo.canExtend && extendInfo.remainingExtendDays > 0 && (
+            <DialogFooter className="flex gap-2 sm:gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setIsOpen(false)}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={handleExtend}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Extending...
+                  </>
                 ) : (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-800">
-                      <X className="h-4 w-4" />
-                      <span className="text-sm">
-                        {extendInfo.maxExtendDays === 0
-                          ? 'Extension is not available for this plan'
-                          : 'No extend days remaining'
-                        }
-                      </span>
-                    </div>
-                  </div>
+                  <>
+                    <CalendarPlus className="h-4 w-4 mr-2" />
+                    Extend by {extendInfo.remainingExtendDays} Days
+                  </>
                 )}
-
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-3 pt-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsOpen(false)}
-                    disabled={isLoading}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleExtend}
-                    disabled={
-                      isLoading ||
-                      !extendInfo.canExtend ||
-                      extendInfo.remainingExtendDays <= 0 ||
-                      selectedDays <= 0 ||
-                      selectedDays > extendInfo.remainingExtendDays
-                    }
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Extending...
-                      </>
-                    ) : (
-                      <>
-                        <Repeat2 className="h-4 w-4 mr-2" />
-                        Extend by {selectedDays} {selectedDays === 1 ? 'Day' : 'Days'}
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                Failed to load extend information
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-      </>
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
     );
   }
 
@@ -4220,274 +4009,324 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
             </div>
           ) : clientPlans.length > 0 ? (
             <div className="space-y-4">
-              {clientPlans.map((plan: any) => (
-                <div
-                  key={plan._id}
-                  className={`border rounded-lg p-4 transition-colors ${plan.status === 'active'
-                    ? 'border-green-300 bg-green-50/50'
-                    : plan.status === 'draft'
-                      ? 'border-orange-300 bg-orange-50/50'
-                      : 'border-gray-200 hover:border-blue-300'
-                    }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {plan.name}
-                        </h3>
-                        <Badge
-                          className={
-                            plan.status === 'active'
-                              ? 'bg-green-100 text-green-800'
-                              : plan.status === 'completed'
-                                ? 'bg-blue-100 text-blue-800'
-                                : plan.status === 'paused'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : plan.status === 'draft'
-                                    ? 'bg-orange-100 text-orange-800'
-                                    : 'bg-gray-100 text-gray-800'
-                          }
-                        >
-                          {plan.status}
-                        </Badge>
-                      </div>
+              {(() => {
+                // Group meal plans by purchaseId/payment and calculate phases within each group
+                // Sort plans by createdAt ASC first to get chronological order
+                const sortedByDate = [...clientPlans].sort((a: any, b: any) =>
+                  new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                );
 
-                      {plan.templateId && (
-                        <p className="text-sm text-gray-600 mb-2">
-                          Template: {plan.templateId.name}
-                        </p>
-                      )}
+                // Create a map to track phase number per purchaseId
+                const paymentPhaseMap: Record<string, number> = {};
+                const paymentLastPlanMap: Record<string, string> = {}; // Track last plan per payment
+                const planPhaseMap: Record<string, { phase: number; paymentId: string | null; isLastPhase: boolean }> = {};
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                        <div>
-                          <span className="text-gray-500">Start Date:</span>
-                          <p className="font-medium">
-                            {format(new Date(plan.startDate), 'MMM d, yyyy')}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">End Date:</span>
-                          <p className="font-medium">
-                            {format(new Date(plan.endDate), 'MMM d, yyyy')}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Duration:</span>
-                          <p className="font-medium">
-                            {plan.duration} Days
-                            {/* {Math.ceil((new Date(plan.endDate).getTime() - new Date(plan.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1} Days */}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Goal:</span>
-                          <p className="font-medium capitalize">
-                            {plan.goals?.primaryGoal?.replace('-', ' ') || 'Not specified'}
-                          </p>
-                        </div>
-                      </div>
+                // First pass: count phases and track last plan per payment
+                sortedByDate.forEach((plan: any) => {
+                  const paymentId = plan.purchaseId?._id || plan.purchaseId || plan.paymentInfo?._id || 'no-payment';
+                  const paymentKey = String(paymentId);
 
-                      {/* Show freeze days info if any */}
-                      {plan.totalFreezeCount > 0 && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                            <Snowflake className="h-3 w-3 mr-1" />
-                            {plan.totalFreezeCount} day(s) frozen
-                          </Badge>
-                        </div>
-                      )}
+                  if (!paymentPhaseMap[paymentKey]) {
+                    paymentPhaseMap[paymentKey] = 0;
+                  }
+                  paymentPhaseMap[paymentKey]++;
+                  paymentLastPlanMap[paymentKey] = plan._id; // Keep updating - last one wins
 
-                      {/* Payment Info Section - Only show when toggled */}
-                      {plan.paymentInfo && showPaymentForPlanId === plan._id && (
-                        <div className="mt-3 p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-lg relative">
-                          {/* Close button */}
-                          <button
-                            onClick={() => setShowPaymentForPlanId(null)}
-                            className="absolute top-2 right-2 p-1 hover:bg-emerald-100 rounded-full transition-colors"
-                            title="Close payment details"
-                          >
-                            <X className="h-4 w-4 text-emerald-600" />
-                          </button>
+                  planPhaseMap[plan._id] = {
+                    phase: paymentPhaseMap[paymentKey],
+                    paymentId: paymentKey !== 'no-payment' ? paymentKey : null,
+                    isLastPhase: false // Will be set in second pass
+                  };
+                });
 
-                          <div className="flex items-center gap-2 mb-2">
-                            <CreditCard className="h-4 w-4 text-emerald-600" />
-                            <span className="text-sm font-medium text-emerald-800">Payment Details</span>
+                // Second pass: mark last phase plans
+                Object.values(paymentLastPlanMap).forEach(planId => {
+                  if (planPhaseMap[planId]) {
+                    planPhaseMap[planId].isLastPhase = true;
+                  }
+                });
+
+                // Now render in original order (most recent first)
+                return clientPlans.map((plan: any, index: number) => {
+                  const phaseInfo = planPhaseMap[plan._id];
+                  const calculatedPhase = plan.phaseTag || (phaseInfo ? `PHASE-${phaseInfo.phase}` : null);
+                  const isLastPhase = phaseInfo?.isLastPhase || false;
+
+                  return (
+                    <div
+                      key={plan._id}
+                      className={`border rounded-lg p-4 transition-colors ${plan.status === 'active'
+                        ? 'border-green-300 bg-green-50/50'
+                        : plan.status === 'draft'
+                          ? 'border-orange-300 bg-orange-50/50'
+                          : 'border-gray-200 hover:border-blue-300'
+                        }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-lg font-semibold text-gray-900">
+                              {plan.name}
+                            </h3>
                             <Badge
                               className={
-                                plan.paymentInfo.paymentStatus === 'paid'
-                                  ? 'bg-green-100 text-green-800 text-xs'
-                                  : 'bg-yellow-100 text-yellow-800 text-xs'
+                                plan.status === 'active'
+                                  ? 'bg-green-100 text-green-800'
+                                  : plan.status === 'completed'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : plan.status === 'paused'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : plan.status === 'draft'
+                                        ? 'bg-orange-100 text-orange-800'
+                                        : 'bg-gray-100 text-gray-800'
                               }
                             >
-                              {plan.paymentInfo.paymentStatus === 'paid' ? 'Paid' : plan.paymentInfo.paymentStatus}
+                              {plan.status}
                             </Badge>
+                            {/* Phase Tag Badge */}
+                            {plan.status !== 'draft' && (
+                              <Badge className="bg-purple-100 text-purple-800 border border-purple-200">
+                                {calculatedPhase}
+                              </Badge>
+                            )}
                           </div>
+
+                          {plan.templateId && (
+                            <p className="text-sm text-gray-600 mb-2">
+                              Template: {plan.templateId.name}
+                            </p>
+                          )}
+
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                             <div>
-                              <span className="text-gray-500">Plan:</span>
-                              <p className="font-medium text-gray-900">{plan.paymentInfo.planName}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Amount:</span>
-                              <p className="font-medium text-gray-900">₹{plan.paymentInfo.amount?.toLocaleString('en-IN') || '0'}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Paid On:</span>
-                              <p className="font-medium text-gray-900">
-                                {plan.paymentInfo.paidAt
-                                  ? format(new Date(plan.paymentInfo.paidAt), 'MMM d, yyyy h:mm a')
-                                  : 'N/A'}
+                              <span className="text-gray-500">Start Date:</span>
+                              <p className="font-medium">
+                                {format(new Date(plan.startDate), 'MMM d, yyyy')}
                               </p>
                             </div>
                             <div>
-                              <span className="text-gray-500">Method:</span>
-                              <p className="font-medium text-gray-900 capitalize">{plan.paymentInfo.paymentMethod || 'Online'}</p>
+                              <span className="text-gray-500">End Date:</span>
+                              <p className="font-medium">
+                                {format(new Date(plan.endDate), 'MMM d, yyyy')}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Duration:</span>
+                              <p className="font-medium">
+                                {plan.duration} Days
+                                {/* {Math.ceil((new Date(plan.endDate).getTime() - new Date(plan.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1} Days */}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Goal:</span>
+                              <p className="font-medium capitalize">
+                                {plan.goals?.primaryGoal?.replace('-', ' ') || 'Not specified'}
+                              </p>
                             </div>
                           </div>
-                          {plan.paymentInfo.transactionId && plan.paymentInfo.transactionId !== 'N/A' && (
-                            <div className="mt-2 pt-2 border-t border-emerald-200">
-                              <span className="text-xs text-gray-500">Transaction ID: </span>
-                              <span className="text-xs font-mono text-gray-800 break-all">{plan.paymentInfo.transactionId}</span>
+
+                          {/* Show freeze days info if any */}
+                          {plan.totalFreezeCount > 0 && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                                <Snowflake className="h-3 w-3 mr-1" />
+                                {plan.totalFreezeCount} day(s) frozen
+                              </Badge>
+                            </div>
+                          )}
+
+                          {/* Payment Info Section - Only show when toggled */}
+                          {plan.paymentInfo && showPaymentForPlanId === plan._id && (
+                            <div className="mt-3 p-3 bg-linear-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-lg relative">
+                              {/* Close button */}
+                              <button
+                                onClick={() => setShowPaymentForPlanId(null)}
+                                className="absolute top-2 right-2 p-1 hover:bg-emerald-100 rounded-full transition-colors"
+                                title="Close payment details"
+                              >
+                                <X className="h-4 w-4 text-emerald-600" />
+                              </button>
+
+                              <div className="flex items-center gap-2 mb-2">
+                                <CreditCard className="h-4 w-4 text-emerald-600" />
+                                <span className="text-sm font-medium text-emerald-800">Payment Details</span>
+                                <Badge
+                                  className={
+                                    plan.paymentInfo.paymentStatus === 'paid'
+                                      ? 'bg-green-100 text-green-800 text-xs'
+                                      : 'bg-yellow-100 text-yellow-800 text-xs'
+                                  }
+                                >
+                                  {plan.paymentInfo.paymentStatus === 'paid' ? 'Paid' : plan.paymentInfo.paymentStatus}
+                                </Badge>
+                              </div>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                <div>
+                                  <span className="text-gray-500">Plan:</span>
+                                  <p className="font-medium text-gray-900">{plan.paymentInfo.planName}</p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Amount:</span>
+                                  <p className="font-medium text-gray-900">₹{plan.paymentInfo.amount?.toLocaleString('en-IN') || '0'}</p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Paid On:</span>
+                                  <p className="font-medium text-gray-900">
+                                    {plan.paymentInfo.paidAt
+                                      ? format(new Date(plan.paymentInfo.paidAt), 'MMM d, yyyy h:mm a')
+                                      : 'N/A'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Method:</span>
+                                  <p className="font-medium text-gray-900 capitalize">{plan.paymentInfo.paymentMethod || 'Online'}</p>
+                                </div>
+                              </div>
+                              {plan.paymentInfo.transactionId && plan.paymentInfo.transactionId !== 'N/A' && (
+                                <div className="mt-2 pt-2 border-t border-emerald-200">
+                                  <span className="text-xs text-gray-500">Transaction ID: </span>
+                                  <span className="text-xs font-mono text-gray-800 break-all">{plan.paymentInfo.transactionId}</span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
 
-                    <div className="flex gap-2 ml-4 items-center">
-                      {/* Check if plan has ended (completed/cancelled/expired OR end date passed) */}
-                      {(() => {
-                        const planEnded = isPlanEnded(plan);
+                        <div className="flex gap-2 ml-4 items-center">
+                          {/* Check if plan has ended (completed/cancelled/expired OR end date passed) */}
+                          {(() => {
+                            const planEnded = isPlanEnded(plan);
 
-                        return (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="View"
-                              onClick={() => handleViewPlan(plan)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-
-                            {/* Only show Edit and More options if plan has NOT ended */}
-                            {!planEnded && (
+                            return (
                               <>
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  title="Edit"
-                                  onClick={() => handleEditPlan(plan)}
+                                  title="View"
+                                  onClick={() => handleViewPlan(plan)}
                                 >
-                                  <Edit className="h-4 w-4" />
+                                  <Eye className="h-4 w-4" />
                                 </Button>
-                              </>
-                            )}
 
-                            {/* Delete button — only for draft plans */}
-                            {plan.status === 'draft' && (
-                              <AlertDialog open={deletingPlanId === plan._id} onOpenChange={(open) => { if (!open) setDeletingPlanId(null); }}>
-                                <AlertDialogTrigger asChild>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    title="Delete draft"
-                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => setDeletingPlanId(plan._id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Delete Draft?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      This will permanently delete the draft &quot;{plan.name}&quot;. This action cannot be undone.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      className="bg-red-600 hover:bg-red-700"
-                                      onClick={() => handleDeleteDraft(plan._id)}
-                                      disabled={isDeleting}
-                                    >
-                                      {isDeleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...</> : 'Delete'}
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            )}
-                          </>
-                        );
-                      })()}
-
-                      {/* Three Dot Dropdown Menu */}
-                      {(() => {
-                        const planEnded = isPlanEnded(plan);
-                        return (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                title="More options"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="p-3 w-48">
-                              <div className="flex flex-col gap-2">
+                                {/* Only show Edit and More options if plan has NOT ended */}
                                 {!planEnded && (
                                   <>
-                                    <ExtendPlanDialog
-                                      plan={plan}
-                                      onExtend={handleExtendPlan}
-                                      showAsText={false}
-                                      showAsButton={true}
-                                    />
-
-                                    <PausePlanDialog
-                                      plan={plan}
-                                      onPause={handlePausePlan}
-                                      onResume={handleResumePlan}
-                                      showAsText={false}
-                                      showAsButton={true}
-                                    />
-
-                                    <FreezePlanDialog
-                                      plan={plan}
-                                      onFreeze={fetchClientPlans}
-                                      showAsText={false}
-                                      showAsButton={true}
-                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      title="Edit"
+                                      onClick={() => handleEditPlan(plan)}
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
                                   </>
                                 )}
 
-                                {/* Payment Details Toggle Button */}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  title={plan.paymentInfo ? 'View Payment Details' : 'Payment details not available'}
-                                  onClick={() => {
-                                    if (!plan.paymentInfo) return;
-                                    setShowPaymentForPlanId(showPaymentForPlanId === plan._id ? null : plan._id);
-                                  }}
-                                  disabled={!plan.paymentInfo}
-                                  className="flex items-center gap-1.5"
-                                >
-                                  <CreditCard className="h-4 w-4" />
-                                  <span className="text-xs">Payment</span>
-                                </Button>
-                              </div>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        );
-                      })()}
+                                {/* Delete button — only for draft plans */}
+                                {plan.status === 'draft' && (
+                                  <AlertDialog open={deletingPlanId === plan._id} onOpenChange={(open) => { if (!open) setDeletingPlanId(null); }}>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        title="Delete draft"
+                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        onClick={() => setDeletingPlanId(plan._id)}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete Draft?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          This will permanently delete the draft &quot;{plan.name}&quot;. This action cannot be undone.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          className="bg-red-600 hover:bg-red-700"
+                                          onClick={() => handleDeleteDraft(plan._id)}
+                                          disabled={isDeleting}
+                                        >
+                                          {isDeleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...</> : 'Delete'}
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
+                              </>
+                            );
+                          })()}
+
+                          {/* Three Dot Dropdown Menu */}
+                          {(() => {
+                            const planEnded = isPlanEnded(plan);
+                            return (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    title="More options"
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="p-3 w-48">
+                                  <div className="flex flex-col gap-2">
+                                    {!planEnded && (
+                                      <>
+                                        <PausePlanDialog
+                                          plan={plan}
+                                          onPause={handlePausePlan}
+                                          onResume={handleResumePlan}
+                                          showAsText={false}
+                                          showAsButton={true}
+                                        />
+
+                                        <FreezePlanDialog
+                                          plan={plan}
+                                          onFreeze={fetchClientPlans}
+                                          showAsText={false}
+                                          showAsButton={true}
+                                        />
+
+                                        <ExtendPlanDialog
+                                          plan={plan}
+                                          onExtend={fetchClientPlans}
+                                          showAsButton={true}
+                                        />
+                                      </>
+                                    )}
+
+                                    {/* Payment Details Toggle Button */}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      title={plan.paymentInfo ? 'View Payment Details' : 'Payment details not available'}
+                                      onClick={() => {
+                                        if (!plan.paymentInfo) return;
+                                        setShowPaymentForPlanId(showPaymentForPlanId === plan._id ? null : plan._id);
+                                      }}
+                                      disabled={!plan.paymentInfo}
+                                      className="flex items-center gap-1.5"
+                                    >
+                                      <CreditCard className="h-4 w-4" />
+                                      <span className="text-xs">Payment</span>
+                                    </Button>
+                                  </div>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            );
+                          })()}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  )
+                });
+              })()}
             </div>
           ) : dietPlans.length > 0 ? (
             /* Legacy diet plans from client data */

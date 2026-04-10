@@ -81,22 +81,67 @@ export function StaffUnreadCountProvider({ children }: StaffUnreadCountProviderP
     };
   }, [status, session?.user?.id, isStaffRole]);
 
-  // Manual refresh function
-  const refreshCounts = useCallback(async () => {
+  // Manual refresh function with retry logic
+  const refreshCounts = useCallback(async (retryCount = 0) => {
+    // Skip if not authenticated or not staff role
+    if (status !== 'authenticated' || !isStaffRole) {
+      return;
+    }
+
+    // Skip if offline
+    if (!navigator.onLine) {
+      console.warn('[StaffUnreadCountProvider] Offline, skipping refresh');
+      return;
+    }
+
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
       const response = await fetch('/api/staff/unread-counts/refresh', {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'same-origin',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
+
+      clearTimeout(timeoutId);
+
       if (response.ok) {
         const data = await response.json();
         setCounts({
           messages: data.messages || 0
         });
+      } else if (response.status === 401) {
+        // Session expired, silently skip
+        console.debug('[StaffUnreadCountProvider] Session expired');
+      } else {
+        console.warn('[StaffUnreadCountProvider] Refresh failed with status:', response.status);
       }
     } catch (error) {
-      console.error('[StaffUnreadCountProvider] Error refreshing counts:', error);
+      // Retry once on network errors
+      if (retryCount < 1 && error instanceof Error) {
+        const isNetworkError =
+          error.message.includes('Failed to fetch') ||
+          error.message.includes('NetworkError') ||
+          error.name === 'AbortError';
+
+        if (isNetworkError) {
+          console.debug('[StaffUnreadCountProvider] Network error, retrying...');
+          // Wait 500ms before retry
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return refreshCounts(retryCount + 1);
+        }
+      }
+
+      // Don't log every network error, just debug level
+      if (error instanceof Error) {
+        console.debug('[StaffUnreadCountProvider] Error refreshing counts:', error.message);
+      }
     }
-  }, []);
+  }, [status, isStaffRole]);
 
   return (
     <StaffUnreadCountContext.Provider value={{ counts, refreshCounts, isConnected }}>

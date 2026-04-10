@@ -52,7 +52,10 @@ const clientMealPlanSchema = z.object({
     progressReminders: z.boolean().default(true),
     checkInReminders: z.boolean().default(true)
   }).optional(),
-  status: z.enum(['draft', 'active', 'completed', 'paused', 'cancelled']).optional()
+  status: z.enum(['draft', 'active', 'completed', 'paused', 'cancelled']).optional(),
+  // Phase assignment (optional - auto-calculated if not provided)
+  phaseNumber: z.number().min(1).optional(),
+  phaseTag: z.string().optional()
 });
 
 // Robustly detect publishable meal content across supported meal data shapes
@@ -452,6 +455,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ========== PHASE CALCULATION ==========
+    // Calculate phase number based on client's previous meal plans
+    let phaseNumber = validatedData.phaseNumber;
+    let phaseTag = validatedData.phaseTag;
+    let previousPhaseId: string | null = null;
+
+    if (!isDraft && !phaseNumber) {
+      // Count previous meal plans for this client (active or completed)
+      const previousPlansCount = await ClientMealPlan.countDocuments({
+        clientId: validatedData.clientId,
+        status: { $in: ['active', 'completed'] }
+      });
+
+      // Find the most recent completed meal plan for this client
+      const lastCompletedPlan = await ClientMealPlan.findOne({
+        clientId: validatedData.clientId,
+        status: { $in: ['active', 'completed'] }
+      }).sort({ endDate: -1, createdAt: -1 }).select('_id phaseNumber').lean() as any;
+
+      // Calculate phase number: previous plans count + 1
+      phaseNumber = previousPlansCount + 1;
+      phaseTag = `PHASE-${phaseNumber}`;
+
+      // Link to previous phase if exists
+      if (lastCompletedPlan) {
+        previousPhaseId = String(lastCompletedPlan._id);
+      }
+
+      console.log(`[ClientMealPlan] Auto-assigned phase: ${phaseTag} (previous plans: ${previousPlansCount})`);
+    } else if (!isDraft && phaseNumber && !phaseTag) {
+      // If phaseNumber is provided but not phaseTag, generate it
+      phaseTag = `PHASE-${phaseNumber}`;
+    }
+
     // Check for overlapping active meal plans for the same client (skip for drafts)
     if (!isDraft) {
       const resolvedMeals = validatedData.meals || (template && templateType === 'diet' ? template.meals : []);
@@ -510,7 +547,11 @@ export async function POST(request: NextRequest) {
       },
       analytics: {
         totalDaysCompleted: 0
-      }
+      },
+      // Phase tracking fields
+      phaseNumber: phaseNumber || undefined,
+      phaseTag: phaseTag || undefined,
+      previousPhaseId: previousPhaseId || undefined
     };
 
     // Only add templateId if provided
@@ -527,6 +568,8 @@ export async function POST(request: NextRequest) {
       try {
         await UnifiedPayment.findByIdAndUpdate(linkedPaymentId, {
           mealPlanCreated: true,
+          phaseTag: phaseTag || undefined,
+          phaseNumber: phaseNumber || undefined,
           $addToSet: { linkedMealPlanIds: clientMealPlan._id }
         });
       } catch (linkErr) {
@@ -637,6 +680,13 @@ export async function POST(request: NextRequest) {
       mealPlan: clientMealPlan,
       paymentWarning: isDraft ? undefined : (paymentWarning || undefined),
       linkedPaymentId: isDraft ? undefined : (linkedPaymentId || undefined),
+      // Phase tracking info
+      phaseInfo: isDraft ? undefined : (phaseNumber ? {
+        phaseNumber,
+        phaseTag,
+        previousPhaseId,
+        isFirstPhase: phaseNumber === 1
+      } : undefined),
     }, { status: 201 });
 
   } catch (error) {

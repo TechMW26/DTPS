@@ -405,6 +405,20 @@ const unifiedPaymentSchema = new Schema<IUnifiedPayment>({
     min: 0
   },
 
+  // Phase tracking (links payment to specific meal plan phase)
+  phaseTag: {
+    type: String,
+    trim: true  // e.g., PHASE-1, PHASE-2
+  },
+  phaseNumber: {
+    type: Number,
+    min: 1
+  },
+  linkedMealPlanIds: [{
+    type: Schema.Types.ObjectId,
+    ref: 'ClientMealPlan'
+  }],
+
   // ========== PARENT REFERENCE ==========
   parentPaymentId: {
     type: Schema.Types.ObjectId,
