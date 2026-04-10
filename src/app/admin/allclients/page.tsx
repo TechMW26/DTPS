@@ -968,14 +968,15 @@ export default function AdminAllClientsPage() {
                               // Primary dietitian (singular field)
                               const primaryDietitian = client.assignedDietitian && typeof client.assignedDietitian === 'object' && client.assignedDietitian.firstName
                                 ? client.assignedDietitian : null;
+                              const primaryDietitianId = primaryDietitian?._id ? String(primaryDietitian._id) : null;
 
-                              // Secondary dietitians (from array, excluding primary)
+                              // Secondary dietitians (from array, excluding primary) - compare as strings
                               const secondaryDietitians = (client.assignedDietitians || [])
                                 .filter(d =>
-                                  d && typeof d === 'object' && d.firstName && d._id !== primaryDietitian?._id
+                                  d && typeof d === 'object' && d.firstName && (!primaryDietitianId || String(d._id) !== primaryDietitianId)
                                 )
                                 // Deduplicate by _id
-                                .filter((d, index, arr) => arr.findIndex(x => x._id === d._id) === index);
+                                .filter((d, index, arr) => arr.findIndex(x => String(x._id) === String(d._id)) === index);
 
                               if (primaryDietitian || secondaryDietitians.length > 0) {
                                 return (

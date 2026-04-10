@@ -217,14 +217,16 @@ export default function HealthCounselorClientsPage() {
     setPrimaryDietitianSearchTerm('');
 
     // Initialize Primary/Secondary from existing assignments
+    // Ensure we compare as strings for consistent comparison
     const existingPrimaryDietitian = client.assignedDietitian && typeof client.assignedDietitian === 'object'
-      ? (client.assignedDietitian._id || '') : '';
+      ? String(client.assignedDietitian._id || '') : '';
     setPrimaryDietitianId(existingPrimaryDietitian);
 
-    // Secondary Dietitians (from array, excluding primary)
+    // Secondary Dietitians (from array, excluding primary) - compare as strings
     const existingSecondaryDietitians = (client.assignedDietitians || [])
-      .filter(d => d && typeof d === 'object' && d._id && d._id !== existingPrimaryDietitian)
-      .map(d => d._id);
+      .filter(d => d && typeof d === 'object' && d._id)
+      .map(d => String(d._id))
+      .filter(id => id !== existingPrimaryDietitian); // Exclude primary from secondary
     setSecondaryDietitianIds(existingSecondaryDietitians);
 
     setAssignDialogOpen(true);
@@ -238,10 +240,13 @@ export default function HealthCounselorClientsPage() {
     try {
       setAssigning(true);
 
+      // Filter out primary from secondary list before sending (ensure no overlap)
+      const filteredSecondaryIds = secondaryDietitianIds.filter(id => id !== primaryDietitianId);
+
       // Build payload with primary/secondary assignments (same as admin)
       const payload: any = {
         primaryDietitianId: primaryDietitianId || null,
-        secondaryDietitianIds: secondaryDietitianIds.length > 0 ? secondaryDietitianIds : [],
+        secondaryDietitianIds: filteredSecondaryIds.length > 0 ? filteredSecondaryIds : [],
         mode: 'primary_secondary'
       };
 
@@ -698,17 +703,24 @@ export default function HealthCounselorClientsPage() {
                                 ) : (
                                   <span className="text-gray-400 text-xs">No primary</span>
                                 )}
-                                {/* Secondary Dietitians */}
-                                {client.assignedDietitians && client.assignedDietitians.length > 0 && (
-                                  <div className="flex items-center gap-1 flex-wrap">
-                                    <span className="text-xs bg-teal-100 text-teal-700 px-1 py-0.5 rounded font-medium">S</span>
-                                    {client.assignedDietitians.filter(d => d?.firstName || d?.lastName).map((d, idx, arr) => (
-                                      <span key={d._id} className="text-xs text-gray-600">
-                                        {d.firstName} {d.lastName}{idx < arr.length - 1 ? ',' : ''}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
+                                {/* Secondary Dietitians - EXCLUDE primary from this list */}
+                                {(() => {
+                                  const primaryId = client.assignedDietitian?._id;
+                                  const secondaryDietitians = (client.assignedDietitians || [])
+                                    .filter(d => d && (d.firstName || d.lastName))
+                                    .filter(d => !primaryId || String(d._id) !== String(primaryId));
+
+                                  return secondaryDietitians.length > 0 ? (
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      <span className="text-xs bg-teal-100 text-teal-700 px-1 py-0.5 rounded font-medium">S</span>
+                                      {secondaryDietitians.map((d, idx, arr) => (
+                                        <span key={d._id} className="text-xs text-gray-600">
+                                          {d.firstName} {d.lastName}{idx < arr.length - 1 ? ',' : ''}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : null;
+                                })()}
                               </div>
                             </TableCell>
                             <TableCell className="px-3">
@@ -1043,7 +1055,11 @@ export default function HealthCounselorClientsPage() {
                         </div>
                         <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1 bg-white">
                           {availableDietitians
-                            .filter(d => !primaryDietitianId || d._id !== primaryDietitianId) // Exclude primary from secondary list
+                            .filter(d => {
+                              // Exclude primary dietitian from secondary list (compare as strings)
+                              const dietitianId = d._id?.toString() || d._id;
+                              return !primaryDietitianId || dietitianId !== primaryDietitianId;
+                            })
                             .filter(d => {
                               if (!dietitianSearchTerm.trim()) return true;
                               const searchLower = dietitianSearchTerm.toLowerCase();
@@ -1104,32 +1120,34 @@ export default function HealthCounselorClientsPage() {
                             </p>
                           )}
                         </div>
-                        {secondaryDietitianIds.length > 0 && (
+                        {secondaryDietitianIds.filter(id => id !== primaryDietitianId).length > 0 && (
                           <div className="flex flex-wrap gap-2 mt-2">
-                            {secondaryDietitianIds.map(id => {
-                              const d = availableDietitians.find(dt => dt._id === id);
-                              if (!d) return null;
-                              return (
-                                <Badge
-                                  key={id}
-                                  variant="secondary"
-                                  className="flex items-center gap-1 bg-gray-100 text-gray-800"
-                                >
-                                  <span className="px-1 py-0.5 text-[10px] font-bold rounded bg-gray-400 text-white">S</span>
-                                  {d.firstName} {d.lastName}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSecondaryDietitianIds(prev => prev.filter(i => i !== id));
-                                    }}
-                                    className="ml-1 hover:text-gray-900"
+                            {secondaryDietitianIds
+                              .filter(id => id !== primaryDietitianId) // Don't show primary in secondary badges
+                              .map(id => {
+                                const d = availableDietitians.find(dt => dt._id === id);
+                                if (!d) return null;
+                                return (
+                                  <Badge
+                                    key={id}
+                                    variant="secondary"
+                                    className="flex items-center gap-1 bg-gray-100 text-gray-800"
                                   >
-                                    <XCircle className="h-3 w-3" />
-                                  </button>
-                                </Badge>
-                              );
-                            })}
+                                    <span className="px-1 py-0.5 text-[10px] font-bold rounded bg-gray-400 text-white">S</span>
+                                    {d.firstName} {d.lastName}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSecondaryDietitianIds(prev => prev.filter(i => i !== id));
+                                      }}
+                                      className="ml-1 hover:text-gray-900"
+                                    >
+                                      <XCircle className="h-3 w-3" />
+                                    </button>
+                                  </Badge>
+                                );
+                              })}
                           </div>
                         )}
                       </div>
@@ -1181,7 +1199,7 @@ export default function HealthCounselorClientsPage() {
                     <p className="text-gray-600 mb-1">Dietitians:</p>
                     <p className="font-medium">
                       {primaryDietitianId ? '1 Primary' : 'No Primary'}
-                      {secondaryDietitianIds.length > 0 ? ` + ${secondaryDietitianIds.length} Secondary` : ''}
+                      {secondaryDietitianIds.filter(id => id !== primaryDietitianId).length > 0 ? ` + ${secondaryDietitianIds.filter(id => id !== primaryDietitianId).length} Secondary` : ''}
                     </p>
                   </div>
                   <div>
