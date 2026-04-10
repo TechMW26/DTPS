@@ -34,7 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ExternalLink, RefreshCw, Search, Users, Plus, UserPlus } from 'lucide-react';
+import { ExternalLink, RefreshCw, Search, Users, Plus, UserPlus, XCircle } from 'lucide-react';
 import { validateEmail } from '@/lib/validations/auth';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -195,13 +195,8 @@ export default function HealthCounselorClientsPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.dietitians) {
-          // If primaryDietitianOnly is set, filter out secondary dietitians from the dropdown
-          if (data.primaryDietitianOnly) {
-            const filtered = data.dietitians.filter((d: Dietitian) => !d.isSecondary);
-            setAvailableDietitians(filtered);
-          } else {
-            setAvailableDietitians(data.dietitians);
-          }
+          // Show all dietitians - we now support full primary/secondary assignment
+          setAvailableDietitians(data.dietitians);
         }
         if (data.healthCounselors) setAvailableHealthCounselors(data.healthCounselors);
         setPrimaryDietitianOnly(!!data.primaryDietitianOnly);
@@ -1088,8 +1083,10 @@ export default function HealthCounselorClientsPage() {
                                     <p className="text-xs text-gray-500">{dietitian.email}</p>
                                   </div>
                                 </div>
-                                {dietitian.isSecondary && (
-                                  <Badge variant="outline" className="text-xs">Current</Badge>
+                                {(dietitian as any).clientCount !== undefined && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {(dietitian as any).clientCount} clients
+                                  </Badge>
                                 )}
                               </div>
                             ))}
@@ -1119,7 +1116,7 @@ export default function HealthCounselorClientsPage() {
                                   className="flex items-center gap-1 bg-gray-100 text-gray-800"
                                 >
                                   <span className="px-1 py-0.5 text-[10px] font-bold rounded bg-gray-400 text-white">S</span>
-                                  Dt. {d.firstName} {d.lastName}
+                                  {d.firstName} {d.lastName}
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -1128,7 +1125,7 @@ export default function HealthCounselorClientsPage() {
                                     }}
                                     className="ml-1 hover:text-gray-900"
                                   >
-                                    ×
+                                    <XCircle className="h-3 w-3" />
                                   </button>
                                 </Badge>
                               );

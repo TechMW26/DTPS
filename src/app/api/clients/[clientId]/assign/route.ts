@@ -132,7 +132,9 @@ export async function PATCH(
                     );
                 }
 
-                if (Array.isArray(secondaryDietitianIds) && secondaryDietitianIds.length > 0) {
+                // Allow secondary dietitian assignment in explicit primary_secondary mode
+                // (used by the health counselor assignment dialog).
+                if (assignAction !== 'primary_secondary' && Array.isArray(secondaryDietitianIds) && secondaryDietitianIds.length > 0) {
                     return NextResponse.json(
                         {
                             error: 'Only Primary Dietitian assignment is allowed for Health Counselors',
