@@ -1350,6 +1350,8 @@ export default function ClientDetailPage() {
       const basicUserData = {
         firstName: basicInfo?.firstName,
         lastName: basicInfo?.lastName,
+        email: basicInfo?.email,
+        phone: basicInfo?.phone,
         dateOfBirth: basicInfo?.dateOfBirth,
         gender: basicInfo?.gender,
         parentAccount: basicInfo?.parentAccount,

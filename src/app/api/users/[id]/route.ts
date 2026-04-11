@@ -9,6 +9,8 @@ import Task from '@/lib/db/models/Task'; // Ensure Task model is registered
 import { UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { validateEmail } from '@/lib/validations/auth';
+import { validatePhoneNumber } from '@/lib/validations/contact';
 
 // Helper function to log admin actions
 async function logAdminAction(
@@ -392,7 +394,7 @@ export async function PUT(
     }
 
     // Admin-only fields that can be updated
-    const adminOnlyFields = ["email", "phone", "role", "status", "clientStatus", "expectedStartDate", "expectedEndDate"];
+    const adminOnlyFields = ["role", "status", "clientStatus", "expectedStartDate", "expectedEndDate"];
 
     // Allowed fields to update (only User model fields)
     let allowedFields = [
@@ -451,10 +453,28 @@ export async function PUT(
       allowedFields = [...allowedFields, ...adminOnlyFields];
     }
 
-    // Validate email uniqueness if being updated
-    if (isAdmin && body.email && body.email !== targetUser.email) {
+    // Assigned dietitians can update client contact fields
+    if (isAdmin || isDietitianEditingClient) {
+      allowedFields = [...allowedFields, 'email', 'phone'];
+    }
+
+    const normalizedEmail = typeof body.email === 'string'
+      ? body.email.trim().toLowerCase()
+      : undefined;
+    const normalizedPhone = typeof body.phone === 'string'
+      ? body.phone.trim()
+      : undefined;
+
+    // Validate email format + uniqueness if being updated
+    const existingEmail = (targetUser.email || '').trim().toLowerCase();
+    if ((isAdmin || isDietitianEditingClient) && normalizedEmail && normalizedEmail !== existingEmail) {
+      const emailValidation = validateEmail(normalizedEmail);
+      if (!emailValidation.isValid) {
+        return NextResponse.json({ error: emailValidation.error || 'Invalid email address' }, { status: 400 });
+      }
+
       const existingUser = await User.findOne({
-        email: body.email.toLowerCase(),
+        email: normalizedEmail,
         _id: { $ne: id }
       });
       if (existingUser) {
@@ -462,10 +482,16 @@ export async function PUT(
       }
     }
 
-    // Validate phone uniqueness if being updated
-    if (isAdmin && body.phone && body.phone !== targetUser.phone) {
+    // Validate phone format + uniqueness if being updated
+    const existingPhone = (targetUser.phone || '').trim();
+    if ((isAdmin || isDietitianEditingClient) && normalizedPhone && normalizedPhone !== existingPhone) {
+      const phoneValidation = validatePhoneNumber(normalizedPhone);
+      if (!phoneValidation.isValid) {
+        return NextResponse.json({ error: phoneValidation.error || 'Invalid phone number' }, { status: 400 });
+      }
+
       const existingUser = await User.findOne({
-        phone: body.phone,
+        phone: phoneValidation.normalized,
         _id: { $ne: id }
       });
       if (existingUser) {
@@ -489,6 +515,30 @@ export async function PUT(
           // Accept dynamic goal categories (from admin-defined goals) as well as standard ones
           // We'll store whatever value is sent - validation is relaxed to allow dynamic categories
           obj[key] = value;
+          return obj;
+        }
+        // Normalize email before save
+        if (key === 'email') {
+          if (typeof value !== 'string') {
+            return obj;
+          }
+          const trimmed = value.trim().toLowerCase();
+          if (!trimmed) {
+            return obj;
+          }
+          obj[key] = trimmed;
+          return obj;
+        }
+        // Normalize phone before save
+        if (key === 'phone') {
+          if (typeof value !== 'string') {
+            return obj;
+          }
+          const phoneValidation = validatePhoneNumber(value);
+          if (!phoneValidation.isValid || !phoneValidation.normalized) {
+            return obj;
+          }
+          obj[key] = phoneValidation.normalized;
           return obj;
         }
         // Special handling for status

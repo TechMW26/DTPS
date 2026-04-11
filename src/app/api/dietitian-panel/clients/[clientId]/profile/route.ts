@@ -6,6 +6,8 @@ import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { validateEmail } from '@/lib/validations/auth';
+import { validatePhoneNumber } from '@/lib/validations/contact';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,11 +110,54 @@ export async function PUT(
     }
 
     const data = await request.json();
+    const normalizedEmail = typeof data.email === 'string'
+      ? data.email.trim().toLowerCase()
+      : undefined;
+    const normalizedPhone = typeof data.phone === 'string'
+      ? data.phone.trim()
+      : undefined;
+
+    if (normalizedEmail) {
+      const emailValidation = validateEmail(normalizedEmail);
+      if (!emailValidation.isValid) {
+        return NextResponse.json({ error: emailValidation.error || 'Invalid email address' }, { status: 400 });
+      }
+
+      if (normalizedEmail !== (existingClient.email || '').trim().toLowerCase()) {
+        const existingUser = await User.findOne({
+          email: normalizedEmail,
+          _id: { $ne: clientId }
+        }).select('_id');
+
+        if (existingUser) {
+          return NextResponse.json({ error: 'Email already exists' }, { status: 400 });
+        }
+      }
+    }
+
+    if (normalizedPhone) {
+      const phoneValidation = validatePhoneNumber(normalizedPhone);
+      if (!phoneValidation.isValid) {
+        return NextResponse.json({ error: phoneValidation.error || 'Invalid phone number' }, { status: 400 });
+      }
+
+      if (phoneValidation.normalized !== (existingClient.phone || '').trim()) {
+        const existingUser = await User.findOne({
+          phone: phoneValidation.normalized,
+          _id: { $ne: clientId }
+        }).select('_id');
+
+        if (existingUser) {
+          return NextResponse.json({ error: 'Phone number already exists' }, { status: 400 });
+        }
+      }
+    }
 
     const updateData: any = {
       firstName: data.firstName,
       lastName: data.lastName,
-      phone: data.phone,
+      email: normalizedEmail,
+      phone: normalizedPhone ? validatePhoneNumber(normalizedPhone).normalized : undefined,
       gender: data.gender,
       dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
       heightCm: data.heightCm,
