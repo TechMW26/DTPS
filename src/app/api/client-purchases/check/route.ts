@@ -151,18 +151,11 @@ async function syncPaymentLinkWithRazorpay(paymentLink: any): Promise<boolean> {
 
 function isPurchaseEligibleForPlanning(purchase: any, now: Date): boolean {
   const remainingDays = Math.max(0, (purchase.durationDays || 0) - (purchase.daysUsed || 0));
-  if (remainingDays <= 0) return false;
 
-  // If expected end date exists, enforce date-window validation.
-  if (purchase.expectedEndDate) {
-    const expectedEnd = new Date(purchase.expectedEndDate);
-    expectedEnd.setHours(23, 59, 59, 999);
-    return expectedEnd >= now;
-  }
-
-  // If expected dates are not set yet, keep purchase eligible for planning
-  // as long as remaining allocation exists.
-  return true;
+  // A purchase is eligible if it has remaining days, regardless of expected dates
+  // Expected dates are only for planning convenience, not for eligibility
+  // The actual constraint is: durationDays - daysUsed > 0
+  return remainingDays > 0;
 }
 
 // GET - Check if client has active paid plan and can create meal plan

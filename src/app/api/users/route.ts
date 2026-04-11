@@ -256,9 +256,10 @@ export async function GET(request: NextRequest) {
       // Phone-friendly search (ignores formatting characters)
       const digitsOnly = normalizedSearch.replace(/\D/g, '');
       if (digitsOnly.length >= 6) {
+        // Use \+ to escape the + character in regex
         const phonePatterns = Array.from(new Set([
           digitsOnly,
-          `+91${digitsOnly}`,
+          `\\+91${digitsOnly}`,
           `91${digitsOnly}`
         ]));
         for (const pattern of phonePatterns) {
@@ -306,8 +307,8 @@ export async function GET(request: NextRequest) {
     // Always include clientStatus for proper client engagement tracking
     const selectFields = session.user.role === UserRole.ADMIN ? '+clientStatus' : '-password +clientStatus';
 
-    // Generate cache key based on role and query params
-    const cacheKey = `users:${session.user.role}:${role || 'all'}:${search || ''}:${statusFilter || ''}:${dateFrom || ''}:${dateTo || ''}:${dietitianId || ''}:${healthCounselorId || ''}:${page}:${limit}`;
+    // Generate cache key based on role and query params - v2 for phone search fix
+    const cacheKey = `users:v2:${session.user.role}:${role || 'all'}:${search || ''}:${statusFilter || ''}:${dateFrom || ''}:${dateTo || ''}:${dietitianId || ''}:${healthCounselorId || ''}:${page}:${limit}`;
 
     const { users, total, adminsCount, dietitiansCount, healthCounselorsCount, clientsCount } = await withCache(
       cacheKey,

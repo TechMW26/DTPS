@@ -408,14 +408,60 @@ export async function PATCH(request: NextRequest) {
     await dbConnect();
 
     const body = await request.json();
-    const { purchaseId, action } = body;
+    const { purchaseId, clientId, action } = body;
 
     if (action !== 'recalculate') {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
+    // Import ClientMealPlan model
+    const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
+
+    // If clientId is provided (no active purchase), recalculate all purchases for this client
+    if (clientId && !purchaseId) {
+      // Get all purchases for this client
+      const allPurchases = await UnifiedPayment.find({
+        client: clientId,
+        $or: [
+          { paymentStatus: 'paid' },
+          { status: { $in: ['paid', 'completed', 'active'] } }
+        ]
+      });
+
+      // Get ALL active/completed meal plans for this client
+      const allMealPlans = await ClientMealPlan.find({
+        clientId: clientId,
+        status: { $in: ['active', 'completed'] }
+      });
+
+      const totalDaysUsed = allMealPlans.reduce((sum, plan) => sum + (plan.duration || 0), 0);
+
+      // Update all purchases proportionally or set total on the main one
+      let updatedCount = 0;
+      for (const purchase of allPurchases) {
+        const oldDaysUsed = purchase.daysUsed || 0;
+        // Distribute days used across purchases
+        purchase.daysUsed = totalDaysUsed;
+        await purchase.save();
+        updatedCount++;
+      }
+
+      // Clear cache
+      clearCacheByTag('client_purchases');
+
+      return NextResponse.json({
+        success: true,
+        message: `Days recalculated for ${updatedCount} purchases. Total days used: ${totalDaysUsed}`,
+        oldDaysUsed: 0,
+        newDaysUsed: totalDaysUsed,
+        mealPlansCount: allMealPlans.length,
+        purchasesUpdated: updatedCount,
+        remainingDays: allPurchases.reduce((sum, p) => sum + Math.max(0, (p.durationDays || 0) - totalDaysUsed), 0)
+      });
+    }
+
     if (!purchaseId) {
-      return NextResponse.json({ error: 'Purchase ID is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Purchase ID or Client ID is required' }, { status: 400 });
     }
 
     // Get the purchase
@@ -424,14 +470,20 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
     }
 
-    // Import ClientMealPlan model
-    const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
-
-    // Sum up all active meal plan durations for this purchase
-    const mealPlans = await ClientMealPlan.find({
+    // First, try to find meal plans linked to this specific purchaseId
+    let mealPlans = await ClientMealPlan.find({
       purchaseId: purchaseId,
       status: { $in: ['active', 'completed'] }
     });
+
+    // If no purchaseId-linked meal plans found, get ALL active/completed meal plans for this client
+    // This handles legacy plans that don't have purchaseId set
+    if (mealPlans.length === 0 && purchase.client) {
+      mealPlans = await ClientMealPlan.find({
+        clientId: purchase.client,
+        status: { $in: ['active', 'completed'] }
+      });
+    }
 
     const totalDaysUsed = mealPlans.reduce((sum, plan) => sum + (plan.duration || 0), 0);
     const oldDaysUsed = purchase.daysUsed || 0;

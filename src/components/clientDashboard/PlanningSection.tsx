@@ -274,17 +274,23 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
   // Recalculate daysUsed based on actual meal plans
   const recalculateDaysUsed = async () => {
-    if (!paymentCheck?.purchase?._id) return;
-
     setRecalculating(true);
     try {
+      // Build request body - use purchaseId if available, otherwise use clientId
+      const requestBody: { action: string; purchaseId?: string; clientId?: string } = {
+        action: 'recalculate'
+      };
+
+      if (paymentCheck?.purchase?._id) {
+        requestBody.purchaseId = paymentCheck.purchase._id;
+      } else {
+        requestBody.clientId = client._id;
+      }
+
       const res = await fetch('/api/client-purchases', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          purchaseId: paymentCheck.purchase._id,
-          action: 'recalculate'
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const data = await res.json();
@@ -3695,6 +3701,17 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                   >
                     <RefreshCw className={`h-4 w-4 mr-2 ${checkingPayment ? 'animate-spin' : ''}`} />
                     {checkingPayment ? 'Syncing...' : 'Sync & Refresh'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-amber-600 text-amber-700 hover:bg-amber-100"
+                    onClick={recalculateDaysUsed}
+                    disabled={recalculating}
+                    title="Recalculate days used from actual meal plans"
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${recalculating ? 'animate-spin' : ''}`} />
+                    {recalculating ? 'Fixing...' : 'Fix Days'}
                   </Button>
                 </div>
               </div>

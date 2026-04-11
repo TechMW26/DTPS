@@ -55,20 +55,20 @@ export async function GET(request: NextRequest) {
     // Build query using $and to avoid $or conflicts
     const andConditions: any[] = [{ role: UserRole.CLIENT }];
 
-    // Filter by assignment status
+    // Filter by assignment status (assigned = has any dietitian assigned)
     if (assigned === 'true') {
       andConditions.push({
         $or: [
-          { assignedDietitian: { $ne: null } },
+          { assignedDietitian: { $exists: true, $ne: null } },
           { assignedDietitians: { $exists: true, $not: { $size: 0 } } }
         ]
       });
     } else if (assigned === 'false') {
-      andConditions.push({ assignedDietitian: null });
+      // Unassigned = no primary dietitian AND no secondary dietitians
       andConditions.push({
-        $or: [
-          { assignedDietitians: { $exists: false } },
-          { assignedDietitians: { $size: 0 } }
+        $and: [
+          { $or: [{ assignedDietitian: null }, { assignedDietitian: { $exists: false } }] },
+          { $or: [{ assignedDietitians: { $exists: false } }, { assignedDietitians: { $size: 0 } }, { assignedDietitians: null }] }
         ]
       });
     }
@@ -95,9 +95,10 @@ export async function GET(request: NextRequest) {
       // Phone-friendly search (ignores formatting characters)
       const digitsOnly = normalizedSearch.replace(/\D/g, '');
       if (digitsOnly.length >= 6) {
+        // Use \+ to escape the + character in regex
         const phonePatterns = Array.from(new Set([
           digitsOnly,
-          `+91${digitsOnly}`,
+          `\\+91${digitsOnly}`,
           `91${digitsOnly}`
         ]));
         for (const pattern of phonePatterns) {
@@ -161,7 +162,7 @@ export async function GET(request: NextRequest) {
     const query = andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
 
     // Create cache key based on all query params
-    const cacheKey = `admin:clients:v2:${JSON.stringify(query)}:page=${page}:limit=${limit}`;
+    const cacheKey = `admin:clients:v3:${JSON.stringify(query)}:page=${page}:limit=${limit}`;
 
     // Fetch clients with pagination - use 60s cache (shorter to reflect new clients faster)
     const clientsData = await withCache(
@@ -264,29 +265,24 @@ export async function GET(request: NextRequest) {
 
     const { clients, total } = clientsData;
 
-    // Get stats with caching
+    // Get stats with caching (shorter TTL for more accurate counts)
     const stats = await withCache(
-      'admin:clients:stats:v3',
+      'admin:clients:stats:v4',
       async () => {
         const [totalCount, assignedCount, unassignedCount] = await Promise.all([
           User.countDocuments({ role: UserRole.CLIENT }),
           User.countDocuments({
             role: UserRole.CLIENT,
             $or: [
-              { assignedDietitian: { $ne: null } },
+              { assignedDietitian: { $exists: true, $ne: null } },
               { assignedDietitians: { $exists: true, $not: { $size: 0 } } }
             ]
           }),
           User.countDocuments({
+            role: UserRole.CLIENT,
             $and: [
-              { role: UserRole.CLIENT },
-              { assignedDietitian: null },
-              {
-                $or: [
-                  { assignedDietitians: { $exists: false } },
-                  { assignedDietitians: { $size: 0 } }
-                ]
-              }
+              { $or: [{ assignedDietitian: null }, { assignedDietitian: { $exists: false } }] },
+              { $or: [{ assignedDietitians: { $exists: false } }, { assignedDietitians: { $size: 0 } }, { assignedDietitians: null }] }
             ]
           })
         ]);
@@ -298,7 +294,7 @@ export async function GET(request: NextRequest) {
           unassigned: unassignedCount
         };
       },
-      { ttl: 60000, tags: ['admin', 'clients', 'stats'] } // 1 minute cache
+      { ttl: 30000, tags: ['admin', 'clients', 'stats'] } // 30 second cache for faster updates
     );
 
     return NextResponse.json({
