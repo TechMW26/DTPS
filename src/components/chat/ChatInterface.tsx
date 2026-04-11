@@ -29,11 +29,22 @@ interface ChatInterfaceProps {
   onUserStatusChange?: (userId: string, isOnline: boolean) => void;
 }
 
+type ChatAttachment = NonNullable<ChatMessage['attachments']>[number];
+
+interface SendMessageOptions {
+  replaceMessageId?: string;
+  skipOptimistic?: boolean;
+}
+
+interface FailedVoiceUploadDraft {
+  blob?: Blob;
+  attachment: ChatAttachment;
+}
+
 export function ChatInterface({ recipient, onBack, className, onUserStatusChange }: ChatInterfaceProps) {
   const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
 
   // Call management (incoming calls only — outbound call buttons removed)
@@ -53,14 +64,43 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const failedVoiceDraftsRef = useRef<Map<string, FailedVoiceUploadDraft>>(new Map());
+
+  const clearFailedVoiceDraft = useCallback((messageId: string) => {
+    const draft = failedVoiceDraftsRef.current.get(messageId);
+    if (draft?.attachment.url?.startsWith('blob:')) {
+      URL.revokeObjectURL(draft.attachment.url);
+    }
+    failedVoiceDraftsRef.current.delete(messageId);
+  }, []);
+
+  const clearAllFailedVoiceDrafts = useCallback(() => {
+    failedVoiceDraftsRef.current.forEach((draft) => {
+      if (draft.attachment.url?.startsWith('blob:')) {
+        URL.revokeObjectURL(draft.attachment.url);
+      }
+    });
+    failedVoiceDraftsRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearAllFailedVoiceDrafts();
+    };
+  }, [clearAllFailedVoiceDrafts]);
 
   // Real-time connection
-  const { isConnected, onlineUsers, sendTyping } = useRealtime({
+  const { onlineUsers, sendTyping } = useRealtime({
     onMessage: (event) => {
       if (event.type === 'new_message') {
         const newMessage = event.data.message;
         if (newMessage.sender._id === recipient._id || newMessage.receiver._id === recipient._id) {
-          setMessages(prev => [...prev, newMessage]);
+          setMessages((prev) => {
+            if (prev.some((msg) => msg._id === newMessage._id)) {
+              return prev;
+            }
+            return [...prev, newMessage];
+          });
           scrollToBottom();
 
           // Auto-mark as read if message is from recipient
@@ -119,6 +159,22 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  // Mark messages as read
+  const markMessagesAsRead = useCallback(async () => {
+    try {
+      await fetch(`/api/messages/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationWith: recipient._id,
+          status: 'read'
+        })
+      });
+    } catch (error) {
+      console.error('Failed to mark messages as read:', error);
+    }
+  }, [recipient._id]);
+
   // Load messages
   const loadMessages = useCallback(async () => {
     try {
@@ -137,23 +193,7 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
     } finally {
       setLoading(false);
     }
-  }, [recipient._id, scrollToBottom]);
-
-  // Mark messages as read
-  const markMessagesAsRead = useCallback(async () => {
-    try {
-      await fetch(`/api/messages/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationWith: recipient._id,
-          status: 'read'
-        })
-      });
-    } catch (error) {
-      console.error('Failed to mark messages as read:', error);
-    }
-  }, [recipient._id]);
+  }, [markMessagesAsRead, recipient._id, scrollToBottom]);
 
   // Mark single message as read
   const markMessageAsRead = useCallback(async (messageId: string) => {
@@ -169,94 +209,252 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
   }, []);
 
   // Send message
+  const sendMessageToApi = useCallback(async (
+    content: string,
+    type: 'text' | 'image' | 'file' | 'video' | 'audio' | 'voice',
+    attachments?: ChatAttachment[]
+  ): Promise<ChatMessage> => {
+    const response = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipientId: recipient._id,
+        content,
+        type,
+        attachments
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || 'Failed to send message');
+    }
+
+    return response.json();
+  }, [recipient._id]);
+
+  const uploadVoiceDraft = useCallback(async (draft: FailedVoiceUploadDraft): Promise<ChatAttachment> => {
+    if (!draft.blob) {
+      throw new Error('No voice draft blob available for upload retry');
+    }
+
+    const fileExtension = (draft.attachment.mimeType || 'audio/webm').includes('ogg') ? 'ogg' : 'webm';
+    const voiceFile = new File([draft.blob], `voice_${Date.now()}.${fileExtension}`, {
+      type: draft.attachment.mimeType || 'audio/webm'
+    });
+
+    const formData = new FormData();
+    formData.append('file', voiceFile);
+    formData.append('type', 'message');
+
+    const uploadResponse = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      throw new Error(errorText || 'Failed to upload voice message');
+    }
+
+    const uploadData = await uploadResponse.json();
+
+    return {
+      url: uploadData.url,
+      filename: uploadData.filename || voiceFile.name,
+      size: uploadData.size || voiceFile.size,
+      mimeType: uploadData.type || voiceFile.type,
+      duration: draft.attachment.duration
+    };
+  }, []);
+
+  const replaceMessageWithServerVersion = useCallback((localId: string, sentMessage: ChatMessage) => {
+    clearFailedVoiceDraft(localId);
+
+    setMessages((prev) => {
+      const withoutLocalAndDuplicates = prev.filter(
+        (msg) => msg._id !== localId && msg._id !== sentMessage._id
+      );
+      return [...withoutLocalAndDuplicates, { ...sentMessage, status: 'sent' }];
+    });
+  }, [clearFailedVoiceDraft]);
+
+  const handleCreateVoicePlaceholder = useCallback((payload: { content: string; attachment: ChatAttachment }) => {
+    if (!session?.user?.id) {
+      return '';
+    }
+
+    const tempMessageId = `temp-voice-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const tempMessage: ChatMessage = {
+      _id: tempMessageId,
+      content: payload.content,
+      type: 'voice',
+      attachments: [payload.attachment],
+      sender: {
+        _id: session.user.id,
+        firstName: session.user.firstName,
+        lastName: session.user.lastName,
+        avatar: session.user.avatar
+      },
+      receiver: recipient,
+      isRead: false,
+      createdAt: new Date().toISOString(),
+      status: 'sending'
+    };
+
+    failedVoiceDraftsRef.current.set(tempMessageId, {
+      attachment: payload.attachment
+    });
+
+    setMessages((prev) => [...prev, tempMessage]);
+    scrollToBottom();
+    return tempMessageId;
+  }, [recipient, scrollToBottom, session?.user]);
+
+  const handleVoiceUploadFailed = useCallback((payload: {
+    messageId: string;
+    error: string;
+    blob: Blob;
+    attachment: ChatAttachment;
+  }) => {
+    if (!payload.messageId) {
+      return;
+    }
+
+    failedVoiceDraftsRef.current.set(payload.messageId, {
+      blob: payload.blob,
+      attachment: payload.attachment
+    });
+
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg._id === payload.messageId
+          ? {
+            ...msg,
+            status: 'failed',
+            content: 'Voice upload failed. Tap resend.',
+            attachments: [payload.attachment]
+          }
+          : msg
+      )
+    );
+  }, []);
+
   const handleSendMessage = async (
     content: string,
     type: 'text' | 'image' | 'file' | 'video' | 'audio' | 'voice' = 'text',
-    attachments?: {
-      url: string;
-      filename: string;
-      size: number;
-      mimeType: string;
-      thumbnail?: string;
-      duration?: number;
-      width?: number;
-      height?: number;
-    }[]
+    attachments?: ChatAttachment[],
+    options?: SendMessageOptions
   ) => {
+    if (!session?.user?.id) {
+      return;
+    }
+
     // For text messages, require content. For media messages, allow sending with attachments
     const hasContent = content.trim().length > 0;
     const hasAttachments = attachments && attachments.length > 0;
 
-    if ((!hasContent && !hasAttachments) || sending) return;
+    if (!hasContent && !hasAttachments) return;
+
+    const tempMessageId = options?.replaceMessageId || `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const shouldCreateOptimistic = !options?.replaceMessageId && !options?.skipOptimistic;
 
     try {
-      setSending(true);
-
-      // Optimistically add message
-      const tempMessage: ChatMessage = {
-        _id: `temp-${Date.now()}`,
-        content,
-        type,
-        attachments,
-        sender: {
-          _id: session!.user.id,
-          firstName: session!.user.firstName,
-          lastName: session!.user.lastName,
-          avatar: session!.user.avatar
-        },
-        receiver: recipient,
-        isRead: false,
-        createdAt: new Date().toISOString(),
-        status: 'sending'
-      };
-
-      setMessages(prev => [...prev, tempMessage]);
-      scrollToBottom();
-
-      const response = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipientId: recipient._id,
+      if (shouldCreateOptimistic) {
+        const tempMessage: ChatMessage = {
+          _id: tempMessageId,
           content,
           type,
-          attachments
-        })
-      });
+          attachments,
+          sender: {
+            _id: session.user.id,
+            firstName: session.user.firstName,
+            lastName: session.user.lastName,
+            avatar: session.user.avatar
+          },
+          receiver: recipient,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+          status: 'sending'
+        };
 
-      if (response.ok) {
-        const sentMessage = await response.json();
-        setMessages(prev =>
-          prev.map(msg =>
-            msg._id === tempMessage._id
-              ? { ...sentMessage, status: 'sent' }
-              : msg
-          )
-        );
-      } else {
-        // Mark message as failed
-        setMessages(prev =>
-          prev.map(msg =>
-            msg._id === tempMessage._id
-              ? { ...msg, status: 'failed' }
+        setMessages((prev) => [...prev, tempMessage]);
+        scrollToBottom();
+      } else if (options?.replaceMessageId) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg._id === options.replaceMessageId
+              ? { ...msg, status: 'sending', content, attachments }
               : msg
           )
         );
       }
+
+      const sentMessage = await sendMessageToApi(content, type, attachments);
+      replaceMessageWithServerVersion(tempMessageId, sentMessage);
     } catch (error) {
       console.error('Failed to send message:', error);
       // Mark message as failed
-      setMessages(prev =>
-        prev.map(msg =>
-          msg._id.startsWith('temp-')
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === tempMessageId
             ? { ...msg, status: 'failed' }
             : msg
         )
       );
-    } finally {
-      setSending(false);
     }
   };
+
+  const handleResendMessage = useCallback(async (message: ChatMessage) => {
+    if (!session?.user?.id || message.status !== 'failed') {
+      return;
+    }
+
+    const failedVoiceDraft = failedVoiceDraftsRef.current.get(message._id);
+    const requiresVoiceUploadRetry = Boolean(failedVoiceDraft?.blob);
+
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg._id === message._id
+          ? {
+            ...msg,
+            status: 'sending',
+            content: requiresVoiceUploadRetry ? 'Sending voice...' : msg.content
+          }
+          : msg
+      )
+    );
+
+    try {
+      let resendContent = message.content;
+      let resendType = message.type;
+      let resendAttachments = message.attachments;
+
+      if (requiresVoiceUploadRetry && failedVoiceDraft) {
+        const uploadedAttachment = await uploadVoiceDraft(failedVoiceDraft);
+        resendContent = 'Voice message';
+        resendType = 'voice';
+        resendAttachments = [uploadedAttachment];
+      }
+
+      const sentMessage = await sendMessageToApi(resendContent, resendType, resendAttachments);
+      replaceMessageWithServerVersion(message._id, sentMessage);
+    } catch (error) {
+      console.error('Failed to resend message:', error);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === message._id
+            ? {
+              ...msg,
+              status: 'failed',
+              content: requiresVoiceUploadRetry ? 'Voice upload failed. Tap resend.' : msg.content
+            }
+            : msg
+        )
+      );
+    }
+  }, [replaceMessageWithServerVersion, sendMessageToApi, session?.user?.id, uploadVoiceDraft]);
 
   // Handle typing
   const handleTyping = (isTyping: boolean) => {
@@ -363,6 +561,7 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
                     showAvatar={messageIndex === 0}
                     showTimestamp={messageIndex === group.length - 1}
                     isLastInGroup={messageIndex === group.length - 1}
+                    onResend={handleResendMessage}
                   />
                 ))}
               </div>
@@ -380,8 +579,10 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
       {/* Chat input */}
       <ChatInput
         onSendMessage={handleSendMessage}
+        onCreateVoicePlaceholder={handleCreateVoicePlaceholder}
+        onVoiceUploadFailed={handleVoiceUploadFailed}
         onTyping={handleTyping}
-        disabled={sending || !isConnected}
+        disabled={!session?.user?.id}
         placeholder={`Message ${recipient.firstName}...`}
         recipientId={recipient._id}
       />

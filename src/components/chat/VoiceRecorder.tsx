@@ -4,17 +4,17 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
-import { Mic, MicOff, Play, Pause, Send, Trash2, Square, AlertCircle, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Send, Trash2, Square, AlertCircle, Loader2, RotateCcw } from 'lucide-react';
 
 interface VoiceRecorderProps {
   onSend: (audioBlob: Blob) => Promise<void> | void;
   onCancel: () => void;
+  autoStart?: boolean;
   className?: string;
 }
 
-export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProps) {
+export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -31,27 +31,75 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationRef = useRef<number | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  const recordingActiveRef = useRef(false);
+
+  const stopRecordingInternals = useCallback(() => {
+    recordingActiveRef.current = false;
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+  }, []);
+
+  const clearRecordedAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+
+    setAudioBlob(null);
+    setWaveformData([]);
+    setRecordingTime(0);
+    setAudioUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev);
+      }
+      return '';
+    });
+  }, []);
+
+  const updateWaveform = useCallback(() => {
+    if (!analyserRef.current || !recordingActiveRef.current) return;
+
+    const bufferLength = analyserRef.current.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyserRef.current.getByteFrequencyData(dataArray);
+
+    const normalizedData = Array.from(dataArray)
+      .slice(0, 32)
+      .map((value) => Math.max(0.1, value / 255));
+
+    setWaveformData(normalizedData);
+    animationRef.current = requestAnimationFrame(updateWaveform);
+  }, []);
 
   // Check microphone permissions on mount
   useEffect(() => {
     checkMicrophonePermission();
 
     return () => {
-      // Cleanup on unmount
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+      stopRecordingInternals();
+
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
       }
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
       }
     };
-  }, []);
+  }, [audioUrl, stopRecordingInternals]);
 
   const checkMicrophonePermission = async () => {
     try {
@@ -76,9 +124,13 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
     }
   };
 
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     try {
       setError('');
+
+      if (audioBlob) {
+        clearRecordedAudio();
+      }
 
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -93,7 +145,15 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
       setPermissionGranted(true);
 
       // Set up audio context for waveform visualization
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+      if (!AudioContextClass) {
+        throw new Error('AudioContext not supported');
+      }
+
+      audioContextRef.current = new AudioContextClass();
 
       // Resume audio context if it's suspended (browser policy)
       if (audioContextRef.current.state === 'suspended') {
@@ -143,19 +203,32 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: mimeType });
+        if (blob.size === 0) {
+          setError('No audio captured. Please try again.');
+          chunksRef.current = [];
+          return;
+        }
+
         setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
+        setAudioUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev);
+          }
+          return URL.createObjectURL(blob);
+        });
         chunksRef.current = [];
       };
 
       mediaRecorder.onerror = (event) => {
         console.error('MediaRecorder error:', event);
         setError('Recording failed. Please try again.');
-        stopRecording();
+        stopRecordingInternals();
+        setIsRecording(false);
       };
 
       // Start recording with timeslice for better data handling
       mediaRecorder.start(100);
+      recordingActiveRef.current = true;
       setIsRecording(true);
       setRecordingTime(0);
 
@@ -166,23 +239,25 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
 
       // Start waveform animation
       updateWaveform();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error starting recording:', error);
       setPermissionGranted(false);
 
-      if (error.name === 'NotAllowedError') {
+      const errorName = error instanceof DOMException ? error.name : '';
+
+      if (errorName === 'NotAllowedError') {
         setError('Microphone access denied. Please allow microphone access and try again.');
-      } else if (error.name === 'NotFoundError') {
+      } else if (errorName === 'NotFoundError') {
         setError('No microphone found. Please connect a microphone and try again.');
-      } else if (error.name === 'NotSupportedError') {
+      } else if (errorName === 'NotSupportedError') {
         setError('Audio recording is not supported in your browser.');
       } else {
         setError('Failed to start recording. Please try again.');
       }
     }
-  };
+  }, [audioBlob, clearRecordedAudio, stopRecordingInternals, updateWaveform]);
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       try {
         mediaRecorderRef.current.stop();
@@ -191,61 +266,17 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
       }
 
       setIsRecording(false);
-
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
+      stopRecordingInternals();
     }
-  };
+  }, [isRecording, stopRecordingInternals]);
 
-  const updateWaveform = () => {
-    if (!analyserRef.current || !isRecording) return;
-
-    const bufferLength = analyserRef.current.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    analyserRef.current.getByteFrequencyData(dataArray);
-
-    // Convert to normalized values for visualization (use more bars for better effect)
-    const normalizedData = Array.from(dataArray)
-      .slice(0, 32)
-      .map(value => Math.max(0.1, value / 255));
-
-    setWaveformData(normalizedData);
-
-    if (isRecording) {
-      animationRef.current = requestAnimationFrame(updateWaveform);
+  useEffect(() => {
+    if (!autoStart || isRecording || audioBlob || isSending) {
+      return;
     }
-  };
 
-  const playRecording = async () => {
-    if (audioUrl && audioRef.current) {
-      try {
-        await audioRef.current.play();
-        setIsPlaying(true);
-      } catch (error) {
-        console.error('Error playing audio:', error);
-        setError('Failed to play recording');
-      }
-    }
-  };
-
-  const pauseRecording = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    }
-  };
+    void startRecording();
+  }, [autoStart, audioBlob, isRecording, isSending, startRecording]);
 
   const handleSend = async () => {
     if (audioBlob && !isSending) {
@@ -256,9 +287,18 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
       } catch (err) {
         console.error('Failed to send voice message:', err);
         setError('Failed to send voice message. Please try again.');
+      } finally {
         setIsSending(false);
       }
     }
+  };
+
+  const handleRerecord = async () => {
+    if (isSending) return;
+
+    clearRecordedAudio();
+    setError('');
+    await startRecording();
   };
 
   const handleCancel = () => {
@@ -266,15 +306,7 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
       stopRecording();
     }
 
-    // Clean up audio URL to prevent memory leaks
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-    }
-
-    setAudioBlob(null);
-    setAudioUrl('');
-    setRecordingTime(0);
-    setWaveformData([]);
+    clearRecordedAudio();
     setError('');
     onCancel();
   };
@@ -302,7 +334,7 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
             variant={isRecording ? "destructive" : "default"}
             size="sm"
             onClick={isRecording ? stopRecording : startRecording}
-            disabled={permissionGranted === false || !!error}
+            disabled={permissionGranted === false || isSending}
             className={cn(
               "h-10 w-10 rounded-full p-0 transition-all",
               isRecording && "animate-pulse"
@@ -311,14 +343,9 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
             {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </Button>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={isPlaying ? pauseRecording : playRecording}
-            className="h-10 w-10 rounded-full p-0"
-          >
-            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-          </Button>
+          <div className="h-10 w-10 rounded-full border bg-gray-100 flex items-center justify-center text-gray-500">
+            <MicOff className="w-4 h-4" />
+          </div>
         )}
 
         {/* Waveform visualization */}
@@ -358,7 +385,7 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
           ) : audioBlob ? (
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <MicOff className="w-4 h-4" />
-              <span>Voice message recorded ({formatTime(recordingTime)})</span>
+              <span>Recorded ({formatTime(recordingTime)}). Preview, then send or re-record.</span>
             </div>
           ) : permissionGranted === false ? (
             <div className="text-sm text-red-500">
@@ -379,25 +406,38 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
         {/* Action buttons */}
         <div className="flex space-x-2">
           {audioBlob && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleSend}
-              disabled={isSending}
-              className="h-8 px-3"
-            >
-              {isSending ? (
-                <>
-                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <Send className="w-3 h-3 mr-1" />
-                  Send
-                </>
-              )}
-            </Button>
+            <>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleSend}
+                disabled={isSending}
+                className="h-8 px-3"
+              >
+                {isSending ? (
+                  <>
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3 h-3 mr-1" />
+                    Send
+                  </>
+                )}
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRerecord}
+                disabled={isSending}
+                className="h-8 px-3"
+              >
+                <RotateCcw className="w-3 h-3 mr-1" />
+                Re-record
+              </Button>
+            </>
           )}
 
           <Button
@@ -408,18 +448,19 @@ export function VoiceRecorder({ onSend, onCancel, className }: VoiceRecorderProp
             className="h-8 px-3"
           >
             <Trash2 className="w-3 h-3 mr-1" />
-            Cancel
+            Discard
           </Button>
         </div>
       </div>
 
-      {/* Hidden audio element for playback */}
-      {audioUrl && (
+      {/* Preview player */}
+      {audioUrl && !isRecording && (
         <audio
           ref={audioRef}
           src={audioUrl}
-          onEnded={() => setIsPlaying(false)}
-          className="hidden"
+          controls
+          preload="metadata"
+          className="w-full mt-3 h-9"
         />
       )}
     </div>

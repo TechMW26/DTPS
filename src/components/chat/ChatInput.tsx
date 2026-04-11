@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import type { EmojiClickData } from 'emoji-picker-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -12,17 +13,36 @@ import { VoiceRecorder } from './VoiceRecorder';
 // Dynamic import for emoji picker to avoid SSR issues
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false });
 
+interface ChatAttachment {
+  url: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  thumbnail?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+}
+
+interface SendMessageOptions {
+  replaceMessageId?: string;
+  skipOptimistic?: boolean;
+}
+
 interface ChatInputProps {
-  onSendMessage: (content: string, type?: 'text' | 'image' | 'file' | 'video' | 'audio' | 'voice', attachments?: {
-    url: string;
-    filename: string;
-    size: number;
-    mimeType: string;
-    thumbnail?: string;
-    duration?: number;
-    width?: number;
-    height?: number;
-  }[]) => void;
+  onSendMessage: (
+    content: string,
+    type?: 'text' | 'image' | 'file' | 'video' | 'audio' | 'voice',
+    attachments?: ChatAttachment[],
+    options?: SendMessageOptions
+  ) => Promise<void> | void;
+  onCreateVoicePlaceholder?: (payload: { content: string; attachment: ChatAttachment }) => string;
+  onVoiceUploadFailed?: (payload: {
+    messageId: string;
+    error: string;
+    blob: Blob;
+    attachment: ChatAttachment;
+  }) => void;
   onTyping?: (isTyping: boolean) => void;
   disabled?: boolean;
   placeholder?: string;
@@ -32,14 +52,14 @@ interface ChatInputProps {
 
 export function ChatInput({
   onSendMessage,
+  onCreateVoicePlaceholder,
+  onVoiceUploadFailed,
   onTyping,
   disabled = false,
   placeholder = "Type a message...",
-  className,
-  recipientId
+  className
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showMediaUpload, setShowMediaUpload] = useState(false);
@@ -51,7 +71,7 @@ export function ChatInput({
   const emojiPickerRef = useRef<HTMLDivElement>(null);
 
   // Handle emoji selection
-  const handleEmojiSelect = (emojiData: any) => {
+  const handleEmojiSelect = (emojiData: EmojiClickData) => {
     const emoji = emojiData.emoji;
     setMessage(prev => prev + emoji);
     setShowEmojiPicker(false);
@@ -107,11 +127,53 @@ export function ChatInput({
 
   // Handle voice recording
   const handleVoiceRecording = async (audioBlob: Blob) => {
+    let placeholderMessageId = '';
+    let localAttachment: ChatAttachment | undefined;
+
     try {
+      const getAudioDuration = async (blob: Blob): Promise<number | undefined> => {
+        return new Promise((resolve) => {
+          const previewUrl = URL.createObjectURL(blob);
+          const audioElement = document.createElement('audio');
+
+          audioElement.preload = 'metadata';
+          audioElement.onloadedmetadata = () => {
+            const duration = Number.isFinite(audioElement.duration)
+              ? Math.max(1, Math.round(audioElement.duration))
+              : undefined;
+            URL.revokeObjectURL(previewUrl);
+            resolve(duration);
+          };
+          audioElement.onerror = () => {
+            URL.revokeObjectURL(previewUrl);
+            resolve(undefined);
+          };
+
+          audioElement.src = previewUrl;
+        });
+      };
+
       // Convert blob to file with proper audio format
       const audioFile = new File([audioBlob], `voice_${Date.now()}.webm`, {
         type: audioBlob.type || 'audio/webm'
       });
+
+      const duration = await getAudioDuration(audioBlob);
+
+      localAttachment = {
+        url: URL.createObjectURL(audioBlob),
+        filename: audioFile.name,
+        size: audioFile.size,
+        mimeType: audioFile.type,
+        duration
+      };
+
+      if (onCreateVoicePlaceholder) {
+        placeholderMessageId = onCreateVoicePlaceholder({
+          content: 'Sending voice...',
+          attachment: localAttachment
+        });
+      }
 
       // Upload audio file
       const formData = new FormData();
@@ -130,21 +192,38 @@ export function ChatInput({
       const uploadData = await uploadResponse.json();
 
       // Create attachment data
-      const attachment = {
+      const attachment: ChatAttachment = {
         url: uploadData.url,
         filename: uploadData.filename || audioFile.name,
         size: uploadData.size || audioFile.size,
         mimeType: uploadData.type || audioFile.type,
-        duration: Math.floor(audioBlob.size / 16000) // Rough estimate
+        duration
       };
 
       // Send voice message using the onSendMessage callback
-      await onSendMessage('Voice message', 'voice', [attachment]);
+      await onSendMessage(
+        'Voice message',
+        'voice',
+        [attachment],
+        placeholderMessageId
+          ? { replaceMessageId: placeholderMessageId, skipOptimistic: true }
+          : undefined
+      );
 
       setShowVoiceRecorder(false);
     } catch (error) {
       console.error('Error uploading voice message:', error);
-      alert('Failed to send voice message. Please try again.');
+
+      if (placeholderMessageId && onVoiceUploadFailed && localAttachment) {
+        onVoiceUploadFailed({
+          messageId: placeholderMessageId,
+          error: error instanceof Error ? error.message : 'Voice upload failed',
+          blob: audioBlob,
+          attachment: localAttachment
+        });
+      }
+
+      throw error instanceof Error ? error : new Error('Failed to send voice message');
     }
   };
 
@@ -293,6 +372,7 @@ export function ChatInput({
           <VoiceRecorder
             onSend={handleVoiceRecording}
             onCancel={() => setShowVoiceRecorder(false)}
+            autoStart
           />
         </div>
       )}
@@ -352,10 +432,7 @@ export function ChatInput({
             variant="ghost"
             onClick={handleVoiceRecord}
             disabled={disabled}
-            className={cn(
-              "h-10 w-10 p-0 shrink-0 rounded-full",
-              isRecording && "bg-red-100 text-red-600"
-            )}
+            className="h-10 w-10 p-0 shrink-0 rounded-full"
           >
             <Mic className="w-5 h-5" />
           </Button>

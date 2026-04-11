@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Check, CheckCheck, Clock, AlertCircle, Download, Play, Pause, FileText, MapPin, User, MoreHorizontal, Reply } from 'lucide-react';
+import { Check, CheckCheck, Clock, AlertCircle, Download, FileText, MapPin, User, MoreHorizontal, Reply, RotateCcw } from 'lucide-react';
 import { ImageModal } from './ImageModal';
 import { MessageReactions } from './MessageReactions';
 
@@ -56,6 +56,7 @@ interface ChatBubbleProps {
   onReaction?: (messageId: string, emoji: string) => void;
   onRemoveReaction?: (messageId: string, emoji: string) => void;
   onReply?: (message: ChatMessage) => void;
+  onResend?: (message: ChatMessage) => void;
   currentUserId?: string;
 }
 
@@ -68,6 +69,7 @@ export function ChatBubble({
   onReaction,
   onRemoveReaction,
   onReply,
+  onResend,
   currentUserId
 }: ChatBubbleProps) {
   const [imageError, setImageError] = useState(false);
@@ -166,7 +168,12 @@ export function ChatBubble({
           );
 
         case 'audio':
-        case 'voice':
+        case 'voice': {
+          const voiceLabel =
+            message.type === 'voice'
+              ? (message.content && message.content !== 'Voice message' ? message.content : 'Voice message')
+              : attachment.filename;
+
           return (
             <div className="max-w-[280px] min-w-[200px]">
               {/* WhatsApp-style voice message */}
@@ -183,8 +190,8 @@ export function ChatBubble({
                 </audio>
               </div>
               <div className="flex items-center justify-between mt-1 text-[10px] text-gray-500">
-                <span>
-                  {message.type === 'voice' ? 'Voice message' : attachment.filename}
+                <span className={cn(message.status === 'failed' && 'text-red-500')}>
+                  {voiceLabel}
                   {attachment.size > 0 && ` • ${formatFileSize(attachment.size)}`}
                 </span>
                 {attachment.duration && (
@@ -193,6 +200,7 @@ export function ChatBubble({
               </div>
             </div>
           );
+        }
 
         case 'file':
           return (
@@ -373,6 +381,20 @@ export function ChatBubble({
                 {getStatusIcon()}
               </div>
             </div>
+
+            {isOwn && message.status === 'failed' && onResend ? (
+              <div className="mt-2 flex items-center justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onResend(message)}
+                  className="h-7 px-2 text-[11px]"
+                >
+                  <RotateCcw className="w-3 h-3 mr-1" />
+                  Resend
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
 
