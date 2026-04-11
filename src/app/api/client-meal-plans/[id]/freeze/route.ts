@@ -36,19 +36,19 @@ async function getFreezeDaysFromPurchase(purchaseId: string | null, durationDays
     const unifiedPayment: any = await UnifiedPayment.findById(purchaseId)
       .populate('servicePlan')
       .lean();
-    
+
     if (unifiedPayment?.servicePlan) {
       const servicePlan = unifiedPayment.servicePlan;
       // Find the matching pricing tier based on duration
       const matchingTier = servicePlan.pricingTiers?.find(
         (tier: any) => tier.durationDays === (unifiedPayment.durationDays || durationDays) && tier.isActive
       );
-      
+
       if (matchingTier?.freezeDays && matchingTier.freezeDays > 0) {
         return matchingTier.freezeDays;
       }
     }
-    
+
     // Third, if UnifiedPayment has servicePlan reference, try direct ServicePlan lookup
     if (!unifiedPayment && clientPurchase?.servicePlan) {
       const servicePlan: any = await ServicePlan.findById(clientPurchase.servicePlan).lean();
@@ -82,7 +82,7 @@ async function getSharedFreezeInfo(purchaseId: string | null, currentPlanId: str
 
   // Find all meal plans linked to the same purchase
   const linkedPlans: any[] = await ClientMealPlan.find({ purchaseId }).lean();
-  
+
   let totalFreezeCount = 0;
   let allFreezedDays: any[] = [];
   let totalDurationDays = 0;
@@ -91,15 +91,17 @@ async function getSharedFreezeInfo(purchaseId: string | null, currentPlanId: str
   for (const plan of linkedPlans) {
     linkedPlanIds.push(plan._id.toString());
     totalFreezeCount += plan.totalFreezeCount || 0;
-    
-    // Add all freezed days with plan info
+
+    // Add all freezed days with plan info including reason and frozenBy
     const planFreezedDays = (plan.freezedDays || []).map((fd: any) => ({
       ...fd,
+      reason: fd.reason || null,
+      frozenBy: fd.frozenBy || null,
       planId: plan._id.toString(),
       planName: plan.name
     }));
     allFreezedDays = allFreezedDays.concat(planFreezedDays);
-    
+
     // Calculate total duration across all linked plans
     const startDate = new Date(plan.startDate);
     const endDate = new Date(plan.endDate);
@@ -116,7 +118,7 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -139,7 +141,7 @@ export async function GET(
     const purchaseId = mealPlan.purchaseId?.toString() || null;
     let totalFreezeCount = mealPlan.totalFreezeCount || 0;
     let freezedDays = mealPlan.freezedDays || [];
-    
+
     // Get allowed freeze days from the purchase/service plan (database value)
     let allowedFreezeDays = await getFreezeDaysFromPurchase(purchaseId, durationDays);
     let isSharedFreeze = false;
@@ -148,7 +150,7 @@ export async function GET(
     if (purchaseId) {
       // Get aggregated freeze info from all plans linked to the same purchase
       const sharedInfo = await getSharedFreezeInfo(purchaseId, id);
-      
+
       if (sharedInfo.linkedPlanIds.length > 1) {
         // Multiple plans share the same purchase - use aggregated data
         isSharedFreeze = true;
@@ -177,6 +179,8 @@ export async function GET(
         freezedDays: freezedDays.map((fd: any) => ({
           date: fd.date,
           addedDate: fd.addedDate || null,
+          reason: fd.reason || null,
+          frozenBy: fd.frozenBy || null,
           createdAt: fd.createdAt,
           planId: fd.planId || null,
           planName: fd.planName || null
@@ -201,7 +205,7 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -209,11 +213,14 @@ export async function POST(
     await dbConnect();
     const { id } = await params;
     const body = await request.json();
-    const { freezeDates } = body; // Array of date strings in YYYY-MM-DD format
+    const { freezeDates, reason } = body; // Array of date strings in YYYY-MM-DD format + optional reason
 
     if (!freezeDates || !Array.isArray(freezeDates) || freezeDates.length === 0) {
       return NextResponse.json({ error: 'freezeDates array is required' }, { status: 400 });
     }
+
+    // Get the user name for frozenBy field
+    const frozenBy = session.user.name || session.user.email || 'Unknown';
 
     // Fetch the meal plan
     const mealPlan = await withCache(
@@ -230,11 +237,11 @@ export async function POST(
     const startDate = startOfDay(new Date(mealPlan.startDate));
     const endDate = startOfDay(new Date(mealPlan.endDate));
     const durationDays = differenceInDays(endDate, startDate) + 1;
-    
+
     // Check for shared freeze tracking
     const purchaseId = mealPlan.purchaseId?.toString() || null;
     let currentFreezeCount = mealPlan.totalFreezeCount || 0;
-    
+
     // Get allowed freeze days from the purchase/service plan (database value)
     let allowedFreezeDays = await getFreezeDaysFromPurchase(purchaseId, durationDays);
     let existingFreezeSet = new Set(
@@ -244,7 +251,7 @@ export async function POST(
     if (purchaseId) {
       // Get aggregated freeze info from all plans linked to the same purchase
       const sharedInfo = await getSharedFreezeInfo(purchaseId, id);
-      
+
       if (sharedInfo.linkedPlanIds.length > 1) {
         // Use aggregated freeze count from all linked plans
         currentFreezeCount = sharedInfo.totalFreezeCount;
@@ -273,15 +280,15 @@ export async function POST(
 
       // Check if date is within plan range
       if (freezeDate < startDate || freezeDate > endDate) {
-        return NextResponse.json({ 
-          error: `Date ${formattedDate} is outside the plan range (${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')})` 
+        return NextResponse.json({
+          error: `Date ${formattedDate} is outside the plan range (${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')})`
         }, { status: 400 });
       }
 
       // Check if date is not in the past
       if (freezeDate < today) {
-        return NextResponse.json({ 
-          error: `Cannot freeze past date: ${formattedDate}` 
+        return NextResponse.json({
+          error: `Cannot freeze past date: ${formattedDate}`
         }, { status: 400 });
       }
 
@@ -289,15 +296,15 @@ export async function POST(
     }
 
     if (validFreezeDates.length === 0) {
-      return NextResponse.json({ 
-        error: 'No valid dates to freeze. All dates may already be frozen.' 
+      return NextResponse.json({
+        error: 'No valid dates to freeze. All dates may already be frozen.'
       }, { status: 400 });
     }
 
     // Check if we have enough remaining freeze days (considering shared tracking)
     const newTotalFreezeCount = currentFreezeCount + validFreezeDates.length;
     if (newTotalFreezeCount > allowedFreezeDays) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: `Cannot freeze ${validFreezeDates.length} days. Only ${allowedFreezeDays - currentFreezeCount} days remaining${purchaseId ? ' (shared across all plan phases)' : ''}.`,
         allowedFreezeDays,
         currentFreezeCount,
@@ -317,7 +324,7 @@ export async function POST(
     for (const meal of meals) {
       const mealDate = startOfDay(new Date(meal.date));
       const mealDateStr = format(mealDate, 'yyyy-MM-dd');
-      
+
       // Check if this meal's date is in the freeze dates
       const isFreezeDate = validFreezeDates.some(
         fd => format(fd, 'yyyy-MM-dd') === mealDateStr
@@ -331,7 +338,7 @@ export async function POST(
     // Find the last meal date in the existing meals array (to add after it)
     let lastMealDate = endDate;
     if (meals.length > 0) {
-      const sortedMeals = [...meals].sort((a: any, b: any) => 
+      const sortedMeals = [...meals].sort((a: any, b: any) =>
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
       const lastMealDateStr = sortedMeals[0].date;
@@ -361,7 +368,7 @@ export async function POST(
       const originalDateObj = new Date(originalDate);
       const originalDayOfMonth = originalDateObj.getDate();
       const originalDayName = fullDayNames[originalDateObj.getDay()];
-      
+
       // Find the original day number from the original meal
       const originalMealIndex = meals.findIndex((m: any) => m.date === format(originalDate, 'yyyy-MM-dd'));
       const originalDayNum = originalMealIndex >= 0 ? originalMealIndex + 1 : i + 1;
@@ -399,10 +406,12 @@ export async function POST(
       return dateA.getTime() - dateB.getTime();
     });
 
-    // Create new freeze day entries with added date info
+    // Create new freeze day entries with added date info, reason, and frozenBy
     const newFreezeDays = validFreezeDates.map((date, index) => ({
       date: date,
       addedDate: addedMealDates[index] || null,
+      reason: reason || null, // Optional reason for freezing
+      frozenBy: frozenBy, // Who froze this date
       createdAt: new Date()
     }));
 
@@ -428,27 +437,27 @@ export async function POST(
     // If this plan is linked to a purchase, also extend the purchase's expected end date
     if (purchaseId) {
       const purchase = await withCache(
-      `client-meal-plans:id:freeze:${JSON.stringify(purchaseId)}`,
-      async () => await UnifiedPayment.findById(purchaseId),
-      { ttl: 120000, tags: ['client_meal_plans'] }
-    );
+        `client-meal-plans:id:freeze:${JSON.stringify(purchaseId)}`,
+        async () => await UnifiedPayment.findById(purchaseId),
+        { ttl: 120000, tags: ['client_meal_plans'] }
+      );
       if (purchase && purchase.expectedEndDate) {
         const newExpectedEndDate = addDays(new Date(purchase.expectedEndDate), validFreezeDates.length);
         await UnifiedPayment.updateOne(
           { _id: purchaseId },
-          { 
-            $set: { 
+          {
+            $set: {
               expectedEndDate: newExpectedEndDate,
               endDate: newExpectedEndDate // Also extend the purchase end date
-            } 
+            }
           }
         );
       }
     }
 
     // Calculate the new shared freeze count for the response
-    const newSharedTotalFreezeCount = purchaseId 
-      ? (await getSharedFreezeInfo(purchaseId, id)).totalFreezeCount 
+    const newSharedTotalFreezeCount = purchaseId
+      ? (await getSharedFreezeInfo(purchaseId, id)).totalFreezeCount
       : thisPlanNewFreezeCount;
 
     return NextResponse.json({
@@ -482,7 +491,7 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -529,8 +538,8 @@ export async function DELETE(
     }
 
     if (datesToUnfreeze.length === 0) {
-      return NextResponse.json({ 
-        error: 'No matching frozen dates found to unfreeze' 
+      return NextResponse.json({
+        error: 'No matching frozen dates found to unfreeze'
       }, { status: 400 });
     }
 

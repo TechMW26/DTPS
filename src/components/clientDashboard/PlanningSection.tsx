@@ -1816,11 +1816,13 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [selectedUnfreezeDates, setSelectedUnfreezeDates] = useState<string[]>([]);
     const [activeTab, setActiveTab] = useState<'freeze' | 'unfreeze'>('freeze');
+    const [freezeReason, setFreezeReason] = useState('');
+    const [showConfirmation, setShowConfirmation] = useState(false);
     const [freezeInfo, setFreezeInfo] = useState<{
       allowedFreezeDays: number;
       totalFreezeCount: number;
       remainingFreezeDays: number;
-      freezedDays: { date: string; createdAt: string; addedDate?: string; planId?: string; planName?: string }[];
+      freezedDays: { date: string; createdAt: string; addedDate?: string; planId?: string; planName?: string; reason?: string; frozenBy?: string }[];
       durationDays: number;
       canFreeze: boolean;
       isSharedFreeze?: boolean;
@@ -1864,6 +1866,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         setSelectedDates([]);
         setSelectedUnfreezeDates([]);
         setActiveTab('freeze');
+        setFreezeReason('');
+        setShowConfirmation(false);
         fetchFreezeInfo();
       }
     };
@@ -1926,7 +1930,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         const res = await fetch(`/api/client-meal-plans/${plan._id}/freeze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ freezeDates: selectedDates })
+          body: JSON.stringify({
+            freezeDates: selectedDates,
+            reason: freezeReason.trim() || null
+          })
         });
 
         if (!res.ok) {
@@ -2027,6 +2034,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
     const calendarDays = generateCalendarDays();
 
+    // Get frozen date info for tooltip
+    const getFrozenDateInfo = (dateStr: string) => {
+      if (!freezeInfo) return null;
+      return freezeInfo.freezedDays.find(fd => {
+        const frozenDate = format(new Date(fd.date), 'yyyy-MM-dd');
+        return frozenDate === dateStr;
+      });
+    };
+
     return (
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogTrigger asChild>
@@ -2057,14 +2073,37 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Snowflake className="h-5 w-5 text-blue-500" />
-              Freeze / Unfreeze Plan Dates
+              Freeze Meal Plan Dates
             </DialogTitle>
             <DialogDescription>
-              Freeze dates to pause meals or unfreeze to restore them.
+              Freeze dates to pause meals. Meals will be copied to new dates at the end.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* Plan Info Header - Always visible */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-white rounded-full shadow-sm">
+                  <Calendar className="h-5 w-5 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900">{plan.name || 'Meal Plan'}</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    <span className="font-medium">Plan Duration:</span>{' '}
+                    <span className="text-blue-700">{format(startDate, 'MMM d, yyyy')}</span>
+                    {' — '}
+                    <span className="text-blue-700">{format(endDate, 'MMM d, yyyy')}</span>
+                    {' '}
+                    <Badge variant="secondary" className="ml-1">{durationDays} days</Badge>
+                  </p>
+                  {plan.goal && (
+                    <p className="text-xs text-gray-500 mt-1">Goal: {plan.goal}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {isFetching ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
@@ -2134,7 +2173,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                 {activeTab === 'freeze' && (
                   <>
                     <div className="border rounded-lg p-3">
-                      <Label className="text-sm font-medium mb-2 block">Select Dates to Freeze</Label>
+                      <div className="flex items-center justify-between mb-3">
+                        <Label className="text-sm font-medium">Select Dates to Freeze</Label>
+                        <span className="text-xs text-gray-500">
+                          Click on available dates within plan range
+                        </span>
+                      </div>
 
                       {/* Day headers */}
                       <div className="grid grid-cols-7 gap-1 mb-2">
@@ -2157,74 +2201,142 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                           const isSelectable = isDateSelectable(dateStr);
                           const isSelected = selectedDates.includes(dateStr);
                           const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
+                          const frozenInfo = getFrozenDateInfo(dateStr);
 
                           return (
-                            <button
-                              key={dateStr}
-                              type="button"
-                              onClick={() => toggleDateSelection(dateStr)}
-                              disabled={!isSelectable}
-                              className={`
-                            aspect-square flex flex-col items-center justify-center text-sm rounded-lg relative transition-all
-                            ${isSelected ? 'bg-blue-500 text-white font-bold ring-2 ring-blue-300' : ''}
-                            ${isFrozen ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : ''}
-                            ${isPast && !isFrozen ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : ''}
-                            ${isSelectable && !isSelected ? 'hover:bg-blue-100 cursor-pointer border border-gray-200' : ''}
-                            ${!isSelectable && !isFrozen && !isPast ? 'opacity-50 cursor-not-allowed' : ''}
-                          `}
-                            >
-                              <span>{date.getDate()}</span>
-                              {isFrozen && (
-                                <X className="h-3 w-3 text-red-500 absolute top-0.5 right-0.5" />
+                            <div key={dateStr} className="relative group">
+                              <button
+                                type="button"
+                                onClick={() => toggleDateSelection(dateStr)}
+                                disabled={!isSelectable}
+                                title={isFrozen && frozenInfo ? `Frozen${frozenInfo.reason ? `: ${frozenInfo.reason}` : ''}${frozenInfo.frozenBy ? ` by ${frozenInfo.frozenBy}` : ''}` : undefined}
+                                className={`
+                                  w-full aspect-square flex flex-col items-center justify-center text-sm rounded-lg relative transition-all
+                                  ${isSelected ? 'bg-blue-500 text-white font-bold ring-2 ring-blue-300 shadow-md' : ''}
+                                  ${isFrozen ? 'bg-blue-100 text-blue-700 border-2 border-blue-400' : ''}
+                                  ${isPast && !isFrozen ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : ''}
+                                  ${isSelectable && !isSelected ? 'hover:bg-green-100 hover:border-green-400 cursor-pointer border border-green-200 bg-green-50 text-green-800' : ''}
+                                  ${!isSelectable && !isFrozen && !isPast ? 'opacity-50 cursor-not-allowed' : ''}
+                                `}
+                              >
+                                <span>{date.getDate()}</span>
+                                {isFrozen && (
+                                  <Snowflake className="h-3 w-3 text-blue-500 absolute top-0.5 right-0.5" />
+                                )}
+                              </button>
+                              {/* Tooltip for frozen dates */}
+                              {isFrozen && frozenInfo && (
+                                <div className="absolute z-50 hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-1 w-48 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                  <p className="font-semibold">🔒 Frozen Date</p>
+                                  {frozenInfo.reason && <p className="mt-1">Reason: {frozenInfo.reason}</p>}
+                                  {frozenInfo.frozenBy && <p>By: {frozenInfo.frozenBy}</p>}
+                                  {frozenInfo.createdAt && <p>On: {format(new Date(frozenInfo.createdAt), 'MMM d, yyyy')}</p>}
+                                  <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
+                                </div>
                               )}
-                            </button>
+                            </div>
                           );
                         })}
                       </div>
 
-                      {/* Legend */}
-                      <div className="flex gap-4 mt-3 text-xs text-gray-600">
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-blue-500 rounded" />
+                      {/* Legend with better color coding */}
+                      <div className="flex flex-wrap gap-3 mt-4 text-xs text-gray-600 p-2 bg-gray-50 rounded">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 bg-green-50 border border-green-200 rounded flex items-center justify-center">
+                            <span className="text-[8px] text-green-700">✓</span>
+                          </div>
+                          <span>Available</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 bg-blue-500 rounded shadow-sm" />
                           <span>Selected</span>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-gray-200 rounded relative">
-                            <X className="h-2 w-2 text-red-500 absolute -top-0.5 -right-0.5" />
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 bg-blue-100 border-2 border-blue-400 rounded flex items-center justify-center">
+                            <Snowflake className="h-2.5 w-2.5 text-blue-500" />
                           </div>
-                          <span>Already Frozen</span>
+                          <span>Frozen</span>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-gray-100 rounded" />
-                          <span>Past</span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 bg-gray-100 rounded" />
+                          <span>Past/Unavailable</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Selected Dates Summary */}
+                    {/* Freeze Reason Field */}
+                    <div className="border rounded-lg p-3">
+                      <Label className="text-sm font-medium mb-2 block">
+                        Reason for Freeze <span className="text-gray-400 font-normal">(Optional)</span>
+                      </Label>
+                      <Input
+                        placeholder="e.g., Client vacation, Festival break, Travel..."
+                        value={freezeReason}
+                        onChange={(e) => setFreezeReason(e.target.value)}
+                        maxLength={200}
+                        className="text-sm"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        This helps track why dates were frozen
+                      </p>
+                    </div>
+
+                    {/* Selected Dates Summary / Confirmation */}
                     {selectedDates.length > 0 && (
-                      <div className="bg-blue-50 p-3 rounded border border-blue-200">
-                        <p className="text-sm font-medium text-blue-900 mb-2">
-                          Selected {selectedDates.length} date(s) to freeze:
-                        </p>
-                        <div className="flex flex-wrap gap-1">
-                          {selectedDates.sort().map(dateStr => (
-                            <Badge
-                              key={dateStr}
-                              variant="secondary"
-                              className="cursor-pointer hover:bg-red-100"
-                              onClick={() => toggleDateSelection(dateStr)}
-                            >
-                              {format(new Date(dateStr), 'MMM dd')}
-                              <X className="h-3 w-3 ml-1" />
-                            </Badge>
-                          ))}
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="p-1.5 bg-blue-100 rounded-full">
+                            <Snowflake className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <h4 className="font-semibold text-blue-900">
+                            Freeze Summary
+                          </h4>
+                        </div>
+
+                        {/* Summary Box */}
+                        <div className="bg-white rounded-lg p-3 border border-blue-100 space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Plan:</span>
+                            <span className="font-medium">{plan.name || 'Meal Plan'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Plan Duration:</span>
+                            <span className="font-medium">{format(startDate, 'MMM d')} - {format(endDate, 'MMM d, yyyy')}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Freezing:</span>
+                            <span className="font-bold text-blue-700">{selectedDates.length} day(s)</span>
+                          </div>
+                          {freezeReason && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Reason:</span>
+                              <span className="font-medium text-gray-800">{freezeReason}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Dates to freeze */}
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-blue-800 mb-2">Dates to freeze:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {selectedDates.sort().map(dateStr => (
+                              <Badge
+                                key={dateStr}
+                                variant="secondary"
+                                className="cursor-pointer hover:bg-red-100 bg-blue-100 text-blue-800"
+                                onClick={() => toggleDateSelection(dateStr)}
+                              >
+                                {format(new Date(dateStr), 'MMM d')}
+                                <X className="h-3 w-3 ml-1" />
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
 
                         {/* Show the dates that will be added at the end */}
                         <div className="mt-3 pt-3 border-t border-blue-200">
-                          <p className="text-sm font-medium text-green-800 mb-2">
-                            Meals will be copied to these new dates (after plan end):
+                          <p className="text-xs font-medium text-green-800 mb-2">
+                            📅 Meals will be copied to these new dates:
                           </p>
                           <div className="flex flex-wrap gap-1">
                             {selectedDates.sort().map((_, index) => {
@@ -2233,15 +2345,20 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                 <Badge
                                   key={index}
                                   variant="outline"
-                                  className="bg-green-50 text-green-800 border-green-300"
+                                  className="bg-green-50 text-green-700 border-green-300"
                                 >
-                                  {format(newDate, 'MMM dd, yyyy')}
+                                  {format(newDate, 'MMM d, yyyy')}
                                 </Badge>
                               );
                             })}
                           </div>
-                          <p className="text-xs text-gray-600 mt-2">
-                            <strong>Note:</strong> Original plan duration will NOT change. Meals from frozen dates will be copied to the dates shown above.
+                        </div>
+
+                        {/* Warning */}
+                        <div className="mt-3 p-2 bg-amber-50 rounded border border-amber-200">
+                          <p className="text-xs text-amber-800">
+                            ⚠️ <strong>Important:</strong> During freeze, meals cannot be modified for frozen dates.
+                            The meals will be copied (not moved) to new dates at the end of the plan.
                           </p>
                         </div>
                       </div>
@@ -2313,25 +2430,33 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                     flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all
                                     ${isSelected
                                         ? 'bg-green-50 border-green-500 ring-2 ring-green-200'
-                                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                        : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
                                       }
                                   `}
                                   >
                                     <div className="flex items-center gap-3">
-                                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300'
+                                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${isSelected ? 'bg-green-500 border-green-500' : 'border-blue-400'
                                         }`}>
                                         {isSelected && <Check className="h-3 w-3 text-white" />}
                                       </div>
                                       <div>
-                                        <p className="font-medium text-sm">
-                                          {format(new Date(fd.date), 'EEEE, MMM dd, yyyy')}
+                                        <p className="font-medium text-sm text-gray-900">
+                                          {format(new Date(fd.date), 'EEEE, MMM d, yyyy')}
                                         </p>
-                                        <p className="text-xs text-gray-500">
-                                          Frozen on: {format(new Date(fd.createdAt), 'MMM dd, yyyy HH:mm')}
-                                        </p>
+                                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 mt-1">
+                                          {fd.frozenBy && (
+                                            <span>Frozen by: <span className="font-medium">{fd.frozenBy}</span></span>
+                                          )}
+                                          <span>On: {format(new Date(fd.createdAt), 'MMM d, yyyy')}</span>
+                                        </div>
+                                        {fd.reason && (
+                                          <p className="text-xs text-blue-600 mt-1">
+                                            💬 Reason: {fd.reason}
+                                          </p>
+                                        )}
                                       </div>
                                     </div>
-                                    <Snowflake className="h-4 w-4 text-blue-400" />
+                                    <Snowflake className="h-5 w-5 text-blue-500" />
                                   </div>
                                 );
                               })}

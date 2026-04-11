@@ -5,6 +5,8 @@ import { MEAL_TYPE_KEYS } from '@/lib/mealConfig';
 interface IFreezeDay {
   date: Date;
   addedDate?: string; // The date where meal was copied to (YYYY-MM-DD format)
+  reason?: string; // Optional reason for freezing (e.g., "Client vacation")
+  frozenBy?: string; // Name/ID of who froze this date
   createdAt: Date;
 }
 
@@ -176,6 +178,8 @@ const MealCompletionSchema = new Schema({
 const FreezeDaySchema = new Schema({
   date: { type: Date, required: true },
   addedDate: { type: String }, // The date where meal was copied to (YYYY-MM-DD format)
+  reason: { type: String, maxlength: 200 }, // Optional reason for freezing
+  frozenBy: { type: String }, // Name of who froze this date
   createdAt: { type: Date, default: Date.now }
 }, { _id: false });
 
