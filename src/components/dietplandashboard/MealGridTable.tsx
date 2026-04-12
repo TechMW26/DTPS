@@ -671,18 +671,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     }
   };
 
-  const addNewDay = () => {
-    if (readOnly || !onUpdate) return;
-    const newDayIndex = weekPlan.length + 1;
-    const newDay: DayPlan = {
-      id: `day-${Date.now()}`,
-      day: `Day ${newDayIndex}`,
-      date: '',
-      meals: {},
-      note: ''
-    };
-    onUpdate([...weekPlan, newDay]);
-  };
+
 
   const updateMealTypeTime = (mealType: string, time: string) => {
     setCustomMealTimes(prev => ({
@@ -1894,20 +1883,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
               {/* Add Day Row */}
               <tr className="bg-slate-100/50">
                 <td className="border-r border-b border-gray-300 p-5 align-top">
-                  <div className="space-y-2.5">
-                    <div className="text-slate-800 font-semibold tracking-wide uppercase text-xs flex items-center gap-2">
-                      <Plus className="w-3.5 h-3.5" />
-                      Add Day
-                    </div>
-                    <Button
-                      variant="outline"
-                      onClick={addNewDay}
-                      className="w-full h-10 text-xs bg-white border-2 border-dashed border-slate-400 hover:border-slate-600 hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-medium"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add New Day
-                    </Button>
-                  </div>
+
                 </td>
                 {displayMealTypes.map((mealType, index) => (
                   <React.Fragment key={`add-${mealType}`}>
