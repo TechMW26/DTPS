@@ -50,6 +50,7 @@ export function PushNotificationProvider({
     const isDietitianOrCounselor = userRole === 'dietitian' || userRole === 'health_counselor';
     const isAdmin = userRole === 'admin';
     const isStaffWebPushRole = isAdmin || isDietitianOrCounselor;
+    const shouldShowInAppBanner = isDietitianOrCounselor;
 
     // Track last notification to prevent duplicates
     const lastNotificationRef = useRef<{ id: string; timestamp: number } | null>(null);
@@ -315,6 +316,10 @@ export function PushNotificationProvider({
 
     // Handle foreground notification display with toast for staff roles
     const handleForegroundNotification = useCallback((payload: any) => {
+        if (!shouldShowInAppBanner) {
+            return;
+        }
+
         console.log('[PushNotificationProvider] Foreground notification received:', payload);
 
         const { title, body, type, data } = extractNotificationMeta(payload);
@@ -336,7 +341,7 @@ export function PushNotificationProvider({
         if (onNotification) {
             onNotification(payload);
         }
-    }, [extractNotificationMeta, onNotification, isDuplicateNotification, syncUnreadNotificationBadge, showPushBanner]);
+    }, [extractNotificationMeta, onNotification, isDuplicateNotification, shouldShowInAppBanner, syncUnreadNotificationBadge, showPushBanner]);
 
     // Enable web push for staff dashboard roles
     const { isSupported, permission, registerToken } = usePushNotifications({
@@ -357,6 +362,10 @@ export function PushNotificationProvider({
 
     // Handle native app foreground notifications - NO toast for clients (user panel)
     const handleNativeForegroundNotification = useCallback((notification: ForegroundNotification) => {
+        if (!shouldShowInAppBanner) {
+            return;
+        }
+
         console.log('[PushNotificationProvider] Native foreground notification received:', JSON.stringify(notification));
 
         const title = notification.title || 'New Notification';
@@ -383,7 +392,7 @@ export function PushNotificationProvider({
                 data: notification.data
             });
         }
-    }, [onNotification, isDuplicateNotification, showPushBanner]);
+    }, [onNotification, isDuplicateNotification, shouldShowInAppBanner, showPushBanner]);
 
     // Set up native foreground notification handler
     useEffect(() => {
@@ -395,6 +404,7 @@ export function PushNotificationProvider({
     // Fallback for in-app real-time messages when foreground FCM notification doesn't fire.
     useEffect(() => {
         if (status !== 'authenticated') return;
+        if (!shouldShowInAppBanner) return;
 
         const unsubscribe = socketClient.on(SOCKET_EVENTS.NEW_MESSAGE, (payload: any) => {
             try {
@@ -409,20 +419,13 @@ export function PushNotificationProvider({
                 const preview = messageText || 'You received a new message.';
                 const messageId = String(message?._id || payload?.messageId || '').trim();
 
-                let clickAction = '/messages';
-                if (userRole === 'health_counselor') {
-                    clickAction = senderId
-                        ? `/health-counselor/messages?conversationWith=${encodeURIComponent(senderId)}`
-                        : '/health-counselor/messages';
-                } else if (userRole === 'client') {
-                    clickAction = senderId
-                        ? `/user/messages?conversationWith=${encodeURIComponent(senderId)}`
-                        : '/user/messages';
-                } else {
-                    clickAction = senderId
-                        ? `/messages?conversationWith=${encodeURIComponent(senderId)}`
-                        : '/messages';
-                }
+                const clickAction = resolveTargetPath({
+                    data: {
+                        type: 'new_message',
+                        actionType: 'message',
+                        conversationWith: senderId,
+                    },
+                });
 
                 // Let existing duplicate guard suppress if FCM and socket arrive together.
                 showPushBanner({
@@ -449,7 +452,7 @@ export function PushNotificationProvider({
         return () => {
             unsubscribe();
         };
-    }, [showPushBanner, status, userRole]);
+    }, [resolveTargetPath, shouldShowInAppBanner, showPushBanner, status]);
 
     // One-time preview for the in-app notification banner.
     useEffect(() => {
