@@ -348,6 +348,7 @@ export async function sendNotificationToRole(
     role: string,
     notification: FCMNotificationPayload
 ): Promise<SendNotificationResult> {
+    const messaging = await getMessaging();
     if (!messaging) {
         console.warn('Firebase messaging not initialized');
         return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };

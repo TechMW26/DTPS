@@ -5,4 +5,8 @@ declare global {
     conn: typeof mongoose | null;
     promise: Promise<typeof mongoose> | null;
   };
+
+  interface Window {
+    __dtpsPreviewNotificationBanner?: () => void;
+  }
 }

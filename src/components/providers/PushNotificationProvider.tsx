@@ -483,12 +483,12 @@ export function PushNotificationProvider({
     useEffect(() => {
         if (typeof window === 'undefined') return;
 
-        (window as any).__dtpsPreviewNotificationBanner = () => {
+        window.__dtpsPreviewNotificationBanner = () => {
             showPreviewBanner(userRole);
         };
 
         return () => {
-            delete (window as any).__dtpsPreviewNotificationBanner;
+            delete window.__dtpsPreviewNotificationBanner;
         };
     }, [showPreviewBanner, userRole]);
 
