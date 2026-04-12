@@ -4,6 +4,8 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useNativeApp, ForegroundNotification } from '@/hooks/useNativeApp';
+import { socketClient } from '@/lib/realtime/socket-client';
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 import { toast } from 'sonner';
 
 interface PushNotificationProviderProps {
@@ -389,6 +391,65 @@ export function PushNotificationProvider({
             setNativeForegroundHandler(handleNativeForegroundNotification);
         }
     }, [isNativeApp, setNativeForegroundHandler, handleNativeForegroundNotification]);
+
+    // Fallback for in-app real-time messages when foreground FCM notification doesn't fire.
+    useEffect(() => {
+        if (status !== 'authenticated') return;
+
+        const unsubscribe = socketClient.on(SOCKET_EVENTS.NEW_MESSAGE, (payload: any) => {
+            try {
+                const message = payload?.message;
+                if (!message) return;
+
+                const senderId = String(message?.sender?._id || payload?.senderId || '').trim();
+                const senderName = `${String(message?.sender?.firstName || '').trim()} ${String(message?.sender?.lastName || '').trim()}`.trim()
+                    || String(payload?.senderName || 'New message');
+
+                const messageText = String(message?.content || payload?.content || '').trim();
+                const preview = messageText || 'You received a new message.';
+                const messageId = String(message?._id || payload?.messageId || '').trim();
+
+                let clickAction = '/messages';
+                if (userRole === 'health_counselor') {
+                    clickAction = senderId
+                        ? `/health-counselor/messages?conversationWith=${encodeURIComponent(senderId)}`
+                        : '/health-counselor/messages';
+                } else if (userRole === 'client') {
+                    clickAction = senderId
+                        ? `/user/messages?conversationWith=${encodeURIComponent(senderId)}`
+                        : '/user/messages';
+                } else {
+                    clickAction = senderId
+                        ? `/messages?conversationWith=${encodeURIComponent(senderId)}`
+                        : '/messages';
+                }
+
+                // Let existing duplicate guard suppress if FCM and socket arrive together.
+                showPushBanner({
+                    notification: {
+                        title: `New message from ${senderName}`,
+                        body: preview,
+                    },
+                    data: {
+                        type: 'new_message',
+                        actionType: 'message',
+                        messageId,
+                        senderName,
+                        senderId,
+                        conversationWith: senderId,
+                        clickAction,
+                        timestamp: String(message?.createdAt || new Date().toISOString()),
+                    },
+                });
+            } catch (error) {
+                console.error('[PushNotificationProvider] Failed to show socket fallback message banner:', error);
+            }
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, [showPushBanner, status, userRole]);
 
     // One-time preview for the in-app notification banner.
     useEffect(() => {
