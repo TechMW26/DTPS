@@ -49,6 +49,29 @@ export async function POST(request: NextRequest) {
     let successCount = 0;
     let failCount = 0;
 
+    const getAccessibleClientQuery = () => {
+      const baseQuery: any = {
+        role: UserRole.CLIENT,
+        isActive: { $ne: false }
+      };
+
+      if (session.user.role === UserRole.DIETITIAN) {
+        baseQuery.$or = [
+          { assignedDietitian: session.user.id },
+          { assignedDietitians: session.user.id }
+        ];
+      }
+
+      if (session.user.role === UserRole.HEALTH_COUNSELOR) {
+        baseQuery.$or = [
+          { assignedHealthCounselor: session.user.id },
+          { assignedHealthCounselors: session.user.id }
+        ];
+      }
+
+      return baseQuery;
+    };
+
     if (validatedData.targetType === 'single' || validatedData.targetType === 'multiple') {
       if (!validatedData.clientIds || validatedData.clientIds.length === 0) {
         return NextResponse.json(
@@ -56,23 +79,21 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      targetClientIds = validatedData.clientIds;
+
+      if (session.user.role === UserRole.ADMIN) {
+        targetClientIds = validatedData.clientIds;
+      } else {
+        const accessibleClients = await User.find({
+          ...getAccessibleClientQuery(),
+          _id: { $in: validatedData.clientIds }
+        }).select('_id');
+
+        targetClientIds = accessibleClients.map(c => c._id.toString());
+      }
     } else if (validatedData.targetType === 'all') {
       // Get all clients
       // For DIETITIAN/HEALTH_COUNSELOR, only send to their assigned clients
-      let clientQuery: any = { 
-        role: UserRole.CLIENT,
-        isActive: { $ne: false }
-      };
-
-      if (session.user.role === UserRole.DIETITIAN || session.user.role === UserRole.HEALTH_COUNSELOR) {
-        clientQuery.$or = [
-          { assignedDietitian: session.user.id },
-          { assignedDietitians: session.user.id }
-        ];
-      }
-
-      const clients = await User.find(clientQuery).select('_id');
+      const clients = await User.find(getAccessibleClientQuery()).select('_id');
       targetClientIds = clients.map(c => c._id.toString());
     }
 
@@ -107,7 +128,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Send to multiple clients
       const results = await Promise.allSettled(
-        targetClientIds.map(clientId => 
+        targetClientIds.map(clientId =>
           sendNotificationToUser(clientId, notificationData)
         )
       );
@@ -133,7 +154,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error sending custom notification:', error);
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, message: 'Validation error', errors: error.format() },
@@ -171,16 +192,23 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     // Build query based on role
-    let clientQuery: any = { 
+    let clientQuery: any = {
       role: UserRole.CLIENT,
       isActive: { $ne: false }
     };
 
     // For DIETITIAN/HEALTH_COUNSELOR, only show their assigned clients
-    if (session.user.role === UserRole.DIETITIAN || session.user.role === UserRole.HEALTH_COUNSELOR) {
+    if (session.user.role === UserRole.DIETITIAN) {
       clientQuery.$or = [
         { assignedDietitian: session.user.id },
         { assignedDietitians: session.user.id }
+      ];
+    }
+
+    if (session.user.role === UserRole.HEALTH_COUNSELOR) {
+      clientQuery.$or = [
+        { assignedHealthCounselor: session.user.id },
+        { assignedHealthCounselors: session.user.id }
       ];
     }
 

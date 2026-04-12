@@ -5,6 +5,16 @@ import dbConnect from "@/lib/db/connection";
 import DietaryRecall from "@/lib/db/models/DietaryRecall";
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { MEAL_TYPES, MEAL_TYPE_KEYS } from '@/lib/mealConfig';
+
+const VALID_MEAL_TYPES = MEAL_TYPE_KEYS.map((key) => MEAL_TYPES[key].label);
+
+const normalizeMealType = (mealType: string): string | null => {
+  if (!mealType) return null;
+  const normalized = mealType.trim().toLowerCase();
+  const match = VALID_MEAL_TYPES.find((value) => value.toLowerCase() === normalized);
+  return match || null;
+};
 
 export async function GET() {
   try {
@@ -42,6 +52,28 @@ export async function POST(request: Request) {
 
     await dbConnect();
     const data = await request.json();
+    const mealsInput = Array.isArray(data.meals) ? data.meals : null;
+
+    if (!mealsInput) {
+      return NextResponse.json({ error: "Meals array is required" }, { status: 400 });
+    }
+
+    const normalizedMeals = mealsInput.map((meal: any) => {
+      const normalizedMealType = normalizeMealType(String(meal?.mealType || ''));
+      if (!normalizedMealType) return null;
+
+      return {
+        mealType: normalizedMealType,
+        hour: String(meal?.hour || ''),
+        minute: String(meal?.minute || ''),
+        meridian: meal?.meridian === 'PM' ? 'PM' : 'AM',
+        food: String(meal?.food || ''),
+      };
+    });
+
+    if (normalizedMeals.some((meal) => meal === null)) {
+      return NextResponse.json({ error: "One or more meal types are invalid" }, { status: 400 });
+    }
 
     // If date is provided, use it, otherwise use today
     const date = data.date ? new Date(data.date) : new Date();
@@ -70,14 +102,14 @@ export async function POST(request: Request) {
 
     if (existingRecall) {
       // Update existing recall
-      existingRecall.meals = data.meals || [];
+      existingRecall.meals = normalizedMeals as any;
       dietaryRecall = await existingRecall.save();
     } else {
       // Create new recall
       dietaryRecall = await DietaryRecall.create({
         userId: session.user.id,
         date,
-        meals: data.meals || []
+        meals: normalizedMeals
       });
     }
 
@@ -95,7 +127,7 @@ export async function POST(request: Request) {
       targetUserName: session.user.name || '',
       details: {
         date: date.toISOString(),
-        mealsCount: data.meals?.length || 0
+        mealsCount: normalizedMeals.length
       }
     }).catch(console.error);
 

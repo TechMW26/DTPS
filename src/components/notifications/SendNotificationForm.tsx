@@ -43,6 +43,20 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
     stats?: { total: number; success: number; failed: number };
   } | null>(null);
 
+  const getClientInitials = (name?: string) => {
+    const safeName = (name || '').trim();
+    if (!safeName) {
+      return 'CL';
+    }
+    return safeName
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   // Fetch clients for selection
   useEffect(() => {
     const fetchClients = async () => {
@@ -51,7 +65,24 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
         const response = await fetch('/api/admin/notifications/send');
         const data = await response.json();
         if (data.success) {
-          setClients(data.clients);
+          const rawClients = (Array.isArray(data.clients) ? data.clients : []) as Array<{
+            id?: unknown;
+            name?: unknown;
+            email?: unknown;
+            avatar?: unknown;
+          }>;
+
+          const normalizedClients: Client[] = Array.isArray(data.clients)
+            ? rawClients
+              .map((client) => ({
+                id: String(client?.id || '').trim(),
+                name: String(client?.name || '').trim() || 'Unnamed Client',
+                email: String(client?.email || '').trim(),
+                avatar: typeof client?.avatar === 'string' ? client.avatar : undefined,
+              }))
+              .filter((client: Client) => client.id.length > 0)
+            : [];
+          setClients(normalizedClients);
         }
       } catch (error) {
         console.error('Failed to fetch clients:', error);
@@ -63,14 +94,18 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
   }, []);
 
   // Filter clients based on search
-  const filteredClients = clients.filter(
-    client =>
-      client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredClients = clients.filter((client) => {
+    const safeName = (client.name || '').toLowerCase();
+    const safeEmail = (client.email || '').toLowerCase();
+    return safeName.includes(normalizedQuery) || safeEmail.includes(normalizedQuery);
+  });
 
   // Handle client selection
   const toggleClientSelection = (clientId: string) => {
+    if (!clientId) {
+      return;
+    }
     if (targetType === 'single') {
       setSelectedClients([clientId]);
     } else {
@@ -80,6 +115,24 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
           : [...prev, clientId]
       );
     }
+  };
+
+  const setClientSelection = (clientId: string, isSelected: boolean) => {
+    if (!clientId) {
+      return;
+    }
+    setSelectedClients(prev => {
+      if (isSelected) {
+        if (prev.includes(clientId)) {
+          return prev;
+        }
+        return [...prev, clientId];
+      }
+      if (!prev.includes(clientId)) {
+        return prev;
+      }
+      return prev.filter(id => id !== clientId);
+    });
   };
 
   // Select all filtered clients
@@ -99,12 +152,12 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!title.trim()) {
       toast.error('Please enter a notification title');
       return;
     }
-    
+
     if (!body.trim()) {
       toast.error('Please enter a notification message');
       return;
@@ -135,7 +188,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
       });
 
       const data = await response.json();
-      
+
       if (data.success) {
         setResult({
           success: true,
@@ -143,14 +196,14 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
           stats: data.stats
         });
         toast.success(`Notification sent to ${data.stats.success} client(s)`);
-        
+
         // Reset form
         setTitle('');
         setBody('');
         if (!preselectedClientId) {
           setSelectedClients([]);
         }
-        
+
         onSuccess?.();
       } else {
         setResult({
@@ -363,35 +416,47 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {filteredClients.map((client) => (
-                      <div
-                        key={client.id}
-                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent ${
-                          selectedClients.includes(client.id) ? 'bg-accent' : ''
-                        }`}
-                        onClick={() => toggleClientSelection(client.id)}
-                      >
-                        {targetType === 'multiple' && (
-                          <Checkbox
-                            checked={selectedClients.includes(client.id)}
-                            onCheckedChange={() => toggleClientSelection(client.id)}
-                          />
-                        )}
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={client.avatar} alt={client.name} />
-                          <AvatarFallback>
-                            {client.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{client.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">{client.email}</p>
+                    {filteredClients.map((client) => {
+                      const isSelected = selectedClients.includes(client.id);
+                      const handleRowSelect = () => {
+                        if (targetType === 'single') {
+                          toggleClientSelection(client.id);
+                        } else if (targetType === 'multiple') {
+                          setClientSelection(client.id, !isSelected);
+                        }
+                      };
+
+                      return (
+                        <div
+                          key={client.id}
+                          className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent ${isSelected ? 'bg-accent' : ''
+                            }`}
+                          onClick={targetType === 'single' ? handleRowSelect : undefined}
+                        >
+                          {targetType === 'multiple' && (
+                            <Checkbox
+                              type="button"
+                              checked={isSelected}
+                              onClick={(e) => e.stopPropagation()}
+                              onCheckedChange={(checked) => setClientSelection(client.id, checked === true)}
+                            />
+                          )}
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={client.avatar} alt={client.name} />
+                            <AvatarFallback>
+                              {getClientInitials(client.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{client.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{client.email}</p>
+                          </div>
+                          {isSelected && targetType === 'single' && (
+                            <Badge variant="secondary" className="text-xs">Selected</Badge>
+                          )}
                         </div>
-                        {selectedClients.includes(client.id) && targetType === 'single' && (
-                          <Badge variant="secondary" className="text-xs">Selected</Badge>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -425,9 +490,8 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
           {/* Result Message */}
           {result && (
             <div
-              className={`p-3 rounded-md flex items-start gap-2 ${
-                result.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-              }`}
+              className={`p-3 rounded-md flex items-start gap-2 ${result.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                }`}
             >
               {result.success ? (
                 <CheckCircle className="h-5 w-5 mt-0.5" />
@@ -461,8 +525,8 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
               <>
                 <Send className="mr-2 h-4 w-4" />
                 Send Notification
-                {targetType === 'all' ? ` to All Clients (${clients.length})` : 
-                 selectedClients.length > 0 ? ` to ${selectedClients.length} Client(s)` : ''}
+                {targetType === 'all' ? ` to All Clients (${clients.length})` :
+                  selectedClients.length > 0 ? ` to ${selectedClients.length} Client(s)` : ''}
               </>
             )}
           </Button>

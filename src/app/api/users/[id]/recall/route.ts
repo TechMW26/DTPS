@@ -109,8 +109,13 @@ export async function POST(
     // console.log('Saving dietary recall for user:', userId);
     // console.log('Request body:', body);
 
-    // Handle both 'meals' array and 'entries' array (frontend sends entries)
-    const mealsData = body.meals || body.entries || [];
+    // Handle both full-array payloads and single-entry payloads
+    const mealsData = Array.isArray(body.meals)
+      ? body.meals
+      : Array.isArray(body.entries)
+        ? body.entries
+        : [];
+    const hasSingleEntryPayload = !mealsData.length && typeof body.mealType === 'string';
 
     // Verify user exists
     const user = await withCache(
@@ -134,23 +139,46 @@ export async function POST(
       'Past Dinner': { hour: '9', minute: '00', meridian: 'PM' },
     };
 
-    // Ensure all meals have valid times
+    if (!hasSingleEntryPayload && mealsData.length === 0) {
+      return NextResponse.json(
+        { error: 'No recall entries provided' },
+        { status: 400 }
+      );
+    }
+
+    const mapMeal = (meal: any) => {
+      const normalizedMealType = normalizeMealType(meal?.mealType || '');
+      if (!normalizedMealType) {
+        return null;
+      }
+
+      const defaultTime = defaultTimes[normalizedMealType] || { hour: '12', minute: '00', meridian: 'PM' as const };
+      return {
+        mealType: normalizedMealType,
+        hour: meal?.hour || defaultTime.hour,
+        minute: meal?.minute || defaultTime.minute,
+        meridian: meal?.meridian || defaultTime.meridian,
+        food: meal?.food || ''
+      };
+    };
+
+    // Ensure all meals have valid meal types/times
     const mealsWithDefaults = mealsData
-      .filter((meal: any) => {
-        const normalized = normalizeMealType(meal.mealType);
-        return normalized; // Only include meals with valid mealType
-      })
-      .map((meal: any) => {
-        const normalizedMealType = normalizeMealType(meal.mealType);
-        const defaultTime = defaultTimes[normalizedMealType!] || { hour: '12', minute: '00', meridian: 'PM' };
-        return {
-          mealType: normalizedMealType, // Use normalized canonical form
-          hour: meal.hour || defaultTime.hour,
-          minute: meal.minute || defaultTime.minute,
-          meridian: meal.meridian || defaultTime.meridian,
-          food: meal.food || ''
-        };
-      });
+      .map((meal: any) => mapMeal(meal))
+      .filter(Boolean) as Array<{
+        mealType: string;
+        hour: string;
+        minute: string;
+        meridian: 'AM' | 'PM';
+        food: string;
+      }>;
+
+    if (!hasSingleEntryPayload && mealsData.length > 0 && mealsWithDefaults.length === 0) {
+      return NextResponse.json(
+        { error: 'Invalid meal type in recall entries' },
+        { status: 400 }
+      );
+    }
 
     // Find existing recall for today or create new one
     const today = new Date();
@@ -162,8 +190,29 @@ export async function POST(
     });
 
     if (recall) {
-      // Update existing recall
-      recall.meals = mealsWithDefaults;
+      if (hasSingleEntryPayload) {
+        const singleMeal = mapMeal(body);
+        if (!singleMeal) {
+          return NextResponse.json(
+            { error: 'Invalid meal type in recall entry' },
+            { status: 400 }
+          );
+        }
+
+        const existingMealIndex = recall.meals.findIndex(
+          (meal: any) => meal.mealType?.toLowerCase() === singleMeal.mealType.toLowerCase()
+        );
+
+        if (existingMealIndex >= 0) {
+          recall.meals[existingMealIndex] = singleMeal;
+        } else {
+          recall.meals.push(singleMeal);
+        }
+      } else {
+        // Full-array replace path
+        recall.meals = mealsWithDefaults;
+      }
+
       await recall.save();
 
       await logHistoryServer({
@@ -174,16 +223,24 @@ export async function POST(
         performedById: session.user.id,
         metadata: {
           recallId: recall._id,
-          mealCount: mealsWithDefaults.length,
+          mealCount: recall.meals.length,
           date: recall.date,
         },
       });
     } else {
+      const mealsToPersist = hasSingleEntryPayload ? [mapMeal(body)].filter(Boolean) : mealsWithDefaults;
+      if (!mealsToPersist.length) {
+        return NextResponse.json(
+          { error: 'Invalid meal type in recall entry' },
+          { status: 400 }
+        );
+      }
+
       // Create new recall
       recall = new DietaryRecall({
         userId,
         date: new Date(),
-        meals: mealsWithDefaults
+        meals: mealsToPersist
       });
       await recall.save();
 
@@ -195,7 +252,7 @@ export async function POST(
         performedById: session.user.id,
         metadata: {
           recallId: recall._id,
-          mealCount: mealsWithDefaults.length,
+          mealCount: mealsToPersist.length,
           date: recall.date,
         },
       });

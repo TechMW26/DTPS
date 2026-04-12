@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import Link from 'next/link';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -17,7 +16,11 @@ export default function Error({
   }, [error]);
 
   const handleRetry = () => {
-    window.location.href = '/user';
+    try {
+      reset();
+    } catch {
+      window.location.reload();
+    }
   };
 
   return (
@@ -29,24 +32,24 @@ export default function Error({
             {/* White circle background */}
             <div className="w-32 h-32 bg-white rounded-full shadow-xl flex items-center justify-center">
               {/* Cloud with slash icon */}
-              <svg 
-                viewBox="0 0 64 64" 
+              <svg
+                viewBox="0 0 64 64"
                 className="w-16 h-16"
                 fill="none"
               >
                 {/* Cloud shape */}
-                <path 
-                  d="M48 32c0-8.837-7.163-16-16-16-7.071 0-13.065 4.591-15.163 10.949C10.471 27.621 5 33.507 5 40.5 5 48.508 11.716 55 20 55h26c6.627 0 12-5.373 12-12 0-5.879-4.238-10.77-9.829-11.784A15.93 15.93 0 0 0 48 32z" 
+                <path
+                  d="M48 32c0-8.837-7.163-16-16-16-7.071 0-13.065 4.591-15.163 10.949C10.471 27.621 5 33.507 5 40.5 5 48.508 11.716 55 20 55h26c6.627 0 12-5.373 12-12 0-5.879-4.238-10.77-9.829-11.784A15.93 15.93 0 0 0 48 32z"
                   fill="#4285F4"
                 />
                 {/* Diagonal slash line */}
-                <line 
-                  x1="20" 
-                  y1="20" 
-                  x2="48" 
-                  y2="48" 
-                  stroke="white" 
-                  strokeWidth="4" 
+                <line
+                  x1="20"
+                  y1="20"
+                  x2="48"
+                  y2="48"
+                  stroke="white"
+                  strokeWidth="4"
                   strokeLinecap="round"
                 />
               </svg>

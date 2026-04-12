@@ -696,6 +696,16 @@ export default function HealthCounselorClientDetailPage() {
           menstrualCycle: medicalInfo?.menstrualCycle || data?.user?.menstrualCycle || '',
           bloodFlow: medicalInfo?.bloodFlow || data?.user?.bloodFlow || ''
         });
+
+        // Load dietary recall entries from dedicated API
+        const recallResponse = await fetch(`/api/users/${params.clientId}/recall`, { cache: 'no-store' });
+        if (recallResponse.ok) {
+          const recallData = await recallResponse.json();
+          const loadedEntries = Array.isArray(recallData?.entries) ? recallData.entries : [];
+          if (loadedEntries.length > 0) {
+            setRecallEntries(loadedEntries);
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching client:', error);
@@ -828,10 +838,22 @@ export default function HealthCounselorClientDetailPage() {
   // Health counselors CAN edit dietary recall entries
   const handleSaveRecallEntry = async (entry: RecallEntry) => {
     try {
+      const updatedEntries = recallEntries.map(e =>
+        e.id === entry.id ? entry : e
+      );
+
+      const mealsToSave = updatedEntries.map(e => ({
+        mealType: e.mealType,
+        hour: e.hour,
+        minute: e.minute,
+        meridian: e.meridian,
+        food: e.food,
+      }));
+
       const response = await fetch(`/api/users/${params.clientId}/recall`, {
-        method: entry._id ? 'PUT' : 'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry)
+        body: JSON.stringify({ meals: mealsToSave })
       });
 
       if (response.ok) {
@@ -848,8 +870,19 @@ export default function HealthCounselorClientDetailPage() {
 
   const handleDeleteRecallEntry = async (entryId: string) => {
     try {
-      const response = await fetch(`/api/users/${params.clientId}/recall/${entryId}`, {
-        method: 'DELETE'
+      const updatedEntries = recallEntries.filter(e => e.id !== entryId);
+      const mealsToSave = updatedEntries.map(e => ({
+        mealType: e.mealType,
+        hour: e.hour,
+        minute: e.minute,
+        meridian: e.meridian,
+        food: e.food,
+      }));
+
+      const response = await fetch(`/api/users/${params.clientId}/recall`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meals: mealsToSave })
       });
 
       if (response.ok) {

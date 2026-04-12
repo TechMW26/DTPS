@@ -25,7 +25,7 @@ interface RecallFormProps {
   onSaveEntry?: (entry: RecallEntry) => Promise<void>;
   onDeleteEntry?: (entryId: string) => Promise<void>;
   loading?: boolean;
-  userRole?: 'client' | 'dietitian'; // Add user role prop
+  userRole?: 'client' | 'dietitian' | 'health_counselor' | 'admin';
 }
 
 export function RecallForm({ entries, onChange, onSave, onSaveEntry, onDeleteEntry, loading, userRole = 'client' }: RecallFormProps) {
@@ -61,7 +61,7 @@ export function RecallForm({ entries, onChange, onSave, onSaveEntry, onDeleteEnt
   const addEntry = () => {
     onChange([
       ...entries,
-      { id: Math.random().toString(36).slice(2), mealType: 'Custom', hour: '9', minute: '00', meridian: 'AM', food: '' }
+      { id: Math.random().toString(36).slice(2), mealType: 'Breakfast', hour: '9', minute: '00', meridian: 'AM', food: '' }
     ]);
   };
 
@@ -81,8 +81,8 @@ export function RecallForm({ entries, onChange, onSave, onSaveEntry, onDeleteEnt
       </CardHeader>
       <CardContent className="space-y-6 pt-6 px-4 sm:px-6">
         <div className="space-y-5">
-          {entries.map((entry, index) => (
-            <div key={index} className="border border-gray-200 rounded-lg p-5 space-y-4 bg-white hover:bg-gray-50 transition-colors">
+          {entries.map((entry) => (
+            <div key={entry.id} className="border border-gray-200 rounded-lg p-5 space-y-4 bg-white hover:bg-gray-50 transition-colors">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <Select value={entry.mealType} onValueChange={(val: string) => updateEntry(entry.id, 'mealType', val)}>
                   <SelectTrigger className="w-full sm:w-48 h-10 text-sm font-semibold">
@@ -139,12 +139,12 @@ export function RecallForm({ entries, onChange, onSave, onSaveEntry, onDeleteEnt
                       Save Entry
                     </Button>
                   )}
-                  {onDeleteEntry && entry._id && entry.food && (
+                  {onDeleteEntry && entry.food && (
                     <Button
                       type="button"
                       variant="destructive"
                       size="sm"
-                      onClick={() => onDeleteEntry(entry.mealType)}
+                      onClick={() => onDeleteEntry(entry.id)}
                       disabled={loading}
                       className="text-xs"
                     >
