@@ -495,9 +495,9 @@ export default function DieticianClientsPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-4">
+      <div className="dietitian-clients-page p-6 space-y-4 max-w-full mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="dietitian-clients-header flex items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">My Clients</h1>
             <p className="text-gray-600 mt-1">
@@ -505,7 +505,7 @@ export default function DieticianClientsPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="dietitian-clients-header-actions flex items-center gap-3">
             <Button
               size="sm"
               className="bg-emerald-600 hover:bg-emerald-700"
@@ -524,7 +524,7 @@ export default function DieticianClientsPage() {
         {/* Search + Filter Toggle */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
+            <div className="dietitian-clients-search-row flex items-center gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
@@ -734,26 +734,26 @@ export default function DieticianClientsPage() {
         )}
 
         {/* Header with Actions */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="dietitian-clients-actions-row flex items-center justify-between gap-3">
+          <div className="dietitian-clients-actions-left flex items-center gap-3">
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
               Bulk Action
             </Button>
             <Select value={filterFreeze} onValueChange={setFilterFreeze}>
-              <SelectTrigger className="w-45 h-9">
+              <SelectTrigger className="dietitian-clients-mobile-select-trigger w-45 h-9">
                 <SelectValue placeholder="Filter Freeze" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="dietitian-clients-mobile-select-content">
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="freeze">Freeze</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
               </SelectContent>
             </Select>
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-45 h-9">
+              <SelectTrigger className="dietitian-clients-mobile-select-trigger w-45 h-9">
                 <SelectValue placeholder="Client Status" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="dietitian-clients-mobile-select-content">
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="lead">Lead</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
@@ -777,8 +777,8 @@ export default function DieticianClientsPage() {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
-                  <Table>
+                <div className="dietitian-clients-table-wrap overflow-x-auto">
+                  <Table className="dietitian-clients-table">
                     <TableHeader>
                       <TableRow className="bg-gray-50">
                         <TableHead className="w-10 px-3">
@@ -814,14 +814,14 @@ export default function DieticianClientsPage() {
                         </TableRow>
                       ) : (
                         filteredClients.map((client) => (
-                          <TableRow key={client._id} className="hover:bg-gray-50">
-                            <TableCell className="px-3">
+                          <TableRow key={client._id} className="dietitian-clients-row hover:bg-gray-50">
+                            <TableCell className="dietitian-clients-cell px-3" data-label="Select">
                               <Checkbox
                                 checked={selectedClients.includes(client._id)}
                                 onCheckedChange={() => toggleClientSelection(client._id)}
                               />
                             </TableCell>
-                            <TableCell className="px-3">
+                            <TableCell className="dietitian-clients-cell px-3" data-label="C-Id">
                               <Link
                                 href={`/dietician/clients/${client._id}`}
                                 className="text-blue-600 hover:underline font-medium text-sm"
@@ -829,7 +829,7 @@ export default function DieticianClientsPage() {
                                 {client.clientId || getClientId(client._id)}
                               </Link>
                             </TableCell>
-                            <TableCell className="px-3">
+                            <TableCell className="dietitian-clients-cell px-3" data-label="Name">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-medium text-sm whitespace-nowrap">{client.firstName} {client.lastName}</span>
                                 <span className="text-xs bg-blue-100 text-blue-700 px-1 py-0.5 rounded font-medium">
@@ -840,9 +840,9 @@ export default function DieticianClientsPage() {
                                 </Link>
                               </div>
                             </TableCell>
-                            <TableCell className="px-3 text-sm whitespace-nowrap">{client.phone || '-'}</TableCell>
-                            <TableCell className="px-3 max-w-37.5 truncate text-sm">{client.email}</TableCell>
-                            <TableCell className="px-3">
+                            <TableCell className="dietitian-clients-cell px-3 text-sm whitespace-nowrap" data-label="Phone">{client.phone || '-'}</TableCell>
+                            <TableCell className="dietitian-clients-cell px-3 max-w-37.5 truncate text-sm" data-label="Email">{client.email}</TableCell>
+                            <TableCell className="dietitian-clients-cell px-3" data-label="Tags">
                               {client.tags && client.tags.length > 0 ? (
                                 <div className="flex gap-1 flex-wrap">
                                   {client.tags.slice(0, 2).map((tag, idx) => (
@@ -855,7 +855,7 @@ export default function DieticianClientsPage() {
                                 <span className="text-gray-400 text-xs">-</span>
                               )}
                             </TableCell>
-                            <TableCell className="px-3">
+                            <TableCell className="dietitian-clients-cell px-3" data-label="Status">
                               {/* Status is automatically computed: LEAD / ACTIVE / INACTIVE */}
                               <Badge
                                 variant="outline"
@@ -873,14 +873,14 @@ export default function DieticianClientsPage() {
                                 </span>
                               </Badge>
                             </TableCell>
-                            <TableCell className="px-3 text-sm whitespace-nowrap">
+                            <TableCell className="dietitian-clients-cell px-3 text-sm whitespace-nowrap" data-label="Plan Start">
                               {client.mealPlanStartDate ? formatDate(client.mealPlanStartDate) : (client.programStart ? formatDate(client.programStart) : '-')}
                             </TableCell>
-                            <TableCell className="px-3 text-sm whitespace-nowrap">
+                            <TableCell className="dietitian-clients-cell px-3 text-sm whitespace-nowrap" data-label="Plan End">
                               {client.mealPlanEndDate ? formatDate(client.mealPlanEndDate) : (client.programEnd ? formatDate(client.programEnd) : '-')}
                             </TableCell>
-                            <TableCell className="px-3 text-sm whitespace-nowrap">{client.lastDiet || '-'}</TableCell>
-                            <TableCell className="px-3 text-sm min-w-65 align-top">
+                            <TableCell className="dietitian-clients-cell px-3 text-sm whitespace-nowrap" data-label="Last Diet">{client.lastDiet || '-'}</TableCell>
+                            <TableCell className="dietitian-clients-cell px-3 text-sm min-w-65 align-top" data-label="Dietitians">
                               <div className="space-y-0.5">
                                 {/* Primary Dietitian */}
                                 {client.assignedDietitian ? (
@@ -911,7 +911,7 @@ export default function DieticianClientsPage() {
                                 })()}
                               </div>
                             </TableCell>
-                            <TableCell className="px-3 text-sm min-w-65 align-top">
+                            <TableCell className="dietitian-clients-cell px-3 text-sm min-w-65 align-top" data-label="Health Counselors">
                               <div className="space-y-0.5">
                                 {/* Primary Health Counselor */}
                                 {client.assignedHealthCounselor ? (
@@ -942,7 +942,7 @@ export default function DieticianClientsPage() {
                                 })()}
                               </div>
                             </TableCell>
-                            <TableCell className="px-3 text-sm">
+                            <TableCell className="dietitian-clients-cell px-3 text-sm" data-label="Created By">
                               {client.createdBy?.role ? (
                                 <div className="space-y-0.5">
                                   {client.createdBy.role === 'self' ? (
@@ -990,9 +990,9 @@ export default function DieticianClientsPage() {
                                 <span className="text-xs text-gray-400">-</span>
                               )}
                             </TableCell>
-                            <TableCell className="px-3 text-sm whitespace-nowrap">{formatDate(client.createdAt)}</TableCell>
+                            <TableCell className="dietitian-clients-cell px-3 text-sm whitespace-nowrap" data-label="Joined">{formatDate(client.createdAt)}</TableCell>
                             {canAssign && (
-                              <TableCell className="px-3">
+                              <TableCell className="dietitian-clients-cell px-3" data-label="Actions">
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -1012,7 +1012,7 @@ export default function DieticianClientsPage() {
                 </div>
 
                 {/* Pagination Footer */}
-                <div className="px-4 py-3 border-t flex items-center justify-between">
+                <div className="dietitian-clients-pagination px-4 py-3 border-t flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <span>Rows per page:</span>
                     <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
@@ -1262,6 +1262,261 @@ export default function DieticianClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <style jsx global>{`
+        @media (max-width: 768px) {
+          /* mobile only — max-width: 768px */
+          .dietitian-clients-page {
+            padding: 12px;
+            overflow-x: hidden;
+            space-y: 12px;
+          }
+
+          .dietitian-clients-page > * + * {
+            margin-top: 12px;
+          }
+
+          .dietitian-clients-page .text-xs {
+            font-size: 12px;
+          }
+
+          .dietitian-clients-page .text-sm {
+            font-size: 13px;
+          }
+
+          .dietitian-clients-page .text-3xl {
+            font-size: 22px;
+          }
+
+          .dietitian-clients-page button,
+          .dietitian-clients-page input,
+          .dietitian-clients-page [role='button'],
+          .dietitian-clients-page [role='combobox'] {
+            min-height: 44px;
+          }
+
+          /* Header Stack on Mobile */
+          .dietitian-clients-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+            width: 100%;
+          }
+
+          .dietitian-clients-header > div:first-child {
+            width: 100%;
+          }
+
+          .dietitian-clients-header > div:first-child h1 {
+            font-size: 22px;
+            line-height: 1.2;
+          }
+
+          .dietitian-clients-header > div:first-child p {
+            font-size: 13px;
+            margin-top: 4px;
+          }
+
+          .dietitian-clients-header-actions {
+            width: 100%;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+          }
+
+          .dietitian-clients-header-actions button {
+            width: 100%;
+            font-size: 14px;
+            padding: 10px 16px;
+          }
+
+          .dietitian-clients-header-actions > div {
+            width: 100%;
+            padding: 10px 12px;
+          }
+
+          /* Search and Filter Row */
+          .dietitian-clients-search-row {
+            flex-direction: column;
+            gap: 10px;
+            align-items: stretch;
+          }
+
+          .dietitian-clients-search-row > div {
+            width: 100%;
+          }
+
+          .dietitian-clients-search-row input {
+            width: 100%;
+            font-size: 16px;
+            padding: 10px 12px 10px 36px;
+          }
+
+          .dietitian-clients-search-row button {
+            width: 100%;
+            font-size: 14px;
+            padding: 10px 12px;
+          }
+
+          /* Actions Row */
+          .dietitian-clients-actions-row {
+            flex-direction: column;
+            gap: 10px;
+            align-items: stretch;
+            width: 100%;
+          }
+
+          .dietitian-clients-actions-row > div {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: stretch;
+          }
+
+          .dietitian-clients-actions-row select,
+          .dietitian-clients-actions-row [role='button'] {
+            width: 100%;
+            min-height: 44px;
+            font-size: 14px;
+          }
+
+          /* Dropdowns */
+          .dietitian-clients-mobile-select-trigger {
+            width: 100% !important;
+            min-height: 44px !important;
+            font-size: 14px;
+          }
+
+          .dietitian-clients-mobile-select-content {
+            max-height: min(60vh, 280px);
+            overflow-y: auto;
+          }
+
+          /* Filter Section */
+          .dietitian-clients-page .grid.grid-cols-1 {
+            gap: 10px;
+          }
+
+          .dietitian-clients-page .grid.grid-cols-1 > div {
+            width: 100%;
+          }
+
+          .dietitian-clients-page .grid.grid-cols-1 input,
+          .dietitian-clients-page .grid.grid-cols-1 [role='button'] {
+            width: 100%;
+            min-height: 44px;
+            font-size: 14px;
+          }
+
+          .dietitian-clients-page label {
+            font-size: 12px;
+            margin-bottom: 6px !important;
+          }
+
+          /* Table Wrapper */
+          .dietitian-clients-table-wrap {
+            overflow-x: visible;
+            padding: 0;
+          }
+
+          .dietitian-clients-table {
+            width: 100%;
+          }
+
+          .dietitian-clients-table thead {
+            display: none;
+          }
+
+          .dietitian-clients-table tbody {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+
+          .dietitian-clients-table tr {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 12px;
+            background: #ffffff;
+            page-break-inside: avoid;
+          }
+
+          .dietitian-clients-table td {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            width: 100%;
+            padding: 0 !important;
+          }
+
+          .dietitian-clients-table td[colspan] {
+            text-align: center;
+            padding: 16px 8px !important;
+            font-size: 14px;
+          }
+
+          .dietitian-clients-cell {
+            padding: 0 !important;
+            white-space: normal;
+            overflow: visible;
+            word-break: break-word;
+          }
+
+          .dietitian-clients-cell[data-label]::before {
+            content: attr(data-label);
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+
+          .dietitian-clients-cell button {
+            min-height: 40px;
+            font-size: 13px;
+            width: 100%;
+            padding: 8px 12px;
+          }
+
+          /* Pagination */
+          .dietitian-clients-pagination {
+            flex-direction: column;
+            gap: 12px;
+            padding: 12px !important;
+            align-items: stretch;
+          }
+
+          .dietitian-clients-pagination > div {
+            width: 100%;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 12px;
+          }
+
+          .dietitian-clients-pagination > div > span:last-child {
+            word-break: break-word;
+          }
+
+          .dietitian-clients-pagination .flex.items-center {
+            width: 100%;
+            justify-content: center;
+            gap: 4px;
+            flex-wrap: wrap;
+          }
+
+          .dietitian-clients-pagination button {
+            min-width: 40px;
+            min-height: 40px;
+            padding: 0;
+            font-size: 12px;
+          }
+        }
+      `}</style>
     </DashboardLayout>
   );
 }

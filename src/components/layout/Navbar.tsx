@@ -26,7 +26,8 @@ import {
   Calendar,
   MessageCircle,
   BarChart3,
-  Users
+  Users,
+  AlertTriangle
 } from 'lucide-react';
 import { UserRole } from '@/types';
 import Image from 'next/image';
@@ -72,7 +73,7 @@ export default function Navbar({ isDarkMode = false }: NavbarProps) {
     ];
 
     switch (role) {
-     
+
       case UserRole.CLIENT:
         return [
           ...baseItems,
@@ -137,8 +138,8 @@ export default function Navbar({ isDarkMode = false }: NavbarProps) {
                     href={item.href}
                     className={cn(
                       "flex items-center space-x-1 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                      isDarkMode 
-                        ? "text-gray-300 hover:text-white hover:bg-gray-800" 
+                      isDarkMode
+                        ? "text-gray-300 hover:text-white hover:bg-gray-800"
                         : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
                     )}
                   >
@@ -175,9 +176,9 @@ export default function Navbar({ isDarkMode = false }: NavbarProps) {
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage 
-                          src={session.user.avatar} 
-                          alt={session.user.name} 
+                        <AvatarImage
+                          src={session.user.avatar}
+                          alt={session.user.name}
                         />
                         <AvatarFallback className={isDarkMode ? "bg-gray-700 text-gray-300" : ""}>
                           {getInitials(session.user.firstName, session.user.lastName)}
@@ -233,31 +234,89 @@ export default function Navbar({ isDarkMode = false }: NavbarProps) {
           </div>
         </div>
 
-        {/* Mobile Navigation */}
+        {/* Mobile Navigation - Full Screen Modal */}
         {session?.user && isMobileMenuOpen && (
-          <div className="md:hidden">
-            <div className={cn("px-2 pt-2 pb-3 space-y-1 sm:px-3 border-t", isDarkMode ? "border-gray-700" : "")}>
-              {getNavigationItems(session.user.role).map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center space-x-2 px-3 py-2 rounded-md text-base font-medium transition-colors",
-                      isDarkMode 
-                        ? "text-gray-300 hover:text-white hover:bg-gray-800" 
-                        : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+          <>
+            {/* Backdrop */}
+            <div
+              className="md:hidden fixed inset-0 top-16 z-30 bg-black/20"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            {/* Menu Drawer */}
+            <div className={cn("md:hidden fixed left-0 right-0 top-16 z-40 max-h-[calc(100vh-4rem)] overflow-y-auto border-t", isDarkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200")}>
+              <nav className={cn("w-full py-2 space-y-1", isDarkMode ? "bg-gray-800" : "bg-white")}>
+                {/* Quick Access Section */}
+                <div className={cn("px-4 py-3 mb-2 border-b", isDarkMode ? "border-gray-700" : "border-gray-200")}>
+                  <p className={cn("text-xs font-semibold px-1 py-2 mb-2", isDarkMode ? "text-gray-400" : "text-gray-500")}>QUICK ACCESS</p>
+                  <div className="space-y-1">
+                    {/* Dashboard */}
+                    <Link
+                      href={session.user.role === UserRole.ADMIN ? '/dashboard/admin' : session.user.role === UserRole.CLIENT ? '/client-dashboard' : '/dashboard/dietitian'}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-colors",
+                        isDarkMode
+                          ? "text-gray-300 hover:text-white hover:bg-gray-700 active:bg-gray-600"
+                          : "text-gray-700 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200"
+                      )}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      <BarChart3 className="h-5 w-5 shrink-0" />
+                      <span>Dashboard</span>
+                    </Link>
+
+                    {/* Messages */}
+                    <Link
+                      href="/messages"
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-colors",
+                        isDarkMode
+                          ? "text-gray-300 hover:text-white hover:bg-gray-700 active:bg-gray-600"
+                          : "text-gray-700 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200"
+                      )}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      <MessageCircle className="h-5 w-5 shrink-0" />
+                      <span>Messages</span>
+                    </Link>
+
+                    {/* Pending Plans - Dietitian only */}
+                    {session.user.role === UserRole.DIETITIAN && (
+                      <Link
+                        href="/dietician/pending-plans"
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-colors",
+                          isDarkMode
+                            ? "text-gray-300 hover:text-white hover:bg-gray-700 active:bg-gray-600"
+                            : "text-gray-700 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200"
+                        )}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <AlertTriangle className="h-5 w-5 shrink-0" />
+                        <span>Pending Plans</span>
+                      </Link>
                     )}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <Icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
+
+                    {/* My Clients - Dietitian/Health Counselor */}
+                    {(session.user.role === UserRole.DIETITIAN || session.user.role === UserRole.HEALTH_COUNSELOR) && (
+                      <Link
+                        href={session.user.role === UserRole.DIETITIAN ? '/dietician/clients' : '/health-counselor/clients'}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-colors",
+                          isDarkMode
+                            ? "text-gray-300 hover:text-white hover:bg-gray-700 active:bg-gray-600"
+                            : "text-gray-700 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200"
+                        )}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <Users className="h-5 w-5 shrink-0" />
+                        <span>My Clients</span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </nav>
             </div>
-          </div>
+          </>
         )}
       </div>
     </nav>

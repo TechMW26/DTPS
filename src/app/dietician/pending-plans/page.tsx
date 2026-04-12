@@ -228,7 +228,7 @@ export default function PendingPlansPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <div className="p-6 flex items-center justify-center min-h-100">
           <div className="text-center">
             <Loader2 className="h-12 w-12 animate-spin text-teal-600 mx-auto mb-4" />
             <p className="text-gray-600">Loading pending plans...</p>
@@ -240,16 +240,16 @@ export default function PendingPlansPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-4">
+      <div className="dietitian-pending-plans-page p-6 space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="dietitian-pending-plans-header flex items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Pending Plans</h1>
             <p className="text-gray-600 mt-1">
               Clients requiring meal plan attention
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="dietitian-pending-plans-header-actions flex items-center gap-3">
             <Badge className="bg-teal-100 text-teal-700 border-teal-200 px-3 py-1">
               <Users className="h-4 w-4 mr-1" />
               {pendingPlans.length} Clients
@@ -315,7 +315,7 @@ export default function PendingPlansPage() {
         </div>
 
         {/* Search + Filter Toggle */}
-        <div className="flex items-center gap-2">
+        <div className="dietitian-pending-plans-search-row flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
@@ -352,7 +352,7 @@ export default function PendingPlansPage() {
           <Card className="border-gray-200">
             <CardContent className="px-4 py-3 space-y-3">
               {/* Row 1 */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-2">
+              <div className="pending-plans-filters-grid-1 grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-2">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-gray-500">Urgency</label>
                   <Select value={urgencyFilter} onValueChange={(v) => setUrgencyFilter(v === '_all' ? '' : v)}>
@@ -413,7 +413,7 @@ export default function PendingPlansPage() {
               </div>
 
               {/* Row 2 */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-x-3 gap-y-2">
+              <div className="pending-plans-filters-grid-2 grid grid-cols-2 md:grid-cols-5 gap-x-3 gap-y-2">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-gray-500">Dietitian</label>
                   <Select value={dietitianFilter} onValueChange={(v) => setDietitianFilter(v === '_all' ? '' : v)}>
@@ -478,8 +478,8 @@ export default function PendingPlansPage() {
                 <Card
                   key={plan.clientId}
                   className={`${plan.urgency === 'critical' ? 'border-red-300 bg-red-50/50' :
-                      plan.urgency === 'high' ? 'border-amber-300 bg-amber-50/50' :
-                        'border-gray-200'
+                    plan.urgency === 'high' ? 'border-amber-300 bg-amber-50/50' :
+                      'border-gray-200'
                     }`}
                 >
                   <CardContent className="p-4">
@@ -492,10 +492,10 @@ export default function PendingPlansPage() {
                         {plan.displayClientId || `C-${plan.clientId.toString().slice(-4).toUpperCase()}`}
                       </Link>
                       <Badge className={`text-xs font-semibold ${plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0
-                          ? 'bg-red-600 text-white border border-red-700' :
-                          plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
-                            ? 'bg-orange-500 text-white border border-orange-600' :
-                            'bg-yellow-500 text-gray-900 border border-yellow-600'
+                        ? 'bg-red-600 text-white border border-red-700' :
+                        plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
+                          ? 'bg-orange-500 text-white border border-orange-600' :
+                          'bg-yellow-500 text-gray-900 border border-yellow-600'
                         }`}>
                         {plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0
                           ? '🔴 Critical' :
@@ -530,8 +530,8 @@ export default function PendingPlansPage() {
                       <div>
                         <p className="text-gray-500 font-medium">Remaining</p>
                         <Badge className={`text-xs font-semibold ${plan.currentPlanRemainingDays <= 0 ? 'bg-red-600 text-white' :
-                            plan.currentPlanRemainingDays <= 3 ? 'bg-orange-500 text-white' :
-                              'bg-yellow-500 text-gray-900'
+                          plan.currentPlanRemainingDays <= 3 ? 'bg-orange-500 text-white' :
+                            'bg-yellow-500 text-gray-900'
                           }`}>
                           {plan.currentPlanRemainingDays <= 0 ? 'Expired' : `${plan.currentPlanRemainingDays} days`}
                         </Badge>
@@ -539,8 +539,8 @@ export default function PendingPlansPage() {
                       <div>
                         <p className="text-gray-500 font-medium">Pending Days</p>
                         <Badge className={`text-xs ${plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
-                            plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
-                              'bg-teal-500 text-white'
+                          plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
+                            'bg-teal-500 text-white'
                           }`}>
                           {plan.pendingDaysToCreate} days
                         </Badge>
@@ -600,7 +600,7 @@ export default function PendingPlansPage() {
                         <tr
                           key={plan.clientId}
                           className={`hover:bg-gray-50 transition-colors ${plan.urgency === 'critical' ? 'bg-red-50/50' :
-                              plan.urgency === 'high' ? 'bg-amber-50/50' : ''
+                            plan.urgency === 'high' ? 'bg-amber-50/50' : ''
                             }`}
                         >
                           <td className="px-4 py-3">
@@ -627,7 +627,7 @@ export default function PendingPlansPage() {
                           <td className="px-4 py-3">
                             {plan.previousPlanName ? (
                               <div>
-                                <p className="font-medium text-gray-700 text-xs truncate max-w-[120px]">
+                                <p className="font-medium text-gray-700 text-xs truncate max-w-30">
                                   {plan.previousPlanName}
                                 </p>
                                 {plan.previousPlanEndDate && (
@@ -644,20 +644,20 @@ export default function PendingPlansPage() {
                           <td className="px-4 py-3">
                             {plan.currentPlanName ? (
                               <div>
-                                <p className="font-medium text-gray-800 truncate max-w-[140px]">
+                                <p className="font-medium text-gray-800 truncate max-w-35">
                                   {plan.currentPlanName}
                                 </p>
                               </div>
                             ) : plan.upcomingPlanName ? (
                               <div>
-                                <p className="font-medium text-blue-700 truncate max-w-[140px]">
+                                <p className="font-medium text-blue-700 truncate max-w-35">
                                   {plan.upcomingPlanName}
                                 </p>
                                 <Badge className="bg-blue-100 text-blue-700 text-xs mt-1">Upcoming</Badge>
                               </div>
                             ) : (
                               <div>
-                                <p className="font-medium text-teal-700 truncate max-w-[140px]">
+                                <p className="font-medium text-teal-700 truncate max-w-35">
                                   {plan.purchasedPlanName}
                                 </p>
                                 <p className="text-xs text-gray-400 italic">
@@ -712,10 +712,10 @@ export default function PendingPlansPage() {
                           {/* Remaining Days */}
                           <td className="px-4 py-3 text-center">
                             <Badge className={`font-semibold ${plan.currentPlanRemainingDays <= 0
-                                ? 'bg-red-600 text-white border border-red-700' :
-                                plan.currentPlanRemainingDays <= 3
-                                  ? 'bg-orange-500 text-white border border-orange-600' :
-                                  'bg-yellow-500 text-gray-900 border border-yellow-600'
+                              ? 'bg-red-600 text-white border border-red-700' :
+                              plan.currentPlanRemainingDays <= 3
+                                ? 'bg-orange-500 text-white border border-orange-600' :
+                                'bg-yellow-500 text-gray-900 border border-yellow-600'
                               }`}>
                               {plan.currentPlanRemainingDays <= 0
                                 ? '🔴 Expired'
@@ -728,8 +728,8 @@ export default function PendingPlansPage() {
                           <td className="px-4 py-3 text-center">
                             <div>
                               <Badge className={`${plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
-                                  plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
-                                    'bg-teal-500 text-white'
+                                plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
+                                  'bg-teal-500 text-white'
                                 }`}>
                                 {plan.pendingDaysToCreate} days pending
                               </Badge>
@@ -759,6 +759,40 @@ export default function PendingPlansPage() {
             </Card>
           </>
         )}
+
+        <style jsx global>{`
+          @media (max-width: 768px) {
+            /* mobile only — max-width: 768px */
+            .dietitian-pending-plans-page {
+              padding: 16px;
+              overflow-x: hidden;
+            }
+
+            .dietitian-pending-plans-page .text-xs {
+              font-size: 14px;
+            }
+
+            .dietitian-pending-plans-page button,
+            .dietitian-pending-plans-page input,
+            .dietitian-pending-plans-page [role='button'],
+            .dietitian-pending-plans-page [role='combobox'] {
+              min-height: 44px;
+            }
+
+            .dietitian-pending-plans-header,
+            .dietitian-pending-plans-header-actions,
+            .dietitian-pending-plans-search-row {
+              width: 100%;
+              flex-direction: column;
+              align-items: stretch;
+            }
+
+            .pending-plans-filters-grid-1,
+            .pending-plans-filters-grid-2 {
+              grid-template-columns: 1fr;
+            }
+          }
+        `}</style>
       </div>
     </DashboardLayout>
   );

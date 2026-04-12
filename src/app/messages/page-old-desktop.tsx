@@ -1427,9 +1427,14 @@ function MessagesContent() {
 
   return (
     <DashboardLayout>
-      <div className="h-[calc(100vh-80px)] flex">
+      <div className="dietitian-messages-page h-[calc(100vh-80px)] flex">
         {/* Conversations Sidebar */}
-        <div className="w-1/3 border-r bg-white flex flex-col">
+        <div
+          className={cn(
+            'border-r bg-white flex flex-col',
+            selectedConversation ? 'hidden md:flex md:w-1/3' : 'flex w-full md:w-1/3'
+          )}
+        >
           {/* Header */}
           <div className="p-4 border-b bg-green-600 text-white">
             <div className="flex items-center justify-between">
@@ -1662,13 +1667,18 @@ function MessagesContent() {
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col">
+        <div className={cn('flex-1 flex flex-col', selectedConversation ? 'flex' : 'hidden md:flex')}>
           {selectedConversation && selectedUser ? (
             <>
               {/* Chat Header */}
               <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <Button variant="ghost" size="sm" className="lg:hidden">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="md:hidden"
+                    onClick={() => setSelectedConversation(null)}
+                  >
                     <ArrowLeft className="h-5 w-5" />
                   </Button>
                   <div className="relative">
@@ -2121,6 +2131,26 @@ function MessagesContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <style jsx global>{`
+        @media (max-width: 768px) {
+          /* mobile only — max-width: 768px */
+          .dietitian-messages-page {
+            overflow-x: hidden;
+          }
+
+          .dietitian-messages-page .text-xs {
+            font-size: 14px;
+          }
+
+          .dietitian-messages-page button,
+          .dietitian-messages-page input,
+          .dietitian-messages-page [role='button'],
+          .dietitian-messages-page [role='combobox'] {
+            min-height: 44px;
+          }
+        }
+      `}</style>
 
       {/* Call Interface */}
       {(isVideoCall || isAudioCall) && (

@@ -206,7 +206,7 @@ export default function DietitianDashboard() {
 
   return (
     <DashboardLayout>
-      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="dietitian-dashboard-page p-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
@@ -223,7 +223,7 @@ export default function DietitianDashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6">
           <StatsCard
             title="Total Clients"
             value={loading ? '-' : stats.totalClients}
@@ -485,74 +485,128 @@ export default function DietitianDashboard() {
                     <p className="text-sm text-gray-600 mt-2">Loading payments...</p>
                   </div>
                 ) : stats.recentPayments && stats.recentPayments.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left font-medium text-gray-600">Client</th>
-                          <th className="px-3 py-2 text-left font-medium text-gray-600">Plan</th>
-                          <th className="px-3 py-2 text-left font-medium text-gray-600">Duration</th>
-                          <th className="px-3 py-2 text-right font-medium text-gray-600">Amount</th>
-                          <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
-                          <th className="px-3 py-2 text-left font-medium text-gray-600">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {stats.recentPayments.map((payment: any) => (
-                          <tr key={payment.id} className="hover:bg-gray-50">
-                            <td className="px-3 py-3">
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-medium text-gray-900">{payment.clientName}</p>
-                                  {payment.clientId && (
-                                    <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
-                                      {getClientId(payment.clientId)}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-500">{payment.clientEmail}</p>
-                              </div>
-                            </td>
-                            <td className="px-3 py-3">
-                              <div>
-                                <p className="font-medium text-gray-800">{payment.planName}</p>
-                                {payment.planCategory && (
-                                  <Badge variant="outline" className="text-xs mt-1">
-                                    {payment.planCategory}
-                                  </Badge>
+                  <>
+                    <div className="dietitian-dashboard-payments-mobile md:hidden space-y-3">
+                      {stats.recentPayments.map((payment: any) => (
+                        <div key={`mobile-${payment.id}`} className="rounded-lg border border-gray-200 bg-white p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-gray-900">{payment.clientName}</p>
+                                {payment.clientId && (
+                                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                                    {getClientId(payment.clientId)}
+                                  </span>
                                 )}
                               </div>
-                            </td>
-                            <td className="px-3 py-3">
-                              <span className="text-gray-600">
-                                {payment.durationLabel || (payment.durationDays ? `${payment.durationDays} days` : 'N/A')}
-                              </span>
-                            </td>
-                            <td className="px-3 py-3 text-right">
-                              <span className="font-semibold text-gray-900">
-                                {payment.currency} {payment.amount?.toLocaleString()}
-                              </span>
-                            </td>
-                            <td className="px-3 py-3 text-center">
-                              <Badge className={
-                                payment.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                  payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                    payment.status === 'failed' ? 'bg-red-100 text-red-800' :
-                                      'bg-gray-100 text-gray-800'
-                              }>
-                                {payment.status}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-3">
-                              <span className="text-gray-600 text-xs">
-                                {payment.createdAt ? formatDateIST(payment.createdAt) : 'N/A'}
-                              </span>
-                            </td>
+                              <p className="text-sm text-gray-600">{payment.clientEmail}</p>
+                            </div>
+                            <Badge className={
+                              payment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                  payment.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                    'bg-gray-100 text-gray-800'
+                            }>
+                              {payment.status}
+                            </Badge>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
+                            <div>
+                              <p className="text-gray-500">Plan</p>
+                              <p className="text-gray-900 font-medium">{payment.planName}</p>
+                              {payment.planCategory && (
+                                <Badge variant="outline" className="mt-1 text-xs">
+                                  {payment.planCategory}
+                                </Badge>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Duration</p>
+                              <p className="text-gray-900">{payment.durationLabel || (payment.durationDays ? `${payment.durationDays} days` : 'N/A')}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Amount</p>
+                              <p className="text-gray-900 font-semibold">{payment.currency} {payment.amount?.toLocaleString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Date</p>
+                              <p className="text-gray-700">{payment.createdAt ? formatDateIST(payment.createdAt) : 'N/A'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-medium text-gray-600">Client</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-600">Plan</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-600">Duration</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-600">Amount</th>
+                            <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-600">Date</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {stats.recentPayments.map((payment: any) => (
+                            <tr key={payment.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-3">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-gray-900">{payment.clientName}</p>
+                                    {payment.clientId && (
+                                      <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                                        {getClientId(payment.clientId)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500">{payment.clientEmail}</p>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3">
+                                <div>
+                                  <p className="font-medium text-gray-800">{payment.planName}</p>
+                                  {payment.planCategory && (
+                                    <Badge variant="outline" className="text-xs mt-1">
+                                      {payment.planCategory}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-3">
+                                <span className="text-gray-600">
+                                  {payment.durationLabel || (payment.durationDays ? `${payment.durationDays} days` : 'N/A')}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3 text-right">
+                                <span className="font-semibold text-gray-900">
+                                  {payment.currency} {payment.amount?.toLocaleString()}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3 text-center">
+                                <Badge className={
+                                  payment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                    payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                      payment.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                        'bg-gray-100 text-gray-800'
+                                }>
+                                  {payment.status}
+                                </Badge>
+                              </td>
+                              <td className="px-3 py-3">
+                                <span className="text-gray-600 text-xs">
+                                  {payment.createdAt ? formatDateIST(payment.createdAt) : 'N/A'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 ) : (
                   <div className="text-center py-8">
                     <DollarSign className="h-10 w-10 text-gray-400 mx-auto mb-3" />
@@ -737,7 +791,7 @@ export default function DietitianDashboard() {
                           <tr
                             key={plan.clientId}
                             className={`hover:bg-gray-50 transition-colors ${plan.urgency === 'critical' ? 'bg-red-50/50' :
-                                plan.urgency === 'high' ? 'bg-amber-50/50' : ''
+                              plan.urgency === 'high' ? 'bg-amber-50/50' : ''
                               }`}
                           >
                             <td className="px-3 py-3">
@@ -850,8 +904,8 @@ export default function DietitianDashboard() {
                             <td className="px-3 py-3 text-center">
                               {plan.currentPlanRemainingDays > 0 ? (
                                 <Badge className={`${plan.currentPlanRemainingDays <= 2 ? 'bg-red-500 text-white' :
-                                    plan.currentPlanRemainingDays <= 4 ? 'bg-amber-500 text-white' :
-                                      'bg-green-500 text-white'
+                                  plan.currentPlanRemainingDays <= 4 ? 'bg-amber-500 text-white' :
+                                    'bg-green-500 text-white'
                                   }`}>
                                   {plan.currentPlanRemainingDays} days left
                                 </Badge>
@@ -865,8 +919,8 @@ export default function DietitianDashboard() {
                             <td className="px-3 py-3 text-center">
                               <div>
                                 <Badge className={`${plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
-                                    plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
-                                      'bg-teal-500 text-white'
+                                  plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
+                                    'bg-teal-500 text-white'
                                   }`}>
                                   {plan.pendingDaysToCreate} days pending
                                 </Badge>
@@ -921,6 +975,28 @@ export default function DietitianDashboard() {
           </div>
         </>
       )}
+
+      <style jsx global>{`
+        @media (max-width: 768px) {
+          /* mobile only — max-width: 768px */
+          .dietitian-dashboard-page {
+            padding-left: 16px;
+            padding-right: 16px;
+            overflow-x: hidden;
+          }
+
+          .dietitian-dashboard-page .text-xs {
+            font-size: 14px;
+          }
+
+          .dietitian-dashboard-page button,
+          .dietitian-dashboard-page input,
+          .dietitian-dashboard-page [role='button'],
+          .dietitian-dashboard-page [role='combobox'] {
+            min-height: 44px;
+          }
+        }
+      `}</style>
     </DashboardLayout>
   );
 }
