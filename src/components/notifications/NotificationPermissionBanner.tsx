@@ -18,22 +18,25 @@ interface NotificationPermissionBannerProps {
   allowedRoles?: string[];
 }
 
-export function NotificationPermissionBanner({ 
-  className, 
+export function NotificationPermissionBanner({
+  className,
   onDismiss,
   allowedRoles
 }: NotificationPermissionBannerProps) {
   const { data: session, status } = useSession();
-  const { 
-    isSupported, 
-    permission, 
+  const {
+    isSupported,
+    permission,
     isLoading,
-    requestPermission, 
-    registerToken 
+    requestPermission,
+    registerToken
   } = usePushNotifications({ autoRegister: false });
   const [isRequesting, setIsRequesting] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [shouldShow, setShouldShow] = useState(false);
+
+  const normalizedUserRole = String(session?.user?.role || '').toLowerCase();
+  const isStaffRole = ['admin', 'dietitian', 'health_counselor'].includes(normalizedUserRole);
 
   // Check if banner should be shown
   useEffect(() => {
@@ -44,15 +47,16 @@ export function NotificationPermissionBanner({
 
     // Check role if allowedRoles is specified
     if (allowedRoles && allowedRoles.length > 0) {
-      const userRole = session?.user?.role;
-      if (!userRole || !allowedRoles.includes(userRole)) {
+      const normalizedAllowedRoles = allowedRoles.map((role) => String(role || '').toLowerCase());
+      if (!normalizedUserRole || !normalizedAllowedRoles.includes(normalizedUserRole)) {
         setShouldShow(false);
         return;
       }
     }
 
-    // Check local storage for dismissal
-    if (session?.user?.id) {
+    // Persist dismissal for non-staff users only.
+    // Staff should continue seeing this prompt until notifications are enabled.
+    if (!isStaffRole && session?.user?.id) {
       const dismissedKey = `notification_banner_dismissed_${session.user.id}`;
       const wasDismissed = localStorage.getItem(dismissedKey) === 'true';
       if (wasDismissed) {
@@ -62,8 +66,12 @@ export function NotificationPermissionBanner({
       }
     }
 
+    if (isStaffRole) {
+      setIsDismissed(false);
+    }
+
     setShouldShow(true);
-  }, [status, session, allowedRoles]);
+  }, [status, session, allowedRoles, normalizedUserRole, isStaffRole]);
 
   // Don't show if notifications are already granted, not supported, or dismissed
   if (!shouldShow || permission === 'granted' || !isSupported || isDismissed) {
@@ -91,13 +99,13 @@ export function NotificationPermissionBanner({
 
   const handleDismiss = () => {
     setIsDismissed(true);
-    
-    // Remember dismissal in local storage
-    if (session?.user?.id) {
+
+    // Remember dismissal in local storage for non-staff only.
+    if (!isStaffRole && session?.user?.id) {
       const dismissedKey = `notification_banner_dismissed_${session.user.id}`;
       localStorage.setItem(dismissedKey, 'true');
     }
-    
+
     onDismiss?.();
   };
 
@@ -138,7 +146,7 @@ export function NotificationPermissionBanner({
             onClick={() => {
               // Open browser settings (this is browser-specific)
               alert('Please enable notifications in your browser settings:\n\n1. Click the lock icon in the address bar\n2. Set notifications to "Allow"\n3. Refresh the page');
-            }}  
+            }}
           >
             Browser Settings
           </Button>
@@ -158,12 +166,12 @@ export function NotificationPermissionBanner({
   };
 
   return (
-    <Alert variant={getAlertVariant()} className={cn("relative", className="")}>
+    <Alert variant={getAlertVariant()} className={cn("relative", className)}>
       {getIcon()}
       <AlertDescription className="">
         {getMessage()}
       </AlertDescription>
-      
+
       <div className="flex items-center space-x-2 mt-3">
         {getActionButton()}
         <Button

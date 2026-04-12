@@ -12,6 +12,7 @@ import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { MEAL_TYPES, MEAL_TYPE_KEYS } from '@/lib/mealConfig';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { emitClientWeightUpdate } from '@/lib/realtime/weight-notify';
+import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
 import mongoose from 'mongoose';
 
 // Get all possible meal type keys (canonical + common variations for DB compatibility)
@@ -652,6 +653,16 @@ export async function POST(request: Request) {
           targetUserName: session.user.name || '',
           details: measurements
         }).catch(console.error);
+
+        try {
+          await notifyClientDataUpdate({
+            clientId: session.user.id,
+            updateType: 'measurements',
+            eventKey: `measurements:${savedEntries[0]?._id || Date.now()}`,
+          });
+        } catch (notificationError) {
+          console.error('Error sending measurements update notification:', notificationError);
+        }
       }
 
       return NextResponse.json({ success: true, entries: savedEntries });
@@ -681,6 +692,16 @@ export async function POST(request: Request) {
           weightKg: numericWeight,
           source: 'client_progress'
         });
+      }
+
+      try {
+        await notifyClientDataUpdate({
+          clientId: session.user.id,
+          updateType: 'weight_update',
+          eventKey: `progress-weight:${progressEntry._id}`,
+        });
+      } catch (notificationError) {
+        console.error('Error sending weight update notification:', notificationError);
       }
     }
 

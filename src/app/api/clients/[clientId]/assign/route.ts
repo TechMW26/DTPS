@@ -8,6 +8,7 @@ import { PermissionKey } from '@/lib/db/models/Permission';
 import { UserRole } from '@/types';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
+import { buildAssignmentSnapshot, notifyAssignmentChanges } from '@/lib/notifications/staffPushService';
 
 // PATCH /api/clients/[clientId]/assign - Assign dietitian/health counselor to client
 // Permission-based - any role with proper permission can use this
@@ -85,6 +86,8 @@ export async function PATCH(
         if (client.role !== UserRole.CLIENT) {
             return NextResponse.json({ error: 'User is not a client' }, { status: 400 });
         }
+
+        const beforeAssignmentSnapshot = buildAssignmentSnapshot(client.toObject());
 
         // For non-admin users, verify the client is assigned to them
         if (userRole !== UserRole.ADMIN) {
@@ -349,6 +352,22 @@ export async function PATCH(
             .populate('assignedHealthCounselor', 'firstName lastName email avatar')
             .populate('assignedHealthCounselors', 'firstName lastName email avatar')
             .lean();
+
+        if (updatedClient) {
+            try {
+                const afterAssignmentSnapshot = buildAssignmentSnapshot(updatedClient as Record<string, unknown>);
+                const clientName = `${String((updatedClient as any).firstName || '').trim()} ${String((updatedClient as any).lastName || '').trim()}`.trim() || 'Client';
+
+                await notifyAssignmentChanges({
+                    clientId,
+                    clientName,
+                    before: beforeAssignmentSnapshot,
+                    after: afterAssignmentSnapshot,
+                });
+            } catch (notificationError) {
+                console.error('Error sending assignment notifications:', notificationError);
+            }
+        }
 
         // Emit Socket.io update
         try {

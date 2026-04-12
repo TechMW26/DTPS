@@ -148,7 +148,18 @@ messaging.onBackgroundMessage((payload) => {
         silent: false
     };
 
-    return self.registration.showNotification(notificationTitle, notificationOptions);
+    return self.registration.showNotification(notificationTitle, notificationOptions)
+        .then(() => {
+            // Best-effort app badge update for supported browsers
+            if (self.registration && typeof self.registration.setAppBadge === 'function') {
+                return self.registration.setAppBadge();
+            }
+            if (self.navigator && typeof self.navigator.setAppBadge === 'function') {
+                return self.navigator.setAppBadge();
+            }
+            return undefined;
+        })
+        .catch(() => undefined);
 });
 
 // Handle notification click
@@ -166,24 +177,27 @@ self.addEventListener('notificationclick', (event) => {
         return;
     }
 
-    // Determine URL based on type and action
-    let urlToOpen = data.clickAction || data.url || '/user';
+    // Prefer explicit clickAction/url from payload (role-aware routes)
+    const explicitUrl = data.clickAction || data.url;
+    let urlToOpen = explicitUrl || '/user';
 
-    // Type-specific URL handling
-    if (type === 'new_message') {
-        urlToOpen = data.conversationWith
-            ? `/user/messages?conversationWith=${data.conversationWith}`
-            : '/user/messages';
-    } else if (type === 'appointment' || type === 'appointment_booked') {
-        urlToOpen = '/user/appointments';
-    } else if (type === 'payment_link' || type === 'payment_link_created' || action === 'pay') {
-        urlToOpen = '/user/payments';
-    } else if (type === 'meal_plan' || type === 'meal_plan_created') {
-        urlToOpen = '/user/plan';
-    } else if (type === 'task_assigned') {
-        urlToOpen = '/user/tasks';
-    } else if (type === 'call' && action === 'accept') {
-        urlToOpen = data.callUrl || `/call/${data.callId}`;
+    // Type-based fallback only when no explicit URL exists
+    if (!explicitUrl) {
+        if (type === 'new_message') {
+            urlToOpen = data.conversationWith
+                ? `/user/messages?conversationWith=${data.conversationWith}`
+                : '/user/messages';
+        } else if (type === 'appointment' || type === 'appointment_booked') {
+            urlToOpen = '/user/appointments';
+        } else if (type === 'payment_link' || type === 'payment_link_created' || action === 'pay') {
+            urlToOpen = '/user/payments';
+        } else if (type === 'meal_plan' || type === 'meal_plan_created') {
+            urlToOpen = '/user/plan';
+        } else if (type === 'task_assigned') {
+            urlToOpen = '/user/tasks';
+        } else if (type === 'call' && action === 'accept') {
+            urlToOpen = data.callUrl || `/call/${data.callId}`;
+        }
     }
 
     // Ensure the URL is absolute
@@ -191,27 +205,40 @@ self.addEventListener('notificationclick', (event) => {
         urlToOpen = self.location.origin + (urlToOpen.startsWith('/') ? '' : '/') + urlToOpen;
     }
 
-    event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-            // Try to focus existing window and navigate
-            for (let i = 0; i < windowClients.length; i++) {
-                const client = windowClients[i];
-                if ('focus' in client) {
-                    return client.focus().then(() => {
-                        if ('navigate' in client) {
-                            return client.navigate(urlToOpen);
-                        }
-                        return client;
-                    });
-                }
-            }
+    const markReadPromise = data.notificationId
+        ? fetch('/api/client/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ notificationIds: [data.notificationId] }),
+        }).catch(() => undefined)
+        : Promise.resolve();
 
-            // If no window is open, open a new one
-            if (clients.openWindow) {
-                return clients.openWindow(urlToOpen);
+    const clearBadgePromise = (self.registration && typeof self.registration.clearAppBadge === 'function')
+        ? self.registration.clearAppBadge().catch(() => undefined)
+        : Promise.resolve();
+
+    const navigatePromise = clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+        // Try to focus existing window and navigate
+        for (let i = 0; i < windowClients.length; i++) {
+            const client = windowClients[i];
+            if ('focus' in client) {
+                return client.focus().then(() => {
+                    if ('navigate' in client) {
+                        return client.navigate(urlToOpen);
+                    }
+                    return client;
+                });
             }
-        })
-    );
+        }
+
+        // If no window is open, open a new one
+        if (clients.openWindow) {
+            return clients.openWindow(urlToOpen);
+        }
+    });
+
+    event.waitUntil(Promise.all([markReadPromise, clearBadgePromise, navigatePromise]));
 });
 
 // Handle push events directly (for data-only messages)
@@ -258,7 +285,15 @@ self.addEventListener('push', (event) => {
                 vibrate: [200, 100, 200],
                 actions: getNotificationActions(notificationType),
                 renotify: true
-            })
+            }).then(() => {
+                if (self.registration && typeof self.registration.setAppBadge === 'function') {
+                    return self.registration.setAppBadge();
+                }
+                if (self.navigator && typeof self.navigator.setAppBadge === 'function') {
+                    return self.navigator.setAppBadge();
+                }
+                return undefined;
+            }).catch(() => undefined)
         );
     }
 });

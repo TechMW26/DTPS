@@ -6,6 +6,7 @@ import DietaryRecall from "@/lib/db/models/DietaryRecall";
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { MEAL_TYPES, MEAL_TYPE_KEYS } from '@/lib/mealConfig';
+import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
 
 const VALID_MEAL_TYPES = MEAL_TYPE_KEYS.map((key) => MEAL_TYPES[key].label);
 
@@ -130,6 +131,16 @@ export async function POST(request: Request) {
         mealsCount: normalizedMeals.length
       }
     }).catch(console.error);
+
+    try {
+      await notifyClientDataUpdate({
+        clientId: session.user.id,
+        updateType: 'recall_form',
+        eventKey: `recall:${date.toISOString()}`,
+      });
+    } catch (notificationError) {
+      console.error('Error sending dietary-recall update notification:', notificationError);
+    }
 
     return NextResponse.json({ success: true, data: dietaryRecall });
   } catch (error) {

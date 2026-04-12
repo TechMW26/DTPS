@@ -32,6 +32,7 @@ import {
 import { UserRole } from '@/types';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import StaffNotificationCenter from '@/components/notifications/StaffNotificationCenter';
 
 interface NavbarProps {
   isDarkMode?: boolean;
@@ -155,6 +156,8 @@ export default function Navbar({ isDarkMode = false }: NavbarProps) {
           <div className="flex items-center space-x-4">
             {session?.user ? (
               <>
+                <StaffNotificationCenter isDarkMode={isDarkMode} />
+
                 {/* Mobile menu button */}
                 <div className="md:hidden">
                   <Button

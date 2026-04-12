@@ -8,6 +8,7 @@ import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { getClientStatusInfo } from '@/lib/status/computeClientStatus';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { emitClientWeightUpdate } from '@/lib/realtime/weight-notify';
+import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
 
 // BMI Calculation Helper
 function calculateBMI(weightKg: number, heightCm: number): { bmi: string; bmiCategory: string } {
@@ -294,6 +295,37 @@ export async function PUT(request: Request) {
           source: 'client_profile'
         });
       }
+    }
+
+    // Push notification triggers for assigned staff
+    try {
+      const basicDetailFields = new Set([
+        'name', 'firstName', 'lastName', 'dateOfBirth', 'gender', 'address', 'city',
+        'state', 'pincode', 'profileImage', 'avatar', 'heightCm', 'targetWeightKg', 'activityLevel',
+        'generalGoal', 'dietType', 'alternativeEmail', 'alternativePhone', 'anniversary',
+        'source', 'referralSource'
+      ]);
+
+      const hasBasicDetailsUpdate = changedFields.some((field) => basicDetailFields.has(field));
+      const hasWeightUpdate = changedFields.includes('weightKg') || changedFields.includes('weight');
+
+      if (hasBasicDetailsUpdate) {
+        await notifyClientDataUpdate({
+          clientId: session.user.id,
+          updateType: 'basic_details',
+          eventKey: `profile-basic:${Date.now()}`,
+        });
+      }
+
+      if (hasWeightUpdate) {
+        await notifyClientDataUpdate({
+          clientId: session.user.id,
+          updateType: 'weight_update',
+          eventKey: `profile-weight:${Date.now()}`,
+        });
+      }
+    } catch (notificationError) {
+      console.error('Error sending client profile update notifications:', notificationError);
     }
 
     return NextResponse.json({ success: true, user });

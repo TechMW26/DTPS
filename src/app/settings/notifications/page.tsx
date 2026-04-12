@@ -53,10 +53,10 @@ export default function SendNotificationPage() {
             Send Notifications
           </h1>
           <p className="text-muted-foreground">
-            Send custom push notifications to your clients
+            Send custom push notifications with role-based targeting
           </p>
         </div>
-        
+
         <div className="grid grid-cols-1 gap-6">
           {/* Notification Form */}
           <div>

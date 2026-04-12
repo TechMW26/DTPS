@@ -12,7 +12,7 @@ import { broadcastUnreadCounts, broadcastStaffUnreadCounts } from '@/lib/realtim
 import { createMessageWebhook } from '@/lib/webhooks/webhook-manager';
 import { z } from 'zod';
 import { logHistoryServer } from '@/lib/server/history';
-import { sendNewMessageNotification } from '@/lib/notifications/notificationService';
+import { notifyMessageToRecipient } from '@/lib/notifications/staffPushService';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // Message validation schema
@@ -301,18 +301,23 @@ export async function POST(request: NextRequest) {
     // Trigger webhook for message sent
     await createMessageWebhook(message.toJSON(), 'sent');
 
-    // Send push notification to recipient
-    const senderName = `${(message.sender as any).firstName} ${(message.sender as any).lastName}`;
+    // Send role-aware push notification to recipient (deduped by message ID)
+    const senderName = `${(message.sender as any).firstName} ${(message.sender as any).lastName}`.trim();
     try {
-      await sendNewMessageNotification(
-        validatedData.recipientId,
-        senderName,
-        validatedData.content,
-        session.user.id
-      );
+      await notifyMessageToRecipient({
+        recipientId: validatedData.recipientId,
+        recipientRole,
+        senderName: senderName || 'A user',
+        senderRole: sessionRole,
+        messagePreview: validatedData.content,
+        messageId: String((message as any)._id),
+        conversationWithUserId: session.user.id,
+        clientId: sessionRole === UserRole.CLIENT ? session.user.id : undefined,
+        clientName: sessionRole === UserRole.CLIENT ? (senderName || 'Client') : undefined,
+      });
     } catch (notifError) {
       console.error('Failed to send push notification:', notifError);
-      // Don't fail the message send if notification fails
+      // Don't fail message delivery if push send fails
     }
 
     // Log history for message sent (for both sender and recipient)

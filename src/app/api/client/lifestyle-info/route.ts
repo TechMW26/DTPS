@@ -5,6 +5,7 @@ import dbConnect from "@/lib/db/connection";
 import LifestyleInfo from "@/lib/db/models/LifestyleInfo";
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
 
 export async function GET() {
   try {
@@ -116,6 +117,16 @@ export async function POST(request: Request) {
         weightKg: data.weightKg || 'not set'
       }
     }).catch(console.error);
+
+    try {
+      await notifyClientDataUpdate({
+        clientId: session.user.id,
+        updateType: 'lifestyle_data',
+        eventKey: `lifestyle:${Date.now()}`,
+      });
+    } catch (notificationError) {
+      console.error('Error sending lifestyle update notification:', notificationError);
+    }
 
     return NextResponse.json({ success: true, data: lifestyleInfo });
   } catch (error) {

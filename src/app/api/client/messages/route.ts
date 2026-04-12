@@ -6,9 +6,9 @@ import Message from '@/lib/db/models/Message';
 import User from '@/lib/db/models/User';
 import { Notification } from '@/lib/db/models';
 import mongoose from 'mongoose';
-import { broadcastUnreadCounts } from '@/lib/realtime/broadcast-counts';
+import { broadcastUnreadCounts, broadcastStaffUnreadCounts } from '@/lib/realtime/broadcast-counts';
 import { socketManager } from '@/lib/realtime/socket-manager';
-import { sendNewMessageNotification } from '@/lib/notifications/notificationService';
+import { notifyMessageToRecipient } from '@/lib/notifications/staffPushService';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 
@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
       timestamp: ts
     });
 
-    // Send push notification to recipient (dietitian/health counselor)
+    // Send role-aware push notification to recipient (dietitian/health counselor)
     const sender = await withCache(
       `client:messages:${JSON.stringify(session.user.id)}`,
       async () => await User.findById(session.user.id).select('firstName lastName'),
@@ -224,12 +224,17 @@ export async function POST(request: NextRequest) {
     );
     const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'A user';
     try {
-      await sendNewMessageNotification(
+      await notifyMessageToRecipient({
         recipientId,
+        recipientRole: String((recipient as any).role || ''),
         senderName,
-        content,
-        session.user.id
-      );
+        senderRole: 'client',
+        messagePreview: content,
+        messageId: String((message as any)._id),
+        conversationWithUserId: session.user.id,
+        clientId: session.user.id,
+        clientName: senderName,
+      });
     } catch (notifError) {
       console.error('Failed to send push notification:', notifError);
     }
@@ -237,10 +242,17 @@ export async function POST(request: NextRequest) {
     // Broadcast socket update for recipient's unread counts
     const recipientMessageCount = await Message.countDocuments({ receiver: recipientId, isRead: false });
     const recipientNotificationCount = await Notification.countDocuments({ userId: recipientId, read: false });
-    broadcastUnreadCounts(recipientId, {
-      notifications: recipientNotificationCount,
-      messages: recipientMessageCount
-    });
+
+    if (String((recipient as any).role || '').toLowerCase() === 'client') {
+      broadcastUnreadCounts(recipientId, {
+        notifications: recipientNotificationCount,
+        messages: recipientMessageCount
+      });
+    } else {
+      broadcastStaffUnreadCounts(recipientId, {
+        messages: recipientMessageCount
+      });
+    }
 
     return NextResponse.json({
       success: true,

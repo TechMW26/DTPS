@@ -16,10 +16,10 @@ interface DashboardLayoutProps {
   showSidebar?: boolean;
 }
 
-export default function DashboardLayout({ 
-  children, 
+export default function DashboardLayout({
+  children,
   className,
-  showSidebar = true 
+  showSidebar = true
 }: DashboardLayoutProps) {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -62,13 +62,13 @@ export default function DashboardLayout({
             <Sidebar isDarkMode={isDarkMode} />
           </div>
         )}
-        
+
         {/* Main Content Area */}
         <div className="flex flex-col flex-1 overflow-hidden">
           <Navbar isDarkMode={isDarkMode} />
-          {/* Notification Permission Banner for Admin only */}
-          <NotificationPermissionBanner 
-            allowedRoles={['admin']}
+          {/* Notification Permission Banner for staff dashboard roles */}
+          <NotificationPermissionBanner
+            allowedRoles={['admin', 'dietitian', 'health_counselor']}
             className="mx-4 mt-2"
           />
           <main className={cn(

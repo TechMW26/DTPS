@@ -24,7 +24,35 @@ function isFirebaseConfigValid(): boolean {
 }
 
 // VAPID key for web push
-const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+function normalizeVapidKey(rawKey?: string): string | null {
+    if (!rawKey) return null;
+
+    // Remove wrapping quotes/newlines and normalize to URL-safe base64.
+    const cleaned = rawKey
+        .trim()
+        .replace(/^['"]|['"]$/g, '')
+        .replace(/\s+/g, '')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+
+    return cleaned || null;
+}
+
+function isLikelyValidVapidPublicKey(key: string): boolean {
+    try {
+        const base64 = key.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+        const decoded = atob(padded);
+
+        // Public key is expected to be uncompressed P-256 point (65 bytes) or longer.
+        return decoded.length >= 65;
+    } catch {
+        return false;
+    }
+}
+
+const vapidKey = normalizeVapidKey(process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY);
 
 let firebaseApp: FirebaseApp | null = null;
 let messaging: Messaging | null = null;
@@ -143,6 +171,11 @@ export async function getFCMToken(): Promise<string | null> {
         return null;
     }
 
+    if (!isLikelyValidVapidPublicKey(vapidKey)) {
+        console.warn('Invalid NEXT_PUBLIC_FIREBASE_VAPID_KEY. Please copy the Web Push certificate key from Firebase console.');
+        return null;
+    }
+
     try {
         // Request notification permission first
         const permission = await requestNotificationPermission();
@@ -169,8 +202,16 @@ export async function getFCMToken(): Promise<string | null> {
             console.warn('No FCM token available');
             return null;
         }
-    } catch (error) {
-        console.error('Error getting FCM token:', error);
+    } catch (error: any) {
+        const message = typeof error?.message === 'string' ? error.message : 'Unknown error';
+        const errorName = typeof error?.name === 'string' ? error.name : '';
+
+        if (errorName === 'InvalidAccessError' || message.toLowerCase().includes('applicationserverkey')) {
+            console.warn('Failed to subscribe for push notifications due to invalid VAPID key configuration.');
+            return null;
+        }
+
+        console.error('Error getting FCM token:', message);
         return null;
     }
 }

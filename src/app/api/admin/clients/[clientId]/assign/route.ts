@@ -8,6 +8,7 @@ import { UserRole } from '@/types';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/api/utils';
+import { buildAssignmentSnapshot, notifyAssignmentChanges } from '@/lib/notifications/staffPushService';
 
 // PATCH /api/admin/clients/[clientId]/assign - Assign/Add dietitian to client
 export async function PATCH(
@@ -64,6 +65,8 @@ export async function PATCH(
     if (client.role !== UserRole.CLIENT) {
       return NextResponse.json({ error: 'User is not a client' }, { status: 400 });
     }
+
+    const beforeAssignmentSnapshot = buildAssignmentSnapshot(client.toObject());
 
     // ========== NEW: Handle explicit primary/secondary mode ==========
     if (assignAction === 'primary_secondary') {
@@ -146,6 +149,19 @@ export async function PATCH(
       await updatedClient.populate('assignedDietitians', 'firstName lastName email avatar');
       await updatedClient.populate('assignedHealthCounselor', 'firstName lastName email avatar');
       await updatedClient.populate('assignedHealthCounselors', 'firstName lastName email avatar');
+
+      try {
+        const afterAssignmentSnapshot = buildAssignmentSnapshot(updatedClient.toObject());
+        const clientName = `${updatedClient.firstName || ''} ${updatedClient.lastName || ''}`.trim() || 'Client';
+        await notifyAssignmentChanges({
+          clientId,
+          clientName,
+          before: beforeAssignmentSnapshot,
+          after: afterAssignmentSnapshot,
+        });
+      } catch (notificationError) {
+        console.error('Error sending admin assignment notifications:', notificationError);
+      }
 
       // Log activity
       await logActivity({
@@ -419,6 +435,19 @@ export async function PATCH(
     await updatedClient.populate('assignedDietitians', 'firstName lastName email avatar');
     await updatedClient.populate('assignedHealthCounselor', 'firstName lastName email avatar');
     await updatedClient.populate('assignedHealthCounselors', 'firstName lastName email avatar');
+
+    try {
+      const afterAssignmentSnapshot = buildAssignmentSnapshot(updatedClient.toObject());
+      const clientName = `${updatedClient.firstName || ''} ${updatedClient.lastName || ''}`.trim() || 'Client';
+      await notifyAssignmentChanges({
+        clientId,
+        clientName,
+        before: beforeAssignmentSnapshot,
+        after: afterAssignmentSnapshot,
+      });
+    } catch (notificationError) {
+      console.error('Error sending admin assignment notifications:', notificationError);
+    }
 
     const actionMessages: Record<string, string> = {
       'add': 'Professional(s) added successfully',

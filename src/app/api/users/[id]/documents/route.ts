@@ -7,6 +7,7 @@ import { File as FileModel } from '@/lib/db/models/File';
 import { UserRole } from '@/types';
 import { logHistoryServer } from '@/lib/server/history';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { buildAssignmentSnapshot, notifyMealPictureUploaded } from '@/lib/notifications/staffPushService';
 
 // POST /api/users/[id]/documents - Upload document
 export async function POST(
@@ -91,7 +92,7 @@ export async function POST(
     const isDietitianAssigned =
       session.user.role === UserRole.DIETITIAN &&
       (user.assignedDietitian?.toString() === session.user.id ||
-       user.assignedDietitians?.some((d: { toString: () => string }) => d.toString() === session.user.id));
+        user.assignedDietitians?.some((d: { toString: () => string }) => d.toString() === session.user.id));
     const isHCAssigned =
       (session.user.role === UserRole.HEALTH_COUNSELOR || (session.user.role as string) === 'health_counselor') &&
       user.assignedHealthCounselor?.toString() === session.user.id;
@@ -129,6 +130,24 @@ export async function POST(
         fileUrl
       }
     });
+
+    // Notify primary + secondary dietitians when client uploads a meal picture
+    if (type === 'meal-picture' && isSelf && session.user.role === UserRole.CLIENT) {
+      try {
+        const assignmentSnapshot = buildAssignmentSnapshot(user.toObject());
+        const clientName = `${String((user as any).firstName || '').trim()} ${String((user as any).lastName || '').trim()}`.trim() || 'Client';
+
+        await notifyMealPictureUploaded({
+          clientId: id,
+          clientName,
+          primaryDietitianId: assignmentSnapshot.primaryDietitianId,
+          secondaryDietitianIds: assignmentSnapshot.secondaryDietitianIds,
+          eventKey: String(savedFile._id),
+        });
+      } catch (notificationError) {
+        console.error('Error sending meal-picture notifications:', notificationError);
+      }
+    }
 
     return NextResponse.json({
       message: 'Document uploaded successfully',
@@ -215,16 +234,16 @@ export async function DELETE(
     // Check permissions - admin can delete any, others can only delete their own uploads
     const isAdmin = session.user.role === UserRole.ADMIN;
     const isSelf = session.user.id === id;
-    
+
     // Get the file to check who uploaded it
     const fileId = document.filePath?.split('/').pop();
     let uploadedBy = null;
     if (fileId) {
       const file = await withCache(
-      `users:id:documents:${JSON.stringify(fileId)}`,
-      async () => await FileModel.findById(fileId),
-      { ttl: 120000, tags: ['users'] }
-    );
+        `users:id:documents:${JSON.stringify(fileId)}`,
+        async () => await FileModel.findById(fileId),
+        { ttl: 120000, tags: ['users'] }
+      );
       uploadedBy = file?.uploadedBy?.toString();
     }
 

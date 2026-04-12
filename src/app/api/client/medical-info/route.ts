@@ -6,6 +6,7 @@ import MedicalInfo from "@/lib/db/models/MedicalInfo";
 import User from "@/lib/db/models/User";
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
 
 export async function GET() {
   try {
@@ -108,6 +109,16 @@ export async function POST(request: Request) {
         bloodGroup: data.bloodGroup || 'not set'
       }
     }).catch(console.error);
+
+    try {
+      await notifyClientDataUpdate({
+        clientId: session.user.id,
+        updateType: 'medical_information',
+        eventKey: `medical:${Date.now()}`,
+      });
+    } catch (notificationError) {
+      console.error('Error sending medical-info update notification:', notificationError);
+    }
 
     return NextResponse.json({ success: true, data: medicalInfo });
   } catch (error: any) {

@@ -274,6 +274,12 @@ export default function Sidebar({ className, isDarkMode = false }: SidebarProps)
             description: 'View all booked meetings'
           },
           {
+            href: '/settings/notifications',
+            label: 'Send Notifications',
+            icon: Bell,
+            description: 'Send role-based push notifications'
+          },
+          {
             href: '/appointments/unified-booking',
             label: 'Book Appointment',
             icon: Clock,

@@ -3,23 +3,114 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
+import Notification from '@/lib/db/models/Notification';
 import { UserRole } from '@/types';
 import { z } from 'zod';
 import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 
-// Validation schema for custom notification
+const notificationTargetRoleSchema = z.enum([
+  UserRole.CLIENT,
+  UserRole.DIETITIAN,
+  UserRole.HEALTH_COUNSELOR,
+]);
+
+type NotificationTargetRole = z.infer<typeof notificationTargetRoleSchema>;
+
+const TARGET_TYPE_VALUES = ['particular', 'selected', 'all', 'single', 'multiple'] as const;
+type RawTargetType = (typeof TARGET_TYPE_VALUES)[number];
+type NormalizedTargetType = 'particular' | 'selected' | 'all';
+
+const DEFAULT_ADMIN_TARGET_ROLES: NotificationTargetRole[] = [
+  UserRole.CLIENT,
+  UserRole.DIETITIAN,
+  UserRole.HEALTH_COUNSELOR,
+];
+
+const allowedSenderRoles = [UserRole.ADMIN, UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] as const;
+
+function uniqueStrings(values: Array<string | undefined | null>): string[] {
+  return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function normalizeTargetType(targetType: RawTargetType): NormalizedTargetType {
+  if (targetType === 'single') return 'particular';
+  if (targetType === 'multiple') return 'selected';
+  return targetType;
+}
+
+function normalizeRoleList(values: unknown[]): NotificationTargetRole[] {
+  const normalized = uniqueStrings(values as string[])
+    .filter((role): role is NotificationTargetRole =>
+      [UserRole.CLIENT, UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR].includes(role as NotificationTargetRole)
+    );
+
+  return Array.from(new Set(normalized));
+}
+
+function getDefaultClickActionForRole(role: NotificationTargetRole): string {
+  if (role === UserRole.CLIENT) return '/user/notifications';
+  if (role === UserRole.DIETITIAN) return '/dietician';
+  if (role === UserRole.HEALTH_COUNSELOR) return '/health-counselor';
+  return '/dashboard';
+}
+
+function getAccessibleClientQuery(session: any): Record<string, unknown> {
+  const query: Record<string, unknown> = {
+    role: UserRole.CLIENT,
+  };
+
+  if (session.user.role === UserRole.DIETITIAN) {
+    query.$or = [
+      { assignedDietitian: session.user.id },
+      { assignedDietitians: session.user.id },
+    ];
+  }
+
+  if (session.user.role === UserRole.HEALTH_COUNSELOR) {
+    query.$or = [
+      { assignedHealthCounselor: session.user.id },
+      { assignedHealthCounselors: session.user.id },
+    ];
+  }
+
+  return query;
+}
+
+function mapRecipient(user: any) {
+  return {
+    id: String(user._id),
+    name: `${String(user.firstName || '').trim()} ${String(user.lastName || '').trim()}`.trim() || 'Unnamed User',
+    email: String(user.email || ''),
+    avatar: user.avatar,
+    role: String(user.role || UserRole.CLIENT),
+    hasFcmToken: Array.isArray(user.fcmTokens) && user.fcmTokens.length > 0,
+  };
+}
+
 const customNotificationSchema = z.object({
   title: z.string().min(1, 'Title is required').max(100),
   body: z.string().min(1, 'Message is required').max(500),
-  targetType: z.enum(['single', 'multiple', 'all']),
+  targetType: z.enum(TARGET_TYPE_VALUES),
+  userIds: z.array(z.string()).optional(),
   clientIds: z.array(z.string()).optional(),
+  recipientRole: notificationTargetRoleSchema.optional(),
+  recipientRoles: z.array(notificationTargetRoleSchema).optional(),
+  clickAction: z.string().optional(),
   data: z.object({
     type: z.string().optional(),
-    url: z.string().optional()
+    url: z.string().optional(),
   }).optional()
 });
 
-// POST - Send custom notification to clients
+const deleteNotificationSchema = z.object({
+  targetType: z.enum(TARGET_TYPE_VALUES),
+  userIds: z.array(z.string()).optional(),
+  clientIds: z.array(z.string()).optional(),
+  recipientRole: notificationTargetRoleSchema.optional(),
+  recipientRoles: z.array(notificationTargetRoleSchema).optional(),
+  readState: z.enum(['all', 'read', 'unread']).optional(),
+});
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -31,9 +122,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Only ADMIN, DIETITIAN, and HEALTH_COUNSELOR can send custom notifications
-    const allowedRoles = [UserRole.ADMIN, UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR];
-    if (!allowedRoles.includes(session.user.role as UserRole)) {
+    if (!allowedSenderRoles.includes(session.user.role as UserRole)) {
       return NextResponse.json(
         { success: false, message: 'Insufficient permissions' },
         { status: 403 }
@@ -44,112 +133,133 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validatedData = customNotificationSchema.parse(body);
+    const normalizedTargetType = normalizeTargetType(validatedData.targetType);
+    const isAdmin = session.user.role === UserRole.ADMIN;
 
-    let targetClientIds: string[] = [];
-    let successCount = 0;
-    let failCount = 0;
+    const requestedUserIds = uniqueStrings([
+      ...(validatedData.userIds || []),
+      ...(validatedData.clientIds || []),
+    ]);
 
-    const getAccessibleClientQuery = () => {
-      const baseQuery: any = {
-        role: UserRole.CLIENT,
-        isActive: { $ne: false }
-      };
+    const requestedRoles = normalizeRoleList([
+      ...(validatedData.recipientRoles || []),
+      validatedData.recipientRole,
+    ]);
 
-      if (session.user.role === UserRole.DIETITIAN) {
-        baseQuery.$or = [
-          { assignedDietitian: session.user.id },
-          { assignedDietitians: session.user.id }
-        ];
-      }
+    const effectiveRoles: NotificationTargetRole[] = isAdmin
+      ? (requestedRoles.length > 0 ? requestedRoles : DEFAULT_ADMIN_TARGET_ROLES)
+      : [UserRole.CLIENT];
 
-      if (session.user.role === UserRole.HEALTH_COUNSELOR) {
-        baseQuery.$or = [
-          { assignedHealthCounselor: session.user.id },
-          { assignedHealthCounselors: session.user.id }
-        ];
-      }
+    let targetUsers: Array<{ _id: unknown; role: NotificationTargetRole }> = [];
 
-      return baseQuery;
-    };
-
-    if (validatedData.targetType === 'single' || validatedData.targetType === 'multiple') {
-      if (!validatedData.clientIds || validatedData.clientIds.length === 0) {
-        return NextResponse.json(
-          { success: false, message: 'Client IDs are required for targeted notifications' },
-          { status: 400 }
-        );
-      }
-
-      if (session.user.role === UserRole.ADMIN) {
-        targetClientIds = validatedData.clientIds;
+    if (isAdmin) {
+      if (normalizedTargetType === 'all') {
+        targetUsers = await User.find({
+          role: { $in: effectiveRoles },
+        }).select('_id role');
       } else {
-        const accessibleClients = await User.find({
-          ...getAccessibleClientQuery(),
-          _id: { $in: validatedData.clientIds }
-        }).select('_id');
+        if (requestedUserIds.length === 0) {
+          return NextResponse.json(
+            { success: false, message: 'User IDs are required for particular/selected targeting' },
+            { status: 400 }
+          );
+        }
 
-        targetClientIds = accessibleClients.map(c => c._id.toString());
+        targetUsers = await User.find({
+          _id: { $in: requestedUserIds },
+          role: { $in: effectiveRoles },
+        }).select('_id role');
       }
-    } else if (validatedData.targetType === 'all') {
-      // Get all clients
-      // For DIETITIAN/HEALTH_COUNSELOR, only send to their assigned clients
-      const clients = await User.find(getAccessibleClientQuery()).select('_id');
-      targetClientIds = clients.map(c => c._id.toString());
+    } else {
+      const clientQuery = getAccessibleClientQuery(session);
+
+      if (normalizedTargetType === 'all') {
+        targetUsers = await User.find(clientQuery).select('_id role');
+      } else {
+        if (requestedUserIds.length === 0) {
+          return NextResponse.json(
+            { success: false, message: 'Client IDs are required for particular/selected targeting' },
+            { status: 400 }
+          );
+        }
+
+        targetUsers = await User.find({
+          ...clientQuery,
+          _id: { $in: requestedUserIds },
+        }).select('_id role');
+      }
     }
 
-    if (targetClientIds.length === 0) {
+    const targetUserIds = uniqueStrings(targetUsers.map((user) => String(user._id)));
+
+    let successCount = 0;
+    let failCount = 0;
+    let skippedNoTokenCount = 0;
+
+    if (targetUserIds.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'No clients found to send notification' },
+        { success: false, message: 'No users found for selected role/target filters' },
         { status: 400 }
       );
     }
 
-    // Prepare notification data
-    const notificationData = {
-      title: validatedData.title,
-      body: validatedData.body,
-      data: {
-        type: validatedData.data?.type || 'custom',
-        url: validatedData.data?.url || '/client-dashboard',
-        sentBy: session.user.id,
-        sentAt: new Date().toISOString()
-      }
-    };
+    const targetRoleByUserId = new Map(
+      targetUsers.map((user) => [String(user._id), user.role])
+    );
 
-    // Send notifications
-    if (targetClientIds.length === 1) {
-      try {
-        await sendNotificationToUser(targetClientIds[0], notificationData);
-        successCount = 1;
-      } catch (error) {
-        console.error('Failed to send notification:', error);
-        failCount = 1;
-      }
-    } else {
-      // Send to multiple clients
-      const results = await Promise.allSettled(
-        targetClientIds.map(clientId =>
-          sendNotificationToUser(clientId, notificationData)
-        )
-      );
+    const sendResults = await Promise.allSettled(
+      targetUserIds.map(async (userId) => {
+        const recipientRole = (targetRoleByUserId.get(userId) || UserRole.CLIENT) as NotificationTargetRole;
+        const clickAction = validatedData.clickAction || validatedData.data?.url || getDefaultClickActionForRole(recipientRole);
 
-      results.forEach(result => {
-        if (result.status === 'fulfilled') {
-          successCount++;
-        } else {
-          failCount++;
-        }
-      });
-    }
+        const response = await sendNotificationToUser(userId, {
+          title: validatedData.title,
+          body: validatedData.body,
+          clickAction,
+          data: {
+            type: validatedData.data?.type || 'custom',
+            actionType: 'custom',
+            recipientRole,
+            url: clickAction,
+            sentBy: session.user.id,
+            sentByRole: String(session.user.role || ''),
+            sentAt: new Date().toISOString(),
+          },
+        });
+
+        return response;
+      })
+    );
+
+    sendResults.forEach((result) => {
+      if (result.status === 'rejected') {
+        failCount += 1;
+        return;
+      }
+
+      const value = result.value;
+      if ((value.successCount || 0) > 0) {
+        successCount += 1;
+      } else if ((value.failureCount || 0) > 0) {
+        failCount += 1;
+      } else {
+        skippedNoTokenCount += 1;
+      }
+    });
 
     return NextResponse.json({
       success: true,
-      message: `Notification sent successfully`,
+      message: 'Notification dispatch completed',
       stats: {
-        total: targetClientIds.length,
+        total: targetUserIds.length,
         success: successCount,
-        failed: failCount
-      }
+        failed: failCount,
+        skippedNoToken: skippedNoTokenCount,
+      },
+      target: {
+        targetType: normalizedTargetType,
+        recipientRoles: effectiveRoles,
+      },
     });
 
   } catch (error) {
@@ -169,7 +279,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET - Get clients list for notification targeting
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -181,8 +290,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const allowedRoles = [UserRole.ADMIN, UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR];
-    if (!allowedRoles.includes(session.user.role as UserRole)) {
+    if (!allowedSenderRoles.includes(session.user.role as UserRole)) {
       return NextResponse.json(
         { success: false, message: 'Insufficient permissions' },
         { status: 403 }
@@ -190,47 +298,161 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
+    const isAdmin = session.user.role === UserRole.ADMIN;
+    const { searchParams } = new URL(request.url);
+    const rolesParam = searchParams.get('roles');
 
-    // Build query based on role
-    let clientQuery: any = {
-      role: UserRole.CLIENT,
-      isActive: { $ne: false }
-    };
+    const requestedRoles = normalizeRoleList(
+      rolesParam ? rolesParam.split(',') : []
+    );
 
-    // For DIETITIAN/HEALTH_COUNSELOR, only show their assigned clients
-    if (session.user.role === UserRole.DIETITIAN) {
-      clientQuery.$or = [
-        { assignedDietitian: session.user.id },
-        { assignedDietitians: session.user.id }
-      ];
+    let recipients: Array<{
+      id: string;
+      name: string;
+      email: string;
+      avatar?: string;
+      role: string;
+      hasFcmToken: boolean;
+    }> = [];
+
+    if (isAdmin) {
+      const effectiveRoles = requestedRoles.length > 0 ? requestedRoles : DEFAULT_ADMIN_TARGET_ROLES;
+
+      const users = await User.find({ role: { $in: effectiveRoles } })
+        .select('_id firstName lastName email avatar role fcmTokens')
+        .sort({ firstName: 1, lastName: 1 });
+
+      recipients = users.map(mapRecipient);
+    } else {
+      const clients = await User.find(getAccessibleClientQuery(session))
+        .select('_id firstName lastName email avatar role fcmTokens')
+        .sort({ firstName: 1, lastName: 1 });
+
+      recipients = clients.map(mapRecipient);
     }
 
-    if (session.user.role === UserRole.HEALTH_COUNSELOR) {
-      clientQuery.$or = [
-        { assignedHealthCounselor: session.user.id },
-        { assignedHealthCounselors: session.user.id }
-      ];
-    }
-
-    const clients = await User.find(clientQuery)
-      .select('_id firstName lastName email profilePhoto fcmToken')
-      .sort({ firstName: 1, lastName: 1 });
+    const clients = recipients.filter((recipient) => recipient.role === UserRole.CLIENT);
 
     return NextResponse.json({
       success: true,
-      clients: clients.map(c => ({
-        id: c._id.toString(),
-        name: `${c.firstName} ${c.lastName}`,
-        email: c.email,
-        avatar: c.profilePhoto,
-        hasFcmToken: !!c.fcmToken
-      }))
+      recipients,
+      clients,
+      availableRoles: isAdmin ? DEFAULT_ADMIN_TARGET_ROLES : [UserRole.CLIENT],
     });
 
   } catch (error) {
     console.error('Error fetching clients for notification:', error);
     return NextResponse.json(
       { success: false, message: 'Failed to fetch clients' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    if (session.user.role !== UserRole.ADMIN) {
+      return NextResponse.json(
+        { success: false, message: 'Only admin can bulk delete notifications' },
+        { status: 403 }
+      );
+    }
+
+    await connectDB();
+
+    const body = await request.json();
+    const validatedData = deleteNotificationSchema.parse(body);
+
+    const normalizedTargetType = normalizeTargetType(validatedData.targetType);
+    const requestedUserIds = uniqueStrings([
+      ...(validatedData.userIds || []),
+      ...(validatedData.clientIds || []),
+    ]);
+
+    const requestedRoles = normalizeRoleList([
+      ...(validatedData.recipientRoles || []),
+      validatedData.recipientRole,
+    ]);
+
+    const effectiveRoles = requestedRoles.length > 0 ? requestedRoles : DEFAULT_ADMIN_TARGET_ROLES;
+
+    let targetUsers: Array<{ _id: unknown }> = [];
+
+    if (normalizedTargetType === 'all') {
+      targetUsers = await User.find({
+        role: { $in: effectiveRoles },
+      }).select('_id');
+    } else {
+      if (requestedUserIds.length === 0) {
+        return NextResponse.json(
+          { success: false, message: 'User IDs are required for particular/selected delete' },
+          { status: 400 }
+        );
+      }
+
+      targetUsers = await User.find({
+        _id: { $in: requestedUserIds },
+        role: { $in: effectiveRoles },
+      }).select('_id');
+    }
+
+    const targetUserIds = uniqueStrings(targetUsers.map((user) => String(user._id)));
+
+    if (targetUserIds.length === 0) {
+      return NextResponse.json(
+        { success: false, message: 'No users found for deletion target' },
+        { status: 400 }
+      );
+    }
+
+    const deleteQuery: Record<string, unknown> = {
+      userId: { $in: targetUserIds },
+    };
+
+    if (validatedData.readState === 'read') {
+      deleteQuery.read = true;
+    }
+
+    if (validatedData.readState === 'unread') {
+      deleteQuery.read = false;
+    }
+
+    const deleteResult = await Notification.deleteMany(deleteQuery);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Notifications deleted successfully',
+      stats: {
+        deletedNotifications: Number(deleteResult.deletedCount || 0),
+        targetUsers: targetUserIds.length,
+      },
+      target: {
+        targetType: normalizedTargetType,
+        recipientRoles: effectiveRoles,
+        readState: validatedData.readState || 'all',
+      },
+    });
+  } catch (error) {
+    console.error('Error deleting notifications:', error);
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, message: 'Validation error', errors: error.format() },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      { success: false, message: 'Failed to delete notifications' },
       { status: 500 }
     );
   }

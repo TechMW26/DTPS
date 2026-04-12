@@ -25,6 +25,7 @@ export { default as Transformation } from './Transformation';
 export { default as ActivityLog } from './ActivityLog';
 export { default as Counter } from './Counter';
 export { default as Notification } from './Notification';
+export { default as NotificationDeliveryAudit } from './NotificationDeliveryAudit';
 
 // Payment & subscription models
 export { default as ServicePlan } from './ServicePlan';

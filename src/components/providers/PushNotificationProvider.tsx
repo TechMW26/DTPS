@@ -12,18 +12,29 @@ interface PushNotificationProviderProps {
     onNotification?: (payload: any) => void;
 }
 
+function normalizeRoleValue(role: unknown): string {
+    const normalized = String(role || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_');
+
+    if (normalized === 'dietician') return 'dietitian';
+    if (normalized === 'healthcounselor' || normalized === 'health_counsellor') return 'health_counselor';
+
+    return normalized;
+}
+
 /**
  * Provider component that handles push notification registration
  * Add this to your layout or a high-level component
  * 
  * Handles both:
- * 1. Web push notifications (via Firebase Messaging) - ONLY for admin panel
+ * 1. Web push notifications (via Firebase Messaging) - for staff dashboards
  * 2. Native Android app FCM token registration (via WebView bridge) - for clients in native app
  * 
  * Note: 
- * - User/Client panel: No toast messages, only native app FCM registration
- * - Dietitian/Health Counselor panel: No web push notifications at all
- * - Admin panel: Full web push with toast notifications
+ * - User/Client panel: No web push registration here, native app handles client notifications
+ * - Dietitian/Health Counselor/Admin panels: Web push enabled with role-aware routing
  */
 export function PushNotificationProvider({
     children,
@@ -33,10 +44,10 @@ export function PushNotificationProvider({
     const { data: session, status } = useSession();
 
     // Get user role
-    const userRole = session?.user?.role?.toLowerCase() || '';
-    const isClient = userRole === 'client';
+    const userRole = normalizeRoleValue(session?.user?.role);
     const isDietitianOrCounselor = userRole === 'dietitian' || userRole === 'health_counselor';
-    const isAdmin = userRole.includes('admin');
+    const isAdmin = userRole === 'admin';
+    const isStaffWebPushRole = isAdmin || isDietitianOrCounselor;
 
     // Track last notification to prevent duplicates
     const lastNotificationRef = useRef<{ id: string; timestamp: number } | null>(null);
@@ -60,76 +71,276 @@ export function PushNotificationProvider({
         return false;
     }, []);
 
-    // Handle foreground notification display with toast - ONLY for admin
+    const syncUnreadNotificationBadge = useCallback(async () => {
+        if (typeof window === 'undefined' || !('navigator' in window) || !isStaffWebPushRole) return;
+
+        try {
+            const response = await fetch('/api/client/notifications/unread-count', {
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+
+            if (!response.ok) return;
+
+            const payload = await response.json();
+            const count = Number(payload?.count || 0);
+
+            if (typeof (navigator as any).setAppBadge === 'function') {
+                if (count > 0) {
+                    await (navigator as any).setAppBadge(count);
+                } else if (typeof (navigator as any).clearAppBadge === 'function') {
+                    await (navigator as any).clearAppBadge();
+                }
+            }
+        } catch {
+            // Best effort only - badge API is optional
+        }
+    }, [isStaffWebPushRole]);
+
+    const getNotificationIcon = useCallback((notificationType: string) => {
+        switch (notificationType) {
+            case 'new_message':
+            case 'message':
+                return '💬';
+            case 'appointment':
+            case 'appointment_booked':
+            case 'appointment_cancelled':
+            case 'appointment_reminder':
+                return '📅';
+            case 'meal':
+            case 'meal_plan':
+            case 'meal_plan_created':
+            case 'meal_plan_updated':
+                return '🍽️';
+            case 'payment':
+            case 'payment_link':
+            case 'payment_link_created':
+                return '💳';
+            case 'task_assigned':
+                return '✅';
+            case 'call':
+                return '📞';
+            default:
+                return '🔔';
+        }
+    }, []);
+
+    const normalizeTargetPath = useCallback((target?: string): string | null => {
+        const trimmed = String(target || '').trim();
+        if (!trimmed) return null;
+        if (/^https?:\/\//i.test(trimmed)) return trimmed;
+        return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    }, []);
+
+    const getDefaultTargetForRole = useCallback((role: string): string => {
+        if (role === 'admin') return '/admin';
+        if (role === 'dietitian') return '/dashboard/dietitian';
+        if (role === 'health_counselor') return '/dashboard/health-counselor';
+        if (role === 'client') return '/user';
+        return '/';
+    }, []);
+
+    const getPayloadData = useCallback((payload: any): Record<string, any> => {
+        const data = payload?.data;
+        if (data && typeof data === 'object') return data;
+        return {};
+    }, []);
+
+    const extractNotificationMeta = useCallback((payload: any) => {
+        const data = getPayloadData(payload);
+        const title = payload?.notification?.title || data.title || 'New Notification';
+        const body = payload?.notification?.body || data.body || data.message || '';
+        const type = data.type || data.notificationType || 'general';
+        return { data, title, body, type };
+    }, [getPayloadData]);
+
+    const resolveTargetPath = useCallback((payload: any): string => {
+        const { data, type } = extractNotificationMeta(payload);
+        const normalizedType = String(type || 'general').toLowerCase();
+        const explicitTarget = normalizeTargetPath(
+            data.clickAction
+            || data.click_action
+            || data.url
+            || data.actionUrl
+            || data.action_url
+        );
+
+        if (explicitTarget) {
+            return explicitTarget;
+        }
+
+        if (normalizedType === 'new_message' || normalizedType === 'message' || data.actionType === 'message') {
+            const conversationWith = String(
+                data.conversationWith
+                || data.conversation_with
+                || data.conversationWithUserId
+                || data.conversation_with_user_id
+                || data.senderId
+                || data.sender_id
+                || ''
+            ).trim();
+            if (userRole === 'health_counselor') {
+                return conversationWith
+                    ? `/health-counselor/messages?conversationWith=${encodeURIComponent(conversationWith)}`
+                    : '/health-counselor/messages';
+            }
+            if (userRole === 'client') {
+                return conversationWith
+                    ? `/user/messages?conversationWith=${encodeURIComponent(conversationWith)}`
+                    : '/user/messages';
+            }
+            return conversationWith
+                ? `/messages?conversationWith=${encodeURIComponent(conversationWith)}`
+                : '/messages';
+        }
+
+        if (normalizedType === 'appointment' || normalizedType === 'appointment_booked' || normalizedType === 'appointment_cancelled' || normalizedType === 'appointment_reminder') {
+            return userRole === 'client' ? '/user/appointments' : '/appointments';
+        }
+
+        if (normalizedType === 'meal' || normalizedType === 'meal_plan' || normalizedType === 'meal_plan_created' || normalizedType === 'meal_plan_updated') {
+            if (userRole === 'client') return '/my-plan';
+            const clientId = String(data.clientId || data.client_id || '').trim();
+            if (clientId && userRole === 'dietitian') return `/dietician/clients/${clientId}`;
+            if (clientId && userRole === 'health_counselor') return `/health-counselor/clients/${clientId}`;
+        }
+
+        if (normalizedType === 'task_assigned') {
+            return userRole === 'client' ? '/user/tasks' : '/dashboard';
+        }
+
+        if (normalizedType === 'payment' || normalizedType === 'payment_link' || normalizedType === 'payment_link_created') {
+            return userRole === 'client' ? '/user/payments' : '/billing';
+        }
+
+        return getDefaultTargetForRole(userRole);
+    }, [extractNotificationMeta, getDefaultTargetForRole, normalizeTargetPath, userRole]);
+
+    const buildDetailLine = useCallback((payload: any): string => {
+        const data = getPayloadData(payload);
+        const details: string[] = [];
+
+        if (data.clientName) {
+            details.push(`Client: ${data.clientName}`);
+        }
+
+        if (data.senderName) {
+            details.push(`From: ${data.senderName}`);
+        }
+
+        if (data.actionType) {
+            const action = String(data.actionType).replace(/_/g, ' ');
+            details.push(`Action: ${action}`);
+        }
+
+        const timestampRaw = data.timestamp || data.sentAt;
+        if (timestampRaw) {
+            const parsed = new Date(String(timestampRaw));
+            if (!Number.isNaN(parsed.getTime())) {
+                details.push(
+                    parsed.toLocaleString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                    })
+                );
+            }
+        }
+
+        return details.join(' • ');
+    }, [getPayloadData]);
+
+    const openNotificationTarget = useCallback((targetPath: string) => {
+        if (typeof window === 'undefined') return;
+        const normalized = normalizeTargetPath(targetPath) || '/';
+        window.location.href = normalized;
+    }, [normalizeTargetPath]);
+
+    const showPushBanner = useCallback((payload: any) => {
+        const { title, body, type } = extractNotificationMeta(payload);
+        const icon = getNotificationIcon(type);
+        const detailLine = buildDetailLine(payload);
+        const targetPath = resolveTargetPath(payload);
+
+        toast.custom(() => (
+            <button
+                type="button"
+                className="web-push-banner-card"
+                onClick={() => {
+                    toast.dismiss();
+                    openNotificationTarget(targetPath);
+                }}
+                title="Open related work"
+            >
+                <div className="web-push-banner-header">
+                    <span className="web-push-banner-title">{icon} {title}</span>
+                    <span className="web-push-banner-open">Open &gt;</span>
+                </div>
+                {body ? <p className="web-push-banner-body">{body}</p> : null}
+                {detailLine ? <p className="web-push-banner-detail">{detailLine}</p> : null}
+            </button>
+        ), {
+            duration: 6000,
+            closeButton: true,
+            position: 'bottom-left',
+            className: 'web-push-toast',
+        });
+    }, [buildDetailLine, extractNotificationMeta, getNotificationIcon, openNotificationTarget, resolveTargetPath]);
+
+    const showPreviewBanner = useCallback((previewRole: string) => {
+        const previewClickAction = previewRole === 'health_counselor'
+            ? '/health-counselor/messages'
+            : '/messages';
+
+        const previewPayload = {
+            notification: {
+                title: 'New message from Demo Client',
+                body: 'Your client sent an update. Click this banner to open the related work.',
+            },
+            data: {
+                type: 'new_message',
+                senderName: 'Demo Client',
+                clientName: 'Demo Client',
+                actionType: 'message',
+                timestamp: new Date().toISOString(),
+                clickAction: previewClickAction,
+            },
+        };
+
+        showPushBanner(previewPayload);
+    }, [showPushBanner]);
+
+    // Handle foreground notification display with toast for staff roles
     const handleForegroundNotification = useCallback((payload: any) => {
         console.log('[PushNotificationProvider] Foreground notification received:', payload);
 
-        // Skip toast for clients and dietitian/health counselor
-        if (isClient || isDietitianOrCounselor) {
-            console.log('[PushNotificationProvider] Skipping toast for non-admin user');
-            // Still call custom handler if provided
-            if (onNotification) {
-                onNotification(payload);
-            }
-            return;
-        }
-
-        // Extract notification data
-        const title = payload.notification?.title || payload.data?.title || 'New Notification';
-        const body = payload.notification?.body || payload.data?.body || payload.data?.message || '';
-        const type = payload.data?.type || 'general';
+        const { title, body, type, data } = extractNotificationMeta(payload);
 
         // Check for duplicate notification
-        if (isDuplicateNotification(title, body, payload.data)) {
+        if (isDuplicateNotification(title, body, data)) {
             return;
         }
 
-        // Determine the icon/emoji based on notification type
-        const getIcon = (notificationType: string) => {
-            switch (notificationType) {
-                case 'new_message':
-                case 'message':
-                    return '💬';
-                case 'appointment':
-                case 'appointment_booked':
-                case 'appointment_cancelled':
-                    return '📅';
-                case 'meal':
-                case 'meal_plan_created':
-                case 'meal_plan_updated':
-                    return '🍽️';
-                case 'payment':
-                case 'payment_link_created':
-                    return '💳';
-                case 'task_assigned':
-                    return '✅';
-                case 'call':
-                    return '📞';
-                default:
-                    return '🔔';
-            }
-        };
+        console.log('[PushNotificationProvider] Showing notification banner:', { title, body, type });
 
-        const icon = getIcon(type);
-        console.log('[PushNotificationProvider] Showing notification banner:', { title, body, type, icon });
+        // Show bottom push banner with details and click-to-open behavior
+        showPushBanner(payload);
 
-        // Show toast notification with icon - ONLY for admin
-        toast.success(`${icon} ${title}`, {
-            description: body && body.length > 0 ? body : undefined,
-            duration: 5000,
-        });
+        // Keep app-level unread badge in sync for supported browsers
+        syncUnreadNotificationBadge();
 
         // Also call custom handler if provided
         if (onNotification) {
             onNotification(payload);
         }
-    }, [onNotification, isDuplicateNotification, isClient, isDietitianOrCounselor]);
+    }, [extractNotificationMeta, onNotification, isDuplicateNotification, syncUnreadNotificationBadge, showPushBanner]);
 
-    // Only use web push notifications for admin (not for dietitian/health counselor)
+    // Enable web push for staff dashboard roles
     const { isSupported, permission, registerToken } = usePushNotifications({
         autoRegister: false, // We'll handle it manually
         onNotification: handleForegroundNotification,
-        enabled: isAdmin,
+        enabled: isStaffWebPushRole,
     });
 
     // Native app hook - handles FCM token registration for Android WebView
@@ -146,19 +357,6 @@ export function PushNotificationProvider({
     const handleNativeForegroundNotification = useCallback((notification: ForegroundNotification) => {
         console.log('[PushNotificationProvider] Native foreground notification received:', JSON.stringify(notification));
 
-        // Skip toast for clients - they use native app notifications directly
-        // Only log and call custom handler
-        if (isClient) {
-            console.log('[PushNotificationProvider] Skipping toast for client in native app');
-            if (onNotification) {
-                onNotification({
-                    notification: { title: notification.title, body: notification.body },
-                    data: notification.data
-                });
-            }
-            return;
-        }
-
         const title = notification.title || 'New Notification';
         const body = notification.body || '';
         const type = notification.data?.type || 'general';
@@ -168,39 +366,12 @@ export function PushNotificationProvider({
             return;
         }
 
-        // Determine the icon/emoji based on notification type
-        const getNativeIcon = (notificationType: string) => {
-            switch (notificationType) {
-                case 'new_message':
-                case 'message':
-                    return '💬';
-                case 'appointment':
-                case 'appointment_booked':
-                case 'appointment_cancelled':
-                    return '📅';
-                case 'meal':
-                case 'meal_plan_created':
-                case 'meal_plan_updated':
-                    return '🍽️';
-                case 'payment':
-                case 'payment_link_created':
-                    return '💳';
-                case 'task_assigned':
-                    return '✅';
-                case 'call':
-                    return '📞';
-                default:
-                    return '🔔';
-            }
-        };
+        console.log('[PushNotificationProvider] Showing native notification banner:', { title, body, type });
 
-        const icon = getNativeIcon(type);
-        console.log('[PushNotificationProvider] Showing native notification banner:', { title, body, type, icon });
-
-        // Show toast notification with icon - only for non-clients
-        toast.success(`${icon} ${title}`, {
-            description: body && body.length > 0 ? body : undefined,
-            duration: 5000,
+        // Show bottom push banner with details and click-to-open behavior
+        showPushBanner({
+            notification: { title, body },
+            data: notification.data || {},
         });
 
         // Call user's custom handler if provided
@@ -210,7 +381,7 @@ export function PushNotificationProvider({
                 data: notification.data
             });
         }
-    }, [onNotification, isDuplicateNotification, isClient]);
+    }, [onNotification, isDuplicateNotification, showPushBanner]);
 
     // Set up native foreground notification handler
     useEffect(() => {
@@ -219,16 +390,51 @@ export function PushNotificationProvider({
         }
     }, [isNativeApp, setNativeForegroundHandler, handleNativeForegroundNotification]);
 
-    // Web push notification registration - ONLY for admin (not for dietitian/health counselor/client)
+    // One-time preview for the in-app notification banner.
     useEffect(() => {
-        // Only register for web if not in native app
-        if (isNativeApp) {
+        if (typeof window === 'undefined') return;
+        if (status !== 'authenticated') return;
+
+        const searchParams = new URLSearchParams(window.location.search);
+        const previewParam = searchParams.get('previewNotificationBanner');
+        const shouldPreview = previewParam === '1' || previewParam === 'true';
+
+        if (!shouldPreview) {
             return;
         }
 
-        // Skip web push for dietitian and health counselor
-        if (isDietitianOrCounselor) {
-            console.log('[PushNotificationProvider] Skipping web push for dietitian/health counselor');
+        // Wait a tick so Sonner host is fully mounted before firing preview toast.
+        const timer = window.setTimeout(() => {
+            showPreviewBanner(userRole);
+        }, 250);
+
+        searchParams.delete('previewNotificationBanner');
+        const nextQuery = searchParams.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+        window.history.replaceState({}, '', nextUrl);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [showPreviewBanner, status, userRole]);
+
+    // Manual debug hook to force preview banner from browser console.
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        (window as any).__dtpsPreviewNotificationBanner = () => {
+            showPreviewBanner(userRole);
+        };
+
+        return () => {
+            delete (window as any).__dtpsPreviewNotificationBanner;
+        };
+    }, [showPreviewBanner, userRole]);
+
+    // Web push notification registration for staff roles (admin/dietitian/health-counselor)
+    useEffect(() => {
+        // Only register for web if not in native app
+        if (isNativeApp) {
             return;
         }
 
@@ -237,17 +443,42 @@ export function PushNotificationProvider({
         // 2. User is authenticated
         // 3. Notifications are supported
         // 4. Permission is already granted (don't prompt automatically)
-        // 5. User is admin (not client or dietitian/health counselor)
+        // 5. User is staff role (admin/dietitian/health counselor)
         if (
             autoRegister &&
             status === 'authenticated' &&
             isSupported &&
             permission === 'granted' &&
-            isAdmin
+            isStaffWebPushRole
         ) {
             registerToken();
         }
-    }, [autoRegister, status, isSupported, permission, registerToken, isNativeApp, isDietitianOrCounselor, isAdmin]);
+    }, [autoRegister, status, isSupported, permission, registerToken, isNativeApp, isStaffWebPushRole]);
+
+    // Sync unread badge when tab becomes active
+    useEffect(() => {
+        if (status !== 'authenticated' || !isStaffWebPushRole || isNativeApp) return;
+
+        syncUnreadNotificationBadge();
+
+        const onFocus = () => {
+            syncUnreadNotificationBadge();
+        };
+
+        const onVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                syncUnreadNotificationBadge();
+            }
+        };
+
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', onVisibility);
+
+        return () => {
+            window.removeEventListener('focus', onFocus);
+            document.removeEventListener('visibilitychange', onVisibility);
+        };
+    }, [status, isStaffWebPushRole, isNativeApp, syncUnreadNotificationBadge]);
 
     // Native app - log token registration status
     useEffect(() => {

@@ -50,10 +50,12 @@ export async function sendNotificationToUser(
     try {
         await connectDB();
 
+        let notificationRecordId: string | undefined;
+
         // Save notification to database (unless explicitly disabled)
         if (notification.saveToDb !== false) {
             try {
-                await Notification.create({
+                const savedNotification = await Notification.create({
                     userId,
                     title: notification.title,
                     message: notification.body,
@@ -62,6 +64,7 @@ export async function sendNotificationToUser(
                     actionUrl: notification.clickAction,
                     read: false
                 });
+                notificationRecordId = String(savedNotification._id);
             } catch (dbError) {
                 console.error('Error saving notification to database:', dbError);
                 // Continue with push notification even if DB save fails
@@ -82,7 +85,15 @@ export async function sendNotificationToUser(
 
         // Extract all token strings
         const tokens = user.fcmTokens.map((t: any) => t.token);
-        return await sendNotificationToTokens(tokens, notification, userId);
+        const notificationWithId = {
+            ...notification,
+            data: {
+                ...(notification.data || {}),
+                ...(notificationRecordId ? { notificationId: notificationRecordId } : {}),
+            },
+        };
+
+        return await sendNotificationToTokens(tokens, notificationWithId, userId);
     } catch (error) {
         console.error('Error sending notification to user:', error);
         return { successCount: 0, failureCount: 1, invalidTokens: [], responses: [] };
