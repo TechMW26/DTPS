@@ -76,8 +76,17 @@ export class FileParser {
         case 'csv':
           return await this.parseCSV(file, fileName);
         case 'xlsx':
-        case 'xls':
           return await this.parseExcel(file, fileName);
+        case 'xls':
+          return {
+            success: false,
+            rows: [],
+            headers: [],
+            totalRows: 0,
+            errors: ['Legacy Excel .xls files are not supported. Please re-save the file as .xlsx and upload again.'],
+            fileType: 'excel',
+            fileName
+          };
         case 'json':
           return await this.parseJSON(file, fileName);
         default:

@@ -125,6 +125,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const page = parseInt(searchParams.get('page') || '1');
     const viewAll = searchParams.get('viewAll') === 'true';
+    const noCache = searchParams.get('noCache') === 'true';
 
     let query: any = {};
 
@@ -307,93 +308,108 @@ export async function GET(request: NextRequest) {
     // Always include clientStatus for proper client engagement tracking
     const selectFields = session.user.role === UserRole.ADMIN ? '+clientStatus' : '-password +clientStatus';
 
-    // Generate cache key based on role and query params - v2 for phone search fix
-    const cacheKey = `users:v2:${session.user.role}:${role || 'all'}:${search || ''}:${statusFilter || ''}:${dateFrom || ''}:${dateTo || ''}:${dietitianId || ''}:${healthCounselorId || ''}:${page}:${limit}`;
+    const loadUsersData = async () => {
+      const rawUsers = await User.find(query)
+        .select(selectFields)
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip((page - 1) * limit)
+        .lean();
 
-    const { users, total, adminsCount, dietitiansCount, healthCounselorsCount, clientsCount } = await withCache(
-      cacheKey,
-      async () => {
-        const rawUsers = await User.find(query)
-          .select(selectFields)
-          .sort({ createdAt: -1 })
-          .limit(limit)
-          .skip((page - 1) * limit)
-          .lean();
+      const relatedUserIds = new Set<string>();
 
-        const relatedUserIds = new Set<string>();
+      for (const user of rawUsers as any[]) {
+        const assignedDietitianId = normalizeObjectId(user?.assignedDietitian);
+        if (assignedDietitianId) relatedUserIds.add(assignedDietitianId);
 
-        for (const user of rawUsers as any[]) {
-          const assignedDietitianId = normalizeObjectId(user?.assignedDietitian);
-          if (assignedDietitianId) relatedUserIds.add(assignedDietitianId);
+        const assignedHealthCounselorId = normalizeObjectId(user?.assignedHealthCounselor);
+        if (assignedHealthCounselorId) relatedUserIds.add(assignedHealthCounselorId);
 
-          const assignedHealthCounselorId = normalizeObjectId(user?.assignedHealthCounselor);
-          if (assignedHealthCounselorId) relatedUserIds.add(assignedHealthCounselorId);
-
-          if (Array.isArray(user?.assignedDietitians)) {
-            for (const id of user.assignedDietitians) {
-              const normalizedId = normalizeObjectId(id);
-              if (normalizedId) relatedUserIds.add(normalizedId);
-            }
-          }
-
-          if (Array.isArray(user?.assignedHealthCounselors)) {
-            for (const id of user.assignedHealthCounselors) {
-              const normalizedId = normalizeObjectId(id);
-              if (normalizedId) relatedUserIds.add(normalizedId);
-            }
+        if (Array.isArray(user?.assignedDietitians)) {
+          for (const id of user.assignedDietitians) {
+            const normalizedId = normalizeObjectId(id);
+            if (normalizedId) relatedUserIds.add(normalizedId);
           }
         }
 
-        const relatedUsers = relatedUserIds.size > 0
-          ? await User.find({ _id: { $in: Array.from(relatedUserIds).map((id) => new Types.ObjectId(id)) } })
-            .select('firstName lastName')
-            .lean()
+        if (Array.isArray(user?.assignedHealthCounselors)) {
+          for (const id of user.assignedHealthCounselors) {
+            const normalizedId = normalizeObjectId(id);
+            if (normalizedId) relatedUserIds.add(normalizedId);
+          }
+        }
+      }
+
+      const relatedUsers = relatedUserIds.size > 0
+        ? await User.find({ _id: { $in: Array.from(relatedUserIds).map((id) => new Types.ObjectId(id)) } })
+          .select('firstName lastName')
+          .lean()
+        : [];
+
+      const relatedUsersMap = new Map((relatedUsers as any[]).map((u) => [u._id.toString(), u]));
+
+      const users = (rawUsers as any[]).map((user: any) => {
+        const assignedDietitianId = normalizeObjectId(user?.assignedDietitian);
+        const assignedHealthCounselorId = normalizeObjectId(user?.assignedHealthCounselor);
+
+        const assignedDietitians = Array.isArray(user?.assignedDietitians)
+          ? user.assignedDietitians
+            .map((id: unknown) => normalizeObjectId(id))
+            .filter((id: string | null): id is string => !!id)
+            .map((id: string) => relatedUsersMap.get(id))
+            .filter(Boolean)
           : [];
 
-        const relatedUsersMap = new Map((relatedUsers as any[]).map((u) => [u._id.toString(), u]));
+        const assignedHealthCounselors = Array.isArray(user?.assignedHealthCounselors)
+          ? user.assignedHealthCounselors
+            .map((id: unknown) => normalizeObjectId(id))
+            .filter((id: string | null): id is string => !!id)
+            .map((id: string) => relatedUsersMap.get(id))
+            .filter(Boolean)
+          : [];
 
-        const users = (rawUsers as any[]).map((user: any) => {
-          const assignedDietitianId = normalizeObjectId(user?.assignedDietitian);
-          const assignedHealthCounselorId = normalizeObjectId(user?.assignedHealthCounselor);
+        return {
+          ...user,
+          assignedDietitian: assignedDietitianId ? relatedUsersMap.get(assignedDietitianId) || null : null,
+          assignedDietitians,
+          assignedHealthCounselor: assignedHealthCounselorId ? relatedUsersMap.get(assignedHealthCounselorId) || null : null,
+          assignedHealthCounselors
+        };
+      });
 
-          const assignedDietitians = Array.isArray(user?.assignedDietitians)
-            ? user.assignedDietitians
-              .map((id: unknown) => normalizeObjectId(id))
-              .filter((id: string | null): id is string => !!id)
-              .map((id: string) => relatedUsersMap.get(id))
-              .filter(Boolean)
-            : [];
+      const total = await User.countDocuments(query);
 
-          const assignedHealthCounselors = Array.isArray(user?.assignedHealthCounselors)
-            ? user.assignedHealthCounselors
-              .map((id: unknown) => normalizeObjectId(id))
-              .filter((id: string | null): id is string => !!id)
-              .map((id: string) => relatedUsersMap.get(id))
-              .filter(Boolean)
-            : [];
+      const [adminsCount, dietitiansCount, healthCounselorsCount, clientsCount, latestClientIdAgg] = await Promise.all([
+        User.countDocuments({ role: UserRole.ADMIN }),
+        User.countDocuments({ role: UserRole.DIETITIAN }),
+        User.countDocuments({ role: UserRole.HEALTH_COUNSELOR }),
+        User.countDocuments({ role: UserRole.CLIENT }),
+        User.aggregate([
+          { $match: { role: UserRole.CLIENT, clientId: { $exists: true, $ne: null, $regex: /^C-\d+$/ } } },
+          { $project: { clientIdNum: { $toInt: { $substr: ['$clientId', 2, -1] } } } },
+          { $sort: { clientIdNum: -1 } },
+          { $limit: 1 }
+        ])
+      ]);
 
-          return {
-            ...user,
-            assignedDietitian: assignedDietitianId ? relatedUsersMap.get(assignedDietitianId) || null : null,
-            assignedDietitians,
-            assignedHealthCounselor: assignedHealthCounselorId ? relatedUsersMap.get(assignedHealthCounselorId) || null : null,
-            assignedHealthCounselors
-          };
-        });
+      const latestClientIdNumber =
+        latestClientIdAgg.length > 0 && latestClientIdAgg[0]?.clientIdNum
+          ? latestClientIdAgg[0].clientIdNum
+          : 0;
 
-        const total = await User.countDocuments(query);
+      return { users, total, adminsCount, dietitiansCount, healthCounselorsCount, clientsCount, latestClientIdNumber };
+    };
 
-        const [adminsCount, dietitiansCount, healthCounselorsCount, clientsCount] = await Promise.all([
-          User.countDocuments({ role: UserRole.ADMIN }),
-          User.countDocuments({ role: UserRole.DIETITIAN }),
-          User.countDocuments({ role: UserRole.HEALTH_COUNSELOR }),
-          User.countDocuments({ role: UserRole.CLIENT })
-        ]);
+    // Generate cache key based on role and query params
+    const cacheKey = `users:v3:${session.user.role}:${role || 'all'}:${search || ''}:${statusFilter || ''}:${dateFrom || ''}:${dateTo || ''}:${dietitianId || ''}:${healthCounselorId || ''}:${page}:${limit}`;
 
-        return { users, total, adminsCount, dietitiansCount, healthCounselorsCount, clientsCount };
-      },
-      { ttl: 120000, tags: ['users'] } // 2 minutes TTL
-    );
+    const { users, total, adminsCount, dietitiansCount, healthCounselorsCount, clientsCount, latestClientIdNumber } = noCache
+      ? await loadUsersData()
+      : await withCache(
+        cacheKey,
+        loadUsersData,
+        { ttl: 120000, tags: ['users'] }
+      );
 
     // For admin users, we need to manually serialize to include passwords
     let serializedUsers;
@@ -424,6 +440,9 @@ export async function GET(request: NextRequest) {
         dietitian: dietitiansCount,
         healthCounselor: healthCounselorsCount,
         client: clientsCount
+      },
+      clientStats: {
+        latestClientIdNumber
       }
     });
 

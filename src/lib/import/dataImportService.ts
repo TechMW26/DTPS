@@ -60,8 +60,24 @@ export interface ImportSession {
   savedCounts?: Record<string, number>;
 }
 
-// In-memory session storage (no file persistence)
-let sessions: Map<string, ImportSession> = new Map();
+export interface SessionRestorePayload {
+  fileName?: string;
+  modelGroups?: ImportSession['modelGroups'];
+  unmatchedData?: ImportSession['unmatchedRows'];
+  canSave?: boolean;
+}
+
+// Keep sessions on globalThis so they survive Next.js module reloads in dev/prod workers.
+const globalSessionStore = globalThis as typeof globalThis & {
+  __dtpsImportSessions?: Map<string, ImportSession>;
+};
+
+const sessions: Map<string, ImportSession> =
+  globalSessionStore.__dtpsImportSessions ?? new Map<string, ImportSession>();
+
+if (!globalSessionStore.__dtpsImportSessions) {
+  globalSessionStore.__dtpsImportSessions = sessions;
+}
 
 // ============================================
 // DATA IMPORT SERVICE CLASS
@@ -98,6 +114,74 @@ export class DataImportService {
    */
   getAllSessions(): ImportSession[] {
     return Array.from(sessions.values());
+  }
+
+  /**
+   * Restore a session from client-side validated payload.
+   * Useful when in-memory sessions are lost between upload and save requests.
+   */
+  restoreSession(sessionId: string, payload: SessionRestorePayload): ImportSession | null {
+    if (!sessionId || !payload || !Array.isArray(payload.modelGroups)) {
+      return null;
+    }
+
+    const modelGroups = payload.modelGroups.map(group => {
+      const rows = Array.isArray(group.rows)
+        ? group.rows.map(row => ({
+          rowIndex: row.rowIndex,
+          data: row.data || {},
+          isValid: Boolean(row.isValid),
+          errors: Array.isArray(row.errors) ? row.errors : [],
+          fieldMapping: row.fieldMapping,
+          unmappedFields: row.unmappedFields,
+          emptyFields: row.emptyFields
+        }))
+        : [];
+
+      const validCount = typeof group.validCount === 'number'
+        ? group.validCount
+        : rows.filter(r => r.isValid).length;
+
+      const invalidCount = typeof group.invalidCount === 'number'
+        ? group.invalidCount
+        : Math.max(0, rows.length - validCount);
+
+      return {
+        modelName: group.modelName,
+        displayName: group.displayName || group.modelName,
+        rows,
+        validCount,
+        invalidCount
+      };
+    });
+
+    const unmatchedRows = Array.isArray(payload.unmatchedData)
+      ? payload.unmatchedData.map(row => ({
+        rowIndex: row.rowIndex,
+        data: row.data || {}
+      }))
+      : [];
+
+    const restoredSession: ImportSession = {
+      id: sessionId,
+      fileName: payload.fileName || 'restored_import',
+      uploadedAt: new Date(),
+      status: 'validated',
+      modelGroups,
+      unmatchedRows,
+      canSave: false
+    };
+
+    // Recompute save eligibility from restored data to prevent trusting stale UI flags.
+    restoredSession.canSave = this.checkCanSave(restoredSession);
+
+    // Respect explicit false from payload if UI knows there are unresolved issues.
+    if (payload.canSave === false) {
+      restoredSession.canSave = false;
+    }
+
+    sessions.set(sessionId, restoredSession);
+    return restoredSession;
   }
 
   /**
@@ -175,7 +259,7 @@ export class DataImportService {
 
     // Clean and transform the data before re-validation
     let cleanedData = newData;
-    
+
     // Clean the row data (remove fields not in schema)
     const model = modelRegistry.get(modelName);
     if (model) {
@@ -201,7 +285,7 @@ export class DataImportService {
         }
 
         // Try case-insensitive match
-        let matchedField = Array.from(allowedFields).find(af => 
+        let matchedField = Array.from(allowedFields).find(af =>
           af.toLowerCase() === key.toLowerCase()
         );
         if (matchedField) {
@@ -211,14 +295,14 @@ export class DataImportService {
 
         // Try normalized match
         const keyNormalized = normalizeFieldName(key);
-        matchedField = Array.from(allowedFields).find(af => 
+        matchedField = Array.from(allowedFields).find(af =>
           normalizeFieldName(af) === keyNormalized
         );
         if (matchedField) {
           cleaned[matchedField] = value;
         }
       }
-      
+
       cleanedData = cleaned;
     }
 
@@ -410,62 +494,101 @@ export class DataImportService {
 
           // Check for duplicates and prepare rows for saving
           let rowsToSave = group.rows;
-          
+
           if (group.modelName === 'User') {
             const bcrypt = require('bcryptjs');
-            
+            const DEFAULT_IMPORT_PASSWORD = '123456';
+
+            // Determine next clientId from latest persisted client record.
+            // This is needed because insertMany bypasses pre-save hooks that normally assign clientId.
+            let nextClientIdNumber = 1;
+            const latestClientIdAgg = await Model.aggregate([
+              {
+                $match: {
+                  role: 'client',
+                  clientId: { $exists: true, $ne: null, $regex: /^C-\d+$/ }
+                }
+              },
+              {
+                $project: {
+                  clientIdNum: { $toInt: { $substr: ['$clientId', 2, -1] } }
+                }
+              },
+              { $sort: { clientIdNum: -1 } },
+              { $limit: 1 }
+            ]).session(mongoSession);
+
+            if (latestClientIdAgg.length > 0 && latestClientIdAgg[0].clientIdNum) {
+              nextClientIdNumber = latestClientIdAgg[0].clientIdNum + 1;
+            }
+
             // Check for duplicates by email/phone before inserting
             const duplicateErrors = [];
             const validRowsToSave = [];
-            
+
             for (const row of group.rows) {
+              // Always rely on backend timestamps for imported users.
+              const now = new Date();
+              let processedRow: Record<string, any> = {
+                ...row,
+                createdAt: now,
+                updatedAt: now
+              };
+
               // Check if user with same email already exists
-              if (row.email) {
-                const existingUser = await Model.findOne({ email: row.email.toLowerCase() }, {}, { session: mongoSession });
+              if (processedRow.email) {
+                const existingUser = await Model.findOne({ email: String(processedRow.email).toLowerCase() }, {}, { session: mongoSession });
                 if (existingUser) {
                   duplicateErrors.push({
                     row: rowsToSave.indexOf(row) + 2,
                     modelName: 'User',
                     field: 'email',
-                    message: `A user with email "${row.email}" already exists in the database`,
-                    value: row.email,
+                    message: `A user with email "${processedRow.email}" already exists in the database`,
+                    value: processedRow.email,
                     errorType: 'duplicate' as const
                   });
                   continue;
                 }
               }
-              
+
               // Check if user with same phone already exists
-              if (row.phone) {
-                const existingUser = await Model.findOne({ phone: row.phone }, {}, { session: mongoSession });
+              if (processedRow.phone) {
+                const existingUser = await Model.findOne({ phone: String(processedRow.phone) }, {}, { session: mongoSession });
                 if (existingUser) {
                   duplicateErrors.push({
                     row: rowsToSave.indexOf(row) + 2,
                     modelName: 'User',
                     field: 'phone',
-                    message: `A user with phone "${row.phone}" already exists in the database`,
-                    value: row.phone,
+                    message: `A user with phone "${processedRow.phone}" already exists in the database`,
+                    value: processedRow.phone,
                     errorType: 'duplicate' as const
                   });
                   continue;
                 }
               }
-              
-              // Hash password if not already hashed
-              let processedRow = row;
-              if (row.password && !row.password.startsWith('$2')) {
-                const salt = await bcrypt.genSalt(10);
-                const hashedPassword = await bcrypt.hash(row.password, salt);
-                processedRow = { ...row, password: hashedPassword };
+
+              // Ignore imported password and always set backend default password.
+              const salt = await bcrypt.genSalt(10);
+              const hashedPassword = await bcrypt.hash(DEFAULT_IMPORT_PASSWORD, salt);
+              processedRow = { ...processedRow, password: hashedPassword };
+
+              // Ensure sequential clientId for all client rows in import.
+              const roleValue = String(processedRow.role || 'client').toLowerCase();
+              if (roleValue === 'client') {
+                processedRow = {
+                  ...processedRow,
+                  clientId: `C-${nextClientIdNumber}`
+                };
+                nextClientIdNumber += 1;
               }
-              
+
               validRowsToSave.push(processedRow);
             }
-            
+
             if (duplicateErrors.length > 0) {
-              throw new Error(`Duplicate records found: ${duplicateErrors.map(e => `${e.field}=${e.value}`).join(', ')}`);
+              throw new Error(`User import validation failed: ${duplicateErrors.map(e => `${e.field}=${e.value}`).join(', ')}`);
             }
-            
+
             rowsToSave = validRowsToSave;
           }
 
@@ -532,7 +655,7 @@ export class DataImportService {
     session.unmatchedRows = [];
     session.canSave = false;
     sessions.set(sessionId, session);
-    
+
     return true;
   }
 
@@ -564,7 +687,7 @@ export class DataImportService {
 
     for (const group of session.modelGroups) {
       const data = group.rows.map(r => r.data);
-      
+
       exports.push({
         modelName: group.modelName,
         fileName: `${group.modelName}_export`,
@@ -603,9 +726,9 @@ export class DataImportService {
 
     for (const field of model.fields) {
       // Skip internal fields
-      if (field.path.startsWith('_') || 
-          field.path === 'createdAt' || 
-          field.path === 'updatedAt') {
+      if (field.path.startsWith('_') ||
+        field.path === 'createdAt' ||
+        field.path === 'updatedAt') {
         continue;
       }
 

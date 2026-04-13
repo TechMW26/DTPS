@@ -590,8 +590,13 @@ class ModelRegistry {
     const schema = config.model.schema;
     const fields = this.extractSchemaFields(schema);
     const requiredFields = fields
-      .filter(f => f.required && !f.path.startsWith('_'))
+      // Treat defaulted required fields as optional for import detection/validation,
+      // because Mongoose will auto-populate them during document creation.
+      .filter(f => f.required && !f.path.startsWith('_') && typeof f.default === 'undefined')
       .map(f => f.path);
+
+
+
 
     this.models.set(config.name, {
       name: config.name,
@@ -830,8 +835,13 @@ class ModelRegistry {
       // TERTIARY: Model-specific keyword indicators (Recipe has "prepTime", "cookTime", "ingredients", etc.)
       // QUATERNARY: Penalize for extra fields
 
-      // All required fields matched = strong indicator this is the right model
-      const hasAllRequired = missingRequired.length === 0 ? 1 : 0;
+      // Required field coverage (0-1). This allows detecting the right model even
+      // when one required field is missing, so rows can be marked invalid instead of unmatched.
+      const requiredFieldCount = registeredModel.requiredFields.length;
+      const matchedRequiredCount = requiredFieldCount - missingRequired.length;
+      const requiredCoverage = requiredFieldCount > 0
+        ? (matchedRequiredCount / requiredFieldCount)
+        : 0;
 
       // Ratio of matched fields to model fields (how much of the model schema we cover)
       const matchRatio = matchedFields.length / Math.max(modelFields.length, 1);
@@ -853,18 +863,18 @@ class ModelRegistry {
         const matchedKeywords = userKeywords.filter(kw =>
           rowFieldsLower.some(f => f.includes(kw))
         );
-        keywordBonus = Math.min(15, matchedKeywords.length * 3);
+        keywordBonus = Math.min(20, matchedKeywords.length * 4);
       }
 
-      // Penalty for missing required fields (each missing required field is a strike)
+      // Penalty for missing required fields (kept small since requiredCoverage already captures this)
       // But for Recipe, reduce penalty since it might have many optional fields
-      let missingRequiredPenalty = missingRequired.length * 10; // 10 points per missing required
+      let missingRequiredPenalty = missingRequired.length * 5;
       if (name === 'Recipe' && missingRequired.length > 0) {
         // Recipe-specific: if we have the strong indicators, reduce the penalty
         const recipeKeywords = ['preptime', 'cooktime', 'ingredients', 'instructions'];
         const hasRecipeKeywords = recipeKeywords.some(kw => rowFieldsLower.some(f => f.includes(kw)));
         if (hasRecipeKeywords) {
-          missingRequiredPenalty = missingRequired.length * 5; // Reduce to 5 per missing for recipe with keywords
+          missingRequiredPenalty = missingRequired.length * 3;
         }
       }
 
@@ -874,13 +884,13 @@ class ModelRegistry {
       const extraFieldRatio = extraFields.length / Math.max(modelFields.length, 1);
       const extraFieldPenalty = Math.min(20, extraFieldRatio * 25);
 
-      // IMPROVED FORMULA: 
-      // Base: 80 points (if all required found) 
-      // + matchRatio * 20 points (coverage of model fields) 
+      // IMPROVED FORMULA:
+      // Base: up to 80 points from required field coverage
+      // + matchRatio * 20 points (coverage of model fields)
       // + keywordBonus (model-specific indicators)
       // - penalties
       const confidence = Math.max(0, Math.min(100,
-        80 * hasAllRequired +          // 80 points if all required found
+        80 * requiredCoverage +         // Up to 80 points from required-field coverage
         matchRatio * 20 +               // Up to 20 more points based on field coverage
         keywordBonus -                  // Bonus for model-specific keywords
         missingRequiredPenalty -        // Penalize for each missing required
@@ -889,7 +899,7 @@ class ModelRegistry {
 
 
       // Debug logging
-      console.log(`[ModelDetection-${name}] conf=${confidence.toFixed(1)} (allReq=${hasAllRequired * 80}+match=${(matchRatio * 20).toFixed(1)}+bonus=${keywordBonus}-missing=${missingRequiredPenalty}-extra=${extraFieldPenalty.toFixed(1)}), matched=${matchedFields.length}/${modelFields.length}, missing=${missingRequired.length}/${registeredModel.requiredFields.length}, extra=${extraFields.length}`);
+      console.log(`[ModelDetection-${name}] conf=${confidence.toFixed(1)} (reqCov=${(requiredCoverage * 80).toFixed(1)}+match=${(matchRatio * 20).toFixed(1)}+bonus=${keywordBonus}-missing=${missingRequiredPenalty}-extra=${extraFieldPenalty.toFixed(1)}), matched=${matchedFields.length}/${modelFields.length}, missing=${missingRequired.length}/${registeredModel.requiredFields.length}, extra=${extraFields.length}`);
 
 
       if (name === 'User' || name === 'Recipe') {

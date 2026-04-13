@@ -698,7 +698,7 @@ export class ValidationEngine {
       'referralSource': ['referral_source', 'referred_by'],
       'alternativePhone': ['alternative_phone', 'alt_phone', 'secondary_phone'],
       'alternativeEmail': ['alternative_email', 'alt_email', 'secondary_email'],
-      'dtps_id': ['dtpsid', 'dtps'],
+      'dtps_id': ['dtpsid', 'dtps', 'zoconutid', 'zoconut_id'],
       'avatar': ['profile_image', 'profile_picture', 'photo'],
       'bio': ['biography', 'about', 'description'],
       'experience': ['years_experience', 'exp', 'work_experience'],
@@ -888,6 +888,50 @@ export class ValidationEngine {
 
     // User-specific transformations
     if (modelName === 'User') {
+      // Ignore password from import files and use backend default.
+      // Final hashing is handled at save time in dataImportService.
+      transformed.password = '123456';
+
+      // Normalize role to enum values expected by the schema.
+      if (transformed.role && typeof transformed.role === 'string') {
+        const roleRaw = transformed.role.toLowerCase().trim().replace(/[\s-]+/g, '_');
+        if (['admin'].includes(roleRaw)) {
+          transformed.role = 'admin';
+        } else if (['dietitian', 'dietician', 'nutritionist'].includes(roleRaw)) {
+          transformed.role = 'dietitian';
+        } else if (['health_counselor', 'health_counsellor', 'healthcoach', 'health_coach', 'counselor', 'counsellor'].includes(roleRaw)) {
+          transformed.role = 'health_counselor';
+        } else if (['client', 'user', 'customer', 'patient'].includes(roleRaw)) {
+          transformed.role = 'client';
+        }
+      }
+
+      // Normalize account status.
+      if (transformed.status && typeof transformed.status === 'string') {
+        const statusRaw = transformed.status.toLowerCase().trim().replace(/[\s-]+/g, '_');
+        if (['active', 'enabled', 'enable'].includes(statusRaw)) {
+          transformed.status = 'active';
+        } else if (['inactive', 'disabled', 'disable'].includes(statusRaw)) {
+          transformed.status = 'inactive';
+        } else if (['suspended', 'suspend', 'blocked'].includes(statusRaw)) {
+          transformed.status = 'suspended';
+        }
+      }
+
+      // Normalize client engagement status.
+      if (transformed.clientStatus && typeof transformed.clientStatus === 'string') {
+        const clientStatusRaw = transformed.clientStatus.toLowerCase().trim().replace(/[\s-]+/g, '_');
+        if (['lead', 'leading'].includes(clientStatusRaw)) {
+          transformed.clientStatus = 'lead';
+        } else if (['active', 'current'].includes(clientStatusRaw)) {
+          transformed.clientStatus = 'active';
+        } else if (['inactive', 'paused', 'pause'].includes(clientStatusRaw)) {
+          transformed.clientStatus = 'inactive';
+        } else if (['onboarding', 'on_boarding'].includes(clientStatusRaw)) {
+          transformed.clientStatus = 'onboarding';
+        }
+      }
+
       // Fix dateOfBirth format (remove malformed timestamps)
       if (transformed.dateOfBirth) {
         let dateStr = String(transformed.dateOfBirth);

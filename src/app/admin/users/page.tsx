@@ -186,13 +186,16 @@ export default function AdminUsersPage() {
 
   const filtered = users;
 
-  async function fetchUsers() {
+  async function fetchUsers(showLoader: boolean = true) {
     try {
-      setLoading(true);
+      if (showLoader) {
+        setLoading(true);
+      }
       setError(null);
       const params = new URLSearchParams();
       params.set('limit', '50');
       params.set('page', String(page));
+      params.set('noCache', 'true');
       if (search.trim()) params.set('search', search.trim());
       if (roleFilter !== 'all') params.set('role', roleFilter);
       if (statusFilter !== 'all') params.set('status', statusFilter);
@@ -210,17 +213,35 @@ export default function AdminUsersPage() {
         admins: data.roleCounts?.admin || 0,
         dietitians: data.roleCounts?.dietitian || 0,
         healthCounselors: data.roleCounts?.healthCounselor || 0,
-        clients: data.roleCounts?.client || 0,
+        // Display latest allocated client sequence so dashboard matches C-xxxx numbering.
+        clients: data.clientStats?.latestClientIdNumber || data.roleCounts?.client || 0,
       });
     } catch (e: any) {
       setError(e?.message || "Failed to load users");
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     fetchUsers();
+  }, [page, search, roleFilter, statusFilter, dateFrom, dateTo, dietitianFilter, healthCounselorFilter]);
+
+  // Keep counts/list fresh when records are added/deleted from elsewhere (import pages, other admins, etc.)
+  useEffect(() => {
+    const onFocus = () => fetchUsers(false);
+    const interval = setInterval(() => fetchUsers(false), 15000);
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
   }, [page, search, roleFilter, statusFilter, dateFrom, dateTo, dietitianFilter, healthCounselorFilter]);
 
   // Fetch dietitians and health counselors for filter dropdowns
@@ -729,17 +750,29 @@ export default function AdminUsersPage() {
                       const primaryDietitian = u.assignedDietitian && typeof u.assignedDietitian === 'object' && u.assignedDietitian.firstName
                         ? u.assignedDietitian
                         : null;
-                      const secondaryDietitians = u.assignedDietitians?.filter(d =>
-                        d && typeof d === 'object' && d.firstName && d._id !== primaryDietitian?._id
-                      ) || [];
+                      const primaryDietitianId = primaryDietitian?._id ? String(primaryDietitian._id) : '';
+                      const seenDietitianIds = new Set<string>(primaryDietitianId ? [primaryDietitianId] : []);
+                      const secondaryDietitians = (u.assignedDietitians || []).filter(d => {
+                        if (!d || typeof d !== 'object' || !d.firstName || !d._id) return false;
+                        const id = String(d._id);
+                        if (seenDietitianIds.has(id)) return false;
+                        seenDietitianIds.add(id);
+                        return true;
+                      });
 
                       // Build health counselor list with P/S badges
                       const primaryCounselor = u.assignedHealthCounselor && typeof u.assignedHealthCounselor === 'object' && u.assignedHealthCounselor.firstName
                         ? u.assignedHealthCounselor
                         : null;
-                      const secondaryCounselors = u.assignedHealthCounselors?.filter(hc =>
-                        hc && typeof hc === 'object' && hc.firstName && hc._id !== primaryCounselor?._id
-                      ) || [];
+                      const primaryCounselorId = primaryCounselor?._id ? String(primaryCounselor._id) : '';
+                      const seenCounselorIds = new Set<string>(primaryCounselorId ? [primaryCounselorId] : []);
+                      const secondaryCounselors = (u.assignedHealthCounselors || []).filter(hc => {
+                        if (!hc || typeof hc !== 'object' || !hc.firstName || !hc._id) return false;
+                        const id = String(hc._id);
+                        if (seenCounselorIds.has(id)) return false;
+                        seenCounselorIds.add(id);
+                        return true;
+                      });
 
                       return (
                         <tr key={u._id} className="border-b hover:bg-gray-50">
@@ -776,8 +809,8 @@ export default function AdminUsersPage() {
                                     <span className="text-xs text-gray-700">{primaryDietitian.firstName} {primaryDietitian.lastName}</span>
                                   </div>
                                 ) : null}
-                                {secondaryDietitians.map(d => (
-                                  <div key={d._id} className="flex items-center gap-1.5">
+                                {secondaryDietitians.map((d, idx) => (
+                                  <div key={`${String(d._id)}-d-${idx}`} className="flex items-center gap-1.5">
                                     <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-gray-400 text-white">S</span>
                                     <span className="text-xs text-gray-600">{d.firstName} {d.lastName}</span>
                                   </div>
@@ -800,8 +833,8 @@ export default function AdminUsersPage() {
                                     <span className="text-xs text-gray-700">{primaryCounselor.firstName} {primaryCounselor.lastName}</span>
                                   </div>
                                 ) : null}
-                                {secondaryCounselors.map(hc => (
-                                  <div key={hc._id} className="flex items-center gap-1.5">
+                                {secondaryCounselors.map((hc, idx) => (
+                                  <div key={`${String(hc._id)}-hc-${idx}`} className="flex items-center gap-1.5">
                                     <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-gray-400 text-white">S</span>
                                     <span className="text-xs text-gray-600">{hc.firstName} {hc.lastName}</span>
                                   </div>

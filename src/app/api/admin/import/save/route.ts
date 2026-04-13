@@ -23,11 +23,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { sessionId } = body;
+    const { sessionId, fallbackSession } = body;
 
     console.log(`[Import Save] ===== NEW SAVE REQUEST =====`);
     console.log(`[Import Save] Received sessionId: ${sessionId}`);
-    console.log(`[Import Save] Request body: ${JSON.stringify(body)}`);
+    console.log(`[Import Save] Request payload keys: ${Object.keys(body).join(', ')}`);
+    if (fallbackSession?.modelGroups) {
+      console.log(
+        `[Import Save] Fallback payload summary: groups=${fallbackSession.modelGroups.length}, unmatched=${Array.isArray(fallbackSession.unmatchedData) ? fallbackSession.unmatchedData.length : 0}`
+      );
+    }
 
     if (!sessionId) {
       console.error(`[Import Save] No sessionId provided in request`);
@@ -38,13 +43,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Get session
-    const importSession = dataImportService.getSession(sessionId);
+    let importSession = dataImportService.getSession(sessionId);
+
+    // Session may be missing after worker reload/restart. Restore from client payload if provided.
+    if (!importSession && fallbackSession) {
+      importSession = dataImportService.restoreSession(sessionId, fallbackSession);
+      if (importSession) {
+        console.log(`[Import Save] Restored missing session "${sessionId}" from fallback payload`);
+      }
+    }
+
     if (!importSession) {
       console.error(`[Import Save] ❌ Session "${sessionId}" not found`);
       console.log(`[Import Save] Available sessions: ${Array.from(dataImportService.getAllSessions()).map(s => s.id).join(', ')}`);
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Import session not found',
           sessionId: sessionId,
           availableSessions: Array.from(dataImportService.getAllSessions()).map(s => ({ id: s.id, fileName: s.fileName }))
@@ -58,8 +72,8 @@ export async function POST(request: NextRequest) {
     // Check if save is allowed
     if (!importSession.canSave) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Cannot save: validation errors exist or no valid data',
           canSave: false
         },
@@ -92,10 +106,10 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Import save error:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: 'Server error',
-        message: error.message 
+        message: error.message
       },
       { status: 500 }
     );
