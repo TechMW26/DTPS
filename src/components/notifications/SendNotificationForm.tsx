@@ -42,6 +42,7 @@ interface Recipient {
   avatar?: string;
   role: RecipientRole;
   hasFcmToken?: boolean;
+  tokenCount?: number;
 }
 
 interface SendNotificationFormProps {
@@ -77,6 +78,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
     success: boolean;
     message: string;
     stats?: { total: number; success: number; failed: number; skippedNoToken?: number };
+    tokenHelp?: { web?: string; android?: string; ios?: string };
   } | null>(null);
 
   const [cleanupTargetType, setCleanupTargetType] = useState<TargetType>('selected');
@@ -135,6 +137,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
             avatar?: unknown;
             role?: unknown;
             hasFcmToken?: unknown;
+            tokenCount?: unknown;
           }>;
 
           const normalizedRecipients: Recipient[] = rawRecipients
@@ -152,6 +155,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
                 avatar: typeof recipient?.avatar === 'string' ? recipient.avatar : undefined,
                 role,
                 hasFcmToken: Boolean(recipient?.hasFcmToken),
+                tokenCount: Number(recipient?.tokenCount || 0),
               };
             })
             .filter((recipient) => recipient.id.length > 0);
@@ -338,7 +342,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
       const data = await response.json();
 
       if (data.success) {
-        setSendResult({ success: true, message: data.message, stats: data.stats });
+        setSendResult({ success: true, message: data.message, stats: data.stats, tokenHelp: data.tokenHelp });
 
         const skipped = Number(data?.stats?.skippedNoToken || 0);
         const sent = Number(data?.stats?.success || 0);
@@ -360,7 +364,12 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
 
         onSuccess?.();
       } else {
-        setSendResult({ success: false, message: data.message || 'Failed to send notification' });
+        setSendResult({
+          success: false,
+          message: data.message || 'Failed to send notification',
+          stats: data.stats,
+          tokenHelp: data.tokenHelp,
+        });
         toast.error(data.message || 'Failed to send notification');
       }
     } catch (error) {
@@ -619,6 +628,9 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
                     <p>
                       <span className="font-semibold text-foreground">No Token:</span> push permission/token is not registered, so push will not be delivered yet.
                     </p>
+                    <p className="mt-2">
+                      <span className="font-semibold text-foreground">How to fix No Token:</span> user must login on DTPS app/dashboard, enable notification permission, and keep the app open until token registration completes.
+                    </p>
                   </div>
 
                   <div className="relative">
@@ -687,7 +699,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
 
                               {recipient.hasFcmToken ? (
                                 <Badge variant="outline" className="text-[10px] border-green-300 text-green-700">
-                                  Token
+                                  Token{Number(recipient.tokenCount || 0) > 1 ? ` (${recipient.tokenCount})` : ''}
                                 </Badge>
                               ) : (
                                 <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
@@ -747,6 +759,13 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
                         {sendResult.stats.failed > 0 && `, Failed: ${sendResult.stats.failed}`}
                         {Number(sendResult.stats.skippedNoToken || 0) > 0 && `, No Token: ${sendResult.stats.skippedNoToken}`}
                       </p>
+                    )}
+                    {sendResult.tokenHelp && (
+                      <div className="mt-2 text-xs space-y-1">
+                        {sendResult.tokenHelp.web && <p>Web: {sendResult.tokenHelp.web}</p>}
+                        {sendResult.tokenHelp.android && <p>Android: {sendResult.tokenHelp.android}</p>}
+                        {sendResult.tokenHelp.ios && <p>iOS: {sendResult.tokenHelp.ios}</p>}
+                      </div>
                     )}
                   </div>
                 </div>

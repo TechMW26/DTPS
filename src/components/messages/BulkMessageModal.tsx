@@ -21,6 +21,8 @@ interface BulkMessageModalProps {
   currentUserId: string;
 }
 
+const MAX_BULK_RECIPIENTS = 500;
+
 export default function BulkMessageModal({ isOpen, onClose, currentUserId }: BulkMessageModalProps) {
   const [step, setStep] = useState<'select' | 'compose' | 'result'>('select');
   const [users, setUsers] = useState<User[]>([]);
@@ -81,6 +83,11 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
   const sendBulkMessage = async () => {
     if (!message.trim() || selectedUsers.length === 0) return;
 
+    if (selectedUsers.length > MAX_BULK_RECIPIENTS) {
+      alert(`You can send a broadcast to maximum ${MAX_BULK_RECIPIENTS} recipients at a time.`);
+      return;
+    }
+
     setSending(true);
     try {
       const response = await fetch('/api/messages/bulk', {
@@ -99,7 +106,13 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
         setStep('result');
       } else {
         const errData = await response.json();
-        alert(errData.error || 'Failed to send bulk message');
+        const detailMessage = Array.isArray(errData?.details) && errData.details.length > 0
+          ? (errData.details[0]?.message || errData.details[0]?.path?.join('.'))
+          : '';
+        const errorText = detailMessage
+          ? `${errData.error || 'Failed to send bulk message'}: ${detailMessage}`
+          : (errData.error || 'Failed to send bulk message');
+        alert(errorText);
       }
     } catch (error) {
       console.error('Error sending bulk message:', error);
@@ -113,9 +126,9 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
     const matchesSearch = `${user.firstName} ${user.lastName} ${user.email || ''}`
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
-    
+
     const matchesStatus = filterStatus === 'all' || user.clientStatus === filterStatus;
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -150,38 +163,34 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
                   className="pl-10"
                 />
               </div>
-              
+
               {/* Status Filter */}
               <div className="flex gap-2">
                 <button
                   onClick={() => setFilterStatus('all')}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    filterStatus === 'all' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'all' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
                 >
                   All
                 </button>
                 <button
                   onClick={() => setFilterStatus('active')}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    filterStatus === 'active' ? 'bg-green-100 text-green-700 border-2 border-green-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'active' ? 'bg-green-100 text-green-700 border-2 border-green-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   Active
                 </button>
                 <button
                   onClick={() => setFilterStatus('inactive')}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    filterStatus === 'inactive' ? 'bg-gray-100 text-gray-700 border-2 border-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'inactive' ? 'bg-gray-100 text-gray-700 border-2 border-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   Inactive
                 </button>
                 <button
                   onClick={() => setFilterStatus('lead')}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    filterStatus === 'lead' ? 'bg-blue-100 text-blue-700 border-2 border-blue-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'lead' ? 'bg-blue-100 text-blue-700 border-2 border-blue-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   Lead
                 </button>
@@ -233,15 +242,13 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
                   <div
                     key={user._id}
                     onClick={() => toggleUser(user._id)}
-                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors border-b ${
-                      selectedUsers.includes(user._id) ? 'bg-green-50' : 'hover:bg-gray-50'
-                    }`}
+                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors border-b ${selectedUsers.includes(user._id) ? 'bg-green-50' : 'hover:bg-gray-50'
+                      }`}
                   >
-                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
-                      selectedUsers.includes(user._id)
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${selectedUsers.includes(user._id)
                         ? 'bg-green-600 border-green-600'
                         : 'border-gray-300'
-                    }`}>
+                      }`}>
                       {selectedUsers.includes(user._id) && <Check className="h-3 w-3 text-white" />}
                     </div>
                     <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-medium text-sm shrink-0">
@@ -255,11 +262,10 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
                       <div className="flex items-center gap-2">
                         <p className="font-medium text-gray-900 text-sm">{user.firstName} {user.lastName}</p>
                         {user.clientStatus && (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${
-                            user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
-                            user.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700' :
-                            'bg-blue-100 text-blue-700'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
+                              user.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700' :
+                                'bg-blue-100 text-blue-700'
+                            }`}>
                             {user.clientStatus.charAt(0).toUpperCase() + user.clientStatus.slice(1)}
                           </span>
                         )}
@@ -275,12 +281,17 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
             <div className="p-3 border-t">
               <Button
                 onClick={() => setStep('compose')}
-                disabled={selectedUsers.length === 0}
+                disabled={selectedUsers.length === 0 || selectedUsers.length > MAX_BULK_RECIPIENTS}
                 className="w-full bg-green-600 hover:bg-green-700"
               >
                 Next: Compose Message
                 <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
+              {selectedUsers.length > MAX_BULK_RECIPIENTS && (
+                <p className="text-xs text-red-600 mt-2 text-center">
+                  Maximum {MAX_BULK_RECIPIENTS} recipients allowed per broadcast.
+                </p>
+              )}
             </div>
           </>
         )}
@@ -318,7 +329,7 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
               </Button>
               <Button
                 onClick={sendBulkMessage}
-                disabled={!message.trim() || sending}
+                disabled={!message.trim() || sending || selectedUsers.length > MAX_BULK_RECIPIENTS}
                 className="flex-1 bg-green-600 hover:bg-green-700"
               >
                 {sending ? (

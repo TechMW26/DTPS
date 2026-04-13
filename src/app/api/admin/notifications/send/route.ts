@@ -28,6 +28,10 @@ const DEFAULT_ADMIN_TARGET_ROLES: NotificationTargetRole[] = [
 
 const allowedSenderRoles = [UserRole.ADMIN, UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] as const;
 
+function isAllowedSenderRole(role: unknown): role is (typeof allowedSenderRoles)[number] {
+  return allowedSenderRoles.includes(role as (typeof allowedSenderRoles)[number]);
+}
+
 function uniqueStrings(values: Array<string | undefined | null>): string[] {
   return Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
 }
@@ -76,14 +80,39 @@ function getAccessibleClientQuery(session: any): Record<string, unknown> {
   return query;
 }
 
+function normalizeFcmTokenValue(rawToken: unknown): string {
+  const value = String(rawToken || '').trim();
+  if (!value) return '';
+
+  const lowered = value.toLowerCase();
+  if (lowered === 'null' || lowered === 'undefined' || lowered === 'nan') {
+    return '';
+  }
+
+  return value;
+}
+
+function getValidFcmTokenCount(rawTokens: unknown): number {
+  if (!Array.isArray(rawTokens)) return 0;
+
+  const validTokens = rawTokens
+    .map((entry: any) => (typeof entry === 'string' ? normalizeFcmTokenValue(entry) : normalizeFcmTokenValue(entry?.token)))
+    .filter(Boolean);
+
+  return new Set(validTokens).size;
+}
+
 function mapRecipient(user: any) {
+  const tokenCount = getValidFcmTokenCount(user?.fcmTokens);
+
   return {
     id: String(user._id),
     name: `${String(user.firstName || '').trim()} ${String(user.lastName || '').trim()}`.trim() || 'Unnamed User',
     email: String(user.email || ''),
     avatar: user.avatar,
     role: String(user.role || UserRole.CLIENT),
-    hasFcmToken: Array.isArray(user.fcmTokens) && user.fcmTokens.length > 0,
+    hasFcmToken: tokenCount > 0,
+    tokenCount,
   };
 }
 
@@ -122,7 +151,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!allowedSenderRoles.includes(session.user.role as UserRole)) {
+    if (!isAllowedSenderRole(session.user.role)) {
       return NextResponse.json(
         { success: false, message: 'Insufficient permissions' },
         { status: 403 }
@@ -195,6 +224,7 @@ export async function POST(request: NextRequest) {
     let successCount = 0;
     let failCount = 0;
     let skippedNoTokenCount = 0;
+    let firebaseUnavailableCount = 0;
 
     if (targetUserIds.length === 0) {
       return NextResponse.json(
@@ -238,6 +268,18 @@ export async function POST(request: NextRequest) {
       }
 
       const value = result.value;
+
+      if (value.errorCode === 'FIREBASE_UNAVAILABLE') {
+        failCount += 1;
+        firebaseUnavailableCount += 1;
+        return;
+      }
+
+      if (value.skippedNoToken || value.errorCode === 'NO_TOKEN') {
+        skippedNoTokenCount += 1;
+        return;
+      }
+
       if ((value.successCount || 0) > 0) {
         successCount += 1;
       } else if ((value.failureCount || 0) > 0) {
@@ -247,15 +289,62 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    const stats = {
+      total: targetUserIds.length,
+      success: successCount,
+      failed: failCount,
+      skippedNoToken: skippedNoTokenCount,
+      firebaseUnavailable: firebaseUnavailableCount,
+    };
+
+    const tokenHelp = {
+      web: 'Open DTPS in browser, click Enable Notifications, and allow browser notification permission.',
+      android: 'Open DTPS Android app and sign in. Token is registered automatically once Firebase token is available.',
+      ios: 'Use DTPS iOS/native app with notification permission enabled so the device token can be registered.',
+    };
+
+    if (successCount === 0 && firebaseUnavailableCount > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Notification service is currently unavailable. Firebase messaging is not initialized.',
+          stats,
+        },
+        { status: 503 }
+      );
+    }
+
+    if (successCount === 0 && skippedNoTokenCount === targetUserIds.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'None of the selected users have active notification tokens. Ask users to enable notifications and then try again.',
+          stats,
+          tokenHelp,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (successCount === 0 && failCount > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Notification delivery failed for all selected users. Please retry and verify Firebase setup/token health.',
+          stats,
+          tokenHelp,
+        },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Notification dispatch completed',
-      stats: {
-        total: targetUserIds.length,
-        success: successCount,
-        failed: failCount,
-        skippedNoToken: skippedNoTokenCount,
-      },
+      message: failCount > 0 || skippedNoTokenCount > 0
+        ? 'Notification dispatch completed with warnings'
+        : 'Notification dispatch completed',
+      stats,
+      tokenHelp,
       target: {
         targetType: normalizedTargetType,
         recipientRoles: effectiveRoles,
@@ -290,7 +379,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!allowedSenderRoles.includes(session.user.role as UserRole)) {
+    if (!isAllowedSenderRole(session.user.role)) {
       return NextResponse.json(
         { success: false, message: 'Insufficient permissions' },
         { status: 403 }
@@ -313,6 +402,7 @@ export async function GET(request: NextRequest) {
       avatar?: string;
       role: string;
       hasFcmToken: boolean;
+      tokenCount?: number;
     }> = [];
 
     if (isAdmin) {

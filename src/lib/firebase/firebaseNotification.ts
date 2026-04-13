@@ -19,6 +19,33 @@ export interface SendNotificationResult {
     failureCount: number;
     invalidTokens: string[];
     responses: Array<{ token: string; success: boolean; error?: string }>;
+    skippedNoToken?: boolean;
+    errorCode?: 'NO_TOKEN' | 'FIREBASE_UNAVAILABLE' | 'UNKNOWN';
+    errorMessage?: string;
+}
+
+const INVALID_TOKEN_SENTINELS = new Set(['', 'null', 'undefined', 'nan']);
+
+function normalizeTokenValue(rawToken: unknown): string | null {
+    const token = String(rawToken || '').trim();
+    if (!token) return null;
+    if (INVALID_TOKEN_SENTINELS.has(token.toLowerCase())) return null;
+    return token;
+}
+
+function extractValidTokenStrings(rawTokens: unknown): string[] {
+    if (!Array.isArray(rawTokens)) return [];
+
+    const normalized = rawTokens
+        .map((tokenEntry: any) => {
+            if (typeof tokenEntry === 'string') {
+                return normalizeTokenValue(tokenEntry);
+            }
+            return normalizeTokenValue(tokenEntry?.token);
+        })
+        .filter((token): token is string => Boolean(token));
+
+    return Array.from(new Set(normalized));
 }
 
 /**
@@ -71,20 +98,21 @@ export async function sendNotificationToUser(
             }
         }
 
-        const messaging = await getMessaging();
-        if (!messaging) {
-            console.warn('Firebase messaging not initialized');
-            return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
-        }
-
         const user = await User.findById(userId).select('fcmTokens');
+        const tokens = extractValidTokenStrings(user?.fcmTokens);
 
-        if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
-            return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
+        if (!user || tokens.length === 0) {
+            return {
+                successCount: 0,
+                failureCount: 0,
+                invalidTokens: [],
+                responses: [],
+                skippedNoToken: true,
+                errorCode: 'NO_TOKEN',
+                errorMessage: 'No valid FCM tokens are registered for this user.',
+            };
         }
 
-        // Extract all token strings
-        const tokens = user.fcmTokens.map((t: any) => t.token);
         const notificationWithId = {
             ...notification,
             data: {
@@ -130,31 +158,58 @@ export async function sendNotificationToUsers(
             }
         }
 
-        const messaging = await getMessaging();
-        if (!messaging) {
-            console.warn('Firebase messaging not initialized');
-            return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
-        }
-
         const users = await User.find({ _id: { $in: userIds } }).select('fcmTokens');
 
-        const allTokens: string[] = [];
-        const userTokenMap = new Map<string, string>(); // token -> userId
+        const allTokensSet = new Set<string>();
+        const tokenOwnerByToken = new Map<string, string>();
 
         users.forEach((user: any) => {
-            if (user.fcmTokens && user.fcmTokens.length > 0) {
-                user.fcmTokens.forEach((t: any) => {
-                    allTokens.push(t.token);
-                    userTokenMap.set(t.token, user._id.toString());
-                });
-            }
+            const ownerId = String(user?._id || '');
+            extractValidTokenStrings(user?.fcmTokens).forEach((token) => {
+                allTokensSet.add(token);
+                if (ownerId) {
+                    tokenOwnerByToken.set(token, ownerId);
+                }
+            });
         });
 
+        const allTokens = Array.from(allTokensSet);
+
         if (allTokens.length === 0) {
-            return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
+            return {
+                successCount: 0,
+                failureCount: 0,
+                invalidTokens: [],
+                responses: [],
+                skippedNoToken: true,
+                errorCode: 'NO_TOKEN',
+                errorMessage: 'No valid FCM tokens are registered for the selected users.',
+            };
         }
 
-        return await sendNotificationToTokens(allTokens, notification);
+        const sendResult = await sendNotificationToTokens(allTokens, notification);
+
+        // For multi-user sends, clean invalid tokens for their corresponding owners.
+        if (sendResult.invalidTokens.length > 0) {
+            const invalidTokensByUser = new Map<string, string[]>();
+
+            sendResult.invalidTokens.forEach((token) => {
+                const ownerId = tokenOwnerByToken.get(token);
+                if (!ownerId) return;
+
+                const current = invalidTokensByUser.get(ownerId) || [];
+                current.push(token);
+                invalidTokensByUser.set(ownerId, current);
+            });
+
+            await Promise.all(
+                Array.from(invalidTokensByUser.entries()).map(([ownerId, tokensToRemove]) =>
+                    removeInvalidTokens(ownerId, tokensToRemove)
+                )
+            );
+        }
+
+        return sendResult;
     } catch (error) {
         console.error('Error sending notification to users:', error);
         return { successCount: 0, failureCount: 1, invalidTokens: [], responses: [] };
@@ -169,9 +224,36 @@ async function sendNotificationToTokens(
     notification: FCMNotificationPayload,
     userId?: string
 ): Promise<SendNotificationResult> {
+    const normalizedTokens = Array.from(
+        new Set(tokens.map((token) => normalizeTokenValue(token)).filter((token): token is string => Boolean(token)))
+    );
+
+    if (normalizedTokens.length === 0) {
+        return {
+            successCount: 0,
+            failureCount: 0,
+            invalidTokens: [],
+            responses: [],
+            skippedNoToken: true,
+            errorCode: 'NO_TOKEN',
+            errorMessage: 'No valid FCM token values were found to send.',
+        };
+    }
+
     const messaging = await getMessaging();
     if (!messaging) {
-        return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
+        return {
+            successCount: 0,
+            failureCount: normalizedTokens.length,
+            invalidTokens: [],
+            responses: normalizedTokens.map((token) => ({
+                token,
+                success: false,
+                error: 'Firebase messaging not initialized',
+            })),
+            errorCode: 'FIREBASE_UNAVAILABLE',
+            errorMessage: 'Firebase messaging is not initialized on the server.',
+        };
     }
 
     const invalidTokens: string[] = [];
@@ -226,7 +308,7 @@ async function sendNotificationToTokens(
 
     // Send to each token individually for better error handling
     await Promise.all(
-        tokens.map(async (token) => {
+        normalizedTokens.map(async (token) => {
             try {
                 await messaging!.send({
                     ...baseMessage,
@@ -287,16 +369,27 @@ export async function registerFCMToken(
     try {
         await connectDB();
 
+        const normalizedToken = normalizeTokenValue(token);
+        if (!normalizedToken) {
+            return { success: false, message: 'Invalid token value' };
+        }
+
+        // Keep one token mapped to one user to avoid stale cross-account sends.
+        await User.updateMany(
+            { _id: { $ne: userId } },
+            { $pull: { fcmTokens: { token: normalizedToken } } }
+        );
+
         // Check if token already exists for this user
         const existingUser = await User.findOne({
             _id: userId,
-            'fcmTokens.token': token,
+            'fcmTokens.token': normalizedToken,
         });
 
         if (existingUser) {
             // Update the lastUsed timestamp
             await User.findOneAndUpdate(
-                { _id: userId, 'fcmTokens.token': token },
+                { _id: userId, 'fcmTokens.token': normalizedToken },
                 { $set: { 'fcmTokens.$.lastUsed': new Date() } }
             );
             return { success: true, message: 'Token already registered, updated lastUsed' };
@@ -306,7 +399,7 @@ export async function registerFCMToken(
         await User.findByIdAndUpdate(userId, {
             $push: {
                 fcmTokens: {
-                    token,
+                    token: normalizedToken,
                     deviceType,
                     deviceInfo: deviceInfo || 'Unknown device',
                     createdAt: new Date(),
@@ -330,9 +423,14 @@ export async function unregisterFCMToken(
     token: string
 ): Promise<{ success: boolean; message: string }> {
     try {
+        const normalizedToken = normalizeTokenValue(token);
+        if (!normalizedToken) {
+            return { success: false, message: 'Invalid token value' };
+        }
+
         await connectDB();
         await User.findByIdAndUpdate(userId, {
-            $pull: { fcmTokens: { token } },
+            $pull: { fcmTokens: { token: normalizedToken } },
         });
         return { success: true, message: 'Token unregistered successfully' };
     } catch (error) {
@@ -351,7 +449,14 @@ export async function sendNotificationToRole(
     const messaging = await getMessaging();
     if (!messaging) {
         console.warn('Firebase messaging not initialized');
-        return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };
+        return {
+            successCount: 0,
+            failureCount: 1,
+            invalidTokens: [],
+            responses: [],
+            errorCode: 'FIREBASE_UNAVAILABLE',
+            errorMessage: 'Firebase messaging is not initialized on the server.',
+        };
     }
 
     try {

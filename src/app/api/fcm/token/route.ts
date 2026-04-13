@@ -19,8 +19,10 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json();
         const { token, deviceType = 'web', deviceInfo } = body;
+        const normalizedToken = String(token || '').trim();
+        const loweredToken = normalizedToken.toLowerCase();
 
-        if (!token) {
+        if (!normalizedToken || loweredToken === 'null' || loweredToken === 'undefined' || loweredToken === 'nan') {
             return NextResponse.json(
                 { success: false, error: 'Token is required' },
                 { status: 400 }
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest) {
 
         const result = await registerFCMToken(
             session.user.id,
-            token,
+            normalizedToken,
             deviceType,
             deviceInfo || request.headers.get('user-agent') || 'Unknown device'
         );
@@ -60,15 +62,17 @@ export async function DELETE(request: NextRequest) {
 
         const body = await request.json();
         const { token } = body;
+        const normalizedToken = String(token || '').trim();
+        const loweredToken = normalizedToken.toLowerCase();
 
-        if (!token) {
+        if (!normalizedToken || loweredToken === 'null' || loweredToken === 'undefined' || loweredToken === 'nan') {
             return NextResponse.json(
                 { success: false, error: 'Token is required' },
                 { status: 400 }
             );
         }
 
-        const result = await unregisterFCMToken(session.user.id, token);
+        const result = await unregisterFCMToken(session.user.id, normalizedToken);
 
         return NextResponse.json(result);
     } catch (error: any) {

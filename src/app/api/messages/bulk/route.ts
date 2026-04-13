@@ -12,7 +12,7 @@ import { logHistoryServer } from '@/lib/server/history';
 import { UserRole } from '@/types';
 
 const bulkMessageSchema = z.object({
-  recipientIds: z.array(z.string().min(1)).min(1, 'At least one recipient is required').max(100, 'Maximum 100 recipients per bulk message'),
+  recipientIds: z.array(z.string().min(1)).min(1, 'At least one recipient is required').max(500, 'Maximum 500 recipients per bulk message'),
   content: z.string().min(1, 'Message content is required').max(2000, 'Message too long'),
   type: z.enum(['text', 'image', 'video', 'audio', 'voice', 'file', 'emoji', 'sticker', 'location', 'contact']).default('text'),
   attachments: z.array(z.object({
@@ -51,12 +51,21 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validatedData = bulkMessageSchema.parse(body);
+    const recipientIds = Array.from(new Set(
+      validatedData.recipientIds
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+    ));
+
+    if (recipientIds.length === 0) {
+      return NextResponse.json({ error: 'At least one recipient is required' }, { status: 400 });
+    }
 
     await connectDB();
 
     // STRICT VALIDATION: Verify ALL recipients are clients AND properly assigned
-    const recipients = await User.find({ _id: { $in: validatedData.recipientIds } })
-      .select('_id firstName lastName avatar role assignedDietitian assignedDietitians assignedHealthCounselor')
+    const recipients = await User.find({ _id: { $in: recipientIds } })
+      .select('_id firstName lastName avatar role assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors')
       .lean();
 
     if (recipients.length === 0) {
@@ -94,7 +103,9 @@ export async function POST(request: NextRequest) {
         isAuthorized = assignedToDietitian || inDietitianArray;
       } else if (sessionRole === 'health_counselor') {
         // Health Counselor can only send to clients assigned to them
-        isAuthorized = r.assignedHealthCounselor?.toString() === session.user.id;
+        const assignedToCounselor = r.assignedHealthCounselor?.toString() === session.user.id;
+        const inCounselorArray = r.assignedHealthCounselors?.some((hc: any) => hc.toString() === session.user.id);
+        isAuthorized = assignedToCounselor || inCounselorArray;
       }
 
       if (isAuthorized) {
@@ -114,7 +125,7 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
 
-    const invalidIds = validatedData.recipientIds.filter(id => !validRecipientIds.includes(id));
+    const invalidIds = recipientIds.filter(id => !validRecipientIds.includes(id));
 
     // Create individual messages for each valid recipient
     const messageDocs = validRecipientIds.map(recipientId => ({
@@ -207,7 +218,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       results: {
-        totalRecipients: validatedData.recipientIds.length,
+        totalRecipients: recipientIds.length,
         sent: results.sent,
         failed: results.failed,
         skipped: results.skipped
@@ -217,9 +228,13 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error sending bulk message:', error);
 
-    if (error.name === 'ZodError') {
+    if (error instanceof z.ZodError) {
+      const firstIssue = error.issues?.[0];
       return NextResponse.json(
-        { error: 'Validation failed', details: error.errors },
+        {
+          error: firstIssue?.message || 'Validation failed',
+          details: error.issues,
+        },
         { status: 400 }
       );
     }
