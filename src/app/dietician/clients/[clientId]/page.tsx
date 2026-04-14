@@ -2490,12 +2490,16 @@ export default function ClientDetailPage() {
               />
             </div>
 
-            <div style={{ display: activeSection === 'planning' ? 'block' : 'none' }}>
+            <div data-section="planning" style={{ display: activeSection === 'planning' ? 'block' : 'none' }}>
               <PlanningSection client={client} onRegisterReset={(fn: () => void) => registerReset('planning', fn)} />
             </div>
 
-            <div style={{ display: activeSection === 'payments' ? 'block' : 'none' }}>
-              <PaymentsSection client={client} formatDate={formatDate} onRegisterReset={(fn: () => void) => registerReset('payments', fn)} />
+            <div data-section="payments" style={{ display: activeSection === 'payments' ? 'block' : 'none' }}>
+              <PaymentsSection
+                client={client}
+                formatDate={formatDate}
+                onRegisterReset={(fn: () => void) => registerReset('payments', fn)}
+              />
             </div>
 
             <div style={{ display: activeSection === 'bookings' ? 'block' : 'none' }}>

@@ -155,21 +155,41 @@ export async function GET(request: NextRequest) {
 
     if (status) query.status = status;
 
-    // Reconcile links that are already paid in UnifiedPayment, to avoid any paid->expired regression.
-    const paidUnifiedPayments = await UnifiedPayment.find({
-      $or: [
-        { status: { $in: ['paid', 'completed'] } },
-        { paymentStatus: 'paid' }
-      ],
-      paymentLink: { $exists: true, $ne: null }
-    }).select('paymentLink paidAt');
+    // Reconcile links that are already paid, and always prioritize paid over expired/cancelled.
+    const reconciliationScope: any = clientId ? { client: clientId } : {};
 
-    const paidLinkIds = paidUnifiedPayments
-      .map((p: any) => p.paymentLink)
-      .filter(Boolean);
+    const [paidUnifiedPayments, linksWithPaymentProof] = await Promise.all([
+      UnifiedPayment.find({
+        ...reconciliationScope,
+        $or: [
+          { status: { $in: ['paid', 'completed', 'active'] } },
+          { paymentStatus: 'paid' }
+        ],
+        paymentLink: { $exists: true, $ne: null }
+      })
+        .select('paymentLink')
+        .lean(),
+      PaymentLink.find({
+        ...reconciliationScope,
+        status: { $ne: 'paid' },
+        $or: [
+          { paidAt: { $exists: true, $ne: null } },
+          { razorpayPaymentId: { $exists: true, $nin: [null, ''] } },
+          { transactionId: { $exists: true, $nin: [null, ''] } }
+        ]
+      })
+        .select('_id')
+        .lean()
+    ]);
 
+    const paidLinkIds = Array.from(new Set([
+      ...paidUnifiedPayments.map((p: any) => String(p.paymentLink)).filter(Boolean),
+      ...linksWithPaymentProof.map((p: any) => String(p._id)).filter(Boolean)
+    ]));
+
+    let paidStatusesUpdated = false;
     if (paidLinkIds.length > 0) {
-      await PaymentLink.updateMany(
+      const paidUpdateResult = await PaymentLink.updateMany(
         {
           _id: { $in: paidLinkIds },
           status: { $ne: 'paid' }
@@ -180,6 +200,9 @@ export async function GET(request: NextRequest) {
           }
         }
       );
+
+      const modifiedCount = (paidUpdateResult as any)?.modifiedCount ?? (paidUpdateResult as any)?.nModified ?? 0;
+      paidStatusesUpdated = modifiedCount > 0;
     }
 
     // Auto-expire payment links that have passed their expiry date (only if never completed)
@@ -187,28 +210,61 @@ export async function GET(request: NextRequest) {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    await PaymentLink.updateMany(
+    const expiryUpdateResult = await PaymentLink.updateMany(
       {
+        ...reconciliationScope,
         expireDate: { $lt: todayStart }, // Only expire if expiry date is before today (not including today)
         status: { $in: ['created', 'pending'] },
-        paidAt: { $exists: false },
-        _id: { $nin: paidLinkIds }
+        _id: { $nin: paidLinkIds },
+        $and: [
+          {
+            $or: [
+              { paidAt: { $exists: false } },
+              { paidAt: null }
+            ]
+          },
+          {
+            $or: [
+              { razorpayPaymentId: { $exists: false } },
+              { razorpayPaymentId: null },
+              { razorpayPaymentId: '' }
+            ]
+          },
+          {
+            $or: [
+              { transactionId: { $exists: false } },
+              { transactionId: null },
+              { transactionId: '' }
+            ]
+          }
+        ]
       },
       {
         $set: { status: 'expired' }
       }
     );
 
-    const paymentLinks = await withCache(
-      `payment-links:${JSON.stringify(query)}:limit=${limit}:skip=${skip}`,
-      async () => await PaymentLink.find(query)
-        .populate('client', 'firstName lastName email phone')
-        .populate('dietitian', 'firstName lastName email')
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .skip(skip),
-      { ttl: 120000, tags: ['payment_links'] }
-    );
+    const expiredStatusesUpdated = ((expiryUpdateResult as any)?.modifiedCount ?? (expiryUpdateResult as any)?.nModified ?? 0) > 0;
+
+    if (paidStatusesUpdated || expiredStatusesUpdated) {
+      clearCacheByTag('payment_links');
+    }
+
+    const fetchPaymentLinks = async () => await PaymentLink.find(query)
+      .populate('client', 'firstName lastName email phone')
+      .populate('dietitian', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip);
+
+    // Client detail screens need immediate status freshness (paid/pending toggles drive meal-plan actions).
+    const paymentLinks = clientId
+      ? await fetchPaymentLinks()
+      : await withCache(
+        `payment-links:${JSON.stringify(query)}:limit=${limit}:skip=${skip}`,
+        fetchPaymentLinks,
+        { ttl: 120000, tags: ['payment_links'] }
+      );
 
     const total = await PaymentLink.countDocuments(query);
 

@@ -18,6 +18,7 @@ import { format, addDays } from 'date-fns';
 import { DietPlanDashboard } from '@/components/dietplandashboard/DietPlanDashboard';
 import { useDataRefresh, emitDataChange, DataEventTypes } from '@/lib/events/useDataRefresh';
 import { DEFAULT_MEAL_TYPES_LIST } from '@/lib/mealConfig';
+import { useRealtime } from '@/hooks/useRealtime';
 
 // Client Purchase interface
 interface ClientPurchase {
@@ -313,7 +314,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     setCheckingPayment(true);
     try {
       // The check API now automatically syncs pending payments with Razorpay
-      const res = await fetch(`/api/client-purchases/check?clientId=${client._id}`);
+      const res = await fetch(`/api/client-purchases/check?clientId=${client._id}`, { cache: 'no-store' });
       if (!res.ok) {
         console.error('Payment check failed with status:', res.status);
         return;
@@ -594,10 +595,22 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     [client._id]
   );
 
+  useRealtime({
+    onMessage: (event) => {
+      if (
+        event.type === 'payment_link_updated' ||
+        event.type === 'payment_updated' ||
+        event.type === 'other_platform_payment_updated'
+      ) {
+        checkPaymentStatus();
+      }
+    },
+  });
+
   const fetchClientPlans = async (silent = false) => {
     try {
       if (!silent) setLoadingPlans(true);
-      const res = await fetch(`/api/client-meal-plans?clientId=${client._id}`);
+      const res = await fetch(`/api/client-meal-plans?clientId=${client._id}`, { cache: 'no-store' });
       if (!res.ok) {
         console.error('Failed to fetch client plans with status:', res.status);
         return;
@@ -2082,7 +2095,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
           <div className="space-y-4 py-4">
             {/* Plan Info Header - Always visible */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+            <div className="bg-linear-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-white rounded-full shadow-sm">
                   <Calendar className="h-5 w-5 text-blue-600" />
@@ -2283,7 +2296,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
                     {/* Selected Dates Summary / Confirmation */}
                     {selectedDates.length > 0 && (
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                      <div className="bg-linear-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
                         <div className="flex items-center gap-2 mb-3">
                           <div className="p-1.5 bg-blue-100 rounded-full">
                             <Snowflake className="h-4 w-4 text-blue-600" />
@@ -4099,11 +4112,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       toast.error('All plan days have been used. Client needs to purchase a new plan.');
                       return;
                     }
-                    // Check if expected dates are set for the purchase
                     const purchase = paymentCheck.purchase;
                     if (!purchase?.expectedStartDate || !purchase?.expectedEndDate) {
-                      toast.error('Please set the expected start and end dates in the Payments tab before creating a meal plan.');
-                      return;
+                      toast.info('Expected dates are not set yet. Creating plan from the next available start date.');
                     }
                     // Clear any stale state before creating new plan
                     setEditingPlan(null);

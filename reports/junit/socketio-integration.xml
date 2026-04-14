@@ -1,43 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="19" failures="0" errors="0" time="30.332">
-  <testsuite name="tests/integration/hc-primary-dietitian-restriction.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-09T11:29:17" time="30.186" tests="19">
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should return primaryDietitianOnly=true for Health Counselor role" time="1.436">
+<testsuites name="jest tests" tests="15" failures="0" errors="0" time="5.119">
+  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-14T14:23:53" time="3.973" tests="3">
+    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="0.977">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should mark primary dietitian with isPrimary=true for Health Counselor" time="1.365">
+    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.86">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should mark secondary dietitian with isSecondary=true for Health Counselor" time="1.36">
+    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.826">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should NOT set primaryDietitianOnly for Admin role" time="1.358">
+  </testsuite>
+  <testsuite name="tests/integration/payment-webhook-protection.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-14T14:23:57" time="0.494" tests="8">
+    <testcase classname="webhook/sync downgrade protection" name="payment_link.expired webhook should not downgrade a paid payment" time="0.023">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; GET /api/clients/[clientId]/assign" name="should return all active dietitians for HC (including both primary &amp; secondary markers)" time="1.353">
+    <testcase classname="webhook/sync downgrade protection" name="payment_link.cancelled webhook should not downgrade a paid payment" time="0.002">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should allow HC to replace primary dietitian (mode=replace)" time="1.648">
+    <testcase classname="webhook/sync downgrade protection" name="sync operation should not overwrite paid status with expired" time="0.001">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should allow HC to set primary dietitian when none exists (mode=add)" time="1.902">
+    <testcase classname="webhook/sync downgrade protection" name="sync operation should not overwrite paid status with cancelled" time="0.001">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should BLOCK HC from adding secondary dietitian (mode=add when primary exists)" time="1.628">
+    <testcase classname="webhook/sync downgrade protection" name="expired webhook should work for genuinely unpaid payments" time="0.001">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should BLOCK HC from assigning multiple dietitians at once" time="1.901">
+    <testcase classname="webhook/sync downgrade protection" name="cancelled webhook should work for genuinely unpaid payments" time="0.001">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should allow Admin to add secondary dietitian (mode=add when primary exists)" time="1.655">
+    <testcase classname="webhook/sync downgrade protection" name="multiple sync calls should maintain paid status" time="0.002">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should allow Admin to assign multiple dietitians at once" time="1.905">
+    <testcase classname="webhook/sync downgrade protection" name="should protect payments with &quot;paid&quot; status string" time="0.001">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; PATCH /api/clients/[clientId]/assign" name="should reject HC assignment if client is not assigned to the HC" time="1.912">
+  </testsuite>
+  <testsuite name="tests/integration/payment-status-priority.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-14T14:23:58" time="0.493" tests="4">
+    <testcase classname="payment status priority rules" name="payment completed -&gt; shows paid" time="0.025">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Role-Based Access Control" name="should return 403 if user has no assign permission" time="1.636">
+    <testcase classname="payment status priority rules" name="payment completed, then time passes -&gt; still paid" time="0.002">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Role-Based Access Control" name="should return 401 for unauthenticated request" time="1.353">
+    <testcase classname="payment status priority rules" name="payment pending and expired -&gt; shows expired" time="0.001">
     </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Edge Cases" name="should handle assignment when client has no primary or secondary dietitians" time="0.545">
-    </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Edge Cases" name="should validate that dietitianId references an actual dietitian" time="1.356">
-    </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Edge Cases" name="should handle client that is not found" time="1.355">
-    </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Database Integrity" name="should correctly update assignedDietitian field on replace" time="1.63">
-    </testcase>
-    <testcase classname="Health Counselor Primary Dietitian Restriction &gt; Database Integrity" name="should not alter secondary dietitians when Admin replaces primary" time="1.63">
+    <testcase classname="payment status priority rules" name="payment completed survives refresh-equivalent recompute -&gt; still paid" time="0.002">
     </testcase>
   </testsuite>
 </testsuites>

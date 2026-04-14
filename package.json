@@ -89,17 +89,21 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/simple-peer": "^9.11.8",
+    "@types/supertest": "^2.0.16",
     "@types/xlsx": "^0.0.35",
     "eslint": "^9",
     "eslint-config-next": "15.5.0",
     "jest": "^30.3.0",
     "jest-junit": "^16.0.0",
     "mongodb-memory-server": "^11.0.1",
+    "supertest": "^6.3.4",
     "tailwindcss": "^4",
     "typescript": "5.9.3"
   },
   "overrides": {
     "fast-xml-parser": "5.5.6",
-    "@tootallnate/once": "3.0.1"
+    "@tootallnate/once": "3.0.1",
+    "superagent": "7.1.6",
+    "formidable": "2.1.2"
   }
 }

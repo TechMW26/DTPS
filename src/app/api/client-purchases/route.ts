@@ -13,8 +13,52 @@ const getPaidPurchaseQuery = () => ({
   ]
 });
 
+const toPositiveDurationDays = (value: unknown): number => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    const match = normalized.match(/(\d+(?:\.\d+)?)/);
+    if (!match) {
+      return 0;
+    }
+
+    const parsed = parseFloat(match[1]);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 0;
+    }
+
+    if (/year|yr/.test(normalized)) {
+      return Math.floor(parsed * 365);
+    }
+
+    if (/month|mo/.test(normalized)) {
+      return Math.floor(parsed * 30);
+    }
+
+    if (/week|wk/.test(normalized)) {
+      return Math.floor(parsed * 7);
+    }
+
+    return Math.floor(parsed);
+  }
+
+  return 0;
+};
+
+const getDurationDaysFromSource = (source: any): number => {
+  return (
+    toPositiveDurationDays(source?.durationDays) ||
+    toPositiveDurationDays(source?.durationLabel) ||
+    toPositiveDurationDays(source?.duration)
+  );
+};
+
 const isPurchaseActiveForPlanning = (purchase: any, now: Date): boolean => {
-  const remainingDays = Math.max(0, (purchase.durationDays || 0) - (purchase.daysUsed || 0));
+  const durationDays = getDurationDaysFromSource(purchase);
+  const remainingDays = Math.max(0, durationDays - (purchase.daysUsed || 0));
   if (remainingDays <= 0) return false;
 
   // If expected end date is explicitly set, honor it for active-window checks.
@@ -58,11 +102,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Backfill any missing UnifiedPayment records for paid payment links (client-specific)
+    let backfilledCount = 0;
     if (clientId) {
       const paidLinks = await PaymentLink.find({
         client: clientId,
         status: 'paid',
-        durationDays: { $exists: true, $gt: 0 }
+        $or: [
+          { durationDays: { $exists: true, $gt: 0 } },
+          { duration: { $exists: true, $nin: [null, ''] } },
+          { durationLabel: { $exists: true, $nin: [null, ''] } }
+        ]
       })
         .select('_id client dietitian servicePlanId amount tax discount finalAmount currency planName planCategory duration durationDays paidAt paymentMethod transactionId payerEmail payerPhone razorpayPaymentLinkId razorpayPaymentId razorpayOrderId')
         .sort({ paidAt: -1, createdAt: -1 });
@@ -81,7 +130,8 @@ export async function GET(request: NextRequest) {
 
           const startDate = link.paidAt ? new Date(link.paidAt) : new Date();
           const endDate = new Date(startDate);
-          endDate.setDate(endDate.getDate() + (link.durationDays || 0));
+          const durationDays = getDurationDaysFromSource(link);
+          endDate.setDate(endDate.getDate() + durationDays);
 
           try {
             await UnifiedPayment.syncRazorpayPayment(
@@ -101,8 +151,8 @@ export async function GET(request: NextRequest) {
                 paymentType: 'service_plan',
                 planName: link.planName || 'Service Plan',
                 planCategory: link.planCategory || 'general-wellness',
-                durationDays: link.durationDays || 0,
-                durationLabel: link.duration || `${link.durationDays || 0} Days`,
+                durationDays,
+                durationLabel: link.duration || link.durationLabel || `${durationDays} Days`,
                 baseAmount: link.amount,
                 discountPercent: link.discount || 0,
                 taxPercent: link.tax || 0,
@@ -127,23 +177,34 @@ export async function GET(request: NextRequest) {
                 daysUsed: 0
               }
             );
+            backfilledCount += 1;
           } catch (syncErr) {
             console.error('Failed to backfill UnifiedPayment for paid link:', link._id, syncErr);
           }
         }
+
+        // Ensure fresh reads when new purchases were backfilled during this request.
+        if (backfilledCount > 0) {
+          clearCacheByTag('client_purchases');
+        }
       }
     }
 
-    const purchases = await withCache(
-      `client-purchases:${JSON.stringify(query)}`,
-      async () => await UnifiedPayment.find(query)
-        .populate('client', 'firstName lastName email phone')
-        .populate('dietitian', 'firstName lastName')
-        .populate('servicePlan', 'name category')
-        .populate('paymentLink', 'razorpayPaymentLinkId status paidAt')
-        .sort({ purchaseDate: -1 }),
-      { ttl: 120000, tags: ['client_purchases'] }
-    );
+    const fetchPurchases = async () => await UnifiedPayment.find(query)
+      .populate('client', 'firstName lastName email phone')
+      .populate('dietitian', 'firstName lastName')
+      .populate('servicePlan', 'name category')
+      .populate('paymentLink', 'razorpayPaymentLinkId status paidAt')
+      .sort({ purchaseDate: -1 });
+
+    // Client-scoped views (dietitian/health-counselor client detail pages) require real-time freshness.
+    const purchases = clientId
+      ? await fetchPurchases()
+      : await withCache(
+        `client-purchases:${JSON.stringify(query)}`,
+        fetchPurchases,
+        { ttl: 120000, tags: ['client_purchases'] }
+      );
 
     // Add remaining days to each purchase
     // remainingDays = durationDays - daysUsed (plan allocation remaining)
@@ -153,7 +214,7 @@ export async function GET(request: NextRequest) {
       const now = new Date();
 
       // Calculate plan-based remaining days (allocation)
-      const durationDays = purchaseObj.durationDays || 0;
+      const durationDays = getDurationDaysFromSource(purchaseObj);
       const daysUsed = purchaseObj.daysUsed || 0;
       const remainingDays = Math.max(0, durationDays - daysUsed);
 
@@ -168,6 +229,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...purchaseObj,
+        durationDays,
         remainingDays,  // Plan allocation remaining (durationDays - daysUsed)
         calendarDaysUntilEnd, // Days until expectedEndDate/endDate
         isExpired
@@ -179,11 +241,13 @@ export async function GET(request: NextRequest) {
       ? purchasesWithInfo.filter((purchase: any) => isPurchaseActiveForPlanning(purchase, now))
       : purchasesWithInfo;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       purchases: filteredPurchases,
       total: filteredPurchases.length
     });
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
   } catch (error) {
     console.error('Error fetching client purchases:', error);
     return NextResponse.json({ error: 'Failed to fetch client purchases' }, { status: 500 });

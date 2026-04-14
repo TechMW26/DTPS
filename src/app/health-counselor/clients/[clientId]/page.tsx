@@ -1219,7 +1219,7 @@ export default function HealthCounselorClientDetailPage() {
             )}
 
             {activeSection === 'planning' && (
-              <div>
+              <div data-section="planning">
                 <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <p className="text-sm text-yellow-800">
                     <strong>View Only:</strong> Health counselors can view meal plans but cannot create, edit, or delete them.
@@ -1230,7 +1230,9 @@ export default function HealthCounselorClientDetailPage() {
             )}
 
             {activeSection === 'payments' && (
-              <PaymentsSection client={client} formatDate={formatDate} />
+              <div data-section="payments">
+                <PaymentsSection client={client} formatDate={formatDate} />
+              </div>
             )}
 
             {activeSection === 'bookings' && (

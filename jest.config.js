@@ -10,6 +10,7 @@ const customJestConfig = {
     testMatch: ['<rootDir>/tests/**/*.integration.test.ts'],
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
+        '^formidable$': '<rootDir>/tests/mocks/formidable.js',
     },
     collectCoverage: true,
     coverageProvider: 'v8',

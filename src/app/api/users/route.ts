@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
       // Escape special regex characters to avoid regex errors
       const normalizedSearch = search.trim();
       const escapedSearch = normalizedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const searchCondition = {
+      const searchCondition: { $or: any[] } = {
         $or: [
           { firstName: { $regex: escapedSearch, $options: 'i' } },
           { lastName: { $regex: escapedSearch, $options: 'i' } },

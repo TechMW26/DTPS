@@ -65,7 +65,7 @@ export interface IUnifiedPayment extends Document {
   vpa?: string;
 
   // ========== STATUS ==========
-  status: 'pending' | 'processing' | 'paid' | 'completed' | 'failed' | 'refunded' | 'cancelled' | 'expired';
+  status: 'pending' | 'processing' | 'paid' | 'completed' | 'active' | 'failed' | 'refunded' | 'cancelled' | 'expired';
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
 
   // ========== DATES ==========
@@ -80,6 +80,9 @@ export interface IUnifiedPayment extends Document {
   mealPlanCreated: boolean;
   daysUsed: number;
   remainingDays: number;
+  phaseTag?: string;
+  phaseNumber?: number;
+  linkedMealPlanIds?: mongoose.Types.ObjectId[];
 
   // ========== PARENT REFERENCE (for multi-phase plans) ==========
   parentPaymentId?: mongoose.Types.ObjectId;
@@ -156,7 +159,7 @@ export interface UnifiedPaymentInput {
   bank?: string;
   wallet?: string;
   vpa?: string;
-  status?: 'pending' | 'processing' | 'paid' | 'completed' | 'failed' | 'refunded' | 'cancelled' | 'expired';
+  status?: 'pending' | 'processing' | 'paid' | 'completed' | 'active' | 'failed' | 'refunded' | 'cancelled' | 'expired';
   paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
   purchaseDate?: Date;
   startDate?: Date;
@@ -166,6 +169,9 @@ export interface UnifiedPaymentInput {
   paidAt?: Date;
   mealPlanCreated?: boolean;
   daysUsed?: number;
+  phaseTag?: string;
+  phaseNumber?: number;
+  linkedMealPlanIds?: ObjectIdLike[];
   stripePaymentIntentId?: string;
   parentPaymentId?: ObjectIdLike;
   description?: string;
@@ -359,7 +365,7 @@ const unifiedPaymentSchema = new Schema<IUnifiedPayment>({
   // ========== STATUS ==========
   status: {
     type: String,
-    enum: ['pending', 'processing', 'paid', 'completed', 'failed', 'refunded', 'cancelled', 'expired'],
+    enum: ['pending', 'processing', 'paid', 'completed', 'active', 'failed', 'refunded', 'cancelled', 'expired'],
     default: 'pending'
   },
   paymentStatus: {
@@ -451,14 +457,17 @@ const unifiedPaymentSchema = new Schema<IUnifiedPayment>({
   toObject: { virtuals: true }
 });
 
+
+
+
 // ========== VIRTUAL FIELDS ==========
 // Virtual amount getter - returns finalAmount or baseAmount for backward compatibility
-unifiedPaymentSchema.virtual('displayAmount').get(function () {
+unifiedPaymentSchema.virtual('displayAmount').get(function (this: IUnifiedPayment) {
   return this.finalAmount || this.baseAmount || this.amount || 0;
 });
 
 // Virtual for payment type label
-unifiedPaymentSchema.virtual('typeLabel').get(function () {
+unifiedPaymentSchema.virtual('typeLabel').get(function (this: IUnifiedPayment) {
   const labels: Record<string, string> = {
     'subscription': 'Subscription',
     'consultation': 'Consultation',
@@ -470,7 +479,7 @@ unifiedPaymentSchema.virtual('typeLabel').get(function () {
 });
 
 // Virtual for status label
-unifiedPaymentSchema.virtual('statusLabel').get(function () {
+unifiedPaymentSchema.virtual('statusLabel').get(function (this: IUnifiedPayment) {
   const labels: Record<string, string> = {
     'pending': 'Pending',
     'processing': 'Processing',
@@ -545,7 +554,7 @@ unifiedPaymentSchema.index(
 // ========== INSTANCE METHODS ==========
 
 // Get remaining days for the plan (based on allocation: durationDays - daysUsed)
-unifiedPaymentSchema.methods.getRemainingDays = function (): number {
+unifiedPaymentSchema.methods.getRemainingDays = function (this: IUnifiedPayment): number {
   // Plan allocation remaining = durationDays - daysUsed
   const durationDays = this.durationDays || 0;
   const daysUsed = this.daysUsed || 0;
@@ -553,11 +562,13 @@ unifiedPaymentSchema.methods.getRemainingDays = function (): number {
 };
 
 // Get calendar days until end date (for expiration tracking)
-unifiedPaymentSchema.methods.getCalendarDaysUntilEnd = function (): number {
+unifiedPaymentSchema.methods.getCalendarDaysUntilEnd = function (this: IUnifiedPayment): number {
   if (!this.endDate && !this.expectedEndDate) return 0;
 
   const now = new Date();
-  const endDate = new Date(this.expectedEndDate || this.endDate);
+  const endDateValue = this.expectedEndDate ?? this.endDate;
+  if (!endDateValue) return 0;
+  const endDate = new Date(endDateValue);
   const diffTime = endDate.getTime() - now.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -565,7 +576,7 @@ unifiedPaymentSchema.methods.getCalendarDaysUntilEnd = function (): number {
 };
 
 // Check if can create meal plan
-unifiedPaymentSchema.methods.canCreateMealPlan = function (requestedDays: number): { canCreate: boolean; remainingDays: number; maxDays: number; message: string } {
+unifiedPaymentSchema.methods.canCreateMealPlan = function (this: IUnifiedPayment, requestedDays: number): { canCreate: boolean; remainingDays: number; maxDays: number; message: string } {
   const remainingDays = this.getRemainingDays();
 
   if (this.status !== 'paid' && this.status !== 'completed' && this.status !== 'active') {
@@ -604,12 +615,12 @@ unifiedPaymentSchema.methods.canCreateMealPlan = function (requestedDays: number
 };
 
 // Mark payment as paid and update Razorpay details
-unifiedPaymentSchema.methods.markAsPaid = async function (razorpayData: RazorpayPaymentData): Promise<IUnifiedPayment> {
+unifiedPaymentSchema.methods.markAsPaid = async function (this: IUnifiedPayment, razorpayData: RazorpayPaymentData): Promise<IUnifiedPayment> {
   return this.syncWithRazorpay(razorpayData);
 };
 
 // Sync with Razorpay data (update existing record)
-unifiedPaymentSchema.methods.syncWithRazorpay = async function (razorpayData: RazorpayPaymentData): Promise<IUnifiedPayment> {
+unifiedPaymentSchema.methods.syncWithRazorpay = async function (this: IUnifiedPayment, razorpayData: RazorpayPaymentData): Promise<IUnifiedPayment> {
   // Update Razorpay IDs
   if (razorpayData.razorpayOrderId) this.razorpayOrderId = razorpayData.razorpayOrderId;
   if (razorpayData.razorpayPaymentId) this.razorpayPaymentId = razorpayData.razorpayPaymentId;
@@ -1052,11 +1063,11 @@ unifiedPaymentSchema.statics.syncRazorpayPayment = async function (
     ...(razorpayData.expectedEndDate && { expectedEndDate: razorpayData.expectedEndDate })
   });
 
-  return newPayment.save();
+  return newPayment.save() as Promise<IUnifiedPayment>;
 };
 
 // Pre-save hook to calculate amounts, capture client details, and calculate remaining days
-unifiedPaymentSchema.pre('save', async function (next) {
+unifiedPaymentSchema.pre('save', async function (this: IUnifiedPayment, next) {
   try {
     // Guardrail: once a payment is paid/completed, prevent status downgrade.
     if (!this.isNew && (this.isModified('status') || this.isModified('paymentStatus'))) {

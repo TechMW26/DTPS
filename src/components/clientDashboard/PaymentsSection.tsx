@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { formatDateIST } from '@/lib/utils/formatDateIST';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Copy, Plus, RefreshCw, MoreVertical, Trash2, ExternalLink, Eye, FileText, Bell, Loader2, Mail, Printer, Package, ChevronDown, Wallet, Upload, Calendar } from "lucide-react";
 import { useRealtime } from "@/hooks/useRealtime";
 import ImageLightbox from "@/components/ui/image-lightbox";
+import { resolvePaymentStatus, type ResolvedPaymentStatus } from '@/lib/payments/payment-status';
 
 // Service Plan interfaces
 interface PricingTier {
@@ -76,10 +77,13 @@ export default function PaymentsSection({
   onRegisterReset?: (fn: () => void) => void;
 }) {
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === 'admin';
-  const isDietitian = session?.user?.role === 'dietitian';
+  const normalizedRole = ((session?.user?.role || '') as string).toLowerCase() === 'dietician'
+    ? 'dietitian'
+    : ((session?.user?.role || '') as string).toLowerCase();
+  const isAdmin = normalizedRole === 'admin';
+  const isDietitian = normalizedRole === 'dietitian';
   const canEditExpectedDates = isAdmin || isDietitian; // Admin and Dietitian can edit expected dates
-  const canEmailInvoice = session?.user?.role === 'admin' || session?.user?.role === 'dietitian' || session?.user?.role === 'health_counselor';
+  const canEmailInvoice = normalizedRole === 'admin' || normalizedRole === 'dietitian' || normalizedRole === 'health_counselor';
 
   const [paymentsState, setPaymentsState] = useState<PaymentItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -337,14 +341,6 @@ export default function PaymentsSection({
     fetchPaymentLinks();
   }, [fetchPaymentLinks]);
 
-  useRealtime({
-    onMessage: (event) => {
-      if (event.type === 'payment_link_updated' || event.type === 'payment_updated') {
-        fetchPaymentLinks();
-      }
-    },
-  });
-
   // Load service plans when modal opens
   useEffect(() => {
     if (showModal && servicePlans.length === 0) {
@@ -494,10 +490,7 @@ export default function PaymentsSection({
     setOpenRowMenuId(null);
 
     // Find UnifiedPayment (clientPurchase) for this PaymentLink
-    const purchase = clientPurchases.find(p =>
-      p.paymentLink?._id === payment._id ||
-      p.paymentLink === payment._id
-    );
+    const purchase = findLinkedPurchaseByPaymentLinkId(payment._id);
 
     if (purchase?._id) {
       // Use new UnifiedPayment-based invoice
@@ -509,19 +502,19 @@ export default function PaymentsSection({
   };
 
   const sendInvoiceEmail = async (payment: PaymentItem) => {
-    if (payment.status !== 'paid') {
+    const purchase = findLinkedPurchaseByPaymentLinkId(payment._id);
+    const isPaid =
+      isPaidLikeStatus(payment.status) ||
+      isPaidLikeStatus(purchase?.paymentStatus) ||
+      isPaidLikeStatus(purchase?.status);
+
+    if (!isPaid) {
       toast.error('Invoice can only be sent for paid payments');
       setOpenRowMenuId(null);
       return;
     }
 
     try {
-      // Find UnifiedPayment (clientPurchase) for this PaymentLink
-      const purchase = clientPurchases.find(p =>
-        p.paymentLink?._id === payment._id ||
-        p.paymentLink === payment._id
-      );
-
       let response;
       if (purchase?._id) {
         // Use new UnifiedPayment-based invoice email
@@ -590,6 +583,15 @@ export default function PaymentsSection({
     return String(value);
   };
 
+  const findLinkedPurchaseByPaymentLinkId = useCallback((paymentLinkId: any) => {
+    const targetId = toIdString(paymentLinkId);
+    if (!targetId) return null;
+
+    return clientPurchases.find((purchase: any) =>
+      toIdString(purchase.paymentLink) === targetId
+    ) || null;
+  }, [clientPurchases]);
+
   const getTransactionIdForPayment = (payment: PaymentItem): string => {
     const directTransactionId = payment.transactionId?.trim();
     if (directTransactionId) return directTransactionId;
@@ -597,9 +599,7 @@ export default function PaymentsSection({
     const directRazorpayPaymentId = payment.razorpayPaymentId?.trim();
     if (directRazorpayPaymentId) return directRazorpayPaymentId;
 
-    const linkedPurchase = clientPurchases.find((purchase: any) =>
-      toIdString(purchase.paymentLink) === toIdString(payment._id)
-    );
+    const linkedPurchase = findLinkedPurchaseByPaymentLinkId(payment._id);
 
     const purchaseTransactionId = linkedPurchase?.transactionId;
     if (typeof purchaseTransactionId === 'string' && purchaseTransactionId.trim()) {
@@ -629,7 +629,7 @@ export default function PaymentsSection({
   const fetchOtherPlatformPayments = useCallback(async () => {
     if (!client?._id) return;
     try {
-      const response = await fetch(`/api/other-platform-payments?clientId=${client._id}`);
+      const response = await fetch(`/api/other-platform-payments?clientId=${client._id}`, { cache: 'no-store' });
       const data = await response.json();
       if (data.payments) {
         setOtherPlatformPayments(data.payments);
@@ -644,7 +644,7 @@ export default function PaymentsSection({
     if (!client?._id) return;
     setLoadingPurchases(true);
     try {
-      const response = await fetch(`/api/client-purchases?clientId=${client._id}`);
+      const response = await fetch(`/api/client-purchases?clientId=${client._id}`, { cache: 'no-store' });
       const data = await response.json();
       if (data.success) {
         setClientPurchases(data.purchases || []);
@@ -665,6 +665,68 @@ export default function PaymentsSection({
   useEffect(() => {
     fetchClientPurchases();
   }, [fetchClientPurchases]);
+
+  useRealtime({
+    onMessage: (event) => {
+      if (event.type === 'payment_link_updated' || event.type === 'payment_updated') {
+        fetchPaymentLinks();
+        fetchClientPurchases();
+      }
+    },
+  });
+
+  // Keep purchase state synchronized whenever payment rows change.
+  const paymentStateFingerprint = useMemo(() =>
+    paymentsState
+      .map((payment) => `${payment._id}:${payment.status || ''}:${payment.paidAt || ''}`)
+      .join('|'),
+    [paymentsState]);
+
+  useEffect(() => {
+    if (!client?._id || paymentsState.length === 0) return;
+    fetchClientPurchases();
+  }, [client?._id, paymentsState.length, paymentStateFingerprint, fetchClientPurchases]);
+
+  useEffect(() => {
+    if (!openRowMenuId) return;
+
+    const payment = paymentsState.find((p) => p._id === openRowMenuId);
+    const importedPurchase = clientPurchases.find((p: any) =>
+      toIdString(p._id) === toIdString(openRowMenuId) &&
+      (!p.paymentLink || !paymentsState.some((pl) => toIdString(pl._id) === toIdString(p.paymentLink)))
+    );
+
+    const activeItem = payment || importedPurchase;
+    if (!activeItem) return;
+
+    const linkedPurchase = payment
+      ? findLinkedPurchaseByPaymentLinkId(payment._id)
+      : importedPurchase;
+
+    const resolvedStatus = resolveDisplayStatus(activeItem as PaymentItem, linkedPurchase);
+    const isPaid = resolvedStatus === 'paid';
+
+    console.info('[MEAL_PLAN_ACCESS_DEBUG]', {
+      clientId: client?._id,
+      role: normalizedRole,
+      roleCanCreateMealPlan: isDietitian,
+      paymentId: toIdString((activeItem as any)._id),
+      paymentStatus: (activeItem as any).status || null,
+      resolvedStatus,
+      linkedPurchaseId: linkedPurchase?._id ? toIdString(linkedPurchase._id) : null,
+      linkedPurchaseStatus: linkedPurchase?.status || null,
+      linkedPurchasePaymentStatus: linkedPurchase?.paymentStatus || null,
+      canCreateMealPlan: isDietitian && isPaid,
+    });
+  }, [
+    openRowMenuId,
+    paymentsState,
+    clientPurchases,
+    findLinkedPurchaseByPaymentLinkId,
+    isDietitian,
+    normalizedRole,
+    client?._id,
+  ]);
 
   // Register reset callback for floating back button
   useEffect(() => {
@@ -754,7 +816,7 @@ export default function PaymentsSection({
       try {
         await fetch(`/api/client-purchases/check?clientId=${client._id}&forceSync=true`);
 
-        const response = await fetch(`/api/client-purchases?clientId=${client._id}`);
+        const response = await fetch(`/api/client-purchases?clientId=${client._id}`, { cache: 'no-store' });
         const data = await response.json();
         if (data.success && data.purchases?.length > 0) {
           const matchingPurchase = data.purchases.find((p: any) =>
@@ -996,7 +1058,10 @@ export default function PaymentsSection({
 
   // Sync payment status from Razorpay
   const syncPaymentStatus = async (payment: PaymentItem) => {
-    if (payment.status === 'paid') {
+    const linkedPurchase = findLinkedPurchaseByPaymentLinkId(payment._id);
+    const resolvedStatus = resolveDisplayStatus(payment, linkedPurchase);
+
+    if (resolvedStatus === 'paid') {
       toast.info('Payment is already marked as paid');
       setOpenRowMenuId(null);
       return;
@@ -1032,14 +1097,17 @@ export default function PaymentsSection({
   };
 
   const sendReminder = async (payment: PaymentItem) => {
-    if (payment.status === 'paid') {
+    const linkedPurchase = findLinkedPurchaseByPaymentLinkId(payment._id);
+    const resolvedStatus = resolveDisplayStatus(payment, linkedPurchase);
+
+    if (resolvedStatus === 'paid') {
       toast.error('Cannot send reminder for paid payment');
       setOpenRowMenuId(null);
       return;
     }
 
-    if (payment.status === 'expired' || payment.status === 'cancelled') {
-      toast.error(`Cannot send reminder for ${payment.status} payment`);
+    if (resolvedStatus === 'expired' || resolvedStatus === 'cancelled') {
+      toast.error(`Cannot send reminder for ${resolvedStatus} payment`);
       setOpenRowMenuId(null);
       return;
     }
@@ -1068,10 +1136,39 @@ export default function PaymentsSection({
     setOpenRowMenuId(null);
   };
 
+  const isPaidLikeStatus = (status?: string) => {
+    const normalized = (status || '').toLowerCase();
+    return normalized === 'paid' || normalized === 'completed' || normalized === 'active';
+  };
+
+  const resolveDisplayStatus = (payment: PaymentItem, linkedPurchase?: any): ResolvedPaymentStatus => {
+    const resolved = resolvePaymentStatus({
+      status: payment.status,
+      paymentStatus: linkedPurchase?.paymentStatus || linkedPurchase?.status,
+      paidAt: payment.paidAt || linkedPurchase?.paidAt || null,
+      expiryDate: payment.expireDate || null,
+    });
+
+    if (
+      resolved === 'pending' &&
+      (
+        isPaidLikeStatus(payment.status) ||
+        isPaidLikeStatus(linkedPurchase?.paymentStatus) ||
+        isPaidLikeStatus(linkedPurchase?.status)
+      )
+    ) {
+      return 'paid';
+    }
+
+    return resolved;
+  };
+
   const getStatusBadge = (status?: string) => {
     const statusLower = status?.toLowerCase() || '';
     switch (statusLower) {
       case 'paid':
+      case 'completed':
+      case 'active':
         return 'bg-green-100 text-green-800';
       case 'pending':
       case 'created':
@@ -1118,8 +1215,8 @@ export default function PaymentsSection({
           // Combine payment links and imported purchases (without payment links) into unified view
           const importedPurchases = clientPurchases.filter(purchase => {
             if (!purchase.paymentLink) return true;
-            const linkId = typeof purchase.paymentLink === 'object' ? purchase.paymentLink._id : purchase.paymentLink;
-            return !paymentsState.some(p => p._id === linkId || p._id === String(linkId));
+            const linkId = toIdString(purchase.paymentLink);
+            return !paymentsState.some(p => toIdString(p._id) === linkId);
           });
 
           // Convert imported purchases to PaymentItem format for unified display
@@ -1181,6 +1278,11 @@ export default function PaymentsSection({
                   {allPayments.map((p) => {
                     const isImported = (p as any)._isImportedPurchase;
                     const purchaseData = (p as any)._purchaseData;
+                    const linkedPurchase = isImported
+                      ? purchaseData
+                      : findLinkedPurchaseByPaymentLinkId(p._id);
+                    const resolvedStatus = resolveDisplayStatus(p, linkedPurchase);
+
                     return (
                       <tr key={p._id} className="border-t hover:bg-gray-50">
                         {visibleColumns.created && (
@@ -1225,8 +1327,8 @@ export default function PaymentsSection({
                         )}
                         {visibleColumns.status && (
                           <td className="p-3 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${getStatusBadge(p.status)}`}>
-                              {p.status || "—"}
+                            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${getStatusBadge(resolvedStatus)}`}>
+                              {resolvedStatus || "—"}
                             </span>
                           </td>
                         )}
@@ -1243,18 +1345,14 @@ export default function PaymentsSection({
                         {visibleColumns.expectedDates && (
                           <td className="p-3 whitespace-nowrap">
                             {(() => {
-                              // Only show expected dates for PAID payments
-                              if (p.status !== 'paid') {
+                              const purchase = linkedPurchase;
+
+                              // Show expected dates for paid-like statuses and linked paid purchases.
+                              const paymentIsPaid = resolvedStatus === 'paid';
+
+                              if (!paymentIsPaid) {
                                 return "—";
                               }
-
-                              // For imported purchases, use the purchaseData directly
-                              // For payment links, find the linked purchase
-                              const purchase = isImported
-                                ? purchaseData
-                                : clientPurchases.find(pur =>
-                                  toIdString(pur.paymentLink) === toIdString(p._id)
-                                );
 
                               if (purchase?.expectedStartDate) {
                                 const startDate = new Date(purchase.expectedStartDate);
@@ -1355,7 +1453,8 @@ export default function PaymentsSection({
               // Check if this is a payment link or an imported purchase
               const payment = paymentsState.find(p => p._id === openRowMenuId);
               const importedPurchase = clientPurchases.find(p =>
-                p._id === openRowMenuId && (!p.paymentLink || !paymentsState.some(pl => pl._id === p.paymentLink?._id || pl._id === p.paymentLink))
+                toIdString(p._id) === toIdString(openRowMenuId) &&
+                (!p.paymentLink || !paymentsState.some(pl => toIdString(pl._id) === toIdString(p.paymentLink)))
               );
 
               const isImported = !payment && importedPurchase;
@@ -1368,8 +1467,13 @@ export default function PaymentsSection({
 
               if (!activeItem) return null;
 
-              const isPaid = activeItem.status === 'paid';
-              const isPending = activeItem.status === 'pending' || activeItem.status === 'created';
+              const linkedPurchase = isImported
+                ? importedPurchase
+                : findLinkedPurchaseByPaymentLinkId(payment?._id);
+
+              const resolvedStatus = resolveDisplayStatus(activeItem as PaymentItem, linkedPurchase);
+              const isPaid = resolvedStatus === 'paid';
+              const isPending = resolvedStatus === 'pending';
 
               return (
                 <>
@@ -1447,11 +1551,8 @@ export default function PaymentsSection({
 
                   {/* Set Expected Dates - only for paid payments */}
                   {isPaid && (() => {
-                    // For imported purchases, use the purchase directly; for payment links, find linked purchase
-                    const purchase = isImported ? importedPurchase : clientPurchases.find(p =>
-                      p.paymentLink?._id === payment?._id ||
-                      p.paymentLink === payment?._id
-                    );
+                    // For imported purchases, use the purchase directly; for payment links, use linked purchase
+                    const purchase = linkedPurchase;
                     const hasExpectedDates = purchase?.expectedStartDate && purchase?.expectedEndDate;
 
                     // If dates are already set, only admin and dietitian can edit
