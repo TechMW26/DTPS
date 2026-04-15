@@ -1,25 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="27" failures="0" errors="0" time="3.864">
-  <testsuite name="tests/integration/client-api-performance.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-15T06:47:16" time="3.714" tests="27">
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/profile" name="returns profile for email-based client" time="0.194">
+<testsuites name="jest tests" tests="27" failures="0" errors="0" time="3.809">
+  <testsuite name="tests/integration/client-api-performance.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-15T07:04:42" time="3.658" tests="27">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/profile" name="returns profile for email-based client" time="0.199">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/profile" name="returns profile for phone-only client (no email)" time="0.031">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/profile" name="returns profile for phone-only client (no email)" time="0.059">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/onboarding" name="completes onboarding for phone-only client without email validation error" time="0.298">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/onboarding" name="completes onboarding for phone-only client without email validation error" time="0.294">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/onboarding" name="handles already-completed onboarding quickly" time="0.283">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/onboarding" name="handles already-completed onboarding quickly" time="0.284">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/progress" name="returns progress data efficiently" time="0.023">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/progress" name="returns progress data efficiently" time="0.024">
     </testcase>
     <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/progress (weight logging)" name="logs weight for phone-only user without validation error" time="0.007">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/steps" name="logs steps for phone-only user without validation error" time="0.303">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/steps" name="logs steps for phone-only user without validation error" time="0.15">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/sleep" name="logs sleep for phone-only user without validation error" time="0.02">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/sleep" name="logs sleep for phone-only user without validation error" time="0.028">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/hydration" name="logs water intake efficiently" time="0.008">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/hydration" name="logs water intake efficiently" time="0.016">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/activity" name="logs activity for phone-only user" time="0.014">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/activity" name="logs activity for phone-only user" time="0.016">
     </testcase>
     <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/notifications/unread-count" name="returns unread counts quickly" time="0.013">
     </testcase>
@@ -27,33 +27,33 @@
     </testcase>
     <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/notifications" name="returns notifications quickly" time="0.012">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/service-plans" name="returns service plans" time="0.016">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/service-plans" name="returns service plans" time="0.015">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/tasks" name="returns tasks" time="0.008">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/tasks" name="returns tasks" time="0.009">
     </testcase>
     <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/medical-info" name="saves medical info for phone-only user" time="0.011">
     </testcase>
     <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/lifestyle-info" name="saves lifestyle info for phone-only user" time="0.009">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/dietary-recall" name="saves dietary recall for phone-only user" time="0.066">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/dietary-recall" name="saves dietary recall for phone-only user" time="0.131">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/meal-plan" name="returns meal plan data" time="0.02">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/meal-plan" name="returns meal plan data" time="0.023">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/billing" name="returns billing history" time="0.017">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/billing" name="returns billing history" time="0.014">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/subscriptions" name="returns active subscriptions" time="0.018">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/subscriptions" name="returns active subscriptions" time="0.009">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/bmi" name="returns BMI data" time="0.009">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/bmi" name="returns BMI data" time="0.008">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/hydration" name="returns hydration data" time="0.01">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/hydration" name="returns hydration data" time="0.009">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/steps" name="returns steps data" time="0.012">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/steps" name="returns steps data" time="0.007">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/sleep" name="returns sleep data" time="0.008">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/sleep" name="returns sleep data" time="0.007">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/activity" name="returns activity data" time="0.01">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/activity" name="returns activity data" time="0.007">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/dietary-recall" name="returns dietary recall history" time="0.011">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/dietary-recall" name="returns dietary recall history" time="0.019">
     </testcase>
   </testsuite>
 </testsuites>
