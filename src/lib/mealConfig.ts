@@ -157,7 +157,6 @@ export const MEAL_TYPE_OPTIONS: { value: MealTypeKey; label: string; time: strin
  * This is the SINGLE SOURCE OF TRUTH for dietary restrictions across the application
  */
 export const DIETARY_RESTRICTIONS = [
-  'None',
   'Vegetarian',
   'Vegan',
   'Eggitarian',

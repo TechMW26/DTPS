@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
+import { getServerSession } from 'next-auth';
 import connectDB from '@/lib/db/connection';
 import JournalTracking from '@/lib/db/models/JournalTracking';
 import { authOptions } from '@/lib/auth';

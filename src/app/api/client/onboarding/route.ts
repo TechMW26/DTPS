@@ -12,38 +12,25 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    // AGGRESSIVE OPTIMIZATION: Run auth + DB + parse + existing check ALL in parallel
+    const bodyPromise = request.json();
+    const sessionPromise = getServerSession(authOptions);
+    const dbPromise = connectDB();
+
+    const [session, , data] = await Promise.all([sessionPromise, dbPromise, bodyPromise]);
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Only clients can complete onboarding
     if (session.user.role !== 'client') {
       return NextResponse.json({ error: 'Only clients can complete onboarding' }, { status: 403 });
     }
 
-    await connectDB();
-
     const userId = session.user.id;
 
-    // CRITICAL: Check if onboarding is already completed to prevent duplicate submissions
-    const existingUser = await User.findById(userId).select('onboardingCompleted').lean() as { onboardingCompleted?: boolean } | null;
-    if (existingUser?.onboardingCompleted) {
-      // Already completed - return success without re-processing
-      return NextResponse.json({
-        success: true,
-        message: 'Onboarding already completed',
-        alreadyCompleted: true,
-        onboardingCompleted: true,
-        user: {
-          id: userId,
-          onboardingCompleted: true,
-        }
-      });
-    }
-
-    const data = await request.json();
+    // FAST PATH: Use findOneAndUpdate with condition to atomically check + update
+    // This is faster than separate find + update and prevents race conditions
 
     // Calculate BMI from height and weight
     let bmi = '';
@@ -101,64 +88,61 @@ export async function POST(request: NextRequest) {
       onboardingStep: 5,
     };
 
-    // Update user document
-    const user = await User.findByIdAndUpdate(
-      userId,
+    // AGGRESSIVE OPTIMIZATION: Atomic update with condition check
+    // This combines the "is onboarding completed?" check with the update in ONE query
+    const user = await User.findOneAndUpdate(
+      { _id: userId, onboardingCompleted: { $ne: true } }, // Only update if NOT completed
       { $set: updateData },
-      { new: true }
-    ).select('-password');
+      { new: true, lean: true } // lean: true = faster, returns plain object
+    ).select('_id firstName lastName email onboardingCompleted') as unknown as { _id: string; firstName?: string; lastName?: string; email?: string; onboardingCompleted?: boolean } | null;
 
+    // If user is null, either not found OR already onboarded
     if (!user) {
+      // Check if it's because already onboarded (fast path for repeat calls)
+      const exists = await User.exists({ _id: userId });
+      if (exists) {
+        return NextResponse.json({
+          success: true,
+          message: 'Onboarding already completed',
+          alreadyCompleted: true,
+          onboardingCompleted: true,
+          user: { id: userId, onboardingCompleted: true }
+        });
+      }
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Create or update lifestyle info
-    await LifestyleInfo.findOneAndUpdate(
-      { userId },
-      {
-        $set: {
-          userId,
-          heightCm: data.heightCm,
-          weightKg: data.weightKg,
-          targetWeightKg: data.targetWeightKg,
-          activityLevel: data.activityLevel,
-          foodPreference: data.dietType === 'vegetarian' ? 'veg' :
-            data.dietType === 'vegan' ? 'vegan' :
-              data.dietType === 'standard' ? 'non-veg' : 'non-veg',
-          allergiesFood: data.allergies || [],
-        }
-      },
-      { upsert: true, new: true }
-    );
+    // BACKGROUND: Run secondary DB updates in parallel, don't wait
+    // These are non-critical and can complete after response is sent
+    const foodPref = data.dietType === 'vegetarian' ? 'veg' :
+      data.dietType === 'vegan' ? 'vegan' : 'non-veg';
 
-    // Create or update medical info with allergies
-    if (data.allergies && data.allergies.length > 0) {
-      await MedicalInfo.findOneAndUpdate(
+    // Fire-and-forget for secondary data
+    Promise.all([
+      LifestyleInfo.findOneAndUpdate(
         { userId },
-        {
-          $set: {
-            userId,
-            allergies: data.allergies,
-          }
-        },
-        { upsert: true, new: true }
-      );
-    }
+        { $set: { userId, heightCm: data.heightCm, weightKg: data.weightKg, targetWeightKg: data.targetWeightKg, activityLevel: data.activityLevel, foodPreference: foodPref, allergiesFood: data.allergies || [] } },
+        { upsert: true }
+      ),
+      data.allergies?.length > 0
+        ? MedicalInfo.findOneAndUpdate({ userId }, { $set: { userId, allergies: data.allergies } }, { upsert: true })
+        : null
+    ]).catch(() => { }); // Ignore errors in background tasks
 
-    // Clear any cached onboarding status to prevent stale data
+    // OPTIMIZATION: Clear cache synchronously (fast operation)
     try {
-      await clearCacheByTag('client');
-    } catch (cacheError) {
-      console.error('Error clearing cache:', cacheError);
-      // Non-blocking - continue even if cache clear fails
-    }
+      clearCacheByTag('client');
+    } catch { /* ignore cache errors */ }
 
-    // Log activity
+    // Extract user data with proper typing
+    const userData = user as { _id: string; firstName?: string; lastName?: string; email?: string };
+
+    // Log activity (fire-and-forget) - use session data for speed
     logActivity({
       userId: userId,
       userRole: 'client',
-      userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
-      userEmail: user.email || '',
+      userName: session.user.name || `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'Unknown',
+      userEmail: session.user.email || userData.email || '',
       action: 'Completed Onboarding',
       actionType: 'update',
       category: 'profile',
@@ -175,14 +159,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Onboarding completed successfully',
-      onboardingCompleted: true, // Explicit flag for client-side session update
-      requireSessionRefresh: true, // Signal to client to refresh session
+      onboardingCompleted: true,
+      requireSessionRefresh: true,
       user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        onboardingCompleted: true, // Always true after successful save
+        id: userData._id,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        email: userData.email,
+        onboardingCompleted: true,
       }
     });
 

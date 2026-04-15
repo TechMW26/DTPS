@@ -75,7 +75,7 @@ const commonConditions = [
   "IBS", "Celiac Disease", "Lactose Intolerance", "Osteoporosis", "Anemia"
 ];
 const commonAllergies = ["Peanuts", "Tree Nuts", "Milk", "Eggs", "Wheat", "Soy", "Fish", "Shellfish", "Sesame", "Gluten"];
-const commonDietaryRestrictions = ["None", "Vegetarian", "Vegan", "Eggitarian", "Gluten-Free", "Non-Vegetarian", "Dairy-Free", "Keto", "Low-Carb", "Low-Fat", "High-Protein", "Paleo", "Mediterranean", "Jain", "Halal", "Kosher"];
+const commonDietaryRestrictions = ["Vegetarian", "Vegan", "Eggitarian", "Gluten-Free", "Non-Vegetarian", "Dairy-Free", "Keto", "Low-Carb", "Low-Fat", "High-Protein", "Paleo", "Mediterranean", "Jain", "Halal", "Kosher"];
 const gutIssueOptions = ["Bloating", "Constipation", "Diarrhea", "Acidity", "IBS", "Acid Reflux", "Indigestion", "Gas"];
 
 export default function MedicalInfoPage() {
@@ -190,21 +190,10 @@ export default function MedicalInfoPage() {
   const toggleArrayItem = (field: keyof MedicalData, item: string) => {
     const currentArray = data[field] as string[];
 
-    // Handle "None" selection - clears other selections
-    if (item === 'None') {
-      if (currentArray.includes('None')) {
-        setData({ ...data, [field]: [] });
-      } else {
-        setData({ ...data, [field]: ['None'] });
-      }
-      return;
-    }
-
-    // Remove "None" if selecting another option
     if (currentArray.includes(item)) {
       setData({ ...data, [field]: currentArray.filter(i => i !== item) });
     } else {
-      setData({ ...data, [field]: [...currentArray.filter(i => i !== 'None'), item] });
+      setData({ ...data, [field]: [...currentArray, item] });
     }
   };
 

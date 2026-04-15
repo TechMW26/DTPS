@@ -74,7 +74,7 @@ export function MedicalForm({ medicalConditions, allergies, dietaryRestrictions,
   }, [dietaryRestrictions]);
   const [dietaryOpen, setDietaryOpen] = React.useState(false);
   const dietaryOptions = [
-    'None', 'Vegetarian', 'Vegan', 'Eggitarian', 'Gluten-Free', 'Non-Vegetarian', 'Dairy-Free', 'Keto', 'Low-Carb', 'Low-Fat', 'High-Protein', 'Paleo', 'Mediterranean', 'Jain', 'Halal', 'Kosher'
+    'Vegetarian', 'Vegan', 'Eggitarian', 'Gluten-Free', 'Non-Vegetarian', 'Dairy-Free', 'Keto', 'Low-Carb', 'Low-Fat', 'High-Protein', 'Paleo', 'Mediterranean', 'Jain', 'Halal', 'Kosher'
   ];
 
   // Medical conditions multi-select

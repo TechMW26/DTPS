@@ -17,7 +17,7 @@ interface LogActivityParams {
   userId: string;
   userRole: UserRole;
   userName: string;
-  userEmail: string;
+  userEmail?: string;
   userPhone?: string;
   action: string;
   actionType: ActivityActionType;

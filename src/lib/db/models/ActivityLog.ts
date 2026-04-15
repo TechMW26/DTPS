@@ -5,7 +5,7 @@ export interface IActivityLog {
   userId: mongoose.Types.ObjectId;
   userRole: 'admin' | 'dietitian' | 'health_counselor' | 'client';
   userName: string;
-  userEmail: string;
+  userEmail?: string;
   userPhone?: string;
   action: string;
   actionType: 'create' | 'update' | 'delete' | 'view' | 'assign' | 'complete' | 'cancel' | 'payment' | 'login' | 'logout' | 'other';
@@ -49,7 +49,7 @@ const activityLogSchema = new Schema<IActivityLog>(
     },
     userEmail: {
       type: String,
-      required: true
+      required: false // Made optional: some users don't have email (phone-only signups)
     },
     userPhone: {
       type: String

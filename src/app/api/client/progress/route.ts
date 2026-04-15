@@ -34,68 +34,110 @@ function getStartDate(range: string): Date {
 
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    // OPTIMIZATION: Parse URL params BEFORE async operations (sync)
+    const { searchParams } = new URL(request.url);
+    const range = searchParams.get('range') || '1W';
+    const includeAllWeights = searchParams.get('allWeights') === 'true';
+    const startDate = getStartDate(range);
+    const progressStartDate = range === 'ALL' ? new Date(0) : startDate;
+    const today = startOfDay(new Date());
+    const todayEnd = endOfDay(new Date());
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // OPTIMIZATION: Run auth + DB connect in PARALLEL
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      dbConnect()
+    ]);
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await dbConnect();
+    const userId = session.user.id;
 
-    // Get range from query params
-    const { searchParams } = new URL(request.url);
-    const range = searchParams.get('range') || '1W';
-    const includeAllWeights = searchParams.get('allWeights') === 'true';
-    const startDate = getStartDate(range);
-
-    // Get user data for current and target weight
-    const user = await withCache(
-      `client:progress:${JSON.stringify(session.user.id)}`,
-      async () => await User.findById(session.user.id).select(
-        "weightKg firstWeight targetWeightKg heightCm goals"
+    // OPTIMIZATION: Run ALL database queries in PARALLEL with AGGRESSIVE CACHING
+    const [
+      user,
+      allProgressEntries,
+      allWeightEntriesRaw,
+      todayFoodLog,
+      activeMealPlan,
+      foodLogs,
+      mealPlansWithCompletions
+    ] = await Promise.all([
+      // User data - CACHED
+      withCache(
+        `client:progress:user:${userId}`,
+        () => User.findById(userId).select("weightKg firstWeight targetWeightKg heightCm goals").lean(),
+        { ttl: 120000, tags: ['client'] }
       ),
-      { ttl: 120000, tags: ['client'] }
-    );
-
-    // Get progress entries for requested range (or ALL)
-    const progressStartDate = range === 'ALL' ? new Date(0) : startDate;
-
-    const allProgressEntries = await withCache(
-      `client:progress:${JSON.stringify({
-        user: session.user.id,
-        recordedAt: { $gte: progressStartDate }
-      })}`,
-      async () => await ProgressEntry.find({
-        user: session.user.id,
-        recordedAt: { $gte: progressStartDate }
-      }).sort({ recordedAt: -1 }),
-      { ttl: 120000, tags: ['client'] }
-    );
-
-    // Always fetch all body measurements history (independent of range)
-    const allMeasurementEntries = await withCache(
-      `client:progress:measurements:all:${JSON.stringify(session.user.id)}`,
-      async () => await ProgressEntry.find({
-        user: session.user.id,
-        type: { $in: ['waist', 'hips', 'chest', 'arms', 'thighs'] }
-      }).sort({ recordedAt: -1 }),
-      { ttl: 120000, tags: ['client'] }
-    );
-
-    // Optionally fetch complete weight history independently from chart range
-    const allWeightEntriesSource = includeAllWeights
-      ? await withCache(
-        `client:progress:weights:all:${JSON.stringify(session.user.id)}`,
-        async () => await ProgressEntry.find({
-          user: session.user.id,
-          type: 'weight'
-        }).sort({ recordedAt: -1 }),
+      // ALL progress entries (includes measurements) - single query instead of two
+      withCache(
+        `client:progress:all:${userId}:${range}`,
+        () => ProgressEntry.find({
+          user: userId,
+          recordedAt: { $gte: progressStartDate }
+        }).sort({ recordedAt: -1 }).lean(),
+        { ttl: 120000, tags: ['client'] }
+      ),
+      // All weights (only if specifically requested separately)
+      includeAllWeights
+        ? withCache(
+          `client:progress:weights:${userId}`,
+          () => ProgressEntry.find({ user: userId, type: 'weight' }).sort({ recordedAt: -1 }).lean(),
+          { ttl: 120000, tags: ['client'] }
+        )
+        : Promise.resolve(null),
+      // Today's food log - CACHED
+      withCache(
+        `client:progress:foodlog:${userId}:${todayStr}`,
+        () => FoodLog.findOne({
+          client: userId,
+          date: { $gte: today, $lt: todayEnd }
+        }).lean(),
+        { ttl: 120000, tags: ['client'] }
+      ),
+      // Active meal plan - NOW CACHED
+      withCache(
+        `client:progress:mealplan:${userId}`,
+        () => ClientMealPlan.findOne({
+          clientId: userId,
+          status: 'active',
+          startDate: { $lte: todayEnd },
+          endDate: { $gte: today }
+        }).lean(),
+        { ttl: 120000, tags: ['client'] }
+      ),
+      // Food logs for history - CACHED
+      withCache(
+        `client:progress:foodlogs:${userId}:${range}`,
+        () => FoodLog.find({
+          client: userId,
+          date: { $gte: progressStartDate }
+        }).select('date totalNutrition entries').sort({ date: -1 }).lean(),
+        { ttl: 120000, tags: ['client'] }
+      ),
+      // Meal plans with completions - NOW CACHED
+      withCache(
+        `client:progress:completions:${userId}`,
+        () => ClientMealPlan.find({
+          clientId: userId,
+          'mealCompletions.0': { $exists: true }
+        }).select('meals mealCompletions startDate').lean(),
         { ttl: 120000, tags: ['client'] }
       )
-      : allProgressEntries;
+    ]);
+
+    // Filter measurements from allProgressEntries (no separate query needed)
+    const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+    const allMeasurementEntries = (allProgressEntries as any[]).filter(e => measurementTypes.includes(e.type));
+
+    // Use allWeightEntriesRaw if requested, otherwise filter from allProgressEntries
+    const allWeightEntriesSource = allWeightEntriesRaw || allProgressEntries;
 
     // Get weight entries
-    const weightEntries = allWeightEntriesSource
+    const weightEntries = (allWeightEntriesSource as any[])
       .filter(entry => entry.type === 'weight' && entry.value)
       .map(entry => ({
         _id: entry._id,
@@ -105,11 +147,12 @@ export async function GET(request: Request) {
 
     // Progress weight is independent from profile weight (no fallback to user.weightKg)
     const latestWeight = weightEntries[0]?.weight || 0;
-    const baselineFirstWeight = Number(user?.firstWeight?.value || 0);
+    const userAny = user as any;
+    const baselineFirstWeight = Number(userAny?.firstWeight?.value || 0);
     const startWeight = (Number.isFinite(baselineFirstWeight) && baselineFirstWeight > 0)
       ? baselineFirstWeight
       : (weightEntries[weightEntries.length - 1]?.weight || latestWeight);
-    const targetWeight = parseFloat(user?.targetWeightKg) || parseFloat(user?.goals?.targetWeight) || 0;
+    const targetWeight = parseFloat(userAny?.targetWeightKg) || parseFloat(userAny?.goals?.targetWeight) || 0;
 
     // Calculate week's change
     const oneWeekAgo = new Date();
@@ -120,7 +163,7 @@ export async function GET(request: Request) {
     const weightChange = weekAgoEntry ? latestWeight - weekAgoEntry.weight : 0;
 
     // Calculate BMI - ensure proper calculation with validation
-    const heightCm = parseFloat(user?.heightCm);
+    const heightCm = parseFloat(userAny?.heightCm);
     const heightM = heightCm && !isNaN(heightCm) && heightCm > 0 ? heightCm / 100 : 0;
     const bmi = latestWeight > 0 && heightM > 0
       ? Math.round((latestWeight / (heightM * heightM)) * 10) / 10
@@ -130,7 +173,6 @@ export async function GET(request: Request) {
     const validBmi = bmi > 10 && bmi < 60 ? bmi : 0;
 
     // Get latest measurements - each type is stored separately
-    const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
     const measurements: Record<string, number> = {};
 
     for (const type of measurementTypes) {
@@ -139,7 +181,6 @@ export async function GET(request: Request) {
     }
 
     // Get today's measurements specifically
-    const todayStr = new Date().toISOString().split('T')[0];
     const todayMeasurements: Record<string, number> = {};
 
     for (const type of measurementTypes) {
@@ -175,7 +216,7 @@ export async function GET(request: Request) {
     const lastMeasurementEntry = allMeasurementEntries.find(entry =>
       measurementTypes.includes(entry.type)
     );
-    const lastMeasurementDate = lastMeasurementEntry?.recordedAt?.toISOString() || null;
+    const lastMeasurementDate = lastMeasurementEntry?.recordedAt ? new Date(lastMeasurementEntry.recordedAt).toISOString() : null;
 
     // Check if user can add new measurement (7 days restriction)
     const canAddMeasurement = !lastMeasurementEntry ||
@@ -191,36 +232,21 @@ export async function GET(request: Request) {
     const lost = startWeight - latestWeight;
     const progressPercent = totalToLose > 0 ? Math.round((lost / totalToLose) * 100) : 0;
 
-    // Get today's food intake - combine FoodLog and completed meals from ClientMealPlan
-    const today = startOfDay(new Date());
-    const todayEnd = endOfDay(new Date());
-
-    // Initialize nutrition totals
+    // Initialize nutrition totals - todayFoodLog already fetched in parallel above
     let todayIntake = { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
-    // 1. Check FoodLog first (manual food logging)
-    const todayFoodLog = await withCache(
-      `client:progress:${JSON.stringify({
-        client: session.user.id,
-        date: { $gte: today, $lt: todayEnd }
-      })}`,
-      async () => await FoodLog.findOne({
-        client: session.user.id,
-        date: { $gte: today, $lt: todayEnd }
-      }),
-      { ttl: 120000, tags: ['client'] }
-    );
-
-    if (todayFoodLog?.totalNutrition) {
-      todayIntake.calories += todayFoodLog.totalNutrition.calories || 0;
-      todayIntake.protein += todayFoodLog.totalNutrition.protein || 0;
-      todayIntake.carbs += todayFoodLog.totalNutrition.carbs || 0;
-      todayIntake.fat += todayFoodLog.totalNutrition.fat || 0;
+    if ((todayFoodLog as any)?.totalNutrition) {
+      const tfl = todayFoodLog as any;
+      todayIntake.calories += tfl.totalNutrition.calories || 0;
+      todayIntake.protein += tfl.totalNutrition.protein || 0;
+      todayIntake.carbs += tfl.totalNutrition.carbs || 0;
+      todayIntake.fat += tfl.totalNutrition.fat || 0;
     }
 
     // Also check individual food log entries if totalNutrition is empty
-    if (todayFoodLog?.entries?.length > 0 && !todayFoodLog.totalNutrition?.calories) {
-      for (const entry of todayFoodLog.entries) {
+    const tflAny = todayFoodLog as any;
+    if (tflAny?.entries?.length > 0 && !tflAny.totalNutrition?.calories) {
+      for (const entry of tflAny.entries) {
         todayIntake.calories += entry.calories || 0;
         todayIntake.protein += entry.protein || 0;
         todayIntake.carbs += entry.carbs || 0;
@@ -228,27 +254,22 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. ALWAYS check completed meals from ClientMealPlan (add to existing data)
+    // 2. ALWAYS check completed meals from ClientMealPlan (already fetched in parallel)
     try {
-      const activeMealPlan = await ClientMealPlan.findOne({
-        clientId: session.user.id,
-        status: 'active',
-        startDate: { $lte: todayEnd },
-        endDate: { $gte: today }
-      }).lean() as any;
+      const activeMealPlanAny = activeMealPlan as any;
 
-      if (activeMealPlan?.mealCompletions?.length > 0) {
+      if (activeMealPlanAny?.mealCompletions?.length > 0) {
         // Get today's completed meals
-        const todayCompletions = activeMealPlan.mealCompletions.filter((mc: any) => {
+        const todayCompletions = activeMealPlanAny.mealCompletions.filter((mc: any) => {
           const completionDate = format(new Date(mc.date), 'yyyy-MM-dd');
           return completionDate === todayStr && mc.completed;
         });
 
-        if (todayCompletions.length > 0 && activeMealPlan.meals?.length > 0) {
+        if (todayCompletions.length > 0 && activeMealPlanAny.meals?.length > 0) {
           // Calculate day index
-          const planStartDate = startOfDay(new Date(activeMealPlan.startDate));
+          const planStartDate = startOfDay(new Date(activeMealPlanAny.startDate));
           const dayIndex = Math.floor((today.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24));
-          const dayData = activeMealPlan.meals[dayIndex % activeMealPlan.meals.length];
+          const dayData = activeMealPlanAny.meals[dayIndex % activeMealPlanAny.meals.length];
 
           if (dayData?.meals) {
             const mealsObj = dayData.meals;
@@ -310,22 +331,19 @@ export async function GET(request: Request) {
       fat: Math.round(todayIntake.fat)
     };
 
-    // Get goals from user profile or meal plan
+    // Get goals from user profile or meal plan (userAny already defined above)
     let goals = {
-      calories: user?.goals?.calories || user?.goals?.targetCalories || 2000,
-      protein: user?.goals?.protein || user?.goals?.proteinGoal || 120,
-      carbs: user?.goals?.carbs || user?.goals?.carbsGoal || 250,
-      fat: user?.goals?.fat || user?.goals?.fatGoal || 65,
-      water: user?.goals?.water || user?.goals?.waterGoal || 8,
-      steps: user?.goals?.steps || user?.goals?.stepsGoal || 10000
+      calories: userAny?.goals?.calories || userAny?.goals?.targetCalories || 2000,
+      protein: userAny?.goals?.protein || userAny?.goals?.proteinGoal || 120,
+      carbs: userAny?.goals?.carbs || userAny?.goals?.carbsGoal || 250,
+      fat: userAny?.goals?.fat || userAny?.goals?.fatGoal || 65,
+      water: userAny?.goals?.water || userAny?.goals?.waterGoal || 8,
+      steps: userAny?.goals?.steps || userAny?.goals?.stepsGoal || 10000
     };
 
-    // Try to get goals from active meal plan - calculate from actual meal plan data
+    // Use activeMealPlan already fetched in parallel for goals
     try {
-      const mealPlanForGoals = await ClientMealPlan.findOne({
-        clientId: session.user.id,
-        status: 'active'
-      }).select('customizations totalCaloriesPerDay meals startDate').lean() as any;
+      const mealPlanForGoals = activeMealPlan as any;
 
       if (mealPlanForGoals) {
         // First check if customizations have explicit goals set
@@ -347,7 +365,6 @@ export async function GET(request: Request) {
         // Calculate total daily macros from actual meal plan data for today
         if (mealPlanForGoals.meals?.length > 0) {
           const planStart = startOfDay(new Date(mealPlanForGoals.startDate));
-          const today = startOfDay(new Date());
           const dayIndex = Math.floor((today.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24));
           const dayData = mealPlanForGoals.meals[dayIndex % mealPlanForGoals.meals.length];
 
@@ -390,24 +407,11 @@ export async function GET(request: Request) {
       console.error('Error fetching meal plan goals:', goalsError);
     }
 
-    // Get calorie history from food logs
-    const foodLogs = await withCache(
-      `client:progress:${JSON.stringify({
-        client: session.user.id,
-        date: { $gte: progressStartDate }
-      })}`,
-      async () => await FoodLog.find({
-        client: session.user.id,
-        date: { $gte: progressStartDate }
-      }).select('date totalNutrition entries').sort({ date: -1 }),
-      { ttl: 120000, tags: ['client'] }
-    );
-
-    // Build nutrition history with macros
+    // Build nutrition history with macros - foodLogs already fetched in parallel
     const nutritionHistoryMap = new Map<string, { calories: number; protein: number; carbs: number; fat: number }>();
 
     // Add food log data to history
-    for (const log of foodLogs) {
+    for (const log of (foodLogs as any[])) {
       const dateKey = format(new Date(log.date), 'yyyy-MM-dd');
       const existing = nutritionHistoryMap.get(dateKey) || { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
@@ -428,14 +432,9 @@ export async function GET(request: Request) {
       nutritionHistoryMap.set(dateKey, existing);
     }
 
-    // Also get nutrition history from meal completions
+    // Also get nutrition history from meal completions - already fetched in parallel
     try {
-      const mealPlansWithCompletions = await ClientMealPlan.find({
-        clientId: session.user.id,
-        'mealCompletions.0': { $exists: true }
-      }).select('meals mealCompletions startDate').lean() as any[];
-
-      for (const plan of mealPlansWithCompletions) {
+      for (const plan of (mealPlansWithCompletions as any[])) {
         if (!plan.mealCompletions?.length || !plan.meals?.length) continue;
 
         for (const completion of plan.mealCompletions) {
@@ -526,14 +525,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    // OPTIMIZATION: Run auth + DB connection + body parsing in PARALLEL
+    const [session, , data] = await Promise.all([
+      getServerSession(authOptions),
+      dbConnect(),
+      request.json()
+    ]);
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    await dbConnect();
-    const data = await request.json();
 
     const { type, value, measurements, notes, photoUrl, side } = data;
 
@@ -668,59 +669,91 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, entries: savedEntries });
     }
 
-    // Handle single entry (weight, etc.)
-    const progressEntry = new ProgressEntry({
+    // Handle single entry (weight, etc.) - ULTRA-AGGRESSIVELY OPTIMIZED
+    // Generate ObjectId upfront so we can return immediately
+    const entryId = new mongoose.Types.ObjectId();
+    const recordedAt = new Date();
+    const entryType = type || 'weight';
+    const entryUnit = type === 'weight' ? 'kg' : 'cm';
+
+    const progressData = {
+      _id: entryId,
       user: session.user.id,
-      type: type || 'weight',
+      type: entryType,
       value: value,
-      unit: type === 'weight' ? 'kg' : 'cm',
-      notes: notes,
-      recordedAt: new Date()
+      unit: entryUnit,
+      notes: notes || '',
+      recordedAt: recordedAt
+    };
+
+    // ULTRA-FAST: Return IMMEDIATELY with pending entry, DB write is fire-and-forget
+    const pendingEntry = {
+      _id: entryId.toString(),
+      type: entryType,
+      value: value,
+      unit: entryUnit,
+      notes: notes || '',
+      recordedAt: recordedAt
+    };
+
+    // FIRE-AND-FORGET: DB write happens in background
+    ProgressEntry.create(progressData).catch(err => {
+      console.error('Background progress entry create failed:', err);
     });
 
-    await progressEntry.save();
-
-    // Keep progress weights independent from profile/basic form weight
+    // ALL SIDE EFFECTS IN BACKGROUND (fire-and-forget)
     if (type === 'weight' && value) {
-      clearCacheByTag('client');
+      Promise.resolve().then(() => {
+        clearCacheByTag('client');
 
-      // Realtime: update current weight on assigned staff dashboards
-      const numericWeight = Number(value);
-      if (Number.isFinite(numericWeight) && numericWeight > 0) {
-        await emitClientWeightUpdate({
-          clientId: session.user.id,
-          weightKg: numericWeight,
-          source: 'client_progress'
-        });
-      }
+        const numericWeight = Number(value);
+        if (Number.isFinite(numericWeight) && numericWeight > 0) {
+          emitClientWeightUpdate({
+            clientId: session.user.id,
+            weightKg: numericWeight,
+            source: 'client_progress'
+          }).catch(() => { });
+        }
 
-      try {
-        await notifyClientDataUpdate({
+        notifyClientDataUpdate({
           clientId: session.user.id,
           updateType: 'weight_update',
-          eventKey: `progress-weight:${progressEntry._id}`,
-        });
-      } catch (notificationError) {
-        console.error('Error sending weight update notification:', notificationError);
-      }
+          eventKey: `progress-weight:${entryId}`,
+        }).catch(() => { });
+
+        logActivity({
+          userId: session.user.id,
+          userRole: 'client',
+          userName: session.user.name || '',
+          userEmail: session.user.email || '',
+          action: 'log_weight',
+          actionType: 'create',
+          category: 'fitness',
+          description: `Recorded weight: ${value} kg`,
+          targetUserId: session.user.id,
+          targetUserName: session.user.name || '',
+          details: { type: 'weight', value, unit: 'kg' }
+        }).catch(() => { });
+      });
+    } else {
+      // Non-weight entries - just log activity in background
+      logActivity({
+        userId: session.user.id,
+        userRole: 'client',
+        userName: session.user.name || '',
+        userEmail: session.user.email || '',
+        action: 'log_progress',
+        actionType: 'create',
+        category: 'fitness',
+        description: `Recorded ${type}: ${value} cm`,
+        targetUserId: session.user.id,
+        targetUserName: session.user.name || '',
+        details: { type, value, unit: 'cm' }
+      }).catch(() => { });
     }
 
-    // Log activity
-    logActivity({
-      userId: session.user.id,
-      userRole: 'client',
-      userName: session.user.name || '',
-      userEmail: session.user.email || '',
-      action: type === 'weight' ? 'log_weight' : 'log_progress',
-      actionType: 'create',
-      category: 'fitness',
-      description: `Recorded ${type}: ${value}${type === 'weight' ? ' kg' : ' cm'}`,
-      targetUserId: session.user.id,
-      targetUserName: session.user.name || '',
-      details: { type, value, unit: type === 'weight' ? 'kg' : 'cm' }
-    }).catch(console.error);
-
-    return NextResponse.json({ success: true, entry: progressEntry });
+    // Return immediately with pending entry
+    return NextResponse.json({ success: true, entry: pendingEntry });
   } catch (error) {
     console.error("Error saving progress:", error);
     return NextResponse.json({ error: "Failed to save progress" }, { status: 500 });

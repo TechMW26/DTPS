@@ -1,39 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="15" failures="0" errors="0" time="5.119">
-  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-14T14:23:53" time="3.973" tests="3">
-    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="0.977">
+<testsuites name="jest tests" tests="27" failures="0" errors="0" time="3.882">
+  <testsuite name="tests/integration/client-api-performance.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-15T06:02:06" time="3.741" tests="27">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/profile" name="returns profile for email-based client" time="0.24">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.86">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/profile" name="returns profile for phone-only client (no email)" time="0.075">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.826">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/onboarding" name="completes onboarding for phone-only client without email validation error" time="0.311">
     </testcase>
-  </testsuite>
-  <testsuite name="tests/integration/payment-webhook-protection.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-14T14:23:57" time="0.494" tests="8">
-    <testcase classname="webhook/sync downgrade protection" name="payment_link.expired webhook should not downgrade a paid payment" time="0.023">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/onboarding" name="handles already-completed onboarding quickly" time="0.284">
     </testcase>
-    <testcase classname="webhook/sync downgrade protection" name="payment_link.cancelled webhook should not downgrade a paid payment" time="0.002">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/progress" name="returns progress data efficiently" time="0.025">
     </testcase>
-    <testcase classname="webhook/sync downgrade protection" name="sync operation should not overwrite paid status with expired" time="0.001">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/progress (weight logging)" name="logs weight for phone-only user without validation error" time="0.007">
     </testcase>
-    <testcase classname="webhook/sync downgrade protection" name="sync operation should not overwrite paid status with cancelled" time="0.001">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/steps" name="logs steps for phone-only user without validation error" time="0.161">
     </testcase>
-    <testcase classname="webhook/sync downgrade protection" name="expired webhook should work for genuinely unpaid payments" time="0.001">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/sleep" name="logs sleep for phone-only user without validation error" time="0.02">
     </testcase>
-    <testcase classname="webhook/sync downgrade protection" name="cancelled webhook should work for genuinely unpaid payments" time="0.001">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/hydration" name="logs water intake efficiently" time="0.01">
     </testcase>
-    <testcase classname="webhook/sync downgrade protection" name="multiple sync calls should maintain paid status" time="0.002">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/activity" name="logs activity for phone-only user" time="0.014">
     </testcase>
-    <testcase classname="webhook/sync downgrade protection" name="should protect payments with &quot;paid&quot; status string" time="0.001">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/notifications/unread-count" name="returns unread counts quickly" time="0.015">
     </testcase>
-  </testsuite>
-  <testsuite name="tests/integration/payment-status-priority.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-14T14:23:58" time="0.493" tests="4">
-    <testcase classname="payment status priority rules" name="payment completed -&gt; shows paid" time="0.025">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/dashboard-summary" name="returns dashboard summary" time="0.008">
     </testcase>
-    <testcase classname="payment status priority rules" name="payment completed, then time passes -&gt; still paid" time="0.002">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/notifications" name="returns notifications quickly" time="0.012">
     </testcase>
-    <testcase classname="payment status priority rules" name="payment pending and expired -&gt; shows expired" time="0.001">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/service-plans" name="returns service plans" time="0.015">
     </testcase>
-    <testcase classname="payment status priority rules" name="payment completed survives refresh-equivalent recompute -&gt; still paid" time="0.002">
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/tasks" name="returns tasks" time="0.008">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/medical-info" name="saves medical info for phone-only user" time="0.011">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/lifestyle-info" name="saves lifestyle info for phone-only user" time="0.008">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/dietary-recall" name="saves dietary recall for phone-only user" time="0.157">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/meal-plan" name="returns meal plan data" time="0.017">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/billing" name="returns billing history" time="0.008">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/subscriptions" name="returns active subscriptions" time="0.01">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/bmi" name="returns BMI data" time="0.008">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/hydration" name="returns hydration data" time="0.031">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/steps" name="returns steps data" time="0.009">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/sleep" name="returns sleep data" time="0.01">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/activity" name="returns activity data" time="0.01">
+    </testcase>
+    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/dietary-recall" name="returns dietary recall history" time="0.01">
     </testcase>
   </testsuite>
 </testsuites>
