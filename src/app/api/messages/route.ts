@@ -301,23 +301,26 @@ export async function POST(request: NextRequest) {
     // Trigger webhook for message sent
     await createMessageWebhook(message.toJSON(), 'sent');
 
-    // Send role-aware push notification to recipient (deduped by message ID)
-    const senderName = `${(message.sender as any).firstName} ${(message.sender as any).lastName}`.trim();
-    try {
-      await notifyMessageToRecipient({
-        recipientId: validatedData.recipientId,
-        recipientRole,
-        senderName: senderName || 'A user',
-        senderRole: sessionRole,
-        messagePreview: validatedData.content,
-        messageId: String((message as any)._id),
-        conversationWithUserId: session.user.id,
-        clientId: sessionRole === UserRole.CLIENT ? session.user.id : undefined,
-        clientName: sessionRole === UserRole.CLIENT ? (senderName || 'Client') : undefined,
-      });
-    } catch (notifError) {
-      console.error('Failed to send push notification:', notifError);
-      // Don't fail message delivery if push send fails
+    // Send push notification only when CLIENT sends message to staff
+    // Staff (dietitian/health_counselor/admin) don't need notifications for messages they send
+    if (sessionRole === UserRole.CLIENT) {
+      const senderName = `${(message.sender as any).firstName} ${(message.sender as any).lastName}`.trim();
+      try {
+        await notifyMessageToRecipient({
+          recipientId: validatedData.recipientId,
+          recipientRole,
+          senderName: senderName || 'A user',
+          senderRole: sessionRole,
+          messagePreview: validatedData.content,
+          messageId: String((message as any)._id),
+          conversationWithUserId: session.user.id,
+          clientId: session.user.id,
+          clientName: senderName || 'Client',
+        });
+      } catch (notifError) {
+        console.error('Failed to send push notification:', notifError);
+        // Don't fail message delivery if push send fails
+      }
     }
 
     // Log history for message sent (for both sender and recipient)

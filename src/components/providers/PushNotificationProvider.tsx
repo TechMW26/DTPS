@@ -412,6 +412,13 @@ export function PushNotificationProvider({
                 if (!message) return;
 
                 const senderId = String(message?.sender?._id || payload?.senderId || '').trim();
+
+                // Skip showing banner if current user is the sender (they already know they sent it)
+                const currentUserId = String(session?.user?.id || '').trim();
+                if (senderId && currentUserId && senderId === currentUserId) {
+                    return;
+                }
+
                 const senderName = `${String(message?.sender?.firstName || '').trim()} ${String(message?.sender?.lastName || '').trim()}`.trim()
                     || String(payload?.senderName || 'New message');
 
@@ -452,7 +459,7 @@ export function PushNotificationProvider({
         return () => {
             unsubscribe();
         };
-    }, [resolveTargetPath, shouldShowInAppBanner, showPushBanner, status]);
+    }, [resolveTargetPath, session?.user?.id, shouldShowInAppBanner, showPushBanner, status]);
 
     // One-time preview for the in-app notification banner.
     useEffect(() => {
