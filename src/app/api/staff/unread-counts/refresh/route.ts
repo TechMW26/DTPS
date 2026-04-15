@@ -19,13 +19,18 @@ export async function POST(request: NextRequest) {
 
     const userId = session.user.id;
 
-    // Set timeout for DB connection
-    const dbConnectPromise = connectDB();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('DB connection timeout')), 5000)
-    );
+    // Connect to DB with proper timeout handling
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const dbConnectPromise = connectDB();
+      const timeoutPromise = new Promise<void>((resolve, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('DB connection timeout')), 5000);
+      });
 
-    await Promise.race([dbConnectPromise, timeoutPromise]);
+      await Promise.race([dbConnectPromise, timeoutPromise]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
 
     // Get fresh message counts
     const messageCount = await Message.countDocuments({

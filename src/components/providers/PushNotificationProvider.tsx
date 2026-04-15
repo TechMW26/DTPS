@@ -123,6 +123,10 @@ export function PushNotificationProvider({
                 return '✅';
             case 'call':
                 return '📞';
+            case 'update':
+            case 'custom':
+            case 'client_update':
+                return '📝';
             default:
                 return '🔔';
         }
@@ -214,6 +218,16 @@ export function PushNotificationProvider({
 
         if (normalizedType === 'payment' || normalizedType === 'payment_link' || normalizedType === 'payment_link_created') {
             return userRole === 'client' ? '/user/payments' : '/billing';
+        }
+
+        // Handle client data update notifications (basic_details, medical, lifestyle, recall, measurements, weight)
+        if (normalizedType === 'custom' || normalizedType === 'update' || normalizedType === 'client_update' || data.actionType === 'update') {
+            const clientId = String(data.clientId || data.client_id || '').trim();
+            if (clientId) {
+                if (userRole === 'dietitian') return `/dietician/clients/${clientId}`;
+                if (userRole === 'health_counselor') return `/health-counselor/clients/${clientId}`;
+                if (userRole === 'admin') return `/admin/clients/${clientId}`;
+            }
         }
 
         return getDefaultTargetForRole(userRole);
@@ -460,6 +474,54 @@ export function PushNotificationProvider({
             unsubscribe();
         };
     }, [resolveTargetPath, session?.user?.id, shouldShowInAppBanner, showPushBanner, status]);
+
+    // Listen for CLIENT_UPDATED socket events to show real-time banners for staff
+    // When client updates weight, measurements, medical info, lifestyle, or recall forms
+    useEffect(() => {
+        if (status !== 'authenticated') return;
+        if (!shouldShowInAppBanner) return;
+
+        const unsubscribe = socketClient.on(SOCKET_EVENTS.CLIENT_UPDATED, (payload: any) => {
+            try {
+                const clientId = String(payload?.clientId || '').trim();
+                const clientName = String(payload?.clientName || 'A client').trim();
+                const updateType = String(payload?.updateType || 'data').trim();
+                const actionLabel = String(payload?.actionLabel || 'Client Data Updated').trim();
+
+                if (!clientId) return;
+
+                const clickAction = resolveTargetPath({
+                    data: {
+                        type: 'custom',
+                        actionType: 'update',
+                        clientId,
+                    },
+                });
+
+                showPushBanner({
+                    notification: {
+                        title: actionLabel,
+                        body: `${clientName} has updated their ${updateType.replace(/_/g, ' ')}.`,
+                    },
+                    data: {
+                        type: 'custom',
+                        actionType: 'update',
+                        updateType,
+                        clientId,
+                        clientName,
+                        clickAction,
+                        timestamp: payload?.timestamp || new Date().toISOString(),
+                    },
+                });
+            } catch (error) {
+                console.error('[PushNotificationProvider] Failed to show client update banner:', error);
+            }
+        });
+
+        return () => {
+            unsubscribe();
+        };
+    }, [resolveTargetPath, shouldShowInAppBanner, showPushBanner, status]);
 
     // One-time preview for the in-app notification banner.
     useEffect(() => {

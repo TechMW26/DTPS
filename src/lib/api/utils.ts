@@ -44,19 +44,19 @@ export function errorResponse(
   details?: unknown
 ): NextResponse<APIError> {
   console.error(`API Error [${status}]: ${message}`, details || '');
-  
+
   const response: APIError = {
     error: message,
   };
-  
+
   if (code) {
     response.code = code;
   }
-  
+
   if (details && process.env.NODE_ENV === 'development') {
     response.details = details;
   }
-  
+
   return NextResponse.json(response, { status });
 }
 
@@ -78,6 +78,8 @@ export async function withAPIHandler<T>(
 ): Promise<NextResponse> {
   const { requireAuth = true, requireAdmin = false, timeoutMs = 8000 } = options;
 
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
   try {
     // Run auth check and DB connection in PARALLEL (instead of sequential)
     const authPromise = requireAuth
@@ -85,15 +87,16 @@ export async function withAPIHandler<T>(
       : Promise.resolve(null);
 
     const dbPromise = connectDB();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Database connection timeout')), timeoutMs)
-    );
+    const timeoutPromise = new Promise<void>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Database connection timeout')), timeoutMs);
+    });
 
     // Wait for both auth + DB concurrently
     const [session] = await Promise.all([
       authPromise,
       Promise.race([dbPromise, timeoutPromise]),
     ]);
+    if (timeoutId) clearTimeout(timeoutId);
 
     // Validate auth result
     if (requireAuth) {
@@ -125,6 +128,7 @@ export async function withAPIHandler<T>(
       },
     });
   } catch (error: any) {
+    if (timeoutId) clearTimeout(timeoutId);
     // Handle specific error types
     if (error.message?.includes('timeout')) {
       return errorResponse('Request timeout', 504, 'TIMEOUT');

@@ -323,6 +323,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+
+    
     // Log history for message sent (for both sender and recipient)
     await logHistoryServer({
       userId: validatedData.recipientId,

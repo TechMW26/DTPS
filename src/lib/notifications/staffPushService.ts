@@ -3,6 +3,8 @@ import User from '@/lib/db/models/User';
 import Notification from '@/lib/db/models/Notification';
 import NotificationDeliveryAudit from '@/lib/db/models/NotificationDeliveryAudit';
 import { sendNotificationToUser } from '@/lib/firebase';
+import { socketManager } from '@/lib/realtime/socket-manager';
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 import { UserRole } from '@/types';
 
 export type ClientUpdateType =
@@ -567,7 +569,20 @@ export async function notifyClientDataUpdate(params: {
     const tsLabel = formatTimestamp(timestamp);
     const dedupeBucket = eventKey || `${updateType}:${clientId}:${Math.floor(timestamp.getTime() / 60000)}`;
 
+    // Emit socket event to staff so they see real-time banner (works even without FCM token)
+    const socketPayload = {
+        clientId,
+        clientName: assignments.clientName,
+        updateType,
+        actionLabel,
+        timestamp: timestamp.toISOString(),
+    };
+
     if (assignments.primaryDietitianId) {
+        // Send socket event for real-time banner
+        socketManager.sendToUser(assignments.primaryDietitianId, SOCKET_EVENTS.CLIENT_UPDATED, socketPayload);
+
+        // Also send FCM push notification
         await sendStaffPushNotification({
             recipientUserId: assignments.primaryDietitianId,
             recipientRole: UserRole.DIETITIAN,
@@ -586,6 +601,10 @@ export async function notifyClientDataUpdate(params: {
     }
 
     if (includeHealthCounselor && assignments.primaryHealthCounselorId) {
+        // Send socket event for real-time banner
+        socketManager.sendToUser(assignments.primaryHealthCounselorId, SOCKET_EVENTS.CLIENT_UPDATED, socketPayload);
+
+        // Also send FCM push notification
         await sendStaffPushNotification({
             recipientUserId: assignments.primaryHealthCounselorId,
             recipientRole: UserRole.HEALTH_COUNSELOR,
