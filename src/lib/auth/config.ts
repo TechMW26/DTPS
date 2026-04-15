@@ -379,31 +379,33 @@ export const authOptions: NextAuthOptions = {
               return null as any;
             }
           } else {
-            // Cache miss — check DB and cache result (with timeout)
+            // Cache miss — check DB ONLY if connection already exists
+            // This avoids blocking session callbacks on cold DB connections
             try {
-              await connectDB();
-
-              // Add timeout to prevent connection pool exhaustion
-              const userStatusPromise = User.findById(userId).select('status').lean();
+              // Use much shorter timeout (1.5s) and fail gracefully
               const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('User status check timeout')), 5000)
+                setTimeout(() => reject(new Error('User status check timeout')), 1500)
               );
 
-              const userDoc = await Promise.race([userStatusPromise, timeoutPromise]) as any;
-              const user = userDoc as { status?: string } | null;
-              if (user) {
-                setCachedUserStatus(userId, user.status || 'active');
-                if (user.status !== 'active') {
-                  return null as any;
+              // Only attempt DB check if mongoose is already connected (readyState === 1)
+              const mongoose = await import('mongoose');
+              if (mongoose.default.connection.readyState === 1) {
+                const userStatusPromise = User.findById(userId).select('status').lean();
+                const userDoc = await Promise.race([userStatusPromise, timeoutPromise]) as any;
+                const user = userDoc as { status?: string } | null;
+                if (user) {
+                  setCachedUserStatus(userId, user.status || 'active');
+                  if (user.status !== 'active') {
+                    return null as any;
+                  }
                 }
-              }
-            } catch (error) {
-              console.error('Error checking user status in session:', error);
-              // Cache default status on error to prevent repeated DB hits
-              if (userId) {
+              } else {
+                // DB not connected - assume active and cache it
                 setCachedUserStatus(userId, 'active');
               }
-              // Don't fail the session on error - just continue
+            } catch (error) {
+              // Silently cache 'active' on any error to prevent repeated attempts
+              setCachedUserStatus(userId, 'active');
             }
           }
         }

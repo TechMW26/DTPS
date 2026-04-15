@@ -48,68 +48,65 @@ export async function GET() {
 
     // Generate cache key based on user ID
     const cacheKey = `client-profile:${session.user.id}`;
+    const statusCacheKey = `client-status:${session.user.id}`;
 
-    const userData = await withCache(
-      cacheKey,
-      async () => {
-        const user = await User.findById(session.user.id)
-          .select(
-            "name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg firstWeight targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource assignedDietitian bmi bmiCategory height weight clientStatus"
-          )
-          .populate('assignedDietitian', 'firstName lastName email phone')
-          .lean() as any;
+    // OPTIMIZATION: Run user data AND status check in PARALLEL
+    const [userData, statusInfo] = await Promise.all([
+      withCache(
+        cacheKey,
+        async () => {
+          const user = await User.findById(session.user.id)
+            .select(
+              "name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg firstWeight targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource assignedDietitian bmi bmiCategory height weight clientStatus"
+            )
+            .populate('assignedDietitian', 'firstName lastName email phone')
+            .lean() as any;
 
-        if (!user) {
-          return null;
-        }
+          if (!user) {
+            return null;
+          }
 
-        // Calculate BMI if not stored but weight and height available
-        let bmi = user.bmi;
-        let bmiCategory = user.bmiCategory;
+          // Calculate BMI if not stored but weight and height available
+          let bmi = user.bmi;
+          let bmiCategory = user.bmiCategory;
 
-        if (!bmi && user.weightKg && user.heightCm) {
-          const weightKg = parseFloat(user.weightKg);
-          const heightCm = parseFloat(user.heightCm);
-          if (weightKg > 0 && heightCm > 0) {
-            const heightM = heightCm / 100;
-            const bmiValue = weightKg / (heightM * heightM);
-            bmi = bmiValue.toFixed(1);
+          if (!bmi && user.weightKg && user.heightCm) {
+            const weightKg = parseFloat(user.weightKg);
+            const heightCm = parseFloat(user.heightCm);
+            if (weightKg > 0 && heightCm > 0) {
+              const heightM = heightCm / 100;
+              const bmiValue = weightKg / (heightM * heightM);
+              bmi = bmiValue.toFixed(1);
 
-            if (bmiValue < 18.5) {
-              bmiCategory = 'Underweight';
-            } else if (bmiValue < 25) {
-              bmiCategory = 'Normal';
-            } else if (bmiValue < 30) {
-              bmiCategory = 'Overweight';
-            } else {
-              bmiCategory = 'Obese';
+              if (bmiValue < 18.5) {
+                bmiCategory = 'Underweight';
+              } else if (bmiValue < 25) {
+                bmiCategory = 'Normal';
+              } else if (bmiValue < 30) {
+                bmiCategory = 'Overweight';
+              } else {
+                bmiCategory = 'Obese';
+              }
             }
           }
-        }
 
-        return {
-          ...user,
-          bmi,
-          bmiCategory
-        };
-      },
-      { ttl: 120000, tags: ['client-profile', `client-profile:${session.user.id}`] } // 2 minutes TTL
-    );
+          return {
+            ...user,
+            bmi,
+            bmiCategory
+          };
+        },
+        { ttl: 120000, tags: ['client-profile', `client-profile:${session.user.id}`] } // 2 minutes TTL
+      ),
+      withCache(
+        statusCacheKey,
+        () => getClientStatusInfo(session.user.id),
+        { ttl: 120000, tags: ['client-profile', `client-profile:${session.user.id}`] }
+      ).catch(() => null) // Fail silently for status
+    ]);
 
     if (!userData) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    // Get computed client status based on meal plan validity (cached)
-    let statusInfo = null;
-    try {
-      statusInfo = await withCache(
-        `client-status:${session.user.id}`,
-        () => getClientStatusInfo(session.user.id),
-        { ttl: 120000, tags: ['client-profile', `client-profile:${session.user.id}`] }
-      );
-    } catch (statusError) {
-      console.error("Error getting client status:", statusError);
     }
 
     return NextResponse.json({

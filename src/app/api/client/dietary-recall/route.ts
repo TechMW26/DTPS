@@ -45,14 +45,17 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    // OPTIMIZATION: Run auth + DB + body parsing in PARALLEL
+    const [session, , data] = await Promise.all([
+      getServerSession(authOptions),
+      dbConnect(),
+      request.json()
+    ]);
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await dbConnect();
-    const data = await request.json();
     const mealsInput = Array.isArray(data.meals) ? data.meals : null;
 
     if (!mealsInput) {
@@ -80,67 +83,52 @@ export async function POST(request: Request) {
     const date = data.date ? new Date(data.date) : new Date();
     date.setHours(0, 0, 0, 0);
 
-    // Check if a recall already exists for this date
-    const existingRecall = await withCache(
-      `client:dietary-recall:${JSON.stringify({
+    // OPTIMIZED: Use findOneAndUpdate with upsert for atomic operation
+    const dietaryRecall = await DietaryRecall.findOneAndUpdate(
+      {
         userId: session.user.id,
         date: {
           $gte: date,
           $lt: new Date(date.getTime() + 24 * 60 * 60 * 1000)
         }
-      })}`,
-      async () => await DietaryRecall.findOne({
-        userId: session.user.id,
-        date: {
-          $gte: date,
-          $lt: new Date(date.getTime() + 24 * 60 * 60 * 1000)
-        }
-      }),
-      { ttl: 120000, tags: ['client'] }
+      },
+      {
+        $set: { meals: normalizedMeals },
+        $setOnInsert: { userId: session.user.id, date }
+      },
+      { upsert: true, new: true }
     );
 
-    let dietaryRecall;
+    // FIRE-AND-FORGET: All side effects in background
+    Promise.resolve().then(() => {
+      // Clear cache
+      clearCacheByTag('client');
 
-    if (existingRecall) {
-      // Update existing recall
-      existingRecall.meals = normalizedMeals as any;
-      dietaryRecall = await existingRecall.save();
-    } else {
-      // Create new recall
-      dietaryRecall = await DietaryRecall.create({
+      // Log activity
+      logActivity({
         userId: session.user.id,
-        date,
-        meals: normalizedMeals
-      });
-    }
+        userRole: 'client',
+        userName: session.user.name || '',
+        userEmail: session.user.email || '',
+        action: 'save_dietary_recall',
+        actionType: 'create',
+        category: 'fitness',
+        description: `Recorded dietary recall for ${date.toDateString()}`,
+        targetUserId: session.user.id,
+        targetUserName: session.user.name || '',
+        details: {
+          date: date.toISOString(),
+          mealsCount: normalizedMeals.length
+        }
+      }).catch(() => { });
 
-    // Log activity
-    logActivity({
-      userId: session.user.id,
-      userRole: 'client',
-      userName: session.user.name || '',
-      userEmail: session.user.email || '',
-      action: existingRecall ? 'update_dietary_recall' : 'create_dietary_recall',
-      actionType: existingRecall ? 'update' : 'create',
-      category: 'fitness',
-      description: `${existingRecall ? 'Updated' : 'Recorded'} dietary recall for ${date.toDateString()}`,
-      targetUserId: session.user.id,
-      targetUserName: session.user.name || '',
-      details: {
-        date: date.toISOString(),
-        mealsCount: normalizedMeals.length
-      }
-    }).catch(console.error);
-
-    try {
-      await notifyClientDataUpdate({
+      // Notify
+      notifyClientDataUpdate({
         clientId: session.user.id,
         updateType: 'recall_form',
         eventKey: `recall:${date.toISOString()}`,
-      });
-    } catch (notificationError) {
-      console.error('Error sending dietary-recall update notification:', notificationError);
-    }
+      }).catch(() => { });
+    });
 
     return NextResponse.json({ success: true, data: dietaryRecall });
   } catch (error) {

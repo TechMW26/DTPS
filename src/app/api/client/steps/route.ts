@@ -83,13 +83,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
+        // OPTIMIZATION: Run auth + DB + body parsing in PARALLEL
+        const [session, , body] = await Promise.all([
+            getServerSession(authOptions),
+            connectDB(),
+            request.json()
+        ]);
+
         if (!session?.user?.id) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        await connectDB();
-        const { steps, date } = await request.json();
+        const { steps, date } = body;
 
         const targetDate = date ? parseISO(date) : new Date();
         const dayStart = startOfDay(targetDate);
@@ -99,16 +104,21 @@ export async function POST(request: NextRequest) {
         const distance = Number((steps / 1315).toFixed(2)); // ~1315 steps per km
         const calories = Math.round(steps * 0.04); // ~0.04 calories per step
 
+        // Pre-generate ObjectId for immediate response
+        const entryId = new mongoose.Types.ObjectId();
+        const createdAt = new Date();
+
         const entry = {
-            _id: new mongoose.Types.ObjectId(),
+            _id: entryId,
             steps: Number(steps) || 0,
             distance,
             calories,
-            time: format(new Date(), 'h:mm a'),
-            createdAt: new Date()
+            time: format(createdAt, 'h:mm a'),
+            createdAt
         };
 
-        const journal = await JournalTracking.findOneAndUpdate(
+        // FIRE-AND-FORGET: DB update happens in background
+        JournalTracking.findOneAndUpdate(
             {
                 client: session.user.id,
                 date: { $gte: dayStart, $lt: dayEnd }
@@ -131,9 +141,9 @@ export async function POST(request: NextRequest) {
                 }
             },
             { upsert: true, new: true }
-        );
+        ).catch(err => console.error('Steps DB update failed:', err));
 
-        // Log activity
+        // FIRE-AND-FORGET: Log activity in background
         logActivity({
             userId: session.user.id,
             userRole: 'client',
@@ -146,11 +156,12 @@ export async function POST(request: NextRequest) {
             details: { steps, distance, calories, date: format(targetDate, 'yyyy-MM-dd') },
         }).catch(() => { });
 
+        // Return immediately with pending entry
         return NextResponse.json({
             success: true,
             entry: {
                 ...entry,
-                _id: entry._id.toString()
+                _id: entryId.toString()
             }
         });
     } catch (error) {
