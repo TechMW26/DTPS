@@ -347,6 +347,14 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      // Ensure session and session.user exist before modification
+      if (!session) {
+        return { user: {}, expires: new Date(0).toISOString() } as any;
+      }
+      if (!session.user) {
+        session.user = {} as any;
+      }
+
       if (token) {
         // Ensure user.id is set from either sub or from the token directly
         session.user.id = token.sub || (token as any).id || '';
@@ -376,34 +384,45 @@ export const authOptions: NextAuthOptions = {
           if (cachedStatus !== null) {
             // Cache hit — check status without DB call
             if (cachedStatus !== 'active') {
-              return null as any;
+              // Return empty session to trigger logout instead of null
+              return { user: {}, expires: new Date(0).toISOString() } as any;
             }
           } else {
             // Cache miss — check DB ONLY if connection already exists
             // This avoids blocking session callbacks on cold DB connections
             try {
-              // Use much shorter timeout (1.5s) and fail gracefully
-              const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('User status check timeout')), 1500)
-              );
-
               // Only attempt DB check if mongoose is already connected (readyState === 1)
               const mongoose = await import('mongoose');
               if (mongoose.default.connection.readyState === 1) {
-                const userStatusPromise = User.findById(userId).select('status').lean();
-                const userDoc = await Promise.race([userStatusPromise, timeoutPromise]) as any;
-                const user = userDoc as { status?: string } | null;
-                if (user) {
-                  setCachedUserStatus(userId, user.status || 'active');
-                  if (user.status !== 'active') {
-                    return null as any;
+                // Use AbortController for clean timeout handling (no unhandled rejections)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+                try {
+                  const userDoc = await User.findById(userId).select('status').lean();
+                  clearTimeout(timeoutId);
+
+                  const user = userDoc as { status?: string } | null;
+                  if (user) {
+                    setCachedUserStatus(userId, user.status || 'active');
+                    if (user.status !== 'active') {
+                      // Return empty session to trigger logout instead of null
+                      return { user: {}, expires: new Date(0).toISOString() } as any;
+                    }
+                  } else {
+                    // User not found in DB - cache as active to prevent repeated lookups
+                    setCachedUserStatus(userId, 'active');
                   }
+                } catch {
+                  clearTimeout(timeoutId);
+                  // Query failed - cache as active
+                  setCachedUserStatus(userId, 'active');
                 }
               } else {
                 // DB not connected - assume active and cache it
                 setCachedUserStatus(userId, 'active');
               }
-            } catch (error) {
+            } catch {
               // Silently cache 'active' on any error to prevent repeated attempts
               setCachedUserStatus(userId, 'active');
             }
