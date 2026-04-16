@@ -52,7 +52,7 @@ const lifestyleInfoSchema = new Schema<ILifestyleInfo>({
   idealWeightKg: { type: String },
   bmi: { type: String },
   // Food preferences
-  foodPreference: { type: String, enum: ['veg', 'non-veg', 'eggetarian', 'vegan', ''] },
+  foodPreference: { type: String },
   preferredCuisine: [{ type: String }],
   allergiesFood: [{ type: String }],
   fastDays: [{ type: String }],

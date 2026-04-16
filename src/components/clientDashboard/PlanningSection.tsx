@@ -1959,8 +1959,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
         if (data.success) {
           toast.success(data.message);
-          setIsOpen(false);
+          // Don't auto-close dialog - let user close it manually
+          // setIsOpen(false);
           setSelectedDates([]);
+          setShowConfirmation(false);
+          // Refresh freeze info to show updated state
+          await fetchFreezeInfo();
           // Emit event to trigger automatic refresh across all components
           emitDataChange(DataEventTypes.MEAL_PLAN_FROZEN, { planId: plan._id });
           onFreeze(); // Also call callback for backward compatibility
@@ -2000,8 +2004,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
         if (data.success) {
           toast.success(data.message);
-          setIsOpen(false);
+          // Don't auto-close dialog - let user close it manually
+          // setIsOpen(false);
           setSelectedUnfreezeDates([]);
+          // Refresh freeze info to show updated state
+          await fetchFreezeInfo();
           // Emit event to trigger automatic refresh across all components
           emitDataChange(DataEventTypes.MEAL_PLAN_UNFROZEN, { planId: plan._id });
           onFreeze(); // Also call callback for backward compatibility
