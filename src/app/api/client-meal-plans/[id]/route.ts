@@ -46,9 +46,14 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await connectDB();
-
-    const { id } = await context.params;
+    const [session, , { id }] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      context.params,
+    ]);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const mealPlan = await withCache(
       `client-meal-plans:id:${JSON.stringify(id)}`,
@@ -268,9 +273,14 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await connectDB();
-
-    const { id } = await context.params;
+    const [session, , { id }] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      context.params,
+    ]);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     // First, get the meal plan to know the clientId and duration before deleting
     const mealPlan = await ClientMealPlan.findById(id);

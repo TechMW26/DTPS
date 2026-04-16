@@ -47,6 +47,7 @@ import './models/Blog';
 import './models/Transformation';
 import './models/DailyTracking';
 import './models/ActivityLog';
+import './models/ClientNote';
 
 // Ecommerce models
 import './models/EcommerceBlog';

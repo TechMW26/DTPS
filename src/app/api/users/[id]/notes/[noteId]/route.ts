@@ -2,78 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
+import ClientNote from '@/lib/db/models/ClientNote';
 import mongoose from 'mongoose';
 import { logHistoryServer } from '@/lib/server/history';
-
-// Topic types for notes
-const NOTE_TOPIC_TYPES = [
-  'General',
-  'Diet Plan',
-  'Medical',
-  'Progress',
-  'Consultation',
-  'Renewal',
-  'Follow-up',
-  'Feedback',
-  'Other'
-] as const;
-
-// Get the ClientNote model
-const getClientNoteModel = () => {
-  // Delete cached model to ensure schema updates are applied
-  if (mongoose.models.ClientNote) {
-    delete mongoose.models.ClientNote;
-  }
-  
-  const noteSchema = new mongoose.Schema({
-    client: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-      index: true
-    },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
-    },
-    topicType: {
-      type: String,
-      enum: NOTE_TOPIC_TYPES,
-      default: 'General'
-    },
-    date: {
-      type: Date,
-      default: Date.now
-    },
-    content: {
-      type: String,
-      required: true
-    },
-    showToClient: {
-      type: Boolean,
-      default: false
-    },
-    attachments: [{
-      type: {
-        type: String,
-        enum: ['image', 'video', 'audio'],
-        required: true
-      },
-      url: {
-        type: String,
-        required: true
-      },
-      filename: String,
-      mimeType: String,
-      size: Number
-    }]
-  }, {
-    timestamps: true
-  });
-
-  return mongoose.model('ClientNote', noteSchema);
-};
 
 // DELETE /api/users/[id]/notes/[noteId] - Delete a note
 export async function DELETE(
@@ -81,7 +12,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; noteId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, , { id, noteId }] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      params,
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -93,10 +28,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Access denied. Only admin, dietitian, and health counselor can delete notes.' }, { status: 403 });
     }
 
-    const { id, noteId } = await params;
-    await connectDB();
-
-    const ClientNote = getClientNoteModel();
     const clientObjectId = new mongoose.Types.ObjectId(id);
     const noteObjectId = new mongoose.Types.ObjectId(noteId);
 
@@ -105,7 +36,7 @@ export async function DELETE(
       _id: noteObjectId,
       client: clientObjectId
     };
-    
+
     // Both health_counselor and dietitian can only delete notes they created
     if (userRole === 'health_counselor' || userRole === 'dietitian') {
       deleteQuery.createdBy = new mongoose.Types.ObjectId(session.user.id);
@@ -150,7 +81,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; noteId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, body, { id, noteId }] = await Promise.all([
+      getServerSession(authOptions),
+      request.json(),
+      params,
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -162,12 +97,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Access denied. Only admin, dietitian, and health counselor can update notes.' }, { status: 403 });
     }
 
-    const { id, noteId } = await params;
-    const body = await request.json();
-
     await connectDB();
 
-    const ClientNote = getClientNoteModel();
     const clientObjectId = new mongoose.Types.ObjectId(id);
     const noteObjectId = new mongoose.Types.ObjectId(noteId);
 

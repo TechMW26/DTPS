@@ -261,6 +261,40 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   const [viewingPlan, setViewingPlan] = useState<any | null>(null);
   const [planKey, setPlanKey] = useState(0); // Force re-mount of DietPlanDashboard
 
+  // Freeze dialog state - lifted to parent to survive inner function re-creation
+  const [freezeDialogPlanId, setFreezeDialogPlanId] = useState<string | null>(null);
+
+  // Freeze dialog internal state - persisted in ref to survive re-renders
+  const freezeDialogStateRef = useRef<{
+    selectedDates: string[];
+    selectedUnfreezeDates: string[];
+    activeTab: 'freeze' | 'unfreeze';
+    freezeReason: string;
+    showConfirmation: boolean;
+    dataChanged: boolean;
+    freezeInfo: {
+      allowedFreezeDays: number;
+      totalFreezeCount: number;
+      remainingFreezeDays: number;
+      freezedDays: { date: string; createdAt: string; addedDate?: string; planId?: string; planName?: string; reason?: string; frozenBy?: string }[];
+      durationDays: number;
+      canFreeze: boolean;
+      isSharedFreeze?: boolean;
+      linkedPlanCount?: number;
+      purchaseId?: string;
+      startDate?: string;
+      endDate?: string;
+    } | null;
+  }>({
+    selectedDates: [],
+    selectedUnfreezeDates: [],
+    activeTab: 'freeze',
+    freezeReason: '',
+    showConfirmation: false,
+    dataChanged: false,
+    freezeInfo: null,
+  });
+
   // Payment details visibility state - tracks which plan's payment info is shown
   const [showPaymentForPlanId, setShowPaymentForPlanId] = useState<string | null>(null);
 
@@ -1822,16 +1856,29 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   }
 
   // Freeze Plan Dialog Component
+  // Note: isOpen state is lifted to parent (freezeDialogPlanId) to survive inner function re-creation on parent re-renders
+  // Internal state is also persisted in parent ref (freezeDialogStateRef) to survive component re-mounts
   function FreezePlanDialog({ plan, onFreeze, showAsText = false, showAsButton = false }: { plan: any; onFreeze: () => void; showAsText?: boolean; showAsButton?: boolean }) {
-    const [isOpen, setIsOpen] = useState(false);
+    // Use parent's state instead of local state to survive re-renders
+    const isOpen = freezeDialogPlanId === plan._id;
+    const setIsOpen = (open: boolean) => {
+      if (open) {
+        setFreezeDialogPlanId(plan._id);
+      } else {
+        setFreezeDialogPlanId(null);
+      }
+    };
+
+    // Initialize local states from parent's ref to survive component re-creation
+    const stateRef = freezeDialogStateRef;
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
-    const [selectedDates, setSelectedDates] = useState<string[]>([]);
-    const [selectedUnfreezeDates, setSelectedUnfreezeDates] = useState<string[]>([]);
-    const [activeTab, setActiveTab] = useState<'freeze' | 'unfreeze'>('freeze');
-    const [freezeReason, setFreezeReason] = useState('');
-    const [showConfirmation, setShowConfirmation] = useState(false);
-    const [freezeInfo, setFreezeInfo] = useState<{
+    const [selectedDates, setSelectedDatesLocal] = useState<string[]>(stateRef.current.selectedDates);
+    const [selectedUnfreezeDates, setSelectedUnfreezeDatesLocal] = useState<string[]>(stateRef.current.selectedUnfreezeDates);
+    const [activeTab, setActiveTabLocal] = useState<'freeze' | 'unfreeze'>(stateRef.current.activeTab);
+    const [freezeReason, setFreezeReasonLocal] = useState(stateRef.current.freezeReason);
+    const [showConfirmation, setShowConfirmationLocal] = useState(stateRef.current.showConfirmation);
+    const [freezeInfo, setFreezeInfoLocal] = useState<{
       allowedFreezeDays: number;
       totalFreezeCount: number;
       remainingFreezeDays: number;
@@ -1841,12 +1888,74 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       isSharedFreeze?: boolean;
       linkedPlanCount?: number;
       purchaseId?: string;
-    } | null>(null);
+      startDate?: string;
+      endDate?: string;
+    } | null>(stateRef.current.freezeInfo);
 
-    // Calculate plan duration
-    const startDate = new Date(plan.startDate);
-    const endDate = new Date(plan.endDate);
-    const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    // Wrapper functions that update both local state and parent ref
+    const setSelectedDates = (value: string[] | ((prev: string[]) => string[])) => {
+      setSelectedDatesLocal(prev => {
+        const newValue = typeof value === 'function' ? value(prev) : value;
+        stateRef.current.selectedDates = newValue;
+        return newValue;
+      });
+    };
+    const setSelectedUnfreezeDates = (value: string[] | ((prev: string[]) => string[])) => {
+      setSelectedUnfreezeDatesLocal(prev => {
+        const newValue = typeof value === 'function' ? value(prev) : value;
+        stateRef.current.selectedUnfreezeDates = newValue;
+        return newValue;
+      });
+    };
+    const setActiveTab = (value: 'freeze' | 'unfreeze') => {
+      stateRef.current.activeTab = value;
+      setActiveTabLocal(value);
+    };
+    const setFreezeReason = (value: string) => {
+      stateRef.current.freezeReason = value;
+      setFreezeReasonLocal(value);
+    };
+    const setShowConfirmation = (value: boolean) => {
+      stateRef.current.showConfirmation = value;
+      setShowConfirmationLocal(value);
+    };
+    const setFreezeInfo = (value: typeof stateRef.current.freezeInfo) => {
+      stateRef.current.freezeInfo = value;
+      setFreezeInfoLocal(value);
+    };
+
+    // Close dialog and emit data change event if data was modified
+    const closeDialog = useCallback(() => {
+      setIsOpen(false);
+      if (stateRef.current.dataChanged) {
+        // Emit event after closing to trigger refresh
+        emitDataChange(DataEventTypes.MEAL_PLAN_FROZEN, { planId: plan._id });
+        stateRef.current.dataChanged = false;
+      }
+      // Reset state ref for next open
+      stateRef.current = {
+        selectedDates: [],
+        selectedUnfreezeDates: [],
+        activeTab: 'freeze',
+        freezeReason: '',
+        showConfirmation: false,
+        dataChanged: false,
+        freezeInfo: null,
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [plan._id]);
+
+    // Calculate plan duration - use freezeInfo when available for updated dates after freezing
+    // The display shows: startDate to (extended) endDate with the TOTAL calendar days
+    // Active days = durationDays - totalFreezeCount (frozen days)
+    const planStartDate = freezeInfo?.startDate ? new Date(freezeInfo.startDate) : new Date(plan.startDate);
+    const planEndDate = freezeInfo?.endDate ? new Date(freezeInfo.endDate) : new Date(plan.endDate);
+    // Duration from API (freezeInfo) already accounts for extended end date
+    const displayDurationDays = freezeInfo?.durationDays || Math.ceil((planEndDate.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    // For backward compatibility with existing code that uses startDate/endDate
+    const startDate = planStartDate;
+    const endDate = planEndDate;
+    const durationDays = displayDurationDays;
 
     // Fetch freeze info when dialog opens
     const fetchFreezeInfo = async () => {
@@ -1963,15 +2072,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
         if (data.success) {
           toast.success(data.message);
-          // Don't auto-close dialog - let user close it manually
-          // setIsOpen(false);
+          // Mark data as changed and close dialog immediately
           setSelectedDates([]);
           setShowConfirmation(false);
-          // Refresh freeze info to show updated state
-          await fetchFreezeInfo();
-          // Emit event to trigger automatic refresh across all components
-          emitDataChange(DataEventTypes.MEAL_PLAN_FROZEN, { planId: plan._id });
-          onFreeze(); // Also call callback for backward compatibility
+          stateRef.current.dataChanged = true;
+          closeDialog();
         } else {
           toast.error(data.error || 'Failed to freeze dates');
         }
@@ -2008,14 +2113,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
         if (data.success) {
           toast.success(data.message);
-          // Don't auto-close dialog - let user close it manually
-          // setIsOpen(false);
+          // Mark data as changed and close dialog immediately
           setSelectedUnfreezeDates([]);
-          // Refresh freeze info to show updated state
-          await fetchFreezeInfo();
-          // Emit event to trigger automatic refresh across all components
-          emitDataChange(DataEventTypes.MEAL_PLAN_UNFROZEN, { planId: plan._id });
-          onFreeze(); // Also call callback for backward compatibility
+          stateRef.current.dataChanged = true;
+          closeDialog();
         } else {
           toast.error(data.error || 'Failed to unfreeze dates');
         }
@@ -2093,7 +2194,22 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
             </Button>
           )}
         </DialogTrigger>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-lg max-h-[90vh] overflow-y-auto"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          showCloseButton={false}
+        >
+          {/* Custom Close Button */}
+          <button
+            type="button"
+            onClick={closeDialog}
+            className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          >
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </button>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Snowflake className="h-5 w-5 text-blue-500" />
@@ -2393,7 +2509,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       <Button
                         variant="outline"
                         className="flex-1"
-                        onClick={() => setIsOpen(false)}
+                        onClick={closeDialog}
                       >
                         Cancel
                       </Button>
@@ -2506,7 +2622,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                             <Button
                               variant="outline"
                               className="flex-1"
-                              onClick={() => setIsOpen(false)}
+                              onClick={closeDialog}
                             >
                               Cancel
                             </Button>

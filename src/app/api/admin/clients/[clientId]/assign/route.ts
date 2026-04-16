@@ -16,9 +16,12 @@ export async function PATCH(
   { params }: { params: Promise<{ clientId: string }> }
 ) {
   try {
-    const { clientId } = await params;
-
-    const session = await getServerSession(authOptions);
+    const [session, , { clientId }, body] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      params,
+      request.json(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -33,7 +36,6 @@ export async function PATCH(
       }, { status: 403 });
     }
 
-    const body = await request.json();
     const {
       dietitianId,
       healthCounselorId,
@@ -49,13 +51,6 @@ export async function PATCH(
     } = body;
     // Support both 'action' and 'mode' for backwards compatibility
     const assignAction = action || mode || 'replace';
-    // action/mode: 'replace' (default) - replace primary dietitian
-    // action/mode: 'add' - add to assignedDietitians array
-    // action/mode: 'remove' - remove from assignedDietitians array
-    // action/mode: 'transfer' - transfer client to new primary dietitian (keeping history)
-    // action/mode: 'primary_secondary' - explicit primary/secondary assignment (new)
-
-    await connectDB();
 
     // Validate client exists and is a client
     const client = await User.findById(clientId);
@@ -87,13 +82,11 @@ export async function PATCH(
       // Build assignedDietitians array: ONLY secondaries (primary is separate in assignedDietitian)
       const allDietitianIds: string[] = [];
       if (secondaryDietitianIds && Array.isArray(secondaryDietitianIds)) {
-        for (const sdId of secondaryDietitianIds) {
-          // Skip if it's the primary dietitian (should never happen but safety check)
-          if (sdId && sdId !== primaryDietitianId) {
-            const sd = await User.findById(sdId);
-            if (sd && sd.role === UserRole.DIETITIAN) {
-              allDietitianIds.push(sdId);
-            }
+        const filteredIds = secondaryDietitianIds.filter((sdId: string) => sdId && sdId !== primaryDietitianId);
+        if (filteredIds.length > 0) {
+          const validDietitians = await User.find({ _id: { $in: filteredIds }, role: UserRole.DIETITIAN }).select('_id').lean();
+          for (const d of validDietitians) {
+            allDietitianIds.push(d._id.toString());
           }
         }
       }
@@ -114,13 +107,11 @@ export async function PATCH(
       // Build assignedHealthCounselors array: ONLY secondaries (primary is separate in assignedHealthCounselor)
       const allHCIds: string[] = [];
       if (secondaryHealthCounselorIds && Array.isArray(secondaryHealthCounselorIds)) {
-        for (const shcId of secondaryHealthCounselorIds) {
-          // Skip if it's the primary health counselor (should never happen but safety check)
-          if (shcId && shcId !== primaryHealthCounselorId) {
-            const shc = await User.findById(shcId);
-            if (shc && shc.role === UserRole.HEALTH_COUNSELOR) {
-              allHCIds.push(shcId);
-            }
+        const filteredHCIds = secondaryHealthCounselorIds.filter((shcId: string) => shcId && shcId !== primaryHealthCounselorId);
+        if (filteredHCIds.length > 0) {
+          const validHCs = await User.find({ _id: { $in: filteredHCIds }, role: UserRole.HEALTH_COUNSELOR }).select('_id').lean();
+          for (const hc of validHCs) {
+            allHCIds.push(hc._id.toString());
           }
         }
       }
@@ -179,22 +170,24 @@ export async function PATCH(
       });
 
       // Broadcast real-time update
-      const total = await User.countDocuments({ role: UserRole.CLIENT });
-      const assignedCount = await User.countDocuments({
-        role: UserRole.CLIENT,
-        $or: [
-          { assignedDietitian: { $ne: null } },
-          { assignedDietitians: { $exists: true, $not: { $size: 0 } } }
-        ]
-      });
-      const unassignedCount = await User.countDocuments({
-        role: UserRole.CLIENT,
-        assignedDietitian: null,
-        $or: [
-          { assignedDietitians: { $exists: false } },
-          { assignedDietitians: { $size: 0 } }
-        ]
-      });
+      const [total, assignedCount, unassignedCount] = await Promise.all([
+        User.countDocuments({ role: UserRole.CLIENT }),
+        User.countDocuments({
+          role: UserRole.CLIENT,
+          $or: [
+            { assignedDietitian: { $ne: null } },
+            { assignedDietitians: { $exists: true, $not: { $size: 0 } } }
+          ]
+        }),
+        User.countDocuments({
+          role: UserRole.CLIENT,
+          assignedDietitian: null,
+          $or: [
+            { assignedDietitians: { $exists: false } },
+            { assignedDietitians: { $size: 0 } }
+          ]
+        }),
+      ]);
 
       socketManager.broadcastClientUpdate('client_updated', {
         client: updatedClient.toObject(),
@@ -488,22 +481,24 @@ export async function PATCH(
 
     // Broadcast real-time update to all admin connections
     // Recalculate stats for the broadcast
-    const total = await User.countDocuments({ role: UserRole.CLIENT });
-    const assignedCount = await User.countDocuments({
-      role: UserRole.CLIENT,
-      $or: [
-        { assignedDietitian: { $ne: null } },
-        { assignedDietitians: { $exists: true, $not: { $size: 0 } } }
-      ]
-    });
-    const unassignedCount = await User.countDocuments({
-      role: UserRole.CLIENT,
-      assignedDietitian: null,
-      $or: [
-        { assignedDietitians: { $exists: false } },
-        { assignedDietitians: { $size: 0 } }
-      ]
-    });
+    const [total, assignedCount, unassignedCount] = await Promise.all([
+      User.countDocuments({ role: UserRole.CLIENT }),
+      User.countDocuments({
+        role: UserRole.CLIENT,
+        $or: [
+          { assignedDietitian: { $ne: null } },
+          { assignedDietitians: { $exists: true, $not: { $size: 0 } } }
+        ]
+      }),
+      User.countDocuments({
+        role: UserRole.CLIENT,
+        assignedDietitian: null,
+        $or: [
+          { assignedDietitians: { $exists: false } },
+          { assignedDietitians: { $size: 0 } }
+        ]
+      }),
+    ]);
 
     socketManager.broadcastClientUpdate('client_updated', {
       client: updatedClient.toObject(),

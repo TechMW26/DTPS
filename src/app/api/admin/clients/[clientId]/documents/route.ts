@@ -12,7 +12,11 @@ export async function DELETE(
   { params }: { params: Promise<{ clientId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, , { clientId }] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      params,
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -22,8 +26,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
     }
 
-    await connectDB();
-    const { clientId } = await params;
     const { searchParams } = new URL(request.url);
     const documentId = searchParams.get('documentId');
     const filePath = searchParams.get('filePath');
@@ -62,7 +64,7 @@ export async function DELETE(
     client.documents.splice(documentIndex, 1);
     await client.save();
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: 'Document deleted successfully',
       documentsCount: client.documents.length
     });

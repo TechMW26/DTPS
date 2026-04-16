@@ -19,7 +19,7 @@ function parseServingsToNumber(servingsStr: string | number): number {
   if (typeof servingsStr === 'number') return servingsStr;
 
   const str = String(servingsStr).trim();
-  
+
   // Extract quantity (supports decimals and fractions like 1/2, 3/4)
   const match = str.match(/^[\s]*([0-9]+(?:\/[0-9]+)?(?:\.[0-9]+)?)/);
   if (match && match[1]) {
@@ -34,7 +34,7 @@ function parseServingsToNumber(servingsStr: string | number): number {
       if (!isNaN(num)) return num;
     }
   }
-  
+
   return 1; // Default
 }
 
@@ -45,41 +45,37 @@ export async function GET(
 ) {
   try {
     let { id } = await params;
-    
+
     // Strip any extra quotes from the ID (handles malformed URLs)
     id = id.replace(/^["']+|["']+$/g, '').trim();
-    
+
     // Validate ObjectId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid recipe ID format' }, { status: 400 });
     }
-    
-    const session = await getServerSession(authOptions);
+
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    await connectDB();
-    
-    // Fetch recipe without populate to avoid ObjectId cast errors
-    let recipe = await Recipe.findById(id).lean();
+    // Fetch recipe with populated creator in a single query
+    let recipe = await Recipe.findById(id)
+      .populate('createdBy', 'firstName lastName')
+      .lean();
 
     if (!recipe)
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     // Ensure proper typing for recipe data
     const recipeData = recipe as Record<string, any>;
-    
-    // Manually fetch creator if valid ObjectId
-    if (recipeData.createdBy && mongoose.Types.ObjectId.isValid(recipeData.createdBy)) {
-      try {
-        const creator = await User.findById(recipeData.createdBy, { firstName: 1, lastName: 1 }).lean();
-        recipeData.createdBy = creator || { firstName: 'Unknown', lastName: 'User' };
-      } catch {
-        recipeData.createdBy = { firstName: 'Unknown', lastName: 'User' };
-      }
-    } else {
+
+    // Fallback if populate didn't resolve
+    if (!recipeData.createdBy || typeof recipeData.createdBy === 'string') {
       recipeData.createdBy = { firstName: 'Unknown', lastName: 'User' };
     }
-    
+
     // Add flat nutrition values
     const flatNutrition = {
       calories: recipeData.calories || 0,
@@ -88,7 +84,7 @@ export async function GET(
       fat: recipeData.fat || 0
     };
     recipeData.flatNutrition = flatNutrition;
-    
+
     // Build nutrition object for detail page compatibility
     if (!recipeData.nutrition) {
       recipeData.nutrition = {
@@ -121,20 +117,21 @@ export async function PUT(
 ) {
   try {
     let { id } = await params;
-    
+
     // Strip any extra quotes from the ID
     id = id.replace(/^["']+|["']+$/g, '').trim();
-    
+
     // Validate ObjectId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid recipe ID format' }, { status: 400 });
     }
-    
-    const session = await getServerSession(authOptions);
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    await connectDB();
-    const data = await req.json();
+    const [session, , data] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      req.json(),
+    ]);
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const recipe = await Recipe.findById(id);
     if (!recipe)
@@ -202,19 +199,21 @@ export async function DELETE(
 ) {
   try {
     let { id } = await params;
-    
+
     // Strip any extra quotes from the ID
     id = id.replace(/^["']+|["']+$/g, '').trim();
-    
+
     // Validate ObjectId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid recipe ID format' }, { status: 400 });
     }
-    
-    const session = await getServerSession(authOptions);
+
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    await connectDB();
     const recipe = await Recipe.findById(id);
     if (!recipe)
       return NextResponse.json({ error: 'Not found' }, { status: 404 });

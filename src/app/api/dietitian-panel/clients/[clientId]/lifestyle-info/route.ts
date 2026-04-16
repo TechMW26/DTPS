@@ -10,28 +10,17 @@ import { logActivity } from '@/lib/utils/activityLogger';
 
 export const dynamic = 'force-dynamic';
 
-// Helper function to check if dietitian is assigned to client
-async function isDietitianAssigned(dietitianId: string, clientId: string): Promise<boolean> {
-  const client = await withCache(
-    `dietitian-panel:clients:clientId:lifestyle-info:${JSON.stringify(clientId)}`,
-    async () => await User.findById(clientId).select('assignedDietitian assignedDietitians'),
-    { ttl: 120000, tags: ['dietitian_panel'] }
-  );
-  if (!client) return false;
-
-  return (
-    client.assignedDietitian?.toString() === dietitianId ||
-    client.assignedDietitians?.some((d: any) => d.toString() === dietitianId)
-  );
-}
-
 // GET /api/dietitian-panel/clients/[clientId]/lifestyle-info - Get assigned client lifestyle info
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ clientId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, , { clientId }] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      params,
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -41,16 +30,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden - Dietitian access required' }, { status: 403 });
     }
 
-    const { clientId } = await params;
-    await connectDB();
-
-    // Verify the dietitian is assigned to this client
-    const isAssigned = await isDietitianAssigned(session.user.id, clientId);
-    if (!isAssigned) {
-      return NextResponse.json({ error: 'You are not assigned to this client' }, { status: 403 });
-    }
-
-    // Verify the client exists
+    // Fetch client once (used for both assignment check and response)
     const client = await withCache(
       `dietitian-panel:clients:clientId:lifestyle-info:${JSON.stringify(clientId)}`,
       async () => await User.findById(clientId),
@@ -58,6 +38,15 @@ export async function GET(
     );
     if (!client) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    // Verify the dietitian is assigned to this client
+    const isAssigned = (
+      client.assignedDietitian?.toString() === session.user.id ||
+      client.assignedDietitians?.some((d: any) => d.toString() === session.user.id)
+    );
+    if (!isAssigned) {
+      return NextResponse.json({ error: 'You are not assigned to this client' }, { status: 403 });
     }
 
     const lifestyleInfo = await withCache(
@@ -88,7 +77,12 @@ export async function PUT(
   { params }: { params: Promise<{ clientId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, , { clientId }, data] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      params,
+      request.json(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -98,16 +92,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Forbidden - Dietitian access required' }, { status: 403 });
     }
 
-    const { clientId } = await params;
-    await connectDB();
-
-    // Verify the dietitian is assigned to this client
-    const isAssigned = await isDietitianAssigned(session.user.id, clientId);
-    if (!isAssigned) {
-      return NextResponse.json({ error: 'You are not assigned to this client' }, { status: 403 });
-    }
-
-    // Verify the client exists
+    // Fetch client once (used for both assignment check and existence)
     const client = await withCache(
       `dietitian-panel:clients:clientId:lifestyle-info:${JSON.stringify(clientId)}`,
       async () => await User.findById(clientId),
@@ -117,7 +102,14 @@ export async function PUT(
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
-    const data = await request.json();
+    // Verify the dietitian is assigned to this client
+    const isAssigned = (
+      client.assignedDietitian?.toString() === session.user.id ||
+      client.assignedDietitians?.some((d: any) => d.toString() === session.user.id)
+    );
+    if (!isAssigned) {
+      return NextResponse.json({ error: 'You are not assigned to this client' }, { status: 403 });
+    }
 
     // Calculate feet and inches from cm if cm is provided
     let heightFeet = data.heightFeet;

@@ -31,7 +31,10 @@ const checkPermission = (session: any, clientId?: string): boolean => {
 // GET /api/activity-assignments - Get assignments for a client
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -45,13 +48,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    await connectDB();
-
     const clientObjectId = new mongoose.Types.ObjectId(clientId);
 
     // Build query
     const query: any = { client: clientObjectId };
-    
+
     if (dateParam) {
       const filterDate = getDateOnly(dateParam);
       query.date = filterDate;
@@ -64,8 +65,8 @@ export async function GET(request: NextRequest) {
     const assignments = await withCache(
       `activity-assignments:${JSON.stringify(query)}`,
       async () => await ActivityAssignment.find(query)
-      .populate('assignedBy', 'firstName lastName')
-      .sort({ date: -1, createdAt: -1 }),
+        .populate('assignedBy', 'firstName lastName')
+        .sort({ date: -1, createdAt: -1 }),
       { ttl: 120000, tags: ['activity_assignments'] }
     );
 
@@ -87,7 +88,10 @@ export async function GET(request: NextRequest) {
 // POST /api/activity-assignments - Create new assignment
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      request.json(),
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -98,7 +102,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only dietitians can assign activities' }, { status: 403 });
     }
 
-    const body = await request.json();
     const { clientId, date, targets, notes } = body;
 
     if (!clientId) {
@@ -196,12 +199,14 @@ export async function POST(request: NextRequest) {
 // PUT /api/activity-assignments - Update assignment (mark as complete)
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      request.json(),
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
     const { assignmentId, targetId, isCompleted, completedValue, notes } = body;
 
     if (!assignmentId) {
@@ -215,7 +220,7 @@ export async function PUT(request: NextRequest) {
       async () => await ActivityAssignment.findById(assignmentId),
       { ttl: 120000, tags: ['activity_assignments'] }
     );
-    
+
     if (!assignment) {
       return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
     }
@@ -223,7 +228,7 @@ export async function PUT(request: NextRequest) {
     // Check permission - client can only update their own, dietitian can update any
     const isOwnAssignment = assignment.client.toString() === session.user.id;
     const isDietitian = [UserRole.ADMIN, UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR].includes(session.user.role as UserRole);
-    
+
     if (!isOwnAssignment && !isDietitian) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
@@ -294,7 +299,10 @@ export async function PUT(request: NextRequest) {
 // DELETE /api/activity-assignments - Delete assignment or target
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -313,21 +321,19 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Assignment ID is required' }, { status: 400 });
     }
 
-    await connectDB();
-
     if (targetId) {
       // Delete specific target
       const assignment = await withCache(
-      `activity-assignments:${JSON.stringify(assignmentId)}`,
-      async () => await ActivityAssignment.findById(assignmentId),
-      { ttl: 120000, tags: ['activity_assignments'] }
-    );
+        `activity-assignments:${JSON.stringify(assignmentId)}`,
+        async () => await ActivityAssignment.findById(assignmentId),
+        { ttl: 120000, tags: ['activity_assignments'] }
+      );
       if (!assignment) {
         return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
       }
 
       assignment.targets.pull(targetId);
-      
+
       // If no targets left, delete the whole assignment
       if (assignment.targets.length === 0) {
         await ActivityAssignment.findByIdAndDelete(assignmentId);

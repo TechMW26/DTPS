@@ -30,12 +30,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
     const { id } = await params;
 
     const appointment = await withCache(
@@ -99,14 +101,15 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, , body, { id }] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      request.json(),
+      params,
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const body = await request.json();
-    await connectDB();
-    const { id } = await params;
 
     const appointment = await withCache(
       `appointments:id:${JSON.stringify(id)}`,
@@ -576,13 +579,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, , { id }] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+      params,
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    await connectDB();
-    const { id } = await params;
 
     const appointment = await withCache(
       `appointments:id:${JSON.stringify(id)}`,

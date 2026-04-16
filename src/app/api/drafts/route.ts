@@ -41,7 +41,10 @@ function getHeaders() {
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -60,8 +63,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
     const draft = await Draft.findOne({
       userId: session.user.id,
       type,
@@ -76,12 +77,14 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { draft: {
-        id: draft.draftId,
-        type: draft.type,
-        data: draft.data,
-        lastSaved: draft.lastSaved,
-      }},
+      {
+        draft: {
+          id: draft.draftId,
+          type: draft.type,
+          data: draft.data,
+          lastSaved: draft.lastSaved,
+        }
+      },
       { status: 200, headers: getHeaders() }
     );
   } catch (error: any) {
@@ -98,7 +101,10 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      request.json(),
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -106,7 +112,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
     const { type, id, data } = body;
 
     if (!type || !id || !data) {
@@ -142,7 +147,7 @@ export async function POST(request: NextRequest) {
     );
 
     return NextResponse.json(
-      { 
+      {
         success: true,
         draft: {
           id: draft.draftId,
@@ -166,7 +171,10 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -184,8 +192,6 @@ export async function DELETE(request: NextRequest) {
         { status: 400, headers: getHeaders() }
       );
     }
-
-    await connectDB();
 
     await Draft.deleteOne({
       userId: session.user.id,

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import dbConnect from '@/lib/db/connection';
-import Blog from '@/lib/db/models/Blog';
+import Blog, { IBlog } from '@/lib/db/models/Blog';
 import { getImageKit } from '@/lib/imagekit';
 import { UserRole } from '@/types';
 import { compressBase64ImageServer } from '@/lib/imageCompressionServer';
+import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // GET - Get single blog (admin)
 export async function GET(
@@ -13,13 +14,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, , { id }] = await Promise.all([
+      getServerSession(authOptions),
+      dbConnect(),
+      params,
+    ]);
     if (!session?.user || session.user.role !== UserRole.ADMIN) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { id } = await params;
-    await dbConnect();
 
     const blog = await withCache(
       `admin:blogs:id:${JSON.stringify(id)}`,
@@ -46,13 +48,14 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, , { id }] = await Promise.all([
+      getServerSession(authOptions),
+      dbConnect(),
+      params,
+    ]);
     if (!session?.user || session.user.role !== UserRole.ADMIN) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { id } = await params;
-    await dbConnect();
 
     const { isActive } = await request.json();
 
@@ -76,9 +79,9 @@ export async function PATCH(
     // Clear cache
     await clearCacheByTag('admin');
 
-    return NextResponse.json({ 
-      blog, 
-      message: `Blog ${isActive ? 'activated' : 'deactivated'} successfully` 
+    return NextResponse.json({
+      blog,
+      message: `Blog ${isActive ? 'activated' : 'deactivated'} successfully`
     });
   } catch (error) {
     console.error('Error updating blog status:', error);
@@ -95,16 +98,22 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    await connectDB();
-    
+    const [session, , { id }] = await Promise.all([
+      getServerSession(authOptions),
+      dbConnect(),
+      params,
+    ]);
+    if (!session?.user || session.user.role !== UserRole.ADMIN) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const formData = await request.formData();
-    
+
     const blog = await Blog.findById(id);
     if (!blog) {
       return NextResponse.json({ error: 'Blog not found' }, { status: 404 });
     }
-    
+
     const title = formData.get('title') as string;
     const description = formData.get('description') as string;
     const content = formData.get('content') as string;
@@ -127,7 +136,7 @@ export async function PUT(
     if (author) blog.author = author;
     if (readTime) blog.readTime = parseInt(readTime);
     if (tags !== null) {
-      blog.tags = tags 
+      blog.tags = tags
         ? tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
         : [];
     }
@@ -141,7 +150,7 @@ export async function PUT(
     if (featuredImageData && featuredImageData.includes('base64')) {
       try {
         const imageBase64 = featuredImageData.split('base64,')[1];
-        
+
         // Compress image once
         const compressedImage = await compressBase64ImageServer(imageBase64, {
           quality: 85,
@@ -157,10 +166,10 @@ export async function PUT(
           fileName: `blog_${Date.now()}.jpg`,
           folder: '/blogs',
         });
-        
+
         // Use the same URL for featured image
         blog.featuredImage = uploadResult.url;
-        
+
         // Generate thumbnail URL using ImageKit's URL transformation
         const filePath = (uploadResult as any).filePath as string | undefined;
         if (filePath && uploadResult.url.endsWith(filePath)) {
@@ -192,13 +201,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, , { id }] = await Promise.all([
+      getServerSession(authOptions),
+      dbConnect(),
+      params,
+    ]);
     if (!session?.user || session.user.role !== UserRole.ADMIN) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { id } = await params;
-    await dbConnect();
 
     const blog = await Blog.findByIdAndDelete(id);
     if (!blog) {
@@ -218,6 +228,4 @@ export async function DELETE(
   }
 }
 
-// Import IBlog type for category typing
-import { IBlog } from '@/lib/db/models/Blog';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+
