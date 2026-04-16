@@ -592,6 +592,64 @@ export class DataImportService {
             rowsToSave = validRowsToSave;
           }
 
+          // Special handling for MedicalInfo - use upsert to update existing records
+          // MedicalInfo has a unique constraint on userId, so we update if exists
+          if (group.modelName === 'MedicalInfo') {
+            const upsertResults = [];
+            for (const row of rowsToSave) {
+              if (!row.userId) {
+                throw new Error('MedicalInfo requires a userId field');
+              }
+
+              // Use findOneAndUpdate with upsert to create or update
+              const result = await Model.findOneAndUpdate(
+                { userId: row.userId },
+                { $set: row },
+                {
+                  session: mongoSession,
+                  upsert: true,
+                  new: true,
+                  runValidators: true
+                }
+              );
+              if (result) {
+                upsertResults.push(result);
+              }
+            }
+
+            savedCounts[group.modelName] = upsertResults.length;
+            totalSaved += upsertResults.length;
+            continue; // Skip the insertMany below
+          }
+
+          // Special handling for LifestyleInfo - use upsert (unique on userId)
+          if (group.modelName === 'LifestyleInfo') {
+            const upsertResults = [];
+            for (const row of rowsToSave) {
+              if (!row.userId) {
+                throw new Error('LifestyleInfo requires a userId field');
+              }
+
+              const result = await Model.findOneAndUpdate(
+                { userId: row.userId },
+                { $set: row },
+                {
+                  session: mongoSession,
+                  upsert: true,
+                  new: true,
+                  runValidators: true
+                }
+              );
+              if (result) {
+                upsertResults.push(result);
+              }
+            }
+
+            savedCounts[group.modelName] = upsertResults.length;
+            totalSaved += upsertResults.length;
+            continue; // Skip the insertMany below
+          }
+
           // Insert all rows for this model
           if (rowsToSave.length > 0) {
             const result = await Model.insertMany(rowsToSave, {

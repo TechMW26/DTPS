@@ -1491,6 +1491,159 @@ export class ValidationEngine {
       }
     }
 
+    // MedicalInfo-specific transformations
+    if (modelName === 'MedicalInfo') {
+      // Helper function to validate ObjectId format (24 hex chars)
+      const isValidObjectId = (id: string): boolean => {
+        if (typeof id !== 'string') return false;
+        const cleanId = id.replace(/new ObjectId\(['"]?|['"]?\)/g, '').trim();
+        return /^[0-9a-fA-F]{24}$/.test(cleanId);
+      };
+
+      // Helper to clean ObjectId string
+      const cleanObjectId = (id: string): string => {
+        if (typeof id !== 'string') return '';
+        return id.replace(/new ObjectId\(['"]?|['"]?\)/g, '').trim();
+      };
+
+      // Handle userId - detect when text is incorrectly placed in this field
+      if (transformed.userId !== undefined && transformed.userId !== null && transformed.userId !== '') {
+        const userIdValue = String(transformed.userId).trim();
+        const cleanedUserId = cleanObjectId(userIdValue);
+
+        if (!isValidObjectId(cleanedUserId)) {
+          // Text is in the userId field - this is likely a column misalignment
+          // Move the text to notes field to preserve the data
+          console.log(`[MedicalInfo Transform] Invalid userId detected: "${userIdValue}" - moving to notes field`);
+
+          // Append to notes if notes already exists, otherwise create
+          if (transformed.notes && typeof transformed.notes === 'string') {
+            transformed.notes = `${transformed.notes}\n[Imported note]: ${userIdValue}`;
+          } else {
+            transformed.notes = `[Imported note]: ${userIdValue}`;
+          }
+
+          // Remove invalid userId so validation will flag it as "required" rather than "cast error"
+          delete transformed.userId;
+        } else {
+          // Valid ObjectId - clean it
+          transformed.userId = cleanedUserId;
+        }
+      }
+
+      // Handle medicalConditions - ensure it's an array of strings
+      if (transformed.medicalConditions !== undefined) {
+        let conditions = transformed.medicalConditions;
+        if (typeof conditions === 'string') {
+          if (conditions.includes(',')) {
+            conditions = conditions.split(',').map((c: string) => c.trim()).filter(Boolean);
+          } else if (conditions.trim()) {
+            conditions = [conditions.trim()];
+          } else {
+            conditions = [];
+          }
+        }
+        if (Array.isArray(conditions)) {
+          transformed.medicalConditions = conditions.map((c: any) => String(c).trim()).filter(Boolean);
+        }
+      }
+
+      // Handle allergies - ensure it's an array of strings
+      if (transformed.allergies !== undefined) {
+        let allergies = transformed.allergies;
+        if (typeof allergies === 'string') {
+          if (allergies.includes(',')) {
+            allergies = allergies.split(',').map((a: string) => a.trim()).filter(Boolean);
+          } else if (allergies.trim()) {
+            allergies = [allergies.trim()];
+          } else {
+            allergies = [];
+          }
+        }
+        if (Array.isArray(allergies)) {
+          transformed.allergies = allergies.map((a: any) => String(a).trim()).filter(Boolean);
+        }
+      }
+
+      // Handle dietaryRestrictions - ensure it's an array of strings
+      if (transformed.dietaryRestrictions !== undefined) {
+        let restrictions = transformed.dietaryRestrictions;
+        if (typeof restrictions === 'string') {
+          if (restrictions.includes(',')) {
+            restrictions = restrictions.split(',').map((r: string) => r.trim()).filter(Boolean);
+          } else if (restrictions.trim()) {
+            restrictions = [restrictions.trim()];
+          } else {
+            restrictions = [];
+          }
+        }
+        if (Array.isArray(restrictions)) {
+          transformed.dietaryRestrictions = restrictions.map((r: any) => String(r).trim()).filter(Boolean);
+        }
+      }
+
+      // Handle gutIssues - ensure it's an array of strings
+      if (transformed.gutIssues !== undefined) {
+        let issues = transformed.gutIssues;
+        if (typeof issues === 'string') {
+          if (issues.includes(',')) {
+            issues = issues.split(',').map((i: string) => i.trim()).filter(Boolean);
+          } else if (issues.trim()) {
+            issues = [issues.trim()];
+          } else {
+            issues = [];
+          }
+        }
+        if (Array.isArray(issues)) {
+          transformed.gutIssues = issues.map((i: any) => String(i).trim()).filter(Boolean);
+        }
+      }
+
+      // Handle boolean fields
+      const booleanFields = ['isPregnant', 'isLactating'];
+      for (const field of booleanFields) {
+        if (transformed[field] !== undefined) {
+          const val = transformed[field];
+          if (typeof val === 'string') {
+            const lower = val.toLowerCase().trim();
+            transformed[field] = lower === 'true' || lower === '1' || lower === 'yes';
+          } else if (typeof val === 'number') {
+            transformed[field] = val === 1;
+          }
+        }
+      }
+
+      // Handle enum fields - menstrualCycle
+      if (transformed.menstrualCycle && typeof transformed.menstrualCycle === 'string') {
+        const cycle = transformed.menstrualCycle.toLowerCase().trim();
+        if (['regular', 'irregular', 'not-applicable', ''].includes(cycle)) {
+          transformed.menstrualCycle = cycle;
+        } else if (cycle.includes('regular')) {
+          transformed.menstrualCycle = 'regular';
+        } else if (cycle.includes('irregular')) {
+          transformed.menstrualCycle = 'irregular';
+        } else if (cycle.includes('n/a') || cycle.includes('not') || cycle.includes('none')) {
+          transformed.menstrualCycle = 'not-applicable';
+        }
+      }
+
+      // Handle enum fields - bloodFlow
+      if (transformed.bloodFlow && typeof transformed.bloodFlow === 'string') {
+        const flow = transformed.bloodFlow.toLowerCase().trim();
+        if (['light', 'normal', 'heavy', 'not-applicable', ''].includes(flow)) {
+          transformed.bloodFlow = flow;
+        } else if (flow.includes('light') || flow.includes('low')) {
+          transformed.bloodFlow = 'light';
+        } else if (flow.includes('heavy') || flow.includes('high')) {
+          transformed.bloodFlow = 'heavy';
+        } else if (flow.includes('normal') || flow.includes('medium') || flow.includes('moderate')) {
+          transformed.bloodFlow = 'normal';
+        } else if (flow.includes('n/a') || flow.includes('not')) {
+          transformed.bloodFlow = 'not-applicable';
+        }
+      }
+    }
+
     return transformed;
   }
 
@@ -1618,7 +1771,7 @@ export class ValidationEngine {
     if (lowerMessage.includes('required') || lowerMessage.includes('cannot be empty')) {
       return 'required';
     }
-    if (lowerMessage.includes('type') || lowerMessage.includes('cast')) {
+    if (lowerMessage.includes('type') || lowerMessage.includes('cast') || lowerMessage.includes('bsonerror') || lowerMessage.includes('objectid')) {
       return 'type';
     }
     if (lowerMessage.includes('format') || lowerMessage.includes('invalid')) {
@@ -1686,7 +1839,7 @@ export class ValidationEngine {
       result.hint = 'Use ISO date format (YYYY-MM-DD)';
     } else if (fieldInfo.type === 'ObjectId' || fieldInfo.ref) {
       result.example = '507f1f77bcf86cd799439011';
-      result.hint = `Reference to ${fieldInfo.ref || 'another document'}`;
+      result.hint = `Must be a valid 24-character MongoDB ObjectId referencing ${fieldInfo.ref || 'another document'}. If you see text here, your columns may be misaligned - check your CSV/Excel file.`;
     }
 
     return result;

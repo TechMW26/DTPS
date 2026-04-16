@@ -58,6 +58,7 @@ interface Client {
   phone?: string;
   status: string;
   clientStatus?: string;
+  onboardingCompleted?: boolean;
   createdAt: string;
   dateOfBirth?: string;
   gender?: string;
@@ -149,6 +150,7 @@ export default function AdminAllClientsPage() {
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterDietitianId, setFilterDietitianId] = useState('all');
   const [filterHealthCounselorId, setFilterHealthCounselorId] = useState('all');
+  const [filterOnboarding, setFilterOnboarding] = useState('all');
   const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0 });
   const [isSSEConnected, setIsSSEConnected] = useState(false);
 
@@ -206,6 +208,7 @@ export default function AdminAllClientsPage() {
       if (filterDateTo) params.append('dateTo', filterDateTo);
       if (filterDietitianId !== 'all') params.append('dietitianId', filterDietitianId);
       if (filterHealthCounselorId !== 'all') params.append('healthCounselorId', filterHealthCounselorId);
+      if (filterOnboarding !== 'all') params.append('onboarding', filterOnboarding);
       params.append('page', resetPage ? '1' : String(currentPage));
       params.append('limit', String(pageSize));
 
@@ -233,7 +236,7 @@ export default function AdminAllClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, filterStatus, filterAssigned, filterDateFrom, filterDateTo, filterDietitianId, filterHealthCounselorId, currentPage, pageSize]);
+  }, [debouncedSearchTerm, filterStatus, filterAssigned, filterDateFrom, filterDateTo, filterDietitianId, filterHealthCounselorId, filterOnboarding, currentPage, pageSize]);
 
   // Initial load
   useEffect(() => {
@@ -273,7 +276,7 @@ export default function AdminAllClientsPage() {
     if (status === 'authenticated') {
       setCurrentPage(1);
     }
-  }, [filterStatus, filterAssigned, filterDateFrom, filterDateTo, filterDietitianId, filterHealthCounselorId, status]);
+  }, [filterStatus, filterAssigned, filterDateFrom, filterDateTo, filterDietitianId, filterHealthCounselorId, filterOnboarding, status]);
 
   const fetchDietitians = async () => {
     try {
@@ -707,6 +710,45 @@ export default function AdminAllClientsPage() {
         {/* Filters */}
         <Card>
           <CardContent className="p-4 sm:p-6">
+            {/* Active Filters Summary */}
+            {(() => {
+              const activeFilters: string[] = [];
+              if (searchTerm) activeFilters.push(`Search: "${searchTerm}"`);
+              if (filterStatus !== 'all') activeFilters.push(`Status: ${filterStatus}`);
+              if (filterAssigned !== 'all') activeFilters.push(`Assigned: ${filterAssigned === 'true' ? 'Yes' : 'No'}`);
+              if (filterDietitianId !== 'all') {
+                const dt = dietitians.find(d => d._id === filterDietitianId);
+                activeFilters.push(`Dietitian: ${dt?.firstName || 'Selected'}`);
+              }
+              if (filterHealthCounselorId !== 'all') {
+                const hc = healthCounselors.find(h => h._id === filterHealthCounselorId);
+                activeFilters.push(`HC: ${hc?.firstName || 'Selected'}`);
+              }
+              if (filterOnboarding !== 'all') activeFilters.push(`Onboarding: ${filterOnboarding === 'done' ? 'Done' : 'Pending'}`);
+              if (filterDateFrom) activeFilters.push(`From: ${filterDateFrom}`);
+              if (filterDateTo) activeFilters.push(`To: ${filterDateTo}`);
+
+              return activeFilters.length > 0 ? (
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-blue-800">
+                        {activeFilters.length} Active Filter{activeFilters.length > 1 ? 's' : ''} (AND):
+                      </span>
+                      {activeFilters.map((filter, idx) => (
+                        <Badge key={idx} variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
+                          {filter}
+                        </Badge>
+                      ))}
+                    </div>
+                    <span className="text-sm text-blue-600">
+                      Showing {totalResults} matching client{totalResults !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Search */}
               <div className="relative">
@@ -774,6 +816,18 @@ export default function AdminAllClientsPage() {
                 </SelectContent>
               </Select>
 
+              {/* Onboarding Filter */}
+              <Select value={filterOnboarding} onValueChange={setFilterOnboarding}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Onboarding Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Onboarding</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                </SelectContent>
+              </Select>
+
               {/* Date From */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Joined From</label>
@@ -799,6 +853,7 @@ export default function AdminAllClientsPage() {
                   setFilterDateTo('');
                   setFilterDietitianId('all');
                   setFilterHealthCounselorId('all');
+                  setFilterOnboarding('all');
                   setCurrentPage(1);
                 }}
               >
@@ -837,6 +892,9 @@ export default function AdminAllClientsPage() {
                       </th>
                       <th className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
+                      </th>
+                      <th className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Onboarding
                       </th>
                       <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Created By
@@ -882,6 +940,9 @@ export default function AdminAllClientsPage() {
                         </td>
                         <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
                           <div className="h-6 w-28 bg-gray-200 rounded animate-pulse" />
+                        </td>
+                        <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
+                          <div className="h-6 w-16 bg-gray-200 rounded-full animate-pulse" />
                         </td>
                         <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
                           <div className="h-6 w-16 bg-gray-200 rounded-full animate-pulse" />
@@ -964,6 +1025,9 @@ export default function AdminAllClientsPage() {
                         </th>
                         <th className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status
+                        </th>
+                        <th className="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Onboarding
                         </th>
                         <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Created By
@@ -1160,6 +1224,18 @@ export default function AdminAllClientsPage() {
                             <Badge className={getStatusColor(client.clientStatus || 'lead')}>
                               {(client.clientStatus || 'lead') === 'lead' ? 'Lead' : (client.clientStatus || 'lead') === 'active' ? 'Active' : 'Inactive'}
                             </Badge>
+                          </td>
+                          <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
+                            {client.onboardingCompleted ? (
+                              <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Done
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-yellow-600 border-yellow-300">
+                                Pending
+                              </Badge>
+                            )}
                           </td>
                           <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap">
                             {client.createdBy?.role ? (

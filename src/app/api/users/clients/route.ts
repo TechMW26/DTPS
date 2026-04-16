@@ -353,7 +353,7 @@ export async function GET(request: NextRequest) {
     }
 
     const clientsData = await User.find(query)
-      .select('firstName lastName email avatar phone dateOfBirth gender height weight activityLevel healthGoals medicalConditions allergies dietaryRestrictions assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors status clientStatus createdAt createdBy tags clientId')
+      .select('firstName lastName email avatar phone dateOfBirth gender height weight activityLevel healthGoals medicalConditions allergies dietaryRestrictions assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors status clientStatus createdAt createdBy tags clientId onboardingCompleted')
       .populate('assignedDietitian', 'firstName lastName email avatar')
       .populate('assignedDietitians', 'firstName lastName email avatar')
       .populate('assignedHealthCounselor', 'firstName lastName email avatar')

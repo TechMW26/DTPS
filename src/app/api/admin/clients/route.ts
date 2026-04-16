@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
     const dateTo = searchParams.get('dateTo') || ''; // ISO date string
     const dietitianId = searchParams.get('dietitianId') || ''; // primary dietitian ObjectId
     const healthCounselorId = searchParams.get('healthCounselorId') || ''; // primary HC ObjectId
+    const onboarding = searchParams.get('onboarding') || ''; // 'done' or 'pending'
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100); // Cap at 100
     const page = Math.max(parseInt(searchParams.get('page') || '1'), 1);
 
@@ -159,10 +160,29 @@ export async function GET(request: NextRequest) {
       andConditions.push({ assignedHealthCounselor: new Types.ObjectId(healthCounselorId) });
     }
 
+    // Onboarding status filter
+    if (onboarding === 'done') {
+      andConditions.push({ onboardingCompleted: true });
+    } else if (onboarding === 'pending') {
+      andConditions.push({ $or: [{ onboardingCompleted: false }, { onboardingCompleted: { $exists: false } }] });
+    }
+
     const query = andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
 
+    // Log active filters for debugging
+    console.log('[Admin Clients API] Active filters:', {
+      search: search || 'none',
+      status: status || 'all',
+      assigned: assigned || 'all',
+      dietitianId: dietitianId || 'all',
+      healthCounselorId: healthCounselorId || 'all',
+      onboarding: onboarding || 'all',
+      dateRange: (dateFrom || dateTo) ? `${dateFrom || '*'} to ${dateTo || '*'}` : 'none',
+      totalConditions: andConditions.length
+    });
+
     // Create cache key based on all query params
-    const cacheKey = `admin:clients:v3:${JSON.stringify(query)}:page=${page}:limit=${limit}`;
+    const cacheKey = `admin:clients:v4:${JSON.stringify(query)}:page=${page}:limit=${limit}`;
 
     // Fetch clients with pagination - use 60s cache (shorter to reflect new clients faster)
     const clientsData = await withCache(

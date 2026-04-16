@@ -321,10 +321,30 @@ export async function POST(request: NextRequest) {
         console.error('Failed to send push notification:', notifError);
         // Don't fail message delivery if push send fails
       }
+    } else if (recipientRole === UserRole.CLIENT) {
+      // Send push notification to CLIENT when staff (dietitian/health_counselor/admin) sends message
+      const senderName = `${(message.sender as any).firstName} ${(message.sender as any).lastName}`.trim();
+      const recipientName = `${(message.receiver as any).firstName} ${(message.receiver as any).lastName}`.trim();
+      try {
+        await notifyMessageToRecipient({
+          recipientId: validatedData.recipientId,
+          recipientRole: UserRole.CLIENT,
+          senderName: senderName || 'Your Care Team',
+          senderRole: sessionRole,
+          messagePreview: validatedData.content,
+          messageId: String((message as any)._id),
+          conversationWithUserId: session.user.id,
+          clientId: validatedData.recipientId,
+          clientName: recipientName || 'Client',
+        });
+      } catch (notifError) {
+        console.error('Failed to send push notification to client:', notifError);
+        // Don't fail message delivery if push send fails
+      }
     }
 
 
-    
+
     // Log history for message sent (for both sender and recipient)
     await logHistoryServer({
       userId: validatedData.recipientId,

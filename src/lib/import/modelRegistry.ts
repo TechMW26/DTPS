@@ -1041,10 +1041,19 @@ class ModelRegistry {
 
       if (validationError) {
         for (const [field, error] of Object.entries(validationError.errors)) {
+          let errorMessage = (error as any).message || 'Validation failed';
+
+          // Improve ObjectId cast error messages
+          if (errorMessage.includes('Cast to ObjectId failed') || errorMessage.includes('BSONError')) {
+            const fieldInfo = registeredModel.fields.find(f => f.path === field);
+            const refModel = fieldInfo?.ref || 'another document';
+            errorMessage = `Invalid reference ID for "${field}". Expected a valid 24-character MongoDB ObjectId (e.g., "507f1f77bcf86cd799439011") referencing ${refModel}. The value "${cleanedRow[field]}" appears to be text - your import file columns may be misaligned.`;
+          }
+
           errors.push({
             row: rowIndex,
             field: field,
-            message: (error as any).message || 'Validation failed',
+            message: errorMessage,
             value: cleanedRow[field]
           });
         }
