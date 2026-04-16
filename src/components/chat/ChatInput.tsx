@@ -96,7 +96,24 @@ export function ChatInput({
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file');
+        // Try to parse error message from response
+        let errorMessage = 'Failed to upload file';
+        try {
+          const errorData = await uploadResponse.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // If response isn't JSON, use status text
+          if (uploadResponse.status === 413) {
+            errorMessage = 'File is too large. Please select a smaller file.';
+          } else if (uploadResponse.status === 400) {
+            errorMessage = 'Invalid file type. Please select a supported file.';
+          } else if (uploadResponse.status === 401) {
+            errorMessage = 'Session expired. Please refresh and try again.';
+          } else if (uploadResponse.status >= 500) {
+            errorMessage = 'Server error. Please try again later.';
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const uploadData = await uploadResponse.json();

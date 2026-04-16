@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
-import { Send, Image, Video, FileText, Music, Camera, Upload, Loader2 } from 'lucide-react';
+import { Send, Image, Video, FileText, Music, Camera, Upload, Loader2, AlertCircle, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { compressImage } from '@/lib/imageCompression';
+import { toast } from 'sonner';
 
 interface MediaUploadModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [isCompressing, setIsCompressing] = useState(false);
   const [compressionStatus, setCompressionStatus] = useState<string>('');
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -179,6 +181,7 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
 
     setUploading(true);
     setUploadProgress(0);
+    setUploadError(null);
 
     try {
       let fileToUpload = selectedFile;
@@ -233,6 +236,9 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
       }, 300);
     } catch (error) {
       console.error('Upload failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed. Please try again.';
+      setUploadError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setUploading(false);
       setIsCompressing(false);
@@ -246,6 +252,7 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
     setPreviewUrl('');
     setUploading(false);
     setUploadProgress(0);
+    setUploadError(null);
     onClose();
   };
 
@@ -320,10 +327,10 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
                   variant="outline"
                   className="h-20 flex-col space-y-2"
                   onClick={() => {
-                    if (fileInputRef.current) {
-                      fileInputRef.current.accept = 'image/*';
-                      fileInputRef.current.capture = 'environment';
-                      fileInputRef.current.click();
+                    // Use separate camera input with capture attribute
+                    const cameraInput = document.getElementById('camera-input') as HTMLInputElement;
+                    if (cameraInput) {
+                      cameraInput.click();
                     }
                   }}
                 >
@@ -403,35 +410,62 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
                 </div>
               )}
 
+              {/* Upload error */}
+              {uploadError && !uploading && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-red-800">Upload Failed</p>
+                      <p className="text-xs text-red-600 mt-1">{uploadError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex space-x-2">
                 <Button
                   variant="outline"
-                  onClick={() => setSelectedFile(null)}
+                  onClick={() => {
+                    setSelectedFile(null);
+                    setUploadError(null);
+                  }}
                   disabled={uploading}
                   className="flex-1"
                 >
                   Change File
                 </Button>
-                <Button
-                  onClick={handleSend}
-                  disabled={uploading}
-                  className="flex-1"
-                >
-                  <Send className="w-4 h-4 mr-2" />
-                  Send
-                </Button>
+                {uploadError ? (
+                  <Button
+                    onClick={handleSend}
+                    disabled={uploading}
+                    className="flex-1 bg-orange-500 hover:bg-orange-600"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Retry
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleSend}
+                    disabled={uploading}
+                    className="flex-1"
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    Send
+                  </Button>
+                )}
               </div>
             </div>
           )}
         </div>
 
         {/* Hidden file inputs */}
+        {/* Gallery image picker - NO capture attribute to allow gallery selection */}
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
-          capture="environment"
           onChange={handleFileInputChange}
           className="hidden"
         />
@@ -445,7 +479,16 @@ export function MediaUploadModal({ isOpen, onClose, onSend }: MediaUploadModalPr
         <input
           ref={documentInputRef}
           type="file"
-          accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx"
+          accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
+          onChange={handleFileInputChange}
+          className="hidden"
+        />
+        {/* Separate camera input with capture attribute */}
+        <input
+          id="camera-input"
+          type="file"
+          accept="image/*"
+          capture="environment"
           onChange={handleFileInputChange}
           className="hidden"
         />

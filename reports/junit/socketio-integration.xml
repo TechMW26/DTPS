@@ -1,59 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="27" failures="0" errors="0" time="3.809">
-  <testsuite name="tests/integration/client-api-performance.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-15T07:04:42" time="3.658" tests="27">
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/profile" name="returns profile for email-based client" time="0.199">
+<testsuites name="jest tests" tests="17" failures="0" errors="0" time="3.403">
+  <testsuite name="tests/integration/file-upload.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-16T09:59:16" time="3.269" tests="17">
+    <testcase classname="File Upload Integration Tests &gt; Authentication" name="should reject upload without authentication" time="0.115">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/profile" name="returns profile for phone-only client (no email)" time="0.059">
+    <testcase classname="File Upload Integration Tests &gt; Authentication" name="should allow upload with authenticated user" time="0.316">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/onboarding" name="completes onboarding for phone-only client without email validation error" time="0.294">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should reject upload without file" time="0.002">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/onboarding" name="handles already-completed onboarding quickly" time="0.284">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should reject invalid file type for avatar upload" time="0.003">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/progress" name="returns progress data efficiently" time="0.024">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept valid image for avatar upload" time="0.009">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/progress (weight logging)" name="logs weight for phone-only user without validation error" time="0.007">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept PDF for message upload" time="0.004">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/steps" name="logs steps for phone-only user without validation error" time="0.15">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept Word document for message upload" time="0.004">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/sleep" name="logs sleep for phone-only user without validation error" time="0.028">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept Excel file for message upload" time="0.004">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/hydration" name="logs water intake efficiently" time="0.016">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept text file for message upload" time="0.004">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/activity" name="logs activity for phone-only user" time="0.016">
+    <testcase classname="File Upload Integration Tests &gt; File Size Limits" name="should reject avatar larger than 5MB" time="0.01">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/notifications/unread-count" name="returns unread counts quickly" time="0.013">
+    <testcase classname="File Upload Integration Tests &gt; File Size Limits" name="should reject message file larger than 25MB" time="0.059">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/dashboard-summary" name="returns dashboard summary" time="0.008">
+    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle image message upload" time="0.006">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/notifications" name="returns notifications quickly" time="0.012">
+    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle video message upload" time="0.004">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/service-plans" name="returns service plans" time="0.015">
+    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle audio message upload" time="0.003">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/tasks" name="returns tasks" time="0.009">
+    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle medical report upload" time="0.003">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/medical-info" name="saves medical info for phone-only user" time="0.011">
+    <testcase classname="File Upload Integration Tests &gt; Response Format" name="should return all required fields in response" time="0.005">
     </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/lifestyle-info" name="saves lifestyle info for phone-only user" time="0.009">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; POST /api/client/dietary-recall" name="saves dietary recall for phone-only user" time="0.131">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/meal-plan" name="returns meal plan data" time="0.023">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/billing" name="returns billing history" time="0.014">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/subscriptions" name="returns active subscriptions" time="0.009">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/bmi" name="returns BMI data" time="0.008">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/hydration" name="returns hydration data" time="0.009">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/steps" name="returns steps data" time="0.007">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/sleep" name="returns sleep data" time="0.007">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/activity" name="returns activity data" time="0.007">
-    </testcase>
-    <testcase classname="Client API Performance &amp; Functionality Tests &gt; GET /api/client/dietary-recall" name="returns dietary recall history" time="0.019">
+    <testcase classname="File Upload Integration Tests &gt; Response Format" name="should return file ID for database reference" time="0.004">
     </testcase>
   </testsuite>
 </testsuites>
