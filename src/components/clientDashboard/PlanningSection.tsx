@@ -1872,10 +1872,13 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       }
     };
 
-    // Handle dialog open
+    // Handle dialog open - only allow opening, not closing via backdrop/escape
+    // User must click Cancel/Close button to close the dialog
     const handleOpenChange = (open: boolean) => {
-      setIsOpen(open);
+      // Only allow opening the dialog, ignore close requests from backdrop/escape
+      // Closing is handled explicitly by Cancel button with setIsOpen(false)
       if (open) {
+        setIsOpen(true);
         setSelectedDates([]);
         setSelectedUnfreezeDates([]);
         setActiveTab('freeze');
@@ -1883,6 +1886,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         setShowConfirmation(false);
         fetchFreezeInfo();
       }
+      // Do NOT setIsOpen(false) here - let Cancel button handle closing
     };
 
     // Check if a date is already frozen
