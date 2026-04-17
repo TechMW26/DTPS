@@ -302,6 +302,25 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   const [paymentCheck, setPaymentCheck] = useState<PaymentCheckResult | null>(null);
   const [checkingPayment, setCheckingPayment] = useState(false);
 
+  // Selected purchase for Active Plan dropdown
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
+
+  // Derive the selected purchase from allPurchasesNeedingMealPlan
+  const selectedPurchase = useMemo(() => {
+    if (!paymentCheck?.allPurchasesNeedingMealPlan?.length) return null;
+    if (selectedPurchaseId) {
+      return paymentCheck.allPurchasesNeedingMealPlan.find(p => p._id === selectedPurchaseId) || null;
+    }
+    // Default: the API's active purchase
+    return paymentCheck.allPurchasesNeedingMealPlan.find(p => p._id === paymentCheck.purchase?._id) || paymentCheck.allPurchasesNeedingMealPlan[0] || null;
+  }, [paymentCheck, selectedPurchaseId]);
+
+  // Check if the current active purchase (daysUsed > 0) blocks switching
+  const currentActivePurchaseBlocks = useMemo(() => {
+    if (!paymentCheck?.purchase) return false;
+    return (paymentCheck.purchase.daysUsed || 0) > 0;
+  }, [paymentCheck]);
+
   // Success dialog state
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [createdPlanInfo, setCreatedPlanInfo] = useState<{ days: number; remainingDays: number } | null>(null);
@@ -316,8 +335,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         action: 'recalculate'
       };
 
-      if (paymentCheck?.purchase?._id) {
-        requestBody.purchaseId = paymentCheck.purchase._id;
+      if (selectedPurchase?._id || paymentCheck?.purchase?._id) {
+        requestBody.purchaseId = selectedPurchase?._id || paymentCheck?.purchase?._id || '';
       } else {
         requestBody.clientId = client._id;
       }
@@ -356,6 +375,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       const data = await res.json();
       if (data.success) {
         setPaymentCheck(normalizePaymentCheckDates(data));
+        // Reset selected purchase to the API's default active purchase
+        setSelectedPurchaseId(null);
         if (showToast) {
           if (data.hasPaidPlan) {
             toast.success(`Payment verified! ${data.remainingDays} days remaining`);
@@ -519,7 +540,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         // Create new draft
         payload.clientId = client._id;
         if (selectedTemplate?._id) payload.templateId = selectedTemplate._id;
-        if (paymentCheck?.purchase?._id) payload.purchaseId = paymentCheck.purchase._id;
+        if (selectedPurchase?._id || paymentCheck?.purchase?._id) payload.purchaseId = selectedPurchase?._id || paymentCheck?.purchase?._id;
 
         const res = await fetch('/api/client-meal-plans', {
           method: 'POST',
@@ -995,11 +1016,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   // Initialize start date based on latest plan's end date + 1, respecting expected dates
   const initializeStartDate = async () => {
     const today = format(new Date(), 'yyyy-MM-dd');
-    const expectedStartDate = paymentCheck?.purchase?.expectedStartDate
-      ? format(new Date(paymentCheck.purchase.expectedStartDate), 'yyyy-MM-dd')
+    const expectedStartDate = (selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate)
+      ? format(new Date(selectedPurchase?.expectedStartDate || paymentCheck!.purchase!.expectedStartDate!), 'yyyy-MM-dd')
       : null;
-    const expectedEndDate = paymentCheck?.purchase?.expectedEndDate
-      ? format(new Date(paymentCheck.purchase.expectedEndDate), 'yyyy-MM-dd')
+    const expectedEndDate = (selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate)
+      ? format(new Date(selectedPurchase?.expectedEndDate || paymentCheck!.purchase!.expectedEndDate!), 'yyyy-MM-dd')
       : null;
 
     // Get latest meal plan's end date
@@ -1069,8 +1090,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       return;
     }
     // Check if duration exceeds remaining days in paid plan (only for new plans)
-    if (!isEditMode && paymentCheck?.hasPaidPlan && duration > paymentCheck.remainingDays) {
-      toast.error(`Duration cannot exceed ${paymentCheck.remainingDays} days (remaining in client's plan)`);
+    const effectiveRemainingForValidation = selectedPurchase?.remainingDays ?? paymentCheck?.remainingDays ?? 0;
+    if (!isEditMode && paymentCheck?.hasPaidPlan && duration > effectiveRemainingForValidation) {
+      toast.error(`Duration cannot exceed ${effectiveRemainingForValidation} days (remaining in client's plan)`);
       return;
     }
     // Warn if no paid plan (but allow for editing existing plans)
@@ -1080,9 +1102,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     }
 
     // Validate start date is within expected range if set (only for new plans, not when editing)
-    if (!isEditMode && paymentCheck?.purchase?.expectedStartDate && paymentCheck?.purchase?.expectedEndDate) {
-      const expectedStart = new Date(paymentCheck.purchase.expectedStartDate);
-      const expectedEnd = new Date(paymentCheck.purchase.expectedEndDate);
+    const validationExpectedStart = selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate;
+    const validationExpectedEnd = selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate;
+    if (!isEditMode && validationExpectedStart && validationExpectedEnd) {
+      const expectedStart = new Date(validationExpectedStart);
+      const expectedEnd = new Date(validationExpectedEnd);
       const planStartDate = new Date(startDate);
 
       if (planStartDate < expectedStart) {
@@ -1227,7 +1251,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         };
 
         if (selectedTemplate?._id) payload.templateId = selectedTemplate._id;
-        if (paymentCheck?.purchase?._id) payload.purchaseId = paymentCheck.purchase._id;
+        if (selectedPurchase?._id || paymentCheck?.purchase?._id) payload.purchaseId = selectedPurchase?._id || paymentCheck?.purchase?._id;
 
         console.log('[Publish Plan] New plan payload:', { duration: payload.duration, mealsCount: payload.meals.length });
 
@@ -1256,13 +1280,14 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         setInitialMealTypes(finalMealTypes);
 
         // Update client purchase - ADD days used (do not change expected dates)
-        if (paymentCheck?.purchase?._id) {
+        const purchaseIdToUpdate = selectedPurchase?._id || paymentCheck?.purchase?._id;
+        if (purchaseIdToUpdate) {
           try {
             await fetch('/api/client-purchases', {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                purchaseId: paymentCheck.purchase._id,
+                purchaseId: purchaseIdToUpdate,
                 mealPlanId: data.mealPlan?._id,
                 mealPlanCreated: true,
                 addDaysUsed: actualDuration  // ADD to existing days used - use actualDuration for accuracy
@@ -3807,9 +3832,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     onChange={(e) => {
                       const newStartDate = e.target.value;
                       // Validate start date is within expected dates range (only for new plans, not when editing)
-                      if (!isEditMode && paymentCheck?.purchase?.expectedStartDate && paymentCheck?.purchase?.expectedEndDate) {
-                        const expectedStart = new Date(paymentCheck.purchase.expectedStartDate);
-                        const expectedEnd = new Date(paymentCheck.purchase.expectedEndDate);
+                      const formExpectedStart = selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate;
+                      const formExpectedEnd = selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate;
+                      if (!isEditMode && formExpectedStart && formExpectedEnd) {
+                        const expectedStart = new Date(formExpectedStart);
+                        const expectedEnd = new Date(formExpectedEnd);
                         const selectedDate = new Date(newStartDate);
 
                         if (selectedDate < expectedStart) {
@@ -3823,15 +3850,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       }
                       setStartDate(newStartDate);
                     }}
-                    min={!isEditMode && paymentCheck?.purchase?.expectedStartDate ? format(new Date(paymentCheck.purchase.expectedStartDate), 'yyyy-MM-dd') : undefined}
-                    max={!isEditMode && paymentCheck?.purchase?.expectedEndDate ? format(new Date(paymentCheck.purchase.expectedEndDate), 'yyyy-MM-dd') : undefined}
+                    min={!isEditMode && (selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate) ? format(new Date(selectedPurchase?.expectedStartDate || paymentCheck!.purchase!.expectedStartDate!), 'yyyy-MM-dd') : undefined}
+                    max={!isEditMode && (selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate) ? format(new Date(selectedPurchase?.expectedEndDate || paymentCheck!.purchase!.expectedEndDate!), 'yyyy-MM-dd') : undefined}
                   />
-                  {!isEditMode && paymentCheck?.purchase?.expectedStartDate && paymentCheck?.purchase?.expectedEndDate && (
+                  {!isEditMode && (selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate) && (selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate) && (
                     <p className="text-xs text-green-600 mt-1">
-                      📅 Start date must be within: {format(new Date(paymentCheck.purchase.expectedStartDate), 'dd MMM')} - {format(new Date(paymentCheck.purchase.expectedEndDate), 'dd MMM yyyy')}
+                      📅 Start date must be within: {format(new Date(selectedPurchase?.expectedStartDate || paymentCheck!.purchase!.expectedStartDate!), 'dd MMM')} - {format(new Date(selectedPurchase?.expectedEndDate || paymentCheck!.purchase!.expectedEndDate!), 'dd MMM yyyy')}
                     </p>
                   )}
-                  {!isEditMode && !paymentCheck?.purchase?.expectedStartDate && paymentCheck?.hasPaidPlan && (
+                  {!isEditMode && !(selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate) && paymentCheck?.hasPaidPlan && (
                     <p className="text-xs text-amber-600 mt-1">
                       ⚠️ No expected dates set. Set expected dates in Payment section first.
                     </p>
@@ -3844,15 +3871,16 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                   <Input
                     type="number"
                     min={1}
-                    max={isEditMode ? 365 : (paymentCheck?.remainingDays || 365)}
+                    max={isEditMode ? 365 : (selectedPurchase?.remainingDays || paymentCheck?.remainingDays || 365)}
                     value={duration}
                     onChange={(e) => {
                       const val = parseInt(e.target.value) || 1;
+                      const maxRemaining = selectedPurchase?.remainingDays ?? paymentCheck?.remainingDays ?? 365;
                       if (val < 1) {
                         setDuration(1);
-                      } else if (!isEditMode && paymentCheck?.remainingDays && val > paymentCheck.remainingDays) {
-                        toast.error(`Maximum duration allowed is ${paymentCheck.remainingDays} days based on client's purchased plan`);
-                        setDuration(paymentCheck.remainingDays);
+                      } else if (!isEditMode && maxRemaining && val > maxRemaining) {
+                        toast.error(`Maximum duration allowed is ${maxRemaining} days based on client's purchased plan`);
+                        setDuration(maxRemaining);
                       } else if (val > 365) {
                         setDuration(365);
                       } else {
@@ -3862,7 +3890,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                   />
                   {!isEditMode && paymentCheck?.hasPaidPlan && (
                     <p className="text-xs text-amber-600 mt-1">
-                      ⚠️ Client has {paymentCheck.remainingDays} days remaining in their plan
+                      ⚠️ Client has {selectedPurchase?.remainingDays ?? paymentCheck.remainingDays} days remaining in their plan
                     </p>
                   )}
                 </div>
@@ -3991,7 +4019,59 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                 <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-green-900">✅ Active Plan: {paymentCheck.purchase?.planName}</h4>
+                    <div className="flex items-center gap-3 flex-1">
+                      <h4 className="font-medium text-green-900 whitespace-nowrap">✅ Active Plan:</h4>
+                      {paymentCheck.allPurchasesNeedingMealPlan && paymentCheck.allPurchasesNeedingMealPlan.length > 1 ? (
+                        <div className="flex-1 max-w-xs">
+                          <Select
+                            value={selectedPurchase?._id || paymentCheck.purchase?._id || ''}
+                            onValueChange={(value) => {
+                              if (currentActivePurchaseBlocks && value !== paymentCheck.purchase?._id) {
+                                toast.error('Please complete the current meal plan first before switching to another purchase.');
+                                return;
+                              }
+                              setSelectedPurchaseId(value);
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-sm bg-white border-green-300 text-green-800 font-medium">
+                              <SelectValue placeholder="Select a plan" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {paymentCheck.allPurchasesNeedingMealPlan.map((purchase) => {
+                                const isBlocked = currentActivePurchaseBlocks && purchase._id !== paymentCheck.purchase?._id;
+                                return (
+                                  <SelectItem
+                                    key={purchase._id}
+                                    value={purchase._id}
+                                    disabled={isBlocked}
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      <span>{purchase.planName}</span>
+                                      <span className="text-xs text-gray-500">
+                                        ({purchase.remainingDays}/{purchase.durationDays} days)
+                                      </span>
+                                      {purchase._id === paymentCheck.purchase?._id && (
+                                        <span className="text-xs text-green-600 font-medium">• Current</span>
+                                      )}
+                                      {isBlocked && (
+                                        <span className="text-xs text-red-500">🔒</span>
+                                      )}
+                                    </span>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                          {currentActivePurchaseBlocks && (
+                            <p className="text-[10px] text-amber-600 mt-1">
+                              ⚠ Complete the current plan ({paymentCheck.purchase?.daysUsed} days used) before switching
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <h4 className="font-medium text-green-900">{selectedPurchase?.planName || paymentCheck.purchase?.planName}</h4>
+                      )}
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -4007,32 +4087,32 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3 text-sm">
                     <div className="bg-white rounded p-2 border border-green-200">
                       <p className="text-gray-600 text-xs">Total Duration</p>
-                      <p className="font-bold text-green-700">{paymentCheck.totalPurchasedDays || paymentCheck.purchase?.durationDays} days</p>
+                      <p className="font-bold text-green-700">{selectedPurchase?.durationDays || paymentCheck.totalPurchasedDays || paymentCheck.purchase?.durationDays} days</p>
                     </div>
                     <div className="bg-white rounded p-2 border border-green-200">
                       <p className="text-gray-600 text-xs">Days Used</p>
-                      <p className="font-bold text-green-700">{paymentCheck.totalDaysUsed || 0} days</p>
+                      <p className="font-bold text-green-700">{selectedPurchase?.daysUsed ?? paymentCheck.totalDaysUsed ?? 0} days</p>
                     </div>
                     <div className="bg-white rounded p-2 border border-green-200">
                       <p className="text-gray-600 text-xs">Remaining</p>
-                      <p className="font-bold text-blue-600">{paymentCheck.remainingDays} days</p>
+                      <p className="font-bold text-blue-600">{selectedPurchase?.remainingDays ?? paymentCheck.remainingDays} days</p>
                     </div>
                     <div className="bg-white rounded p-2 border border-green-200">
                       <p className="text-gray-600 text-xs">Plan Category</p>
-                      <p className="font-bold text-green-700">{paymentCheck.purchase?.planCategory || 'General'}</p>
+                      <p className="font-bold text-green-700">{selectedPurchase?.planCategory || paymentCheck.purchase?.planCategory || 'General'}</p>
                     </div>
                     <div className="bg-white rounded p-2 border border-green-200">
                       <p className="text-gray-600 text-xs">Meal Plan Status</p>
-                      <p className={`font-bold ${paymentCheck.purchase?.mealPlanCreated ? 'text-green-700' : 'text-orange-600'}`}>
-                        {paymentCheck.purchase?.mealPlanCreated ? '✅ Created' : '⏳ Not Created'}
+                      <p className={`font-bold ${(selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated) ? 'text-green-700' : 'text-orange-600'}`}>
+                        {(selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated) ? '✅ Created' : '⏳ Not Created'}
                       </p>
                     </div>
                     {/* Expected Dates Display */}
-                    {paymentCheck.purchase?.expectedStartDate && (
+                    {(selectedPurchase?.expectedStartDate || paymentCheck.purchase?.expectedStartDate) && (
                       <div className="bg-white rounded p-2 border border-green-200">
                         <p className="text-gray-600 text-xs">Expected Start</p>
                         <p className="font-bold text-green-700">
-                          {format(new Date(paymentCheck.purchase.expectedStartDate), 'MMM d, yyyy')}
+                          {format(new Date(selectedPurchase?.expectedStartDate || paymentCheck.purchase?.expectedStartDate || ''), 'MMM d, yyyy')}
                         </p>
                       </div>
                     )}
@@ -4040,12 +4120,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                   <div className="mt-3 bg-green-100 rounded-full h-2 overflow-hidden">
                     <div
                       className="bg-green-500 h-full transition-all"
-                      style={{ width: `${((paymentCheck.totalDaysUsed || 0) / (paymentCheck.totalPurchasedDays || 1)) * 100}%` }}
+                      style={{ width: `${((selectedPurchase?.daysUsed ?? paymentCheck.totalDaysUsed ?? 0) / (selectedPurchase?.durationDays || paymentCheck.totalPurchasedDays || 1)) * 100}%` }}
                     />
                   </div>
 
                   {/* Set Expected Dates Prompt - Show when mealPlanCreated is false and no expected dates */}
-                  {!paymentCheck.purchase?.mealPlanCreated && !paymentCheck.purchase?.expectedStartDate && (
+                  {!(selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated) && !(selectedPurchase?.expectedStartDate || paymentCheck.purchase?.expectedStartDate) && (
                     <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-orange-600" />
@@ -4085,22 +4165,32 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       <div className="space-y-2">
                         {paymentCheck.allPurchasesNeedingMealPlan.map((purchase, idx) => {
                           const isPartiallyUsed = (purchase.daysUsed || 0) > 0;
-                          const isCurrentPurchase = purchase._id === paymentCheck.purchase?._id;
+                          const isSelectedPurchase = purchase._id === (selectedPurchase?._id || paymentCheck.purchase?._id);
+                          const isBlockedFromSelecting = currentActivePurchaseBlocks && purchase._id !== paymentCheck.purchase?._id;
 
                           return (
                             <div
                               key={purchase._id}
-                              className={`flex items-center justify-between text-xs p-2 rounded border ${isCurrentPurchase
+                              className={`flex items-center justify-between text-xs p-2 rounded border cursor-pointer transition-colors ${isSelectedPurchase
                                 ? 'bg-green-50 border-green-300'
-                                : 'bg-white border-blue-100'
+                                : isBlockedFromSelecting
+                                  ? 'bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed'
+                                  : 'bg-white border-blue-100 hover:border-blue-300 hover:bg-blue-50'
                                 }`}
+                              onClick={() => {
+                                if (isBlockedFromSelecting) {
+                                  toast.error('Please complete the current meal plan first before switching.');
+                                  return;
+                                }
+                                setSelectedPurchaseId(purchase._id);
+                              }}
                             >
                               <div className="flex items-center gap-2">
-                                {isCurrentPurchase && (
+                                {isSelectedPurchase && (
                                   <span className="text-green-600 text-[10px] font-bold">▶</span>
                                 )}
                                 <div>
-                                  <span className={`font-medium ${isCurrentPurchase ? 'text-green-800' : 'text-blue-800'}`}>
+                                  <span className={`font-medium ${isSelectedPurchase ? 'text-green-800' : 'text-blue-800'}`}>
                                     {purchase.planName}
                                   </span>
                                   <span className="text-gray-500 ml-2">
@@ -4114,7 +4204,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                 </div>
                               </div>
                               <div className="flex items-center gap-1">
-                                {isCurrentPurchase ? (
+                                {isSelectedPurchase ? (
                                   <Badge className="bg-green-100 text-green-700 text-xs">
                                     Current
                                   </Badge>
@@ -4140,7 +4230,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                   )}
 
                   <p className="text-xs text-green-600 mt-2">
-                    {paymentCheck.purchase?.mealPlanCreated
+                    {(selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated)
                       ? '✓ Meal plan has been created. You can create additional plans with remaining days.'
                       : '✓ Ready to create meal plan. Click "Create New Plan" button below.'}
                   </p>
@@ -4226,7 +4316,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
               {/* Create New Plan Button - Hidden in viewOnly mode (health counselor) */}
               {!viewOnly && (
                 <Button
-                  className={`${paymentCheck?.hasPaidPlan && paymentCheck.remainingDays > 0
+                  className={`${paymentCheck?.hasPaidPlan && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) > 0
                     ? 'bg-blue-600 hover:bg-blue-700'
                     : 'bg-gray-400 cursor-not-allowed'
                     }`}
@@ -4235,11 +4325,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       toast.error('Client needs to purchase a plan first before creating a meal plan');
                       return;
                     }
-                    if (paymentCheck.remainingDays <= 0) {
+                    const effectiveRemaining = selectedPurchase?.remainingDays ?? paymentCheck.remainingDays;
+                    if (effectiveRemaining <= 0) {
                       toast.error('All plan days have been used. Client needs to purchase a new plan.');
                       return;
                     }
-                    const purchase = paymentCheck.purchase;
+                    const purchase = selectedPurchase || paymentCheck.purchase;
                     if (!purchase?.expectedStartDate || !purchase?.expectedEndDate) {
                       toast.info('Expected dates are not set yet. Creating plan from the next available start date.');
                     }
@@ -4254,15 +4345,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     setSelectedTemplate(null);
                     setPlanKey(prev => prev + 1);
 
-                    // Set duration based on remaining days
-                    if (paymentCheck.remainingDays > 0) {
-                      setDuration(Math.min(paymentCheck.remainingDays, 30)); // Max 30 days at a time
+                    // Set duration based on selected purchase remaining days
+                    if (effectiveRemaining > 0) {
+                      setDuration(Math.min(effectiveRemaining, 30)); // Max 30 days at a time
                     }
                     // Initialize start date based on latest plan
                     await initializeStartDate();
                     setStep('form');
                   }}
-                  disabled={!paymentCheck?.hasPaidPlan || paymentCheck.remainingDays <= 0}
+                  disabled={!paymentCheck?.hasPaidPlan || (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) <= 0}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Create New Plan
@@ -4270,14 +4361,14 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
               )}
             </div>
           </div>
-          {paymentCheck?.hasPaidPlan && paymentCheck.remainingDays > 0 && (
+          {paymentCheck?.hasPaidPlan && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) > 0 && (
             <p className="text-sm text-gray-500 mt-1">
-              {paymentCheck.remainingDays} days available • You can split into multiple plans (e.g., 7+7 days)
+              {selectedPurchase?.remainingDays ?? paymentCheck.remainingDays} days available • You can split into multiple plans (e.g., 7+7 days)
             </p>
           )}
-          {paymentCheck?.hasPaidPlan && paymentCheck.remainingDays <= 0 && (
+          {paymentCheck?.hasPaidPlan && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) <= 0 && (
             <p className="text-sm text-amber-600 mt-1">
-              All {paymentCheck.totalPurchasedDays} days used • Purchase new plan for more days
+              All {selectedPurchase?.durationDays || paymentCheck.totalPurchasedDays} days used • Purchase new plan for more days
             </p>
           )}
         </CardHeader>
