@@ -2693,7 +2693,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   }
 
   // Extend Plan Dialog Component
-  function ExtendPlanDialog({ plan, onExtend, showAsButton = false }: { plan: any; onExtend: () => void; showAsButton?: boolean }) {
+  function ExtendPlanDialog({ plan, onExtend, showAsButton = false }: { plan: any; onExtend: () => Promise<void> | void; showAsButton?: boolean }) {
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
@@ -2756,8 +2756,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           // Emit event to trigger automatic refresh across all components
           emitDataChange(DataEventTypes.MEAL_PLAN_EXTENDED, { planId: plan._id });
           // Refresh plans and payment status to sync UI
-          onExtend();
-          checkPaymentStatus();
+          await Promise.all([
+            Promise.resolve(onExtend()),
+            checkPaymentStatus()
+          ]);
         } else {
           toast.error(data.error || 'Failed to extend plan');
         }
@@ -4116,6 +4118,20 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                         </p>
                       </div>
                     )}
+                    {(selectedPurchase?.expectedEndDate || paymentCheck.purchase?.expectedEndDate || selectedPurchase?.endDate || paymentCheck.purchase?.endDate) && (
+                      <div className="bg-white rounded p-2 border border-green-200">
+                        <p className="text-gray-600 text-xs">Expected End</p>
+                        <p className="font-bold text-green-700">
+                          {format(new Date(
+                            selectedPurchase?.expectedEndDate ||
+                            paymentCheck.purchase?.expectedEndDate ||
+                            selectedPurchase?.endDate ||
+                            paymentCheck.purchase?.endDate ||
+                            ''
+                          ), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-3 bg-green-100 rounded-full h-2 overflow-hidden">
                     <div
@@ -4552,7 +4568,18 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                   <span className="text-gray-500">Method:</span>
                                   <p className="font-medium text-gray-900 capitalize">{plan.paymentInfo.paymentMethod || 'Online'}</p>
                                 </div>
+                                <div>
+                                  <span className="text-gray-500">Meal End Date:</span>
+                                  <p className="font-medium text-gray-900">
+                                    {plan.endDate ? format(new Date(plan.endDate), 'MMM d, yyyy') : 'N/A'}
+                                  </p>
+                                </div>
                               </div>
+                              {plan?.customizations?.lastExtension?.extendedDays > 0 && (
+                                <div className="mt-2 text-xs text-green-700">
+                                  Extended by {plan.customizations.lastExtension.extendedDays} day(s)
+                                </div>
+                              )}
                               {plan.paymentInfo.transactionId && plan.paymentInfo.transactionId !== 'N/A' && (
                                 <div className="mt-2 pt-2 border-t border-emerald-200">
                                   <span className="text-xs text-gray-500">Transaction ID: </span>
@@ -4664,13 +4691,16 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                           showAsButton={true}
                                         />
 
-                                        <ExtendPlanDialog
-                                          plan={plan}
-                                          onExtend={fetchClientPlans}
-                                          showAsButton={true}
-                                        />
+                                        {isLastPhase && (
+                                          <ExtendPlanDialog
+                                            plan={plan}
+                                            onExtend={fetchClientPlans}
+                                            showAsButton={true}
+                                          />
+                                        )}
                                       </>
                                     )}
+
 
                                     {/* Payment Details Toggle Button */}
                                     <Button

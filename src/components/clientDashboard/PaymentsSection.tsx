@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Copy, Plus, RefreshCw, MoreVertical, Trash2, ExternalLink, Eye, FileText, Bell, Loader2, Mail, Printer, Package, ChevronDown, Wallet, Upload, Calendar } from "lucide-react";
 import { useRealtime } from "@/hooks/useRealtime";
+import { useDataRefresh, DataEventTypes } from "@/lib/events/useDataRefresh";
 import ImageLightbox from "@/components/ui/image-lightbox";
 import { resolvePaymentStatus, type ResolvedPaymentStatus } from '@/lib/payments/payment-status';
 
@@ -583,13 +584,43 @@ export default function PaymentsSection({
     return String(value);
   };
 
+  const normalizeDateString = (value?: string): string | undefined => {
+    if (!value || typeof value !== 'string') return value;
+
+    const match = value.match(/^(\d{5})(-.+)$/);
+    if (!match) return value;
+
+    const [, year, rest] = match;
+    if (year.startsWith('20') && year[3] === '0') {
+      return `${year.slice(0, 3)}${year.slice(4)}${rest}`;
+    }
+
+    return value;
+  };
+
   const findLinkedPurchaseByPaymentLinkId = useCallback((paymentLinkId: any) => {
     const targetId = toIdString(paymentLinkId);
     if (!targetId) return null;
 
-    return clientPurchases.find((purchase: any) =>
+    const matches = clientPurchases.filter((purchase: any) =>
       toIdString(purchase.paymentLink) === targetId
-    ) || null;
+    );
+
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return matches[0];
+
+    // Prefer the freshest purchase with expected dates when duplicate records exist.
+    return matches.sort((a: any, b: any) => {
+      const aHasExpected = a.expectedStartDate || a.expectedEndDate ? 1 : 0;
+      const bHasExpected = b.expectedStartDate || b.expectedEndDate ? 1 : 0;
+      if (aHasExpected !== bHasExpected) {
+        return bHasExpected - aHasExpected;
+      }
+
+      const aUpdated = new Date(a.updatedAt || a.purchaseDate || a.createdAt || 0).getTime();
+      const bUpdated = new Date(b.updatedAt || b.purchaseDate || b.createdAt || 0).getTime();
+      return bUpdated - aUpdated;
+    })[0] || null;
   }, [clientPurchases]);
 
   const getTransactionIdForPayment = (payment: PaymentItem): string => {
@@ -647,7 +678,14 @@ export default function PaymentsSection({
       const response = await fetch(`/api/client-purchases?clientId=${client._id}`, { cache: 'no-store' });
       const data = await response.json();
       if (data.success) {
-        setClientPurchases(data.purchases || []);
+        const normalizedPurchases = (data.purchases || []).map((purchase: any) => ({
+          ...purchase,
+          startDate: normalizeDateString(purchase?.startDate) || purchase?.startDate,
+          endDate: normalizeDateString(purchase?.endDate) || purchase?.endDate,
+          expectedStartDate: normalizeDateString(purchase?.expectedStartDate) || purchase?.expectedStartDate,
+          expectedEndDate: normalizeDateString(purchase?.expectedEndDate) || purchase?.expectedEndDate,
+        }));
+        setClientPurchases(normalizedPurchases);
       }
     } catch (error) {
       console.error('Error fetching client purchases:', error);
@@ -674,6 +712,21 @@ export default function PaymentsSection({
       }
     },
   });
+
+  useDataRefresh(
+    [
+      DataEventTypes.MEAL_PLAN_EXTENDED,
+      DataEventTypes.MEAL_PLAN_FROZEN,
+      DataEventTypes.MEAL_PLAN_UNFROZEN,
+      DataEventTypes.PURCHASE_UPDATED,
+      DataEventTypes.PAYMENT_UPDATED,
+    ],
+    () => {
+      fetchPaymentLinks();
+      fetchClientPurchases();
+    },
+    [fetchPaymentLinks, fetchClientPurchases]
+  );
 
   // Keep purchase state synchronized whenever payment rows change.
   const paymentStateFingerprint = useMemo(() =>

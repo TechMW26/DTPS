@@ -61,8 +61,8 @@ async function getExtendDaysFromPurchase(purchaseId: string | null, durationDays
     return 0;
 }
 
-// POST - Extend meal plan by creating a NEW meal plan for the extra days
-// Does NOT modify the original meal plan's end date
+// POST - Extend the linked purchase allocation and expected end date.
+// This does NOT modify the current meal plan end date.
 export async function POST(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
@@ -154,49 +154,138 @@ export async function POST(
             );
         }
 
-        // ====== Extend the CURRENT meal plan in-place ======
-        const originalEndDate = new Date(mealPlan.endDate);
-        const newEndDate = addDays(originalEndDate, extendDays);
-        const originalDuration = mealPlan.duration || Math.ceil((originalEndDate.getTime() - new Date(mealPlan.startDate).getTime()) / (1000 * 60 * 60 * 24));
-        const newDuration = originalDuration + extendDays;
+        // Keep meal plan end date unchanged as requested.
+        const currentMealPlanEndDate = new Date(mealPlan.endDate);
 
-        // Update the meal plan's endDate and duration
-        mealPlan.endDate = newEndDate;
-        mealPlan.duration = newDuration;
-        if (!mealPlan.customizations) {
-            mealPlan.customizations = {};
-        }
-        (mealPlan.customizations as any).lastExtension = {
-            extendedDays: extendDays,
-            previousEndDate: originalEndDate,
-            extendedAt: new Date(),
-            extendedBy: session.user.id
-        };
-        await mealPlan.save();
-
-        // ====== Update the linked purchase so totalPurchasedDays / expectedEndDate stay in sync ======
+        // ====== Update linked purchase allocation + expected end date (legacy and unified safe) ======
+        let previousExpectedEndDate: Date | null = null;
+        let newExpectedEndDate: Date | null = null;
         if (purchaseId) {
             const purchaseUpdate: any = {
                 $inc: { durationDays: extendDays }
             };
 
-            // Also extend expectedEndDate if it exists
-            const purchase: any = await UnifiedPayment.findById(purchaseId).lean();
-            if (purchase) {
-                if (purchase.expectedEndDate) {
-                    purchaseUpdate.$set = {
-                        ...(purchaseUpdate.$set || {}),
-                        expectedEndDate: addDays(new Date(purchase.expectedEndDate), extendDays)
-                    };
-                }
-                if (purchase.endDate) {
-                    purchaseUpdate.$set = {
-                        ...(purchaseUpdate.$set || {}),
-                        endDate: addDays(new Date(purchase.endDate), extendDays)
-                    };
+            const selectPurchaseFields = '_id paymentLink expectedEndDate endDate updatedAt createdAt';
+
+            const primaryUnifiedPurchase: any = await UnifiedPayment.findById(purchaseId)
+                .select(selectPurchaseFields)
+                .lean();
+
+            const primaryLegacyPurchase: any = !primaryUnifiedPurchase
+                ? await ClientPurchase.findById(purchaseId)
+                    .select(selectPurchaseFields)
+                    .lean()
+                : null;
+
+            const unifiedTargetsMap = new Map<string, any>();
+            const legacyTargetsMap = new Map<string, any>();
+
+            const registerTarget = (map: Map<string, any>, record: any) => {
+                if (!record?._id) return;
+                map.set(String(record._id), record);
+            };
+
+            registerTarget(unifiedTargetsMap, primaryUnifiedPurchase);
+            registerTarget(legacyTargetsMap, primaryLegacyPurchase);
+
+            const relatedPaymentLinkId =
+                primaryUnifiedPurchase?.paymentLink?.toString?.() ||
+                primaryLegacyPurchase?.paymentLink?.toString?.() ||
+                null;
+
+            if (relatedPaymentLinkId) {
+                const [linkedUnifiedTargets, linkedLegacyTargets] = await Promise.all([
+                    UnifiedPayment.find({ paymentLink: relatedPaymentLinkId })
+                        .select(selectPurchaseFields)
+                        .lean(),
+                    ClientPurchase.find({ paymentLink: relatedPaymentLinkId })
+                        .select(selectPurchaseFields)
+                        .lean()
+                ]);
+
+                linkedUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
+                linkedLegacyTargets.forEach((record: any) => registerTarget(legacyTargetsMap, record));
+            }
+
+            // Backward compatibility: in older data, mealPlan.purchaseId may contain a paymentLink id.
+            if (unifiedTargetsMap.size === 0 && legacyTargetsMap.size === 0) {
+                const [fallbackUnifiedTargets, fallbackLegacyTargets] = await Promise.all([
+                    UnifiedPayment.find({ paymentLink: purchaseId })
+                        .select(selectPurchaseFields)
+                        .lean(),
+                    ClientPurchase.find({ paymentLink: purchaseId })
+                        .select(selectPurchaseFields)
+                        .lean()
+                ]);
+
+                fallbackUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
+                fallbackLegacyTargets.forEach((record: any) => registerTarget(legacyTargetsMap, record));
+            }
+
+            const resolveBaselineEndDate = (record: any): Date | null => {
+                if (record?.expectedEndDate) return new Date(record.expectedEndDate);
+                if (record?.endDate) return new Date(record.endDate);
+                return null;
+            };
+
+            const baselineCandidates = [
+                primaryUnifiedPurchase,
+                ...Array.from(unifiedTargetsMap.values()),
+                primaryLegacyPurchase,
+                ...Array.from(legacyTargetsMap.values())
+            ];
+
+            for (const candidate of baselineCandidates) {
+                const candidateDate = resolveBaselineEndDate(candidate);
+                if (candidateDate) {
+                    previousExpectedEndDate = candidateDate;
+                    break;
                 }
             }
-            await UnifiedPayment.updateOne({ _id: purchaseId }, purchaseUpdate);
+
+            if (!previousExpectedEndDate && mealPlan?.endDate) {
+                previousExpectedEndDate = new Date(mealPlan.endDate);
+            }
+
+            if (previousExpectedEndDate) {
+                newExpectedEndDate = addDays(previousExpectedEndDate, extendDays);
+                purchaseUpdate.$set = {
+                    ...(purchaseUpdate.$set || {}),
+                    expectedEndDate: newExpectedEndDate,
+                    endDate: newExpectedEndDate
+                };
+            }
+
+            const unifiedTargetIds = Array.from(unifiedTargetsMap.keys());
+            const legacyTargetIds = Array.from(legacyTargetsMap.keys());
+
+            const updateOps: Promise<any>[] = [];
+            if (unifiedTargetIds.length > 0) {
+                updateOps.push(
+                    UnifiedPayment.updateMany(
+                        { _id: { $in: unifiedTargetIds } },
+                        purchaseUpdate
+                    )
+                );
+            }
+
+            if (legacyTargetIds.length > 0) {
+                updateOps.push(
+                    ClientPurchase.updateMany(
+                        { _id: { $in: legacyTargetIds } },
+                        purchaseUpdate
+                    )
+                );
+            }
+
+            if (updateOps.length === 0) {
+                return NextResponse.json(
+                    { success: false, error: 'Linked purchase not found for this meal plan' },
+                    { status: 404 }
+                );
+            }
+
+            await Promise.all(updateOps);
         }
 
         // Clear caches
@@ -209,35 +298,38 @@ export async function POST(
             userId: mealPlan.clientId.toString(),
             action: 'update',
             category: 'diet',
-            description: `Extended meal plan "${mealPlan.name}" by ${extendDays} days (new end: ${format(newEndDate, 'yyyy-MM-dd')})`,
+            description: `Extended purchase expected end date for meal plan "${mealPlan.name}" by ${extendDays} days`,
             performedById: session.user.id,
             metadata: {
                 mealPlanId: id,
                 extendDays,
-                previousEndDate: format(originalEndDate, 'yyyy-MM-dd'),
-                newEndDate: format(newEndDate, 'yyyy-MM-dd'),
-                newDuration,
+                previousExpectedEndDate: previousExpectedEndDate ? format(previousExpectedEndDate, 'yyyy-MM-dd') : null,
+                newExpectedEndDate: newExpectedEndDate ? format(newExpectedEndDate, 'yyyy-MM-dd') : null,
+                mealPlanEndDateUnchanged: format(currentMealPlanEndDate, 'yyyy-MM-dd'),
                 remainingExtendDays: remainingExtendDays - extendDays
             }
         });
 
         return NextResponse.json({
             success: true,
-            message: `Extended meal plan by ${extendDays} days. New end date: ${format(newEndDate, 'MMM d, yyyy')}`,
+            message: newExpectedEndDate
+                ? `Extended expected end date by ${extendDays} days. New expected end: ${format(newExpectedEndDate, 'MMM d, yyyy')}`
+                : `Extended allocation by ${extendDays} days.`,
             plan: {
                 _id: mealPlan._id,
                 name: mealPlan.name,
                 startDate: mealPlan.startDate,
-                endDate: newEndDate,
-                duration: newDuration,
+                endDate: mealPlan.endDate,
+                duration: mealPlan.duration,
                 status: mealPlan.status
             },
             extendInfo: {
                 maxExtendDays,
                 usedExtendDays: alreadyExtended + extendDays,
                 remainingExtendDays: remainingExtendDays - extendDays,
-                previousEndDate: originalEndDate,
-                newEndDate
+                previousExpectedEndDate,
+                newExpectedEndDate,
+                mealPlanEndDate: mealPlan.endDate
             }
         });
     } catch (error: any) {

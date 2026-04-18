@@ -1,0 +1,7887 @@
+{
+  "summary": {
+    "timestamp": "2026-04-18T08:07:00.461Z",
+    "baseUrl": "http://localhost:3000",
+    "runsPerEndpoint": 3,
+    "discoveredEndpoints": 543,
+    "skippedEndpoints": 53,
+    "benchmarkedEndpoints": 490,
+    "globalAvgMs": 22.932521780952413,
+    "globalMinMs": 2.8965,
+    "globalMaxMs": 8096.126916,
+    "slowest": {
+      "key": "GET /api/wordpress/media",
+      "method": "GET",
+      "path": "/api/wordpress/media",
+      "file": "src/app/api/wordpress/media/route.ts",
+      "skipped": false,
+      "avg": 2859.478708,
+      "min": 234.318875,
+      "max": 8096.126916,
+      "status": 500,
+      "statuses": [
+        500,
+        500,
+        500
+      ]
+    },
+    "fastest": {
+      "key": "GET /api/firebase-config",
+      "method": "GET",
+      "path": "/api/firebase-config",
+      "file": "src/app/api/firebase-config/route.ts",
+      "skipped": false,
+      "avg": 3.895777666666666,
+      "min": 2.8965,
+      "max": 5.72625,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    }
+  },
+  "results": [
+    {
+      "key": "GET /api/wordpress/media",
+      "method": "GET",
+      "path": "/api/wordpress/media",
+      "file": "src/app/api/wordpress/media/route.ts",
+      "skipped": false,
+      "avg": 2859.478708,
+      "min": 234.318875,
+      "max": 8096.126916,
+      "status": 500,
+      "statuses": [
+        500,
+        500,
+        500
+      ]
+    },
+    {
+      "key": "POST /api/wati-contacts",
+      "method": "POST",
+      "path": "/api/wati-contacts",
+      "file": "src/app/api/wati-contacts/route.ts",
+      "skipped": false,
+      "avg": 884.1268333333334,
+      "min": 639.190667,
+      "max": 1027.481708,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/wati-contacts",
+      "method": "GET",
+      "path": "/api/wati-contacts",
+      "file": "src/app/api/wati-contacts/route.ts",
+      "skipped": false,
+      "avg": 519.672111,
+      "min": 4.854916,
+      "max": 1548.293667,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/diet-templates",
+      "method": "GET",
+      "path": "/api/diet-templates",
+      "file": "src/app/api/diet-templates/route.ts",
+      "skipped": false,
+      "avg": 322.3409583333334,
+      "min": 12.98125,
+      "max": 937.5425,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/meal-plan-templates",
+      "method": "GET",
+      "path": "/api/meal-plan-templates",
+      "file": "src/app/api/meal-plan-templates/route.ts",
+      "skipped": false,
+      "avg": 316.170389,
+      "min": 9.201125,
+      "max": 926.197292,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/client/blogs",
+      "method": "GET",
+      "path": "/api/client/blogs",
+      "file": "src/app/api/client/blogs/route.ts",
+      "skipped": false,
+      "avg": 223.75779166666666,
+      "min": 6.765084,
+      "max": 655.986083,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/payment-links/public/test-id",
+      "method": "GET",
+      "path": "/api/payment-links/public/test-id",
+      "file": "src/app/api/payment-links/public/[id]/route.ts",
+      "skipped": false,
+      "avg": 163.1539303333333,
+      "min": 91.819458,
+      "max": 297.0345,
+      "status": 404,
+      "statuses": [
+        404,
+        404,
+        404
+      ]
+    },
+    {
+      "key": "GET /api/service-plans",
+      "method": "GET",
+      "path": "/api/service-plans",
+      "file": "src/app/api/service-plans/route.ts",
+      "skipped": false,
+      "avg": 145.72537533333335,
+      "min": 4.482875,
+      "max": 426.738959,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "PUT /api/payments",
+      "method": "PUT",
+      "path": "/api/payments",
+      "file": "src/app/api/payments/route.ts",
+      "skipped": false,
+      "avg": 139.84712466666667,
+      "min": 101.050083,
+      "max": 187.855166,
+      "status": 500,
+      "statuses": [
+        500,
+        500,
+        500
+      ]
+    },
+    {
+      "key": "GET /api/health",
+      "method": "GET",
+      "path": "/api/health",
+      "file": "src/app/api/health/route.ts",
+      "skipped": false,
+      "avg": 109.76365299999999,
+      "min": 102.445542,
+      "max": 123.965458,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/ecommerce/ratings",
+      "method": "GET",
+      "path": "/api/ecommerce/ratings",
+      "file": "src/app/api/ecommerce/ratings/route.ts",
+      "skipped": false,
+      "avg": 106.95558366666667,
+      "min": 103.785792,
+      "max": 113.278,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/ecommerce/transformations",
+      "method": "GET",
+      "path": "/api/ecommerce/transformations",
+      "file": "src/app/api/ecommerce/transformations/route.ts",
+      "skipped": false,
+      "avg": 102.493514,
+      "min": 97.190458,
+      "max": 105.589584,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/ecommerce/plans",
+      "method": "GET",
+      "path": "/api/ecommerce/plans",
+      "file": "src/app/api/ecommerce/plans/route.ts",
+      "skipped": false,
+      "avg": 99.28081966666666,
+      "min": 92.314041,
+      "max": 103.362334,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/duration-presets",
+      "method": "GET",
+      "path": "/api/duration-presets",
+      "file": "src/app/api/duration-presets/route.ts",
+      "skipped": false,
+      "avg": 90.85979133333335,
+      "min": 79.299833,
+      "max": 105.205458,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/client/blogs/test-id",
+      "method": "GET",
+      "path": "/api/client/blogs/test-id",
+      "file": "src/app/api/client/blogs/[id]/route.ts",
+      "skipped": false,
+      "avg": 78.40751366666666,
+      "min": 67.891958,
+      "max": 83.702333,
+      "status": 404,
+      "statuses": [
+        404,
+        404,
+        404
+      ]
+    },
+    {
+      "key": "GET /api/ecommerce/blogs",
+      "method": "GET",
+      "path": "/api/ecommerce/blogs",
+      "file": "src/app/api/ecommerce/blogs/route.ts",
+      "skipped": false,
+      "avg": 75.74443033333334,
+      "min": 53.277,
+      "max": 106.616875,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "POST /api/staff/unread-counts/refresh",
+      "method": "POST",
+      "path": "/api/staff/unread-counts/refresh",
+      "file": "src/app/api/staff/unread-counts/refresh/route.ts",
+      "skipped": false,
+      "avg": 73.11425,
+      "min": 7.985209,
+      "max": 199.963291,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/watch/connect",
+      "method": "DELETE",
+      "path": "/api/watch/connect",
+      "file": "src/app/api/watch/connect/route.ts",
+      "skipped": false,
+      "avg": 61.399750000000004,
+      "min": 17.399833,
+      "max": 132.636417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/service-plans/test-id",
+      "method": "GET",
+      "path": "/api/service-plans/test-id",
+      "file": "src/app/api/service-plans/[id]/route.ts",
+      "skipped": false,
+      "avg": 49.83312466666666,
+      "min": 27.810083,
+      "max": 78.616166,
+      "status": 500,
+      "statuses": [
+        500,
+        500,
+        500
+      ]
+    },
+    {
+      "key": "GET /api/client/messages",
+      "method": "GET",
+      "path": "/api/client/messages",
+      "file": "src/app/api/client/messages/route.ts",
+      "skipped": false,
+      "avg": 44.92781933333333,
+      "min": 9.054791,
+      "max": 113.31875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/clients/test-id/assign-steps",
+      "method": "POST",
+      "path": "/api/admin/clients/test-id/assign-steps",
+      "file": "src/app/api/admin/clients/[clientId]/assign-steps/route.ts",
+      "skipped": false,
+      "avg": 44.40904166666667,
+      "min": 11.464916,
+      "max": 87.945792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/transformations",
+      "method": "GET",
+      "path": "/api/client/transformations",
+      "file": "src/app/api/client/transformations/route.ts",
+      "skipped": false,
+      "avg": 44.04626433333333,
+      "min": 3.858792,
+      "max": 123.280167,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/subscription-plans",
+      "method": "GET",
+      "path": "/api/subscription-plans",
+      "file": "src/app/api/subscription-plans/route.ts",
+      "skipped": false,
+      "avg": 43.25868066666666,
+      "min": 3.9375,
+      "max": 120.616542,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/meal-plan-templates/test-id",
+      "method": "GET",
+      "path": "/api/meal-plan-templates/test-id",
+      "file": "src/app/api/meal-plan-templates/[id]/route.ts",
+      "skipped": false,
+      "avg": 42.833347333333336,
+      "min": 35.750541,
+      "max": 49.027542,
+      "status": 500,
+      "statuses": [
+        500,
+        500,
+        500
+      ]
+    },
+    {
+      "key": "GET /api/admin/goal-categories",
+      "method": "GET",
+      "path": "/api/admin/goal-categories",
+      "file": "src/app/api/admin/goal-categories/route.ts",
+      "skipped": false,
+      "avg": 41.801903,
+      "min": 4.320084,
+      "max": 116.722875,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/files/test-id",
+      "method": "GET",
+      "path": "/api/files/test-id",
+      "file": "src/app/api/files/[id]/route.ts",
+      "skipped": false,
+      "avg": 38.073263999999995,
+      "min": 24.143917,
+      "max": 53.132417,
+      "status": 500,
+      "statuses": [
+        500,
+        500,
+        500
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id",
+      "file": "src/app/api/admin/clients/[clientId]/route.ts",
+      "skipped": false,
+      "avg": 36.606833333333334,
+      "min": 9.644625,
+      "max": 59.729125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/goal-categories/test-id",
+      "method": "GET",
+      "path": "/api/admin/goal-categories/test-id",
+      "file": "src/app/api/admin/goal-categories/[id]/route.ts",
+      "skipped": false,
+      "avg": 36.29293066666667,
+      "min": 23.436875,
+      "max": 61.51575,
+      "status": 500,
+      "statuses": [
+        500,
+        500,
+        500
+      ]
+    },
+    {
+      "key": "POST /api/client/blogs/test-id",
+      "method": "POST",
+      "path": "/api/client/blogs/test-id",
+      "file": "src/app/api/client/blogs/[id]/route.ts",
+      "skipped": false,
+      "avg": 36.22822233333333,
+      "min": 26.352542,
+      "max": 54.109083,
+      "status": 500,
+      "statuses": [
+        500,
+        500,
+        500
+      ]
+    },
+    {
+      "key": "PUT /api/admin/health-counselors/test-id",
+      "method": "PUT",
+      "path": "/api/admin/health-counselors/test-id",
+      "file": "src/app/api/admin/health-counselors/[counselorId]/route.ts",
+      "skipped": false,
+      "avg": 35.39638866666667,
+      "min": 8.648958,
+      "max": 87.588417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/subscriptions/test-id",
+      "method": "PUT",
+      "path": "/api/subscriptions/test-id",
+      "file": "src/app/api/subscriptions/[id]/route.ts",
+      "skipped": false,
+      "avg": 33.87947233333333,
+      "min": 7.327209,
+      "max": 86.763458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/client-purchases",
+      "method": "PUT",
+      "path": "/api/client-purchases",
+      "file": "src/app/api/client-purchases/route.ts",
+      "skipped": false,
+      "avg": 33.739278,
+      "min": 7.747458,
+      "max": 55.365292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/clients/woocommerce",
+      "method": "GET",
+      "path": "/api/clients/woocommerce",
+      "file": "src/app/api/clients/woocommerce/route.ts",
+      "skipped": false,
+      "avg": 30.552138666666664,
+      "min": 8.888583,
+      "max": 52.88875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/clients/test-id/assign-water",
+      "method": "POST",
+      "path": "/api/admin/clients/test-id/assign-water",
+      "file": "src/app/api/admin/clients/[clientId]/assign-water/route.ts",
+      "skipped": false,
+      "avg": 29.033888666666666,
+      "min": 22.568208,
+      "max": 36.562583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/clients/test-id/measurements",
+      "method": "POST",
+      "path": "/api/admin/clients/test-id/measurements",
+      "file": "src/app/api/admin/clients/[clientId]/measurements/route.ts",
+      "skipped": false,
+      "avg": 27.411152666666666,
+      "min": 12.063125,
+      "max": 41.435708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/admin/clients/test-id/assign",
+      "method": "PATCH",
+      "path": "/api/admin/clients/test-id/assign",
+      "file": "src/app/api/admin/clients/[clientId]/assign/route.ts",
+      "skipped": false,
+      "avg": 24.664305333333335,
+      "min": 7.389958,
+      "max": 57.982,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/test-id/recall",
+      "method": "GET",
+      "path": "/api/users/test-id/recall",
+      "file": "src/app/api/users/[id]/recall/route.ts",
+      "skipped": false,
+      "avg": 24.522541666666665,
+      "min": 8.541542,
+      "max": 47.84925,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/clients/test-id/measurements",
+      "method": "DELETE",
+      "path": "/api/admin/clients/test-id/measurements",
+      "file": "src/app/api/admin/clients/[clientId]/measurements/route.ts",
+      "skipped": false,
+      "avg": 23.53559733333333,
+      "min": 14.07425,
+      "max": 29.421792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/medical-info",
+      "method": "POST",
+      "path": "/api/client/medical-info",
+      "file": "src/app/api/client/medical-info/route.ts",
+      "skipped": false,
+      "avg": 23.153500000000005,
+      "min": 13.25575,
+      "max": 31.9065,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/clients/test-id/assign-water",
+      "method": "DELETE",
+      "path": "/api/admin/clients/test-id/assign-water",
+      "file": "src/app/api/admin/clients/[clientId]/assign-water/route.ts",
+      "skipped": false,
+      "avg": 22.443625333333333,
+      "min": 16.012709,
+      "max": 34.367917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/appointments",
+      "method": "POST",
+      "path": "/api/client/appointments",
+      "file": "src/app/api/client/appointments/route.ts",
+      "skipped": false,
+      "avg": 22.411666666666665,
+      "min": 14.898167,
+      "max": 30.956667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/clients/test-id/profile",
+      "method": "PUT",
+      "path": "/api/admin/clients/test-id/profile",
+      "file": "src/app/api/admin/clients/[clientId]/profile/route.ts",
+      "skipped": false,
+      "avg": 21.907124999999997,
+      "min": 13.282667,
+      "max": 27.147167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/ecommerce/transformations/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/ecommerce/transformations/test-id",
+      "file": "src/app/api/admin/ecommerce/transformations/[id]/route.ts",
+      "skipped": false,
+      "avg": 21.125694333333332,
+      "min": 17.450458,
+      "max": 26.924792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/test-id/tasks",
+      "method": "GET",
+      "path": "/api/users/test-id/tasks",
+      "file": "src/app/api/users/[id]/tasks/route.ts",
+      "skipped": false,
+      "avg": 20.964805333333334,
+      "min": 12.443958,
+      "max": 35.889333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id/profile",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id/profile",
+      "file": "src/app/api/admin/clients/[clientId]/profile/route.ts",
+      "skipped": false,
+      "avg": 20.766610999999997,
+      "min": 14.401625,
+      "max": 25.293666,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/test-id/notes",
+      "method": "POST",
+      "path": "/api/users/test-id/notes",
+      "file": "src/app/api/users/[id]/notes/route.ts",
+      "skipped": false,
+      "avg": 20.166722,
+      "min": 13.907666,
+      "max": 32.427375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/users/test-id/recall/test-id",
+      "method": "DELETE",
+      "path": "/api/users/test-id/recall/test-id",
+      "file": "src/app/api/users/[id]/recall/[recallId]/route.ts",
+      "skipped": false,
+      "avg": 18.738153,
+      "min": 14.93125,
+      "max": 23.561875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/users/test-id/notes/test-id",
+      "method": "DELETE",
+      "path": "/api/users/test-id/notes/test-id",
+      "file": "src/app/api/users/[id]/notes/[noteId]/route.ts",
+      "skipped": false,
+      "avg": 18.695041333333336,
+      "min": 15.989833,
+      "max": 20.722125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/ecommerce/plans/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/ecommerce/plans/test-id",
+      "file": "src/app/api/admin/ecommerce/plans/[id]/route.ts",
+      "skipped": false,
+      "avg": 18.56683333333333,
+      "min": 15.153084,
+      "max": 20.727083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/users/test-id/tasks/test-id",
+      "method": "PATCH",
+      "path": "/api/users/test-id/tasks/test-id",
+      "file": "src/app/api/users/[id]/tasks/[taskId]/route.ts",
+      "skipped": false,
+      "avg": 18.42540266666667,
+      "min": 16.167708,
+      "max": 20.571584,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client-meal-plans/test-id/freeze",
+      "method": "GET",
+      "path": "/api/client-meal-plans/test-id/freeze",
+      "file": "src/app/api/client-meal-plans/[id]/freeze/route.ts",
+      "skipped": false,
+      "avg": 18.190111333333334,
+      "min": 11.108042,
+      "max": 28.617709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/activity",
+      "method": "GET",
+      "path": "/api/client/activity",
+      "file": "src/app/api/client/activity/route.ts",
+      "skipped": false,
+      "avg": 17.651638666666667,
+      "min": 13.589583,
+      "max": 21.363208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/users/test-id/notes/test-id",
+      "method": "PATCH",
+      "path": "/api/users/test-id/notes/test-id",
+      "file": "src/app/api/users/[id]/notes/[noteId]/route.ts",
+      "skipped": false,
+      "avg": 17.555833333333336,
+      "min": 14.495458,
+      "max": 22.440583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/dietitians/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/dietitians/test-id",
+      "file": "src/app/api/admin/dietitians/[dietitianId]/route.ts",
+      "skipped": false,
+      "avg": 17.466486,
+      "min": 12.8175,
+      "max": 23.087833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id/dietary-recall",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id/dietary-recall",
+      "file": "src/app/api/admin/clients/[clientId]/dietary-recall/route.ts",
+      "skipped": false,
+      "avg": 17.44006933333333,
+      "min": 16.173,
+      "max": 19.289541,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/watch/flashlight",
+      "method": "POST",
+      "path": "/api/watch/flashlight",
+      "file": "src/app/api/watch/flashlight/route.ts",
+      "skipped": false,
+      "avg": 17.308597333333335,
+      "min": 10.805916,
+      "max": 28.782959,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/test-id/tasks",
+      "method": "POST",
+      "path": "/api/users/test-id/tasks",
+      "file": "src/app/api/users/[id]/tasks/route.ts",
+      "skipped": false,
+      "avg": 17.294027666666665,
+      "min": 10.161042,
+      "max": 24.047333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/appointments/test-id",
+      "method": "PUT",
+      "path": "/api/appointments/test-id",
+      "file": "src/app/api/appointments/[id]/route.ts",
+      "skipped": false,
+      "avg": 16.967028000000003,
+      "min": 12.498167,
+      "max": 19.343667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/duration-presets",
+      "method": "PUT",
+      "path": "/api/duration-presets",
+      "file": "src/app/api/duration-presets/route.ts",
+      "skipped": false,
+      "avg": 16.844055333333333,
+      "min": 11.851917,
+      "max": 26.826416,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/test-id/recall",
+      "method": "POST",
+      "path": "/api/users/test-id/recall",
+      "file": "src/app/api/users/[id]/recall/route.ts",
+      "skipped": false,
+      "avg": 16.762152999999998,
+      "min": 15.544417,
+      "max": 18.575625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id/assign-water",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id/assign-water",
+      "file": "src/app/api/admin/clients/[clientId]/assign-water/route.ts",
+      "skipped": false,
+      "avg": 16.294791666666665,
+      "min": 13.755625,
+      "max": 18.094875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dashboard/client-stats",
+      "method": "GET",
+      "path": "/api/dashboard/client-stats",
+      "file": "src/app/api/dashboard/client-stats/route.ts",
+      "skipped": false,
+      "avg": 16.169055666666665,
+      "min": 14.48575,
+      "max": 18.434125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/support/bug-report",
+      "method": "GET",
+      "path": "/api/support/bug-report",
+      "file": "src/app/api/support/bug-report/route.ts",
+      "skipped": false,
+      "avg": 16.091139333333334,
+      "min": 7.149584,
+      "max": 30.116542,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/test-id/notes",
+      "method": "GET",
+      "path": "/api/users/test-id/notes",
+      "file": "src/app/api/users/[id]/notes/route.ts",
+      "skipped": false,
+      "avg": 15.465763666666668,
+      "min": 13.066417,
+      "max": 17.501833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/other-platform-payments/test-id",
+      "method": "GET",
+      "path": "/api/other-platform-payments/test-id",
+      "file": "src/app/api/other-platform-payments/[id]/route.ts",
+      "skipped": false,
+      "avg": 15.438610666666664,
+      "min": 10.846041,
+      "max": 24.266083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/billing",
+      "method": "GET",
+      "path": "/api/client/billing",
+      "file": "src/app/api/client/billing/route.ts",
+      "skipped": false,
+      "avg": 15.421333333333331,
+      "min": 9.351209,
+      "max": 25.364666,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/clients/woocommerce",
+      "method": "DELETE",
+      "path": "/api/clients/woocommerce",
+      "file": "src/app/api/clients/woocommerce/route.ts",
+      "skipped": false,
+      "avg": 15.275194666666666,
+      "min": 6.874584,
+      "max": 30.954334,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/appointments/test-id/reschedule",
+      "method": "POST",
+      "path": "/api/appointments/test-id/reschedule",
+      "file": "src/app/api/appointments/[id]/reschedule/route.ts",
+      "skipped": false,
+      "avg": 15.169097333333333,
+      "min": 13.97225,
+      "max": 16.791667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/clients/test-id/medical-info",
+      "method": "PUT",
+      "path": "/api/admin/clients/test-id/medical-info",
+      "file": "src/app/api/admin/clients/[clientId]/medical-info/route.ts",
+      "skipped": false,
+      "avg": 15.083125,
+      "min": 11.937541,
+      "max": 16.710167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/users/test-id/tasks/test-id",
+      "method": "DELETE",
+      "path": "/api/users/test-id/tasks/test-id",
+      "file": "src/app/api/users/[id]/tasks/[taskId]/route.ts",
+      "skipped": false,
+      "avg": 14.916805666666667,
+      "min": 9.792125,
+      "max": 23.43075,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/client/activity",
+      "method": "DELETE",
+      "path": "/api/client/activity",
+      "file": "src/app/api/client/activity/route.ts",
+      "skipped": false,
+      "avg": 14.687597000000002,
+      "min": 10.4065,
+      "max": 18.228833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/ecommerce/ratings/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/ecommerce/ratings/test-id",
+      "file": "src/app/api/admin/ecommerce/ratings/[id]/route.ts",
+      "skipped": false,
+      "avg": 14.651222333333331,
+      "min": 7.923542,
+      "max": 18.59925,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/client/medical-info",
+      "method": "PUT",
+      "path": "/api/client/medical-info",
+      "file": "src/app/api/client/medical-info/route.ts",
+      "skipped": false,
+      "avg": 14.646680666666667,
+      "min": 13.925208,
+      "max": 15.815,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/dietitians/test-id",
+      "method": "GET",
+      "path": "/api/admin/dietitians/test-id",
+      "file": "src/app/api/admin/dietitians/[dietitianId]/route.ts",
+      "skipped": false,
+      "avg": 14.644291666666668,
+      "min": 12.218875,
+      "max": 18.207,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/users/test-id/recall/test-id",
+      "method": "PUT",
+      "path": "/api/users/test-id/recall/test-id",
+      "file": "src/app/api/users/[id]/recall/[recallId]/route.ts",
+      "skipped": false,
+      "avg": 14.61325,
+      "min": 11.690208,
+      "max": 20.170667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/test-id/tasks/test-id",
+      "method": "GET",
+      "path": "/api/users/test-id/tasks/test-id",
+      "file": "src/app/api/users/[id]/tasks/[taskId]/route.ts",
+      "skipped": false,
+      "avg": 14.535333333333334,
+      "min": 11.16925,
+      "max": 20.899334,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/appointments",
+      "method": "GET",
+      "path": "/api/client/appointments",
+      "file": "src/app/api/client/appointments/route.ts",
+      "skipped": false,
+      "avg": 14.432722,
+      "min": 13.48925,
+      "max": 15.652833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/clients/test-id/documents",
+      "method": "DELETE",
+      "path": "/api/admin/clients/test-id/documents",
+      "file": "src/app/api/admin/clients/[clientId]/documents/route.ts",
+      "skipped": false,
+      "avg": 14.348153000000002,
+      "min": 10.88475,
+      "max": 18.624834,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id/medical-info",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id/medical-info",
+      "file": "src/app/api/admin/clients/[clientId]/medical-info/route.ts",
+      "skipped": false,
+      "avg": 14.307486333333332,
+      "min": 12.811834,
+      "max": 16.706125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id/lifestyle-info",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id/lifestyle-info",
+      "file": "src/app/api/admin/clients/[clientId]/lifestyle-info/route.ts",
+      "skipped": false,
+      "avg": 14.072458,
+      "min": 9.901291,
+      "max": 21.102625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dashboard/pending-plans",
+      "method": "GET",
+      "path": "/api/dashboard/pending-plans",
+      "file": "src/app/api/dashboard/pending-plans/route.ts",
+      "skipped": false,
+      "avg": 14.019430666666667,
+      "min": 10.420583,
+      "max": 16.607542,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/appointments/test-id",
+      "method": "GET",
+      "path": "/api/appointments/test-id",
+      "file": "src/app/api/appointments/[id]/route.ts",
+      "skipped": false,
+      "avg": 14.007166666666668,
+      "min": 10.692125,
+      "max": 17.978042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/auth/google-calendar",
+      "method": "POST",
+      "path": "/api/auth/google-calendar",
+      "file": "src/app/api/auth/google-calendar/route.ts",
+      "skipped": false,
+      "avg": 13.719736333333335,
+      "min": 11.743834,
+      "max": 17.157958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/notifications/metrics",
+      "method": "GET",
+      "path": "/api/admin/notifications/metrics",
+      "file": "src/app/api/admin/notifications/metrics/route.ts",
+      "skipped": false,
+      "avg": 13.635833333333332,
+      "min": 10.5875,
+      "max": 17.756875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/clients/test-id/lifestyle-info",
+      "method": "PUT",
+      "path": "/api/admin/clients/test-id/lifestyle-info",
+      "file": "src/app/api/admin/clients/[clientId]/lifestyle-info/route.ts",
+      "skipped": false,
+      "avg": 13.612485999999999,
+      "min": 10.747375,
+      "max": 17.496208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/watch/connect",
+      "method": "GET",
+      "path": "/api/watch/connect",
+      "file": "src/app/api/watch/connect/route.ts",
+      "skipped": false,
+      "avg": 13.561930666666667,
+      "min": 10.769083,
+      "max": 15.293792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/webhooks/endpoints",
+      "method": "DELETE",
+      "path": "/api/webhooks/endpoints",
+      "file": "src/app/api/webhooks/endpoints/route.ts",
+      "skipped": false,
+      "avg": 13.465208333333335,
+      "min": 8.503416,
+      "max": 16.202084,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/watch/data",
+      "method": "GET",
+      "path": "/api/watch/data",
+      "file": "src/app/api/watch/data/route.ts",
+      "skipped": false,
+      "avg": 13.443972,
+      "min": 10.664208,
+      "max": 17.514791,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dashboard/health-counselor-stats",
+      "method": "GET",
+      "path": "/api/dashboard/health-counselor-stats",
+      "file": "src/app/api/dashboard/health-counselor-stats/route.ts",
+      "skipped": false,
+      "avg": 13.425125,
+      "min": 12.177375,
+      "max": 15.598958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dashboard/dietitian-stats",
+      "method": "GET",
+      "path": "/api/dashboard/dietitian-stats",
+      "file": "src/app/api/dashboard/dietitian-stats/route.ts",
+      "skipped": false,
+      "avg": 13.327541666666667,
+      "min": 9.965,
+      "max": 16.851917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/ecommerce/transformations/test-id",
+      "method": "PUT",
+      "path": "/api/admin/ecommerce/transformations/test-id",
+      "file": "src/app/api/admin/ecommerce/transformations/[id]/route.ts",
+      "skipped": false,
+      "avg": 13.047916666666666,
+      "min": 11.802667,
+      "max": 15.390083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/duration-presets",
+      "method": "POST",
+      "path": "/api/duration-presets",
+      "file": "src/app/api/duration-presets/route.ts",
+      "skipped": false,
+      "avg": 12.957097,
+      "min": 11.635292,
+      "max": 14.793208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/test-id/lifestyle",
+      "method": "GET",
+      "path": "/api/users/test-id/lifestyle",
+      "file": "src/app/api/users/[id]/lifestyle/route.ts",
+      "skipped": false,
+      "avg": 12.924805333333333,
+      "min": 10.888375,
+      "max": 14.230083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client-purchases/check",
+      "method": "GET",
+      "path": "/api/client-purchases/check",
+      "file": "src/app/api/client-purchases/check/route.ts",
+      "skipped": false,
+      "avg": 12.882861,
+      "min": 10.24875,
+      "max": 14.2945,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/client-meal-plans/test-id/freeze",
+      "method": "DELETE",
+      "path": "/api/client-meal-plans/test-id/freeze",
+      "file": "src/app/api/client-meal-plans/[id]/freeze/route.ts",
+      "skipped": false,
+      "avg": 12.872735999999998,
+      "min": 10.4825,
+      "max": 16.690333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id/measurements",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id/measurements",
+      "file": "src/app/api/admin/clients/[clientId]/measurements/route.ts",
+      "skipped": false,
+      "avg": 12.852638999999998,
+      "min": 11.464792,
+      "max": 13.58825,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/system-alerts/test-id",
+      "method": "DELETE",
+      "path": "/api/system-alerts/test-id",
+      "file": "src/app/api/system-alerts/[id]/route.ts",
+      "skipped": false,
+      "avg": 12.769125,
+      "min": 8.509333,
+      "max": 15.406292,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "PUT /api/meals/test-id",
+      "method": "PUT",
+      "path": "/api/meals/test-id",
+      "file": "src/app/api/meals/[id]/route.ts",
+      "skipped": false,
+      "avg": 12.747055666666668,
+      "min": 6.7135,
+      "max": 23.767792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client-meal-plans/test-id/extend",
+      "method": "GET",
+      "path": "/api/client-meal-plans/test-id/extend",
+      "file": "src/app/api/client-meal-plans/[id]/extend/route.ts",
+      "skipped": false,
+      "avg": 12.664097666666668,
+      "min": 9.457542,
+      "max": 16.026542,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/appointments/test-id",
+      "method": "DELETE",
+      "path": "/api/appointments/test-id",
+      "file": "src/app/api/appointments/[id]/route.ts",
+      "skipped": false,
+      "avg": 12.527416666666666,
+      "min": 9.80925,
+      "max": 16.063625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/clients/test-id/assign-sleep",
+      "method": "DELETE",
+      "path": "/api/admin/clients/test-id/assign-sleep",
+      "file": "src/app/api/admin/clients/[clientId]/assign-sleep/route.ts",
+      "skipped": false,
+      "avg": 12.524194333333334,
+      "min": 10.601167,
+      "max": 15.862958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/diet-templates/test-id",
+      "method": "PUT",
+      "path": "/api/diet-templates/test-id",
+      "file": "src/app/api/diet-templates/[id]/route.ts",
+      "skipped": false,
+      "avg": 12.461847333333333,
+      "min": 7.493875,
+      "max": 22.255709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/clients/test-id/assign-steps",
+      "method": "DELETE",
+      "path": "/api/admin/clients/test-id/assign-steps",
+      "file": "src/app/api/admin/clients/[clientId]/assign-steps/route.ts",
+      "skipped": false,
+      "avg": 12.437999666666668,
+      "min": 9.705208,
+      "max": 17.812791,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/dietitians/test-id",
+      "method": "PUT",
+      "path": "/api/admin/dietitians/test-id",
+      "file": "src/app/api/admin/dietitians/[dietitianId]/route.ts",
+      "skipped": false,
+      "avg": 12.272958000000001,
+      "min": 11.847208,
+      "max": 12.900166,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/clients/test-id/dietary-recall",
+      "method": "PUT",
+      "path": "/api/admin/clients/test-id/dietary-recall",
+      "file": "src/app/api/admin/clients/[clientId]/dietary-recall/route.ts",
+      "skipped": false,
+      "avg": 12.145611333333335,
+      "min": 8.01125,
+      "max": 14.774292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dashboard/admin-stats",
+      "method": "GET",
+      "path": "/api/dashboard/admin-stats",
+      "file": "src/app/api/dashboard/admin-stats/route.ts",
+      "skipped": false,
+      "avg": 12.042388333333333,
+      "min": 8.418083,
+      "max": 16.656541,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/appointments/provider-availability",
+      "method": "POST",
+      "path": "/api/appointments/provider-availability",
+      "file": "src/app/api/appointments/provider-availability/route.ts",
+      "skipped": false,
+      "avg": 12.011305333333333,
+      "min": 5.918583,
+      "max": 22.334791,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/clients/test-id",
+      "method": "PUT",
+      "path": "/api/admin/clients/test-id",
+      "file": "src/app/api/admin/clients/[clientId]/route.ts",
+      "skipped": false,
+      "avg": 11.958222,
+      "min": 9.226,
+      "max": 16.116875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/other-platform-payments/test-id",
+      "method": "DELETE",
+      "path": "/api/other-platform-payments/test-id",
+      "file": "src/app/api/other-platform-payments/[id]/route.ts",
+      "skipped": false,
+      "avg": 11.925013666666667,
+      "min": 9.07675,
+      "max": 13.769458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client-meal-plans/test-id/freeze",
+      "method": "POST",
+      "path": "/api/client-meal-plans/test-id/freeze",
+      "file": "src/app/api/client-meal-plans/[id]/freeze/route.ts",
+      "skipped": false,
+      "avg": 11.837180666666667,
+      "min": 11.062834,
+      "max": 13.314875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/test-id/medical/upload",
+      "method": "POST",
+      "path": "/api/users/test-id/medical/upload",
+      "file": "src/app/api/users/[id]/medical/upload/route.ts",
+      "skipped": false,
+      "avg": 11.760514,
+      "min": 9.618792,
+      "max": 13.307,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/data/bulk-update",
+      "method": "GET",
+      "path": "/api/admin/data/bulk-update",
+      "file": "src/app/api/admin/data/bulk-update/route.ts",
+      "skipped": false,
+      "avg": 11.713888666666668,
+      "min": 8.647583,
+      "max": 15.594375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/payments/test-id",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/payments/test-id",
+      "file": "src/app/api/admin/ecommerce/payments/[paymentId]/route.ts",
+      "skipped": false,
+      "avg": 11.692124666666666,
+      "min": 8.264833,
+      "max": 17.747708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/users/test-id",
+      "method": "DELETE",
+      "path": "/api/users/test-id",
+      "file": "src/app/api/users/[id]/route.ts",
+      "skipped": false,
+      "avg": 11.680527666666668,
+      "min": 7.329917,
+      "max": 20.206916,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "POST /api/watch/oauth/callback",
+      "method": "POST",
+      "path": "/api/watch/oauth/callback",
+      "file": "src/app/api/watch/oauth/callback/route.ts",
+      "skipped": false,
+      "avg": 11.664263666666665,
+      "min": 9.749916,
+      "max": 13.309916,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/activity",
+      "method": "POST",
+      "path": "/api/client/activity",
+      "file": "src/app/api/client/activity/route.ts",
+      "skipped": false,
+      "avg": 11.555416333333334,
+      "min": 9.781833,
+      "max": 14.535666,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/clients/test-id/tasks/test-id/google-calendar",
+      "method": "DELETE",
+      "path": "/api/clients/test-id/tasks/test-id/google-calendar",
+      "file": "src/app/api/clients/[clientId]/tasks/[taskId]/google-calendar/route.ts",
+      "skipped": false,
+      "avg": 11.518361,
+      "min": 7.660375,
+      "max": 14.593708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/test-id/medical",
+      "method": "GET",
+      "path": "/api/users/test-id/medical",
+      "file": "src/app/api/users/[id]/medical/route.ts",
+      "skipped": false,
+      "avg": 11.327041333333334,
+      "min": 8.679583,
+      "max": 13.352291,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/clients/test-id/assign-activities",
+      "method": "POST",
+      "path": "/api/admin/clients/test-id/assign-activities",
+      "file": "src/app/api/admin/clients/[clientId]/assign-activities/route.ts",
+      "skipped": false,
+      "avg": 11.317014333333333,
+      "min": 8.887167,
+      "max": 12.842792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/messages/test-id/status",
+      "method": "PATCH",
+      "path": "/api/messages/test-id/status",
+      "file": "src/app/api/messages/[messageId]/status/route.ts",
+      "skipped": false,
+      "avg": 11.273833666666667,
+      "min": 10.633625,
+      "max": 12.325792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/data/export",
+      "method": "GET",
+      "path": "/api/admin/data/export",
+      "file": "src/app/api/admin/data/export/route.ts",
+      "skipped": false,
+      "avg": 11.271569666666666,
+      "min": 9.764625,
+      "max": 12.968625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/ecommerce/transformations",
+      "method": "POST",
+      "path": "/api/admin/ecommerce/transformations",
+      "file": "src/app/api/admin/ecommerce/transformations/route.ts",
+      "skipped": false,
+      "avg": 11.232333333333331,
+      "min": 7.615583,
+      "max": 15.335833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/clients/test-id/tasks/test-id",
+      "method": "DELETE",
+      "path": "/api/clients/test-id/tasks/test-id",
+      "file": "src/app/api/clients/[clientId]/tasks/[taskId]/route.ts",
+      "skipped": false,
+      "avg": 11.232306000000001,
+      "min": 9.087334,
+      "max": 14.368875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/goal-categories/test-id",
+      "method": "PUT",
+      "path": "/api/admin/goal-categories/test-id",
+      "file": "src/app/api/admin/goal-categories/[id]/route.ts",
+      "skipped": false,
+      "avg": 11.204583666666666,
+      "min": 7.009708,
+      "max": 19.236334,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/ecommerce/blogs/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/ecommerce/blogs/test-id",
+      "file": "src/app/api/admin/ecommerce/blogs/[id]/route.ts",
+      "skipped": false,
+      "avg": 11.172069333333335,
+      "min": 8.755416,
+      "max": 15.231375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dietitian-panel/clients/test-id/medical-info",
+      "method": "GET",
+      "path": "/api/dietitian-panel/clients/test-id/medical-info",
+      "file": "src/app/api/dietitian-panel/clients/[clientId]/medical-info/route.ts",
+      "skipped": false,
+      "avg": 11.155611333333333,
+      "min": 9.586375,
+      "max": 12.961334,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/clients/test-id/tasks",
+      "method": "GET",
+      "path": "/api/clients/test-id/tasks",
+      "file": "src/app/api/clients/[clientId]/tasks/route.ts",
+      "skipped": false,
+      "avg": 11.063944333333334,
+      "min": 9.886625,
+      "max": 11.694666,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/recipes/test-id",
+      "method": "PUT",
+      "path": "/api/recipes/test-id",
+      "file": "src/app/api/recipes/[id]/route.ts",
+      "skipped": false,
+      "avg": 11.036903333333333,
+      "min": 4.999042,
+      "max": 22.518334,
+      "status": 400,
+      "statuses": [
+        400,
+        400,
+        400
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id/assign-activities",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id/assign-activities",
+      "file": "src/app/api/admin/clients/[clientId]/assign-activities/route.ts",
+      "skipped": false,
+      "avg": 11.017222666666669,
+      "min": 9.651709,
+      "max": 12.15,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/meal-plan-templates/test-id",
+      "method": "DELETE",
+      "path": "/api/meal-plan-templates/test-id",
+      "file": "src/app/api/meal-plan-templates/[id]/route.ts",
+      "skipped": false,
+      "avg": 10.968278,
+      "min": 7.934584,
+      "max": 15.045958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/transformations/test-id",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/transformations/test-id",
+      "file": "src/app/api/admin/ecommerce/transformations/[id]/route.ts",
+      "skipped": false,
+      "avg": 10.926652666666667,
+      "min": 9.180041,
+      "max": 12.058667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/plans/test-id",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/plans/test-id",
+      "file": "src/app/api/admin/ecommerce/plans/[id]/route.ts",
+      "skipped": false,
+      "avg": 10.90925,
+      "min": 9.464125,
+      "max": 12.364083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/clients/update-passwords",
+      "method": "GET",
+      "path": "/api/clients/update-passwords",
+      "file": "src/app/api/clients/update-passwords/route.ts",
+      "skipped": false,
+      "avg": 10.878291666666664,
+      "min": 6.306167,
+      "max": 19.626333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/blogs/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/blogs/test-id",
+      "file": "src/app/api/admin/blogs/[id]/route.ts",
+      "skipped": false,
+      "avg": 10.857430666666668,
+      "min": 7.654084,
+      "max": 16.529875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/users/test-id/password",
+      "method": "POST",
+      "path": "/api/admin/users/test-id/password",
+      "file": "src/app/api/admin/users/[id]/password/route.ts",
+      "skipped": false,
+      "avg": 10.850611333333333,
+      "min": 8.233375,
+      "max": 13.602417,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/appointments",
+      "method": "GET",
+      "path": "/api/appointments",
+      "file": "src/app/api/appointments/route.ts",
+      "skipped": false,
+      "avg": 10.849013999999999,
+      "min": 8.197167,
+      "max": 15.317542,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/watch/flashlight",
+      "method": "GET",
+      "path": "/api/watch/flashlight",
+      "file": "src/app/api/watch/flashlight/route.ts",
+      "skipped": false,
+      "avg": 10.848583333333332,
+      "min": 8.545,
+      "max": 14.222959,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client-purchases",
+      "method": "GET",
+      "path": "/api/client-purchases",
+      "file": "src/app/api/client-purchases/route.ts",
+      "skipped": false,
+      "avg": 10.828875000000002,
+      "min": 9.19675,
+      "max": 13.913333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/tracking/sleep",
+      "method": "POST",
+      "path": "/api/tracking/sleep",
+      "file": "src/app/api/tracking/sleep/route.ts",
+      "skipped": false,
+      "avg": 10.816652666666668,
+      "min": 6.227875,
+      "max": 19.497792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id/assign-sleep",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id/assign-sleep",
+      "file": "src/app/api/admin/clients/[clientId]/assign-sleep/route.ts",
+      "skipped": false,
+      "avg": 10.757722000000001,
+      "min": 8.124708,
+      "max": 12.933916,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/ecommerce/ratings",
+      "method": "POST",
+      "path": "/api/admin/ecommerce/ratings",
+      "file": "src/app/api/admin/ecommerce/ratings/route.ts",
+      "skipped": false,
+      "avg": 10.742374666666665,
+      "min": 9.314666,
+      "max": 13.246875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/data/records",
+      "method": "GET",
+      "path": "/api/admin/data/records",
+      "file": "src/app/api/admin/data/records/route.ts",
+      "skipped": false,
+      "avg": 10.705152666666665,
+      "min": 9.301042,
+      "max": 13.48575,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/tags/test-id",
+      "method": "DELETE",
+      "path": "/api/tags/test-id",
+      "file": "src/app/api/tags/[tagId]/route.ts",
+      "skipped": false,
+      "avg": 10.701763999999999,
+      "min": 7.970792,
+      "max": 14.291916,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/activity-logs",
+      "method": "GET",
+      "path": "/api/activity-logs",
+      "file": "src/app/api/activity-logs/route.ts",
+      "skipped": false,
+      "avg": 10.697291666666665,
+      "min": 6.468875,
+      "max": 18.51475,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/ecommerce/orders/test-id",
+      "method": "PUT",
+      "path": "/api/admin/ecommerce/orders/test-id",
+      "file": "src/app/api/admin/ecommerce/orders/[orderId]/route.ts",
+      "skipped": false,
+      "avg": 10.668972000000002,
+      "min": 9.036917,
+      "max": 12.589166,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/messages/status",
+      "method": "GET",
+      "path": "/api/messages/status",
+      "file": "src/app/api/messages/status/route.ts",
+      "skipped": false,
+      "avg": 10.655430666666668,
+      "min": 7.599292,
+      "max": 14.583792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/watch/data",
+      "method": "POST",
+      "path": "/api/watch/data",
+      "file": "src/app/api/watch/data/route.ts",
+      "skipped": false,
+      "avg": 10.652139,
+      "min": 9.684708,
+      "max": 12.202917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/dietary-recall",
+      "method": "POST",
+      "path": "/api/client/dietary-recall",
+      "file": "src/app/api/client/dietary-recall/route.ts",
+      "skipped": false,
+      "avg": 10.633027666666665,
+      "min": 9.629666,
+      "max": 12.074,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client-meal-plans/test-id/extend",
+      "method": "POST",
+      "path": "/api/client-meal-plans/test-id/extend",
+      "file": "src/app/api/client-meal-plans/[id]/extend/route.ts",
+      "skipped": false,
+      "avg": 10.631013666666666,
+      "min": 7.427458,
+      "max": 12.331708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/clients/test-id/assign-sleep",
+      "method": "POST",
+      "path": "/api/admin/clients/test-id/assign-sleep",
+      "file": "src/app/api/admin/clients/[clientId]/assign-sleep/route.ts",
+      "skipped": false,
+      "avg": 10.607958333333334,
+      "min": 9.81575,
+      "max": 11.104292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/messages/test-id/status",
+      "method": "PUT",
+      "path": "/api/messages/test-id/status",
+      "file": "src/app/api/messages/[messageId]/status/route.ts",
+      "skipped": false,
+      "avg": 10.469944666666665,
+      "min": 8.916917,
+      "max": 12.841584,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client-meal-plans",
+      "method": "GET",
+      "path": "/api/client-meal-plans",
+      "file": "src/app/api/client-meal-plans/route.ts",
+      "skipped": false,
+      "avg": 10.463403,
+      "min": 7.484834,
+      "max": 14.434958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients/test-id/assign-steps",
+      "method": "GET",
+      "path": "/api/admin/clients/test-id/assign-steps",
+      "file": "src/app/api/admin/clients/[clientId]/assign-steps/route.ts",
+      "skipped": false,
+      "avg": 10.340625000000001,
+      "min": 8.534542,
+      "max": 12.856625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/reports/test-id",
+      "method": "DELETE",
+      "path": "/api/reports/test-id",
+      "file": "src/app/api/reports/[fileId]/route.ts",
+      "skipped": false,
+      "avg": 10.336569333333333,
+      "min": 8.196375,
+      "max": 13.503583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/watch/settings",
+      "method": "GET",
+      "path": "/api/watch/settings",
+      "file": "src/app/api/watch/settings/route.ts",
+      "skipped": false,
+      "avg": 10.323986,
+      "min": 6.831541,
+      "max": 17.121792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/client/messages/test-id",
+      "method": "DELETE",
+      "path": "/api/client/messages/test-id",
+      "file": "src/app/api/client/messages/[messageId]/route.ts",
+      "skipped": false,
+      "avg": 10.315444333333334,
+      "min": 8.517625,
+      "max": 13.659833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/goal-categories/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/goal-categories/test-id",
+      "file": "src/app/api/admin/goal-categories/[id]/route.ts",
+      "skipped": false,
+      "avg": 10.282708333333334,
+      "min": 8.247083,
+      "max": 13.332292,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/clients/test-id/assign-activities",
+      "method": "DELETE",
+      "path": "/api/admin/clients/test-id/assign-activities",
+      "file": "src/app/api/admin/clients/[clientId]/assign-activities/route.ts",
+      "skipped": false,
+      "avg": 10.244555333333333,
+      "min": 8.204208,
+      "max": 12.1725,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/other-platform-payments",
+      "method": "GET",
+      "path": "/api/other-platform-payments",
+      "file": "src/app/api/other-platform-payments/route.ts",
+      "skipped": false,
+      "avg": 10.169958333333334,
+      "min": 7.523375,
+      "max": 14.847292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/upload",
+      "method": "DELETE",
+      "path": "/api/upload",
+      "file": "src/app/api/upload/route.ts",
+      "skipped": false,
+      "avg": 10.133597333333334,
+      "min": 7.211334,
+      "max": 12.972875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/clients/test-id/tasks",
+      "method": "POST",
+      "path": "/api/clients/test-id/tasks",
+      "file": "src/app/api/clients/[clientId]/tasks/route.ts",
+      "skipped": false,
+      "avg": 10.131389,
+      "min": 7.966625,
+      "max": 13.300167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/ecommerce/ratings/test-id",
+      "method": "PUT",
+      "path": "/api/admin/ecommerce/ratings/test-id",
+      "file": "src/app/api/admin/ecommerce/ratings/[id]/route.ts",
+      "skipped": false,
+      "avg": 10.105264,
+      "min": 8.47925,
+      "max": 11.821,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/clients/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/clients/test-id",
+      "file": "src/app/api/admin/clients/[clientId]/route.ts",
+      "skipped": false,
+      "avg": 10.047235666666667,
+      "min": 7.487,
+      "max": 13.412666,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/tags/test-id",
+      "method": "PATCH",
+      "path": "/api/tags/test-id",
+      "file": "src/app/api/tags/[tagId]/route.ts",
+      "skipped": false,
+      "avg": 9.952569333333331,
+      "min": 8.324625,
+      "max": 11.824333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/fcm/token",
+      "method": "DELETE",
+      "path": "/api/fcm/token",
+      "file": "src/app/api/fcm/token/route.ts",
+      "skipped": false,
+      "avg": 9.909458333333333,
+      "min": 7.697708,
+      "max": 13.688917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/dietitians",
+      "method": "GET",
+      "path": "/api/admin/dietitians",
+      "file": "src/app/api/admin/dietitians/route.ts",
+      "skipped": false,
+      "avg": 9.90675,
+      "min": 7.9875,
+      "max": 13.654625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/leads/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/leads/test-id",
+      "file": "src/app/api/admin/leads/[id]/route.ts",
+      "skipped": false,
+      "avg": 9.900819333333333,
+      "min": 7.268333,
+      "max": 13.558125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/ecommerce/orders/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/ecommerce/orders/test-id",
+      "file": "src/app/api/admin/ecommerce/orders/[orderId]/route.ts",
+      "skipped": false,
+      "avg": 9.893986,
+      "min": 8.103791,
+      "max": 11.82375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/auth/google-calendar/callback",
+      "method": "GET",
+      "path": "/api/auth/google-calendar/callback",
+      "file": "src/app/api/auth/google-calendar/callback/route.ts",
+      "skipped": false,
+      "avg": 9.891083333333333,
+      "min": 9.472583,
+      "max": 10.313792,
+      "status": 307,
+      "statuses": [
+        307,
+        307,
+        307
+      ]
+    },
+    {
+      "key": "PUT /api/admin/data/bulk-update",
+      "method": "PUT",
+      "path": "/api/admin/data/bulk-update",
+      "file": "src/app/api/admin/data/bulk-update/route.ts",
+      "skipped": false,
+      "avg": 9.863291666666667,
+      "min": 8.747083,
+      "max": 11.309209,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/data/records",
+      "method": "PUT",
+      "path": "/api/admin/data/records",
+      "file": "src/app/api/admin/data/records/route.ts",
+      "skipped": false,
+      "avg": 9.812972666666667,
+      "min": 9.244709,
+      "max": 10.456834,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/tags",
+      "method": "GET",
+      "path": "/api/admin/tags",
+      "file": "src/app/api/admin/tags/route.ts",
+      "skipped": false,
+      "avg": 9.773236333333333,
+      "min": 6.592375,
+      "max": 14.393959,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "DELETE /api/diet-templates/test-id",
+      "method": "DELETE",
+      "path": "/api/diet-templates/test-id",
+      "file": "src/app/api/diet-templates/[id]/route.ts",
+      "skipped": false,
+      "avg": 9.772708333333332,
+      "min": 7.340834,
+      "max": 13.98925,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/client/dietary-recall",
+      "method": "PUT",
+      "path": "/api/client/dietary-recall",
+      "file": "src/app/api/client/dietary-recall/route.ts",
+      "skipped": false,
+      "avg": 9.758972333333332,
+      "min": 8.60525,
+      "max": 10.741042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/other-platform-payments/test-id",
+      "method": "PUT",
+      "path": "/api/other-platform-payments/test-id",
+      "file": "src/app/api/other-platform-payments/[id]/route.ts",
+      "skipped": false,
+      "avg": 9.750375333333333,
+      "min": 7.991625,
+      "max": 13.013667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/clients/woocommerce",
+      "method": "POST",
+      "path": "/api/clients/woocommerce",
+      "file": "src/app/api/clients/woocommerce/route.ts",
+      "skipped": false,
+      "avg": 9.742569333333334,
+      "min": 7.603959,
+      "max": 11.092166,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/client/activity",
+      "method": "PATCH",
+      "path": "/api/client/activity",
+      "file": "src/app/api/client/activity/route.ts",
+      "skipped": false,
+      "avg": 9.726666666666667,
+      "min": 7.13875,
+      "max": 11.383125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/debug/check-dietitian",
+      "method": "GET",
+      "path": "/api/debug/check-dietitian",
+      "file": "src/app/api/debug/check-dietitian/route.ts",
+      "skipped": false,
+      "avg": 9.701903,
+      "min": 8.563417,
+      "max": 11.57475,
+      "status": 410,
+      "statuses": [
+        410,
+        410,
+        410
+      ]
+    },
+    {
+      "key": "GET /api/receipts/test-id",
+      "method": "GET",
+      "path": "/api/receipts/test-id",
+      "file": "src/app/api/receipts/[fileId]/route.ts",
+      "skipped": false,
+      "avg": 9.683041666666668,
+      "min": 7.619375,
+      "max": 13.066292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/admin/blogs/test-id",
+      "method": "PATCH",
+      "path": "/api/admin/blogs/test-id",
+      "file": "src/app/api/admin/blogs/[id]/route.ts",
+      "skipped": false,
+      "avg": 9.667958333333333,
+      "min": 7.598167,
+      "max": 13.360458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/ecommerce/plans/test-id",
+      "method": "PUT",
+      "path": "/api/admin/ecommerce/plans/test-id",
+      "file": "src/app/api/admin/ecommerce/plans/[id]/route.ts",
+      "skipped": false,
+      "avg": 9.652333,
+      "min": 9.374458,
+      "max": 9.964875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/client-meal-plans/test-id",
+      "method": "DELETE",
+      "path": "/api/client-meal-plans/test-id",
+      "file": "src/app/api/client-meal-plans/[id]/route.ts",
+      "skipped": false,
+      "avg": 9.649916333333332,
+      "min": 7.914958,
+      "max": 12.455916,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/goal-categories",
+      "method": "POST",
+      "path": "/api/admin/goal-categories",
+      "file": "src/app/api/admin/goal-categories/route.ts",
+      "skipped": false,
+      "avg": 9.607625,
+      "min": 6.893292,
+      "max": 14.671,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/blogs/test-id",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/blogs/test-id",
+      "file": "src/app/api/admin/ecommerce/blogs/[id]/route.ts",
+      "skipped": false,
+      "avg": 9.588264,
+      "min": 7.763542,
+      "max": 12.849208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/clients/test-id/phase-history",
+      "method": "GET",
+      "path": "/api/clients/test-id/phase-history",
+      "file": "src/app/api/clients/[clientId]/phase-history/route.ts",
+      "skipped": false,
+      "avg": 9.57475,
+      "min": 8.691417,
+      "max": 11.128917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dietitian-panel/clients/test-id/documents",
+      "method": "GET",
+      "path": "/api/dietitian-panel/clients/test-id/documents",
+      "file": "src/app/api/dietitian-panel/clients/[clientId]/documents/route.ts",
+      "skipped": false,
+      "avg": 9.548833666666667,
+      "min": 8.079375,
+      "max": 11.731292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/users/test-id/activity",
+      "method": "GET",
+      "path": "/api/admin/users/test-id/activity",
+      "file": "src/app/api/admin/users/[id]/activity/route.ts",
+      "skipped": false,
+      "avg": 9.523694,
+      "min": 8.257958,
+      "max": 11.228791,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "PUT /api/admin/leads/test-id",
+      "method": "PUT",
+      "path": "/api/admin/leads/test-id",
+      "file": "src/app/api/admin/leads/[id]/route.ts",
+      "skipped": false,
+      "avg": 9.484999666666667,
+      "min": 8.371833,
+      "max": 10.672666,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/tags/test-id",
+      "method": "GET",
+      "path": "/api/tags/test-id",
+      "file": "src/app/api/tags/[tagId]/route.ts",
+      "skipped": false,
+      "avg": 9.465541333333332,
+      "min": 8.396208,
+      "max": 11.535708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/bmi",
+      "method": "GET",
+      "path": "/api/client/bmi",
+      "file": "src/app/api/client/bmi/route.ts",
+      "skipped": false,
+      "avg": 9.435639,
+      "min": 5.940917,
+      "max": 15.997458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client-purchases",
+      "method": "POST",
+      "path": "/api/client-purchases",
+      "file": "src/app/api/client-purchases/route.ts",
+      "skipped": false,
+      "avg": 9.421042,
+      "min": 7.006709,
+      "max": 13.002584,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/tags/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/tags/test-id",
+      "file": "src/app/api/admin/tags/[tagId]/route.ts",
+      "skipped": false,
+      "avg": 9.392833666666666,
+      "min": 7.833792,
+      "max": 12.203959,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/invoices/test-id",
+      "method": "GET",
+      "path": "/api/invoices/test-id",
+      "file": "src/app/api/invoices/[paymentId]/route.ts",
+      "skipped": false,
+      "avg": 9.34575,
+      "min": 7.538292,
+      "max": 12.404458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/health-counselors/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/health-counselors/test-id",
+      "file": "src/app/api/admin/health-counselors/[counselorId]/route.ts",
+      "skipped": false,
+      "avg": 9.314402666666668,
+      "min": 7.389167,
+      "max": 11.471125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/test-id/lifestyle",
+      "method": "POST",
+      "path": "/api/users/test-id/lifestyle",
+      "file": "src/app/api/users/[id]/lifestyle/route.ts",
+      "skipped": false,
+      "avg": 9.267111,
+      "min": 8.644833,
+      "max": 9.676042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/import/export",
+      "method": "GET",
+      "path": "/api/admin/import/export",
+      "file": "src/app/api/admin/import/export/route.ts",
+      "skipped": false,
+      "avg": 9.264014,
+      "min": 6.499958,
+      "max": 12.179542,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/users",
+      "method": "PUT",
+      "path": "/api/users",
+      "file": "src/app/api/users/route.ts",
+      "skipped": false,
+      "avg": 9.239083333333333,
+      "min": 8.564125,
+      "max": 10.415,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/messages/test-id",
+      "method": "DELETE",
+      "path": "/api/messages/test-id",
+      "file": "src/app/api/messages/[messageId]/route.ts",
+      "skipped": false,
+      "avg": 9.221792,
+      "min": 7.430709,
+      "max": 11.443209,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/import/row",
+      "method": "DELETE",
+      "path": "/api/admin/import/row",
+      "file": "src/app/api/admin/import/row/route.ts",
+      "skipped": false,
+      "avg": 9.218944666666667,
+      "min": 7.432,
+      "max": 10.9755,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/client-purchases",
+      "method": "PATCH",
+      "path": "/api/client-purchases",
+      "file": "src/app/api/client-purchases/route.ts",
+      "skipped": false,
+      "avg": 9.100361333333334,
+      "min": 7.795375,
+      "max": 10.484292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/payments",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/payments",
+      "file": "src/app/api/admin/ecommerce/payments/route.ts",
+      "skipped": false,
+      "avg": 9.097944333333333,
+      "min": 6.885333,
+      "max": 11.147458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dietitian-panel/clients/test-id/profile",
+      "method": "GET",
+      "path": "/api/dietitian-panel/clients/test-id/profile",
+      "file": "src/app/api/dietitian-panel/clients/[clientId]/profile/route.ts",
+      "skipped": false,
+      "avg": 9.069999999999999,
+      "min": 7.854333,
+      "max": 10.509125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/journal/activity",
+      "method": "GET",
+      "path": "/api/journal/activity",
+      "file": "src/app/api/journal/activity/route.ts",
+      "skipped": false,
+      "avg": 9.057888666666667,
+      "min": 6.085166,
+      "max": 14.81625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/ratings/test-id",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/ratings/test-id",
+      "file": "src/app/api/admin/ecommerce/ratings/[id]/route.ts",
+      "skipped": false,
+      "avg": 9.034889,
+      "min": 8.131166,
+      "max": 10.583084,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/test-id/medical",
+      "method": "POST",
+      "path": "/api/users/test-id/medical",
+      "file": "src/app/api/users/[id]/medical/route.ts",
+      "skipped": false,
+      "avg": 9.030346999999999,
+      "min": 7.478167,
+      "max": 10.006708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/watch/oauth/callback",
+      "method": "GET",
+      "path": "/api/watch/oauth/callback",
+      "file": "src/app/api/watch/oauth/callback/route.ts",
+      "skipped": false,
+      "avg": 9.002,
+      "min": 6.970125,
+      "max": 12.906625,
+      "status": 307,
+      "statuses": [
+        307,
+        307,
+        307
+      ]
+    },
+    {
+      "key": "PUT /api/dietitian-panel/clients/test-id/lifestyle-info",
+      "method": "PUT",
+      "path": "/api/dietitian-panel/clients/test-id/lifestyle-info",
+      "file": "src/app/api/dietitian-panel/clients/[clientId]/lifestyle-info/route.ts",
+      "skipped": false,
+      "avg": 8.981652666666667,
+      "min": 8.138958,
+      "max": 10.00925,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/test-id/history",
+      "method": "POST",
+      "path": "/api/users/test-id/history",
+      "file": "src/app/api/users/[id]/history/route.ts",
+      "skipped": false,
+      "avg": 8.929305666666666,
+      "min": 7.482709,
+      "max": 11.219833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dietitian-panel/clients/test-id/dietary-recall",
+      "method": "GET",
+      "path": "/api/dietitian-panel/clients/test-id/dietary-recall",
+      "file": "src/app/api/dietitian-panel/clients/[clientId]/dietary-recall/route.ts",
+      "skipped": false,
+      "avg": 8.922666666666666,
+      "min": 7.631417,
+      "max": 10.301416,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/client/hydration",
+      "method": "DELETE",
+      "path": "/api/client/hydration",
+      "file": "src/app/api/client/hydration/route.ts",
+      "skipped": false,
+      "avg": 8.870111,
+      "min": 7.523375,
+      "max": 10.574791,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/ecommerce/plans",
+      "method": "POST",
+      "path": "/api/admin/ecommerce/plans",
+      "file": "src/app/api/admin/ecommerce/plans/route.ts",
+      "skipped": false,
+      "avg": 8.831569666666667,
+      "min": 7.127625,
+      "max": 10.340792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/messages/groups/test-id/messages",
+      "method": "POST",
+      "path": "/api/messages/groups/test-id/messages",
+      "file": "src/app/api/messages/groups/[groupId]/messages/route.ts",
+      "skipped": false,
+      "avg": 8.822930666666666,
+      "min": 7.103,
+      "max": 9.909792,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/auth/reset-password",
+      "method": "GET",
+      "path": "/api/auth/reset-password",
+      "file": "src/app/api/auth/reset-password/route.ts",
+      "skipped": false,
+      "avg": 8.818180333333332,
+      "min": 7.044708,
+      "max": 10.417041,
+      "status": 400,
+      "statuses": [
+        400,
+        400,
+        400
+      ]
+    },
+    {
+      "key": "POST /api/recipes",
+      "method": "POST",
+      "path": "/api/recipes",
+      "file": "src/app/api/recipes/route.ts",
+      "skipped": false,
+      "avg": 8.809180666666668,
+      "min": 7.645042,
+      "max": 10.464708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/transformations/test-id",
+      "method": "DELETE",
+      "path": "/api/admin/transformations/test-id",
+      "file": "src/app/api/admin/transformations/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.760596999999999,
+      "min": 7.203083,
+      "max": 10.475333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/test-id/history",
+      "method": "GET",
+      "path": "/api/users/test-id/history",
+      "file": "src/app/api/users/[id]/history/route.ts",
+      "skipped": false,
+      "avg": 8.745097,
+      "min": 6.763333,
+      "max": 10.306083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/blogs/test-id",
+      "method": "PUT",
+      "path": "/api/admin/blogs/test-id",
+      "file": "src/app/api/admin/blogs/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.739958333333334,
+      "min": 7.703792,
+      "max": 10.320042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/fcm/send",
+      "method": "GET",
+      "path": "/api/fcm/send",
+      "file": "src/app/api/fcm/send/route.ts",
+      "skipped": false,
+      "avg": 8.731652666666667,
+      "min": 6.372167,
+      "max": 12.863208,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "GET /api/auth/logout-notification",
+      "method": "GET",
+      "path": "/api/auth/logout-notification",
+      "file": "src/app/api/auth/logout-notification/route.ts",
+      "skipped": false,
+      "avg": 8.720083666666667,
+      "min": 8.042,
+      "max": 9.994959,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/ecommerce/payments/sync",
+      "method": "POST",
+      "path": "/api/admin/ecommerce/payments/sync",
+      "file": "src/app/api/admin/ecommerce/payments/sync/route.ts",
+      "skipped": false,
+      "avg": 8.717805333333333,
+      "min": 6.6675,
+      "max": 10.183875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/duration-presets",
+      "method": "DELETE",
+      "path": "/api/duration-presets",
+      "file": "src/app/api/duration-presets/route.ts",
+      "skipped": false,
+      "avg": 8.714125000000001,
+      "min": 7.645167,
+      "max": 9.51325,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/activity-assignments",
+      "method": "DELETE",
+      "path": "/api/activity-assignments",
+      "file": "src/app/api/activity-assignments/route.ts",
+      "skipped": false,
+      "avg": 8.696889333333333,
+      "min": 7.285167,
+      "max": 11.074417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client-meal-plans/test-id",
+      "method": "GET",
+      "path": "/api/client-meal-plans/test-id",
+      "file": "src/app/api/client-meal-plans/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.691139,
+      "min": 7.770083,
+      "max": 10.404709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/analytics/stats",
+      "method": "GET",
+      "path": "/api/analytics/stats",
+      "file": "src/app/api/analytics/stats/route.ts",
+      "skipped": false,
+      "avg": 8.671569,
+      "min": 7.135916,
+      "max": 10.403791,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/payments",
+      "method": "PATCH",
+      "path": "/api/payments",
+      "file": "src/app/api/payments/route.ts",
+      "skipped": false,
+      "avg": 8.658,
+      "min": 6.993375,
+      "max": 11.261042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/clients/test-id/tasks/test-id",
+      "method": "GET",
+      "path": "/api/clients/test-id/tasks/test-id",
+      "file": "src/app/api/clients/[clientId]/tasks/[taskId]/route.ts",
+      "skipped": false,
+      "avg": 8.623166333333334,
+      "min": 7.993208,
+      "max": 9.794208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/transformations",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/transformations",
+      "file": "src/app/api/admin/ecommerce/transformations/route.ts",
+      "skipped": false,
+      "avg": 8.603264000000001,
+      "min": 7.427,
+      "max": 10.370875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client-meal-plans",
+      "method": "POST",
+      "path": "/api/client-meal-plans",
+      "file": "src/app/api/client-meal-plans/route.ts",
+      "skipped": false,
+      "avg": 8.601111333333334,
+      "min": 7.1545,
+      "max": 10.818417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/duration-presets",
+      "method": "GET",
+      "path": "/api/admin/duration-presets",
+      "file": "src/app/api/admin/duration-presets/route.ts",
+      "skipped": false,
+      "avg": 8.582125,
+      "min": 6.646458,
+      "max": 11.374917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/system-alerts/test-id",
+      "method": "PATCH",
+      "path": "/api/system-alerts/test-id",
+      "file": "src/app/api/system-alerts/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.535958666666666,
+      "min": 7.564292,
+      "max": 10.182334,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/orders/test-id",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/orders/test-id",
+      "file": "src/app/api/admin/ecommerce/orders/[orderId]/route.ts",
+      "skipped": false,
+      "avg": 8.507069666666666,
+      "min": 8.406584,
+      "max": 8.610125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/tracking/water",
+      "method": "GET",
+      "path": "/api/tracking/water",
+      "file": "src/app/api/tracking/water/route.ts",
+      "skipped": false,
+      "avg": 8.500445000000001,
+      "min": 6.322459,
+      "max": 10.727792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/dietitian-panel/clients/test-id/profile",
+      "method": "PUT",
+      "path": "/api/dietitian-panel/clients/test-id/profile",
+      "file": "src/app/api/dietitian-panel/clients/[clientId]/profile/route.ts",
+      "skipped": false,
+      "avg": 8.497083333333334,
+      "min": 7.686042,
+      "max": 8.991958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/dietitian-panel/clients/test-id/lifestyle-info",
+      "method": "GET",
+      "path": "/api/dietitian-panel/clients/test-id/lifestyle-info",
+      "file": "src/app/api/dietitian-panel/clients/[clientId]/lifestyle-info/route.ts",
+      "skipped": false,
+      "avg": 8.489444333333333,
+      "min": 7.16275,
+      "max": 10.950708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users",
+      "method": "POST",
+      "path": "/api/users",
+      "file": "src/app/api/users/route.ts",
+      "skipped": false,
+      "avg": 8.479763666666669,
+      "min": 7.150833,
+      "max": 9.650333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/audit-logs",
+      "method": "GET",
+      "path": "/api/admin/audit-logs",
+      "file": "src/app/api/admin/audit-logs/route.ts",
+      "skipped": false,
+      "avg": 8.479639,
+      "min": 7.001708,
+      "max": 11.38925,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/client-meal-plans/test-id",
+      "method": "PUT",
+      "path": "/api/client-meal-plans/test-id",
+      "file": "src/app/api/client-meal-plans/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.470680666666667,
+      "min": 8.285292,
+      "max": 8.598416,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/notifications/send",
+      "method": "DELETE",
+      "path": "/api/admin/notifications/send",
+      "file": "src/app/api/admin/notifications/send/route.ts",
+      "skipped": false,
+      "avg": 8.452583333333333,
+      "min": 7.089125,
+      "max": 10.936292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/dietitian-panel/clients/test-id/medical-info",
+      "method": "PUT",
+      "path": "/api/dietitian-panel/clients/test-id/medical-info",
+      "file": "src/app/api/dietitian-panel/clients/[clientId]/medical-info/route.ts",
+      "skipped": false,
+      "avg": 8.435222000000001,
+      "min": 6.568291,
+      "max": 9.7135,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/diet-templates",
+      "method": "POST",
+      "path": "/api/diet-templates",
+      "file": "src/app/api/diet-templates/route.ts",
+      "skipped": false,
+      "avg": 8.421833000000001,
+      "min": 6.473541,
+      "max": 10.167042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/clients/test-id/tasks/test-id/google-calendar",
+      "method": "POST",
+      "path": "/api/clients/test-id/tasks/test-id/google-calendar",
+      "file": "src/app/api/clients/[clientId]/tasks/[taskId]/google-calendar/route.ts",
+      "skipped": false,
+      "avg": 8.404611333333333,
+      "min": 7.764333,
+      "max": 9.451209,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/subscriptions",
+      "method": "GET",
+      "path": "/api/client/subscriptions",
+      "file": "src/app/api/client/subscriptions/route.ts",
+      "skipped": false,
+      "avg": 8.390625,
+      "min": 7.0125,
+      "max": 10.557,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/journal/water",
+      "method": "DELETE",
+      "path": "/api/journal/water",
+      "file": "src/app/api/journal/water/route.ts",
+      "skipped": false,
+      "avg": 8.380472,
+      "min": 6.028291,
+      "max": 12.235834,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/appointment-config",
+      "method": "DELETE",
+      "path": "/api/admin/appointment-config",
+      "file": "src/app/api/admin/appointment-config/route.ts",
+      "skipped": false,
+      "avg": 8.310486333333332,
+      "min": 6.037042,
+      "max": 11.277792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/auth/client-login",
+      "method": "GET",
+      "path": "/api/auth/client-login",
+      "file": "src/app/api/auth/client-login/route.ts",
+      "skipped": false,
+      "avg": 8.296528,
+      "min": 7.18875,
+      "max": 9.29775,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/messages/groups/test-id/messages",
+      "method": "GET",
+      "path": "/api/messages/groups/test-id/messages",
+      "file": "src/app/api/messages/groups/[groupId]/messages/route.ts",
+      "skipped": false,
+      "avg": 8.288333333333332,
+      "min": 6.89725,
+      "max": 9.299292,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "POST /api/payments",
+      "method": "POST",
+      "path": "/api/payments",
+      "file": "src/app/api/payments/route.ts",
+      "skipped": false,
+      "avg": 8.257916666666667,
+      "min": 6.04525,
+      "max": 10.976375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/health-counselors/test-id",
+      "method": "GET",
+      "path": "/api/admin/health-counselors/test-id",
+      "file": "src/app/api/admin/health-counselors/[counselorId]/route.ts",
+      "skipped": false,
+      "avg": 8.254916666666666,
+      "min": 7.837708,
+      "max": 8.897709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/users/test-id/documents",
+      "method": "DELETE",
+      "path": "/api/users/test-id/documents",
+      "file": "src/app/api/users/[id]/documents/route.ts",
+      "skipped": false,
+      "avg": 8.237444,
+      "min": 7.034208,
+      "max": 10.032916,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/clients/test-id/assign",
+      "method": "GET",
+      "path": "/api/clients/test-id/assign",
+      "file": "src/app/api/clients/[clientId]/assign/route.ts",
+      "skipped": false,
+      "avg": 8.217458333333335,
+      "min": 7.450458,
+      "max": 9.6705,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/dietitian/availability",
+      "method": "GET",
+      "path": "/api/users/dietitian/availability",
+      "file": "src/app/api/users/dietitian/availability/route.ts",
+      "skipped": false,
+      "avg": 8.215208333333335,
+      "min": 7.2295,
+      "max": 9.736333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/activity-logs",
+      "method": "POST",
+      "path": "/api/activity-logs",
+      "file": "src/app/api/activity-logs/route.ts",
+      "skipped": false,
+      "avg": 8.204750333333335,
+      "min": 6.515084,
+      "max": 10.111,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/blogs",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/blogs",
+      "file": "src/app/api/admin/ecommerce/blogs/route.ts",
+      "skipped": false,
+      "avg": 8.193999666666667,
+      "min": 6.325333,
+      "max": 11.918625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/steps",
+      "method": "POST",
+      "path": "/api/client/steps",
+      "file": "src/app/api/client/steps/route.ts",
+      "skipped": false,
+      "avg": 8.181264,
+      "min": 5.377375,
+      "max": 12.016834,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/appointments/provider-availability",
+      "method": "DELETE",
+      "path": "/api/appointments/provider-availability",
+      "file": "src/app/api/appointments/provider-availability/route.ts",
+      "skipped": false,
+      "avg": 8.172389,
+      "min": 6.7015,
+      "max": 9.974292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/subscriptions/test-id",
+      "method": "DELETE",
+      "path": "/api/subscriptions/test-id",
+      "file": "src/app/api/subscriptions/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.171791666666667,
+      "min": 7.07975,
+      "max": 9.765083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/webhooks/endpoints",
+      "method": "POST",
+      "path": "/api/webhooks/endpoints",
+      "file": "src/app/api/webhooks/endpoints/route.ts",
+      "skipped": false,
+      "avg": 8.154652666666665,
+      "min": 6.950083,
+      "max": 10.017625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/meals/test-id",
+      "method": "DELETE",
+      "path": "/api/meals/test-id",
+      "file": "src/app/api/meals/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.147167000000001,
+      "min": 6.149625,
+      "max": 10.766042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/meal-plan",
+      "method": "GET",
+      "path": "/api/client/meal-plan",
+      "file": "src/app/api/client/meal-plan/route.ts",
+      "skipped": false,
+      "avg": 8.111527666666666,
+      "min": 6.804917,
+      "max": 9.848916,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/meal-plan-templates",
+      "method": "POST",
+      "path": "/api/meal-plan-templates",
+      "file": "src/app/api/meal-plan-templates/route.ts",
+      "skipped": false,
+      "avg": 8.109375,
+      "min": 6.985667,
+      "max": 8.931958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/import/session",
+      "method": "DELETE",
+      "path": "/api/admin/import/session",
+      "file": "src/app/api/admin/import/session/route.ts",
+      "skipped": false,
+      "avg": 8.106611000000001,
+      "min": 6.756875,
+      "max": 10.699833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/payment-links/sync",
+      "method": "GET",
+      "path": "/api/payment-links/sync",
+      "file": "src/app/api/payment-links/sync/route.ts",
+      "skipped": false,
+      "avg": 8.072555666666666,
+      "min": 6.802667,
+      "max": 10.179542,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/invoices/test-id",
+      "method": "POST",
+      "path": "/api/invoices/test-id",
+      "file": "src/app/api/invoices/[paymentId]/route.ts",
+      "skipped": false,
+      "avg": 8.061208,
+      "min": 6.495167,
+      "max": 10.306416,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/meals/test-id",
+      "method": "GET",
+      "path": "/api/meals/test-id",
+      "file": "src/app/api/meals/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.036389,
+      "min": 7.272875,
+      "max": 9.198292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/messages",
+      "method": "GET",
+      "path": "/api/messages",
+      "file": "src/app/api/messages/route.ts",
+      "skipped": false,
+      "avg": 8.034416333333334,
+      "min": 6.466708,
+      "max": 10.702333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/service-plans",
+      "method": "PUT",
+      "path": "/api/admin/service-plans",
+      "file": "src/app/api/admin/service-plans/route.ts",
+      "skipped": false,
+      "avg": 8.026430666666666,
+      "min": 5.586417,
+      "max": 11.798917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/system-alerts/test-id",
+      "method": "GET",
+      "path": "/api/system-alerts/test-id",
+      "file": "src/app/api/system-alerts/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.021389000000001,
+      "min": 7.371709,
+      "max": 8.593708,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/users/test-id",
+      "method": "GET",
+      "path": "/api/users/test-id",
+      "file": "src/app/api/users/[id]/route.ts",
+      "skipped": false,
+      "avg": 8.003958333333332,
+      "min": 7.3405,
+      "max": 9.253625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/ecommerce/orders/sync",
+      "method": "POST",
+      "path": "/api/admin/ecommerce/orders/sync",
+      "file": "src/app/api/admin/ecommerce/orders/sync/route.ts",
+      "skipped": false,
+      "avg": 8.001791666666668,
+      "min": 6.852291,
+      "max": 8.940709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/ratings",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/ratings",
+      "file": "src/app/api/admin/ecommerce/ratings/route.ts",
+      "skipped": false,
+      "avg": 7.980764,
+      "min": 6.646458,
+      "max": 9.227167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/test-id",
+      "method": "POST",
+      "path": "/api/users/test-id",
+      "file": "src/app/api/users/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.977055666666666,
+      "min": 7.456375,
+      "max": 8.291583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/progress",
+      "method": "GET",
+      "path": "/api/progress",
+      "file": "src/app/api/progress/route.ts",
+      "skipped": false,
+      "avg": 7.975639,
+      "min": 6.629167,
+      "max": 10.312875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/transformations/test-id",
+      "method": "GET",
+      "path": "/api/admin/transformations/test-id",
+      "file": "src/app/api/admin/transformations/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.971930333333333,
+      "min": 7.638916,
+      "max": 8.571958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/subscriptions/test-id",
+      "method": "GET",
+      "path": "/api/subscriptions/test-id",
+      "file": "src/app/api/subscriptions/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.964028,
+      "min": 7.08625,
+      "max": 8.926709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/payments/sync-status",
+      "method": "PUT",
+      "path": "/api/admin/payments/sync-status",
+      "file": "src/app/api/admin/payments/sync-status/route.ts",
+      "skipped": false,
+      "avg": 7.947208333333333,
+      "min": 6.14125,
+      "max": 10.929792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/admin/recipes/update",
+      "method": "PATCH",
+      "path": "/api/admin/recipes/update",
+      "file": "src/app/api/admin/recipes/update/route.ts",
+      "skipped": false,
+      "avg": 7.9460136666666665,
+      "min": 6.795,
+      "max": 9.293708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/payment-links/invoice",
+      "method": "GET",
+      "path": "/api/payment-links/invoice",
+      "file": "src/app/api/payment-links/invoice/route.ts",
+      "skipped": false,
+      "avg": 7.931929999999999,
+      "min": 6.121166,
+      "max": 10.513541,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/recipes",
+      "method": "GET",
+      "path": "/api/recipes",
+      "file": "src/app/api/recipes/route.ts",
+      "skipped": false,
+      "avg": 7.930972,
+      "min": 5.915458,
+      "max": 9.746625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/duration-presets",
+      "method": "PUT",
+      "path": "/api/admin/duration-presets",
+      "file": "src/app/api/admin/duration-presets/route.ts",
+      "skipped": false,
+      "avg": 7.900055666666667,
+      "min": 7.32975,
+      "max": 8.826292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/leads/test-id",
+      "method": "GET",
+      "path": "/api/admin/leads/test-id",
+      "file": "src/app/api/admin/leads/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.895639,
+      "min": 7.556667,
+      "max": 8.391458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/transformations/test-id",
+      "method": "PUT",
+      "path": "/api/admin/transformations/test-id",
+      "file": "src/app/api/admin/transformations/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.879388666666666,
+      "min": 6.73825,
+      "max": 8.713958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/permissions",
+      "method": "PUT",
+      "path": "/api/admin/permissions",
+      "file": "src/app/api/admin/permissions/route.ts",
+      "skipped": false,
+      "avg": 7.856860999999999,
+      "min": 7.037542,
+      "max": 9.116333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/leads",
+      "method": "GET",
+      "path": "/api/admin/leads",
+      "file": "src/app/api/admin/leads/route.ts",
+      "skipped": false,
+      "avg": 7.8290973333333325,
+      "min": 6.409958,
+      "max": 9.868709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/payment-links",
+      "method": "DELETE",
+      "path": "/api/payment-links",
+      "file": "src/app/api/payment-links/route.ts",
+      "skipped": false,
+      "avg": 7.817791666666667,
+      "min": 7.097625,
+      "max": 9.176834,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/clients",
+      "method": "GET",
+      "path": "/api/admin/clients",
+      "file": "src/app/api/admin/clients/route.ts",
+      "skipped": false,
+      "avg": 7.815666333333334,
+      "min": 6.372416,
+      "max": 10.118,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/journal/sleep",
+      "method": "DELETE",
+      "path": "/api/journal/sleep",
+      "file": "src/app/api/journal/sleep/route.ts",
+      "skipped": false,
+      "avg": 7.809291666666667,
+      "min": 7.353875,
+      "max": 8.61275,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/plans",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/plans",
+      "file": "src/app/api/admin/ecommerce/plans/route.ts",
+      "skipped": false,
+      "avg": 7.796152666666667,
+      "min": 7.384458,
+      "max": 8.098292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/blogs",
+      "method": "GET",
+      "path": "/api/admin/blogs",
+      "file": "src/app/api/admin/blogs/route.ts",
+      "skipped": false,
+      "avg": 7.7859446666666665,
+      "min": 6.552209,
+      "max": 10.008125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/tags/test-id",
+      "method": "PUT",
+      "path": "/api/admin/tags/test-id",
+      "file": "src/app/api/admin/tags/[tagId]/route.ts",
+      "skipped": false,
+      "avg": 7.785555666666667,
+      "min": 7.579917,
+      "max": 7.88875,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/admin/import/models",
+      "method": "GET",
+      "path": "/api/admin/import/models",
+      "file": "src/app/api/admin/import/models/route.ts",
+      "skipped": false,
+      "avg": 7.779597333333334,
+      "min": 6.186208,
+      "max": 10.65325,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/tracking/steps",
+      "method": "POST",
+      "path": "/api/tracking/steps",
+      "file": "src/app/api/tracking/steps/route.ts",
+      "skipped": false,
+      "avg": 7.774861333333334,
+      "min": 6.673709,
+      "max": 9.113417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users",
+      "method": "GET",
+      "path": "/api/users",
+      "file": "src/app/api/users/route.ts",
+      "skipped": false,
+      "avg": 7.7573333333333325,
+      "min": 7.359083,
+      "max": 8.088958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/tracking/weight",
+      "method": "POST",
+      "path": "/api/tracking/weight",
+      "file": "src/app/api/tracking/weight/route.ts",
+      "skipped": false,
+      "avg": 7.754986,
+      "min": 6.654666,
+      "max": 8.928125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/realtime/status",
+      "method": "GET",
+      "path": "/api/realtime/status",
+      "file": "src/app/api/realtime/status/route.ts",
+      "skipped": false,
+      "avg": 7.734333666666667,
+      "min": 6.757334,
+      "max": 9.63975,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/duration-presets",
+      "method": "POST",
+      "path": "/api/admin/duration-presets",
+      "file": "src/app/api/admin/duration-presets/route.ts",
+      "skipped": false,
+      "avg": 7.732972666666668,
+      "min": 7.265875,
+      "max": 8.293084,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/tags/test-id",
+      "method": "GET",
+      "path": "/api/admin/tags/test-id",
+      "file": "src/app/api/admin/tags/[tagId]/route.ts",
+      "skipped": false,
+      "avg": 7.722944666666667,
+      "min": 6.821084,
+      "max": 8.228917,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/food-logs",
+      "method": "GET",
+      "path": "/api/food-logs",
+      "file": "src/app/api/food-logs/route.ts",
+      "skipped": false,
+      "avg": 7.704888666666666,
+      "min": 6.016583,
+      "max": 10.847833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/webhooks/endpoints",
+      "method": "GET",
+      "path": "/api/webhooks/endpoints",
+      "file": "src/app/api/webhooks/endpoints/route.ts",
+      "skipped": false,
+      "avg": 7.704514,
+      "min": 6.809292,
+      "max": 9.347917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/audit-logs/smart-people",
+      "method": "GET",
+      "path": "/api/admin/audit-logs/smart-people",
+      "file": "src/app/api/admin/audit-logs/smart-people/route.ts",
+      "skipped": false,
+      "avg": 7.690889000000001,
+      "min": 6.315875,
+      "max": 10.18075,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/hydration",
+      "method": "GET",
+      "path": "/api/client/hydration",
+      "file": "src/app/api/client/hydration/route.ts",
+      "skipped": false,
+      "avg": 7.689611,
+      "min": 7.60875,
+      "max": 7.77675,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/drafts",
+      "method": "DELETE",
+      "path": "/api/drafts",
+      "file": "src/app/api/drafts/route.ts",
+      "skipped": false,
+      "avg": 7.6834169999999995,
+      "min": 7.211917,
+      "max": 8.334709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/appointments",
+      "method": "POST",
+      "path": "/api/appointments",
+      "file": "src/app/api/appointments/route.ts",
+      "skipped": false,
+      "avg": 7.672041666666666,
+      "min": 6.393334,
+      "max": 9.400291,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/ecommerce/orders",
+      "method": "GET",
+      "path": "/api/admin/ecommerce/orders",
+      "file": "src/app/api/admin/ecommerce/orders/route.ts",
+      "skipped": false,
+      "avg": 7.666347333333332,
+      "min": 6.562875,
+      "max": 9.827625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/journal/progress",
+      "method": "DELETE",
+      "path": "/api/journal/progress",
+      "file": "src/app/api/journal/progress/route.ts",
+      "skipped": false,
+      "avg": 7.660986333333334,
+      "min": 6.069042,
+      "max": 10.079833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/permissions",
+      "method": "GET",
+      "path": "/api/admin/permissions",
+      "file": "src/app/api/admin/permissions/route.ts",
+      "skipped": false,
+      "avg": 7.6569303333333325,
+      "min": 6.829083,
+      "max": 9.295833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/messages/status",
+      "method": "PUT",
+      "path": "/api/messages/status",
+      "file": "src/app/api/messages/status/route.ts",
+      "skipped": false,
+      "avg": 7.644264,
+      "min": 7.366417,
+      "max": 8.11325,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/activity-assignments",
+      "method": "GET",
+      "path": "/api/activity-assignments",
+      "file": "src/app/api/activity-assignments/route.ts",
+      "skipped": false,
+      "avg": 7.618194333333332,
+      "min": 5.723625,
+      "max": 9.517792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/test-id/documents",
+      "method": "POST",
+      "path": "/api/users/test-id/documents",
+      "file": "src/app/api/users/[id]/documents/route.ts",
+      "skipped": false,
+      "avg": 7.618055666666667,
+      "min": 7.593,
+      "max": 7.640792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/available-for-chat",
+      "method": "GET",
+      "path": "/api/users/available-for-chat",
+      "file": "src/app/api/users/available-for-chat/route.ts",
+      "skipped": false,
+      "avg": 7.611763666666666,
+      "min": 6.585333,
+      "max": 9.589833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/ecommerce/blogs/test-id",
+      "method": "PUT",
+      "path": "/api/admin/ecommerce/blogs/test-id",
+      "file": "src/app/api/admin/ecommerce/blogs/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.602055666666668,
+      "min": 7.292459,
+      "max": 7.778583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/auth/logout",
+      "method": "GET",
+      "path": "/api/auth/logout",
+      "file": "src/app/api/auth/logout/route.ts",
+      "skipped": false,
+      "avg": 7.5965973333333325,
+      "min": 6.877208,
+      "max": 8.785625,
+      "status": 307,
+      "statuses": [
+        307,
+        307,
+        307
+      ]
+    },
+    {
+      "key": "PUT /api/clients/test-id/tasks/test-id",
+      "method": "PUT",
+      "path": "/api/clients/test-id/tasks/test-id",
+      "file": "src/app/api/clients/[clientId]/tasks/[taskId]/route.ts",
+      "skipped": false,
+      "avg": 7.5934859999999995,
+      "min": 7.407791,
+      "max": 7.9615,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/top-dietitians",
+      "method": "GET",
+      "path": "/api/admin/top-dietitians",
+      "file": "src/app/api/admin/top-dietitians/route.ts",
+      "skipped": false,
+      "avg": 7.579097666666667,
+      "min": 6.317667,
+      "max": 8.930209,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/messages/conversations",
+      "method": "GET",
+      "path": "/api/messages/conversations",
+      "file": "src/app/api/messages/conversations/route.ts",
+      "skipped": false,
+      "avg": 7.557028,
+      "min": 6.4555,
+      "max": 8.356417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/blogs/test-id",
+      "method": "GET",
+      "path": "/api/admin/blogs/test-id",
+      "file": "src/app/api/admin/blogs/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.553583333333333,
+      "min": 7.212125,
+      "max": 7.729792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/tracking/weight",
+      "method": "GET",
+      "path": "/api/tracking/weight",
+      "file": "src/app/api/tracking/weight/route.ts",
+      "skipped": false,
+      "avg": 7.529458333333333,
+      "min": 5.48775,
+      "max": 11.252958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/zoom/test",
+      "method": "POST",
+      "path": "/api/zoom/test",
+      "file": "src/app/api/zoom/test/route.ts",
+      "skipped": false,
+      "avg": 7.512847333333333,
+      "min": 5.244209,
+      "max": 10.364958,
+      "status": 410,
+      "statuses": [
+        410,
+        410,
+        410
+      ]
+    },
+    {
+      "key": "DELETE /api/woocommerce/from-db",
+      "method": "DELETE",
+      "path": "/api/woocommerce/from-db",
+      "file": "src/app/api/woocommerce/from-db/route.ts",
+      "skipped": false,
+      "avg": 7.507569666666666,
+      "min": 6.514,
+      "max": 8.455667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/support/contact",
+      "method": "GET",
+      "path": "/api/support/contact",
+      "file": "src/app/api/support/contact/route.ts",
+      "skipped": false,
+      "avg": 7.494528,
+      "min": 5.468417,
+      "max": 10.208125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/subscription-plans",
+      "method": "POST",
+      "path": "/api/subscription-plans",
+      "file": "src/app/api/subscription-plans/route.ts",
+      "skipped": false,
+      "avg": 7.491666666666667,
+      "min": 7.234416,
+      "max": 7.946334,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/recipes/bulk-update",
+      "method": "GET",
+      "path": "/api/admin/recipes/bulk-update",
+      "file": "src/app/api/admin/recipes/bulk-update/route.ts",
+      "skipped": false,
+      "avg": 7.487416333333333,
+      "min": 5.931667,
+      "max": 9.890791,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/client/sleep",
+      "method": "DELETE",
+      "path": "/api/client/sleep",
+      "file": "src/app/api/client/sleep/route.ts",
+      "skipped": false,
+      "avg": 7.486041666666666,
+      "min": 6.312625,
+      "max": 8.505625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/dietitian",
+      "method": "GET",
+      "path": "/api/users/dietitian",
+      "file": "src/app/api/users/dietitian/route.ts",
+      "skipped": false,
+      "avg": 7.460708666666666,
+      "min": 6.132917,
+      "max": 9.141167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/dietitian-panel/clients/test-id/dietary-recall",
+      "method": "PUT",
+      "path": "/api/dietitian-panel/clients/test-id/dietary-recall",
+      "file": "src/app/api/dietitian-panel/clients/[clientId]/dietary-recall/route.ts",
+      "skipped": false,
+      "avg": 7.456736,
+      "min": 7.175083,
+      "max": 7.756875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/tracking/sleep",
+      "method": "GET",
+      "path": "/api/tracking/sleep",
+      "file": "src/app/api/tracking/sleep/route.ts",
+      "skipped": false,
+      "avg": 7.453653,
+      "min": 6.732375,
+      "max": 8.460084,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/leads",
+      "method": "POST",
+      "path": "/api/admin/leads",
+      "file": "src/app/api/admin/leads/route.ts",
+      "skipped": false,
+      "avg": 7.450291333333333,
+      "min": 7.345666,
+      "max": 7.580625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/unread-counts/refresh",
+      "method": "POST",
+      "path": "/api/client/unread-counts/refresh",
+      "file": "src/app/api/client/unread-counts/refresh/route.ts",
+      "skipped": false,
+      "avg": 7.442736,
+      "min": 5.576,
+      "max": 8.896417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/clients/test-id/assign",
+      "method": "PATCH",
+      "path": "/api/clients/test-id/assign",
+      "file": "src/app/api/clients/[clientId]/assign/route.ts",
+      "skipped": false,
+      "avg": 7.4405,
+      "min": 6.313125,
+      "max": 8.793,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/messages/groups/test-id",
+      "method": "GET",
+      "path": "/api/messages/groups/test-id",
+      "file": "src/app/api/messages/groups/[groupId]/route.ts",
+      "skipped": false,
+      "avg": 7.438764,
+      "min": 5.705125,
+      "max": 8.573042,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "POST /api/journal/water",
+      "method": "POST",
+      "path": "/api/journal/water",
+      "file": "src/app/api/journal/water/route.ts",
+      "skipped": false,
+      "avg": 7.435652666666667,
+      "min": 6.053875,
+      "max": 9.76425,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/appointments/provider-availability",
+      "method": "GET",
+      "path": "/api/appointments/provider-availability",
+      "file": "src/app/api/appointments/provider-availability/route.ts",
+      "skipped": false,
+      "avg": 7.4318056666666665,
+      "min": 5.884875,
+      "max": 8.80225,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/available",
+      "method": "GET",
+      "path": "/api/users/available",
+      "file": "src/app/api/users/available/route.ts",
+      "skipped": false,
+      "avg": 7.430403000000001,
+      "min": 4.983834,
+      "max": 10.390125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/webrtc/signal",
+      "method": "GET",
+      "path": "/api/webrtc/signal",
+      "file": "src/app/api/webrtc/signal/route.ts",
+      "skipped": false,
+      "avg": 7.429097,
+      "min": 5.687458,
+      "max": 10.588583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/dietary-recall",
+      "method": "GET",
+      "path": "/api/client/dietary-recall",
+      "file": "src/app/api/client/dietary-recall/route.ts",
+      "skipped": false,
+      "avg": 7.400444333333333,
+      "min": 6.74325,
+      "max": 8.178708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/zoom/test",
+      "method": "GET",
+      "path": "/api/zoom/test",
+      "file": "src/app/api/zoom/test/route.ts",
+      "skipped": false,
+      "avg": 7.395125,
+      "min": 5.819792,
+      "max": 9.485041,
+      "status": 410,
+      "statuses": [
+        410,
+        410,
+        410
+      ]
+    },
+    {
+      "key": "GET /api/users/test-id/documents",
+      "method": "GET",
+      "path": "/api/users/test-id/documents",
+      "file": "src/app/api/users/[id]/documents/route.ts",
+      "skipped": false,
+      "avg": 7.392027333333334,
+      "min": 7.131291,
+      "max": 7.718333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/client/tasks",
+      "method": "PATCH",
+      "path": "/api/client/tasks",
+      "file": "src/app/api/client/tasks/route.ts",
+      "skipped": false,
+      "avg": 7.379444333333335,
+      "min": 6.565625,
+      "max": 8.517417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/appointments/available-slots",
+      "method": "GET",
+      "path": "/api/appointments/available-slots",
+      "file": "src/app/api/appointments/available-slots/route.ts",
+      "skipped": false,
+      "avg": 7.375319333333334,
+      "min": 6.60175,
+      "max": 8.722042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/meal-plan-templates/test-id",
+      "method": "PATCH",
+      "path": "/api/meal-plan-templates/test-id",
+      "file": "src/app/api/meal-plan-templates/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.333902666666667,
+      "min": 7.002791,
+      "max": 7.7805,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/tags",
+      "method": "GET",
+      "path": "/api/tags",
+      "file": "src/app/api/tags/route.ts",
+      "skipped": false,
+      "avg": 7.3220556666666665,
+      "min": 6.2715,
+      "max": 9.093375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/payments",
+      "method": "GET",
+      "path": "/api/admin/payments",
+      "file": "src/app/api/admin/payments/route.ts",
+      "skipped": false,
+      "avg": 7.317,
+      "min": 6.154083,
+      "max": 9.61925,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/leads",
+      "method": "POST",
+      "path": "/api/leads",
+      "file": "src/app/api/leads/route.ts",
+      "skipped": false,
+      "avg": 7.289652666666666,
+      "min": 3.594083,
+      "max": 11.822625,
+      "status": 400,
+      "statuses": [
+        400,
+        400,
+        400
+      ]
+    },
+    {
+      "key": "DELETE /api/system-alerts",
+      "method": "DELETE",
+      "path": "/api/system-alerts",
+      "file": "src/app/api/system-alerts/route.ts",
+      "skipped": false,
+      "avg": 7.250069333333333,
+      "min": 5.02775,
+      "max": 8.718833,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "PATCH /api/users/test-id",
+      "method": "PATCH",
+      "path": "/api/users/test-id",
+      "file": "src/app/api/users/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.2491803333333324,
+      "min": 6.908458,
+      "max": 7.507167,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "POST /api/tags",
+      "method": "POST",
+      "path": "/api/tags",
+      "file": "src/app/api/tags/route.ts",
+      "skipped": false,
+      "avg": 7.2280283333333335,
+      "min": 6.580209,
+      "max": 8.327917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/progress/photos",
+      "method": "POST",
+      "path": "/api/progress/photos",
+      "file": "src/app/api/progress/photos/route.ts",
+      "skipped": false,
+      "avg": 7.206778,
+      "min": 6.80525,
+      "max": 7.441667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/client/bmi",
+      "method": "PUT",
+      "path": "/api/client/bmi",
+      "file": "src/app/api/client/bmi/route.ts",
+      "skipped": false,
+      "avg": 7.203333333333334,
+      "min": 6.892375,
+      "max": 7.410542,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/woocommerce/orders",
+      "method": "GET",
+      "path": "/api/woocommerce/orders",
+      "file": "src/app/api/woocommerce/orders/route.ts",
+      "skipped": false,
+      "avg": 7.199249666666667,
+      "min": 5.5525,
+      "max": 10.269083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/other-platform-payments",
+      "method": "POST",
+      "path": "/api/other-platform-payments",
+      "file": "src/app/api/other-platform-payments/route.ts",
+      "skipped": false,
+      "avg": 7.182611333333333,
+      "min": 6.476959,
+      "max": 7.53775,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/service-plans",
+      "method": "DELETE",
+      "path": "/api/admin/service-plans",
+      "file": "src/app/api/admin/service-plans/route.ts",
+      "skipped": false,
+      "avg": 7.165527666666666,
+      "min": 5.249458,
+      "max": 10.05525,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/client/steps",
+      "method": "PATCH",
+      "path": "/api/client/steps",
+      "file": "src/app/api/client/steps/route.ts",
+      "skipped": false,
+      "avg": 7.1594310000000005,
+      "min": 6.849959,
+      "max": 7.438875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/activity-logs",
+      "method": "DELETE",
+      "path": "/api/activity-logs",
+      "file": "src/app/api/activity-logs/route.ts",
+      "skipped": false,
+      "avg": 7.152777666666668,
+      "min": 6.292125,
+      "max": 8.514333,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/journal/measurements",
+      "method": "GET",
+      "path": "/api/journal/measurements",
+      "file": "src/app/api/journal/measurements/route.ts",
+      "skipped": false,
+      "avg": 7.151472333333333,
+      "min": 6.190709,
+      "max": 8.054833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/ecommerce/blogs",
+      "method": "POST",
+      "path": "/api/admin/ecommerce/blogs",
+      "file": "src/app/api/admin/ecommerce/blogs/route.ts",
+      "skipped": false,
+      "avg": 7.145305666666666,
+      "min": 6.722208,
+      "max": 7.537834,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/sleep",
+      "method": "GET",
+      "path": "/api/client/sleep",
+      "file": "src/app/api/client/sleep/route.ts",
+      "skipped": false,
+      "avg": 7.112625333333333,
+      "min": 6.140083,
+      "max": 8.443709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/recipes/test-id",
+      "method": "DELETE",
+      "path": "/api/recipes/test-id",
+      "file": "src/app/api/recipes/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.110069333333333,
+      "min": 5.58275,
+      "max": 9.90175,
+      "status": 400,
+      "statuses": [
+        400,
+        400,
+        400
+      ]
+    },
+    {
+      "key": "POST /api/progress",
+      "method": "POST",
+      "path": "/api/progress",
+      "file": "src/app/api/progress/route.ts",
+      "skipped": false,
+      "avg": 7.0942359999999995,
+      "min": 6.59225,
+      "max": 7.696208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/lifestyle-info",
+      "method": "GET",
+      "path": "/api/client/lifestyle-info",
+      "file": "src/app/api/client/lifestyle-info/route.ts",
+      "skipped": false,
+      "avg": 7.093764,
+      "min": 6.536625,
+      "max": 7.477,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/messages",
+      "method": "POST",
+      "path": "/api/messages",
+      "file": "src/app/api/messages/route.ts",
+      "skipped": false,
+      "avg": 7.092139,
+      "min": 6.732,
+      "max": 7.684667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/clients/migrate-woocommerce",
+      "method": "GET",
+      "path": "/api/clients/migrate-woocommerce",
+      "file": "src/app/api/clients/migrate-woocommerce/route.ts",
+      "skipped": false,
+      "avg": 7.0833053333333345,
+      "min": 6.137166,
+      "max": 8.843208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/payments",
+      "method": "GET",
+      "path": "/api/payments",
+      "file": "src/app/api/payments/route.ts",
+      "skipped": false,
+      "avg": 7.082402666666667,
+      "min": 5.211667,
+      "max": 9.198583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/notifications/send",
+      "method": "GET",
+      "path": "/api/admin/notifications/send",
+      "file": "src/app/api/admin/notifications/send/route.ts",
+      "skipped": false,
+      "avg": 7.065722,
+      "min": 6.768458,
+      "max": 7.647208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/messages/unread-count",
+      "method": "GET",
+      "path": "/api/client/messages/unread-count",
+      "file": "src/app/api/client/messages/unread-count/route.ts",
+      "skipped": false,
+      "avg": 7.056597333333333,
+      "min": 5.926709,
+      "max": 8.939208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/subscription-plans",
+      "method": "POST",
+      "path": "/api/admin/subscription-plans",
+      "file": "src/app/api/admin/subscription-plans/route.ts",
+      "skipped": false,
+      "avg": 7.0468746666666675,
+      "min": 6.768125,
+      "max": 7.501541,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/transformations",
+      "method": "GET",
+      "path": "/api/admin/transformations",
+      "file": "src/app/api/admin/transformations/route.ts",
+      "skipped": false,
+      "avg": 7.044583666666667,
+      "min": 5.897709,
+      "max": 8.280542,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/dashboard-summary",
+      "method": "GET",
+      "path": "/api/client/dashboard-summary",
+      "file": "src/app/api/client/dashboard-summary/route.ts",
+      "skipped": false,
+      "avg": 7.044069333333333,
+      "min": 6.031625,
+      "max": 8.892875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/dietitians",
+      "method": "GET",
+      "path": "/api/users/dietitians",
+      "file": "src/app/api/users/dietitians/route.ts",
+      "skipped": false,
+      "avg": 7.017680333333334,
+      "min": 6.043417,
+      "max": 8.698291,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/health-counselors",
+      "method": "GET",
+      "path": "/api/users/health-counselors",
+      "file": "src/app/api/users/health-counselors/route.ts",
+      "skipped": false,
+      "avg": 7.017319333333333,
+      "min": 6.046875,
+      "max": 8.754708,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/journal/sleep",
+      "method": "POST",
+      "path": "/api/journal/sleep",
+      "file": "src/app/api/journal/sleep/route.ts",
+      "skipped": false,
+      "avg": 7.012889,
+      "min": 6.69825,
+      "max": 7.214292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/activity-assignments",
+      "method": "POST",
+      "path": "/api/activity-assignments",
+      "file": "src/app/api/activity-assignments/route.ts",
+      "skipped": false,
+      "avg": 7.006555666666666,
+      "min": 6.864292,
+      "max": 7.18975,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/users/test-id",
+      "method": "PUT",
+      "path": "/api/users/test-id",
+      "file": "src/app/api/users/[id]/route.ts",
+      "skipped": false,
+      "avg": 7.004819333333334,
+      "min": 6.620083,
+      "max": 7.206083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/drafts",
+      "method": "POST",
+      "path": "/api/drafts",
+      "file": "src/app/api/drafts/route.ts",
+      "skipped": false,
+      "avg": 6.961722333333333,
+      "min": 6.157875,
+      "max": 7.749709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/journal/bca",
+      "method": "DELETE",
+      "path": "/api/journal/bca",
+      "file": "src/app/api/journal/bca/route.ts",
+      "skipped": false,
+      "avg": 6.9589583333333325,
+      "min": 5.846833,
+      "max": 8.889375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/subscription-plans",
+      "method": "GET",
+      "path": "/api/admin/subscription-plans",
+      "file": "src/app/api/admin/subscription-plans/route.ts",
+      "skipped": false,
+      "avg": 6.958430666666666,
+      "min": 6.385291,
+      "max": 7.398709,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/meal-plan-templates/test-id",
+      "method": "PUT",
+      "path": "/api/meal-plan-templates/test-id",
+      "file": "src/app/api/meal-plan-templates/[id]/route.ts",
+      "skipped": false,
+      "avg": 6.957860666666666,
+      "min": 6.459083,
+      "max": 7.609166,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/fitness",
+      "method": "GET",
+      "path": "/api/fitness",
+      "file": "src/app/api/fitness/route.ts",
+      "skipped": false,
+      "avg": 6.957528,
+      "min": 5.9595,
+      "max": 8.502042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/tasks",
+      "method": "GET",
+      "path": "/api/client/tasks",
+      "file": "src/app/api/client/tasks/route.ts",
+      "skipped": false,
+      "avg": 6.948555333333334,
+      "min": 5.394125,
+      "max": 8.296583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/journal/water",
+      "method": "GET",
+      "path": "/api/journal/water",
+      "file": "src/app/api/journal/water/route.ts",
+      "skipped": false,
+      "avg": 6.943680666666666,
+      "min": 6.599459,
+      "max": 7.450583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/clients",
+      "method": "GET",
+      "path": "/api/users/clients",
+      "file": "src/app/api/users/clients/route.ts",
+      "skipped": false,
+      "avg": 6.942736,
+      "min": 5.055958,
+      "max": 9.25625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/activity-assignments",
+      "method": "PUT",
+      "path": "/api/activity-assignments",
+      "file": "src/app/api/activity-assignments/route.ts",
+      "skipped": false,
+      "avg": 6.938291666666665,
+      "min": 5.836958,
+      "max": 8.369167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/health-counselors",
+      "method": "GET",
+      "path": "/api/admin/health-counselors",
+      "file": "src/app/api/admin/health-counselors/route.ts",
+      "skipped": false,
+      "avg": 6.932166666666666,
+      "min": 6.701,
+      "max": 7.312167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/subscription-plans",
+      "method": "DELETE",
+      "path": "/api/admin/subscription-plans",
+      "file": "src/app/api/admin/subscription-plans/route.ts",
+      "skipped": false,
+      "avg": 6.931069666666667,
+      "min": 6.388917,
+      "max": 7.565667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/users/dietitian/availability/setup",
+      "method": "GET",
+      "path": "/api/users/dietitian/availability/setup",
+      "file": "src/app/api/users/dietitian/availability/setup/route.ts",
+      "skipped": false,
+      "avg": 6.908514333333334,
+      "min": 6.603834,
+      "max": 7.326459,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/journal/steps",
+      "method": "DELETE",
+      "path": "/api/journal/steps",
+      "file": "src/app/api/journal/steps/route.ts",
+      "skipped": false,
+      "avg": 6.906972333333333,
+      "min": 4.5705,
+      "max": 10.517292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/journal/activity",
+      "method": "DELETE",
+      "path": "/api/journal/activity",
+      "file": "src/app/api/journal/activity/route.ts",
+      "skipped": false,
+      "avg": 6.904888666666667,
+      "min": 6.0525,
+      "max": 8.495791,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/permissions/check",
+      "method": "GET",
+      "path": "/api/admin/permissions/check",
+      "file": "src/app/api/admin/permissions/check/route.ts",
+      "skipped": false,
+      "avg": 6.8995136666666665,
+      "min": 5.9215,
+      "max": 8.532833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/service-plans",
+      "method": "POST",
+      "path": "/api/admin/service-plans",
+      "file": "src/app/api/admin/service-plans/route.ts",
+      "skipped": false,
+      "avg": 6.898819666666667,
+      "min": 6.41575,
+      "max": 7.374125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/tracking/steps",
+      "method": "GET",
+      "path": "/api/tracking/steps",
+      "file": "src/app/api/tracking/steps/route.ts",
+      "skipped": false,
+      "avg": 6.897472333333333,
+      "min": 5.74475,
+      "max": 9.184917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/messages/conversations",
+      "method": "GET",
+      "path": "/api/client/messages/conversations",
+      "file": "src/app/api/client/messages/conversations/route.ts",
+      "skipped": false,
+      "avg": 6.895472333333333,
+      "min": 5.945333,
+      "max": 8.177792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/messages",
+      "method": "POST",
+      "path": "/api/client/messages",
+      "file": "src/app/api/client/messages/route.ts",
+      "skipped": false,
+      "avg": 6.888639333333333,
+      "min": 5.520542,
+      "max": 7.633667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/journal/progress",
+      "method": "GET",
+      "path": "/api/journal/progress",
+      "file": "src/app/api/journal/progress/route.ts",
+      "skipped": false,
+      "avg": 6.8842083333333335,
+      "min": 6.656958,
+      "max": 7.332167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/recent-activity",
+      "method": "GET",
+      "path": "/api/admin/recent-activity",
+      "file": "src/app/api/admin/recent-activity/route.ts",
+      "skipped": false,
+      "avg": 6.867583,
+      "min": 6.232375,
+      "max": 7.815958,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/journal",
+      "method": "GET",
+      "path": "/api/journal",
+      "file": "src/app/api/journal/route.ts",
+      "skipped": false,
+      "avg": 6.855250000000001,
+      "min": 6.4205,
+      "max": 7.524875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/service-plans/verify-link",
+      "method": "POST",
+      "path": "/api/client/service-plans/verify-link",
+      "file": "src/app/api/client/service-plans/verify-link/route.ts",
+      "skipped": false,
+      "avg": 6.847264,
+      "min": 5.85,
+      "max": 8.18575,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/journal/sleep",
+      "method": "GET",
+      "path": "/api/journal/sleep",
+      "file": "src/app/api/journal/sleep/route.ts",
+      "skipped": false,
+      "avg": 6.847264,
+      "min": 6.735,
+      "max": 7.059833,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/client/lifestyle-info",
+      "method": "PUT",
+      "path": "/api/client/lifestyle-info",
+      "file": "src/app/api/client/lifestyle-info/route.ts",
+      "skipped": false,
+      "avg": 6.844388666666666,
+      "min": 6.389791,
+      "max": 7.326792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/steps",
+      "method": "GET",
+      "path": "/api/client/steps",
+      "file": "src/app/api/client/steps/route.ts",
+      "skipped": false,
+      "avg": 6.8402780000000005,
+      "min": 5.89475,
+      "max": 7.620042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/permissions",
+      "method": "POST",
+      "path": "/api/admin/permissions",
+      "file": "src/app/api/admin/permissions/route.ts",
+      "skipped": false,
+      "avg": 6.820596999999999,
+      "min": 6.532458,
+      "max": 7.22875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/realtime/status",
+      "method": "POST",
+      "path": "/api/realtime/status",
+      "file": "src/app/api/realtime/status/route.ts",
+      "skipped": false,
+      "avg": 6.811875333333333,
+      "min": 6.335709,
+      "max": 7.27475,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/journal/progress",
+      "method": "POST",
+      "path": "/api/journal/progress",
+      "file": "src/app/api/journal/progress/route.ts",
+      "skipped": false,
+      "avg": 6.809111333333333,
+      "min": 6.308875,
+      "max": 7.085792,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/medical-info",
+      "method": "GET",
+      "path": "/api/client/medical-info",
+      "file": "src/app/api/client/medical-info/route.ts",
+      "skipped": false,
+      "avg": 6.8043890000000005,
+      "min": 5.457291,
+      "max": 7.868167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/client/notifications",
+      "method": "DELETE",
+      "path": "/api/client/notifications",
+      "file": "src/app/api/client/notifications/route.ts",
+      "skipped": false,
+      "avg": 6.795528,
+      "min": 6.557542,
+      "max": 7.156583,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/journal/measurements",
+      "method": "DELETE",
+      "path": "/api/journal/measurements",
+      "file": "src/app/api/journal/measurements/route.ts",
+      "skipped": false,
+      "avg": 6.781805666666667,
+      "min": 5.063334,
+      "max": 8.592083,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/tracking/water",
+      "method": "POST",
+      "path": "/api/tracking/water",
+      "file": "src/app/api/tracking/water/route.ts",
+      "skipped": false,
+      "avg": 6.772555666666666,
+      "min": 6.417,
+      "max": 7.464667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/client/sleep",
+      "method": "PATCH",
+      "path": "/api/client/sleep",
+      "file": "src/app/api/client/sleep/route.ts",
+      "skipped": false,
+      "avg": 6.764444666666667,
+      "min": 6.269916,
+      "max": 7.062084,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/client/hydration",
+      "method": "PATCH",
+      "path": "/api/client/hydration",
+      "file": "src/app/api/client/hydration/route.ts",
+      "skipped": false,
+      "avg": 6.754861333333333,
+      "min": 6.3375,
+      "max": 7.100042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/tags",
+      "method": "POST",
+      "path": "/api/admin/tags",
+      "file": "src/app/api/admin/tags/route.ts",
+      "skipped": false,
+      "avg": 6.742028,
+      "min": 6.275958,
+      "max": 7.667709,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/webrtc/simple-signal",
+      "method": "GET",
+      "path": "/api/webrtc/simple-signal",
+      "file": "src/app/api/webrtc/simple-signal/route.ts",
+      "skipped": false,
+      "avg": 6.736277666666666,
+      "min": 4.728833,
+      "max": 9.348208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/system-alerts",
+      "method": "POST",
+      "path": "/api/admin/system-alerts",
+      "file": "src/app/api/admin/system-alerts/route.ts",
+      "skipped": false,
+      "avg": 6.730111333333333,
+      "min": 6.468375,
+      "max": 7.039834,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/appointment-config",
+      "method": "GET",
+      "path": "/api/admin/appointment-config",
+      "file": "src/app/api/admin/appointment-config/route.ts",
+      "skipped": false,
+      "avg": 6.72832,
+      "min": 6.602959,
+      "max": 6.826334,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/ecommerce/orders",
+      "method": "POST",
+      "path": "/api/admin/ecommerce/orders",
+      "file": "src/app/api/admin/ecommerce/orders/route.ts",
+      "skipped": false,
+      "avg": 6.708069666666667,
+      "min": 6.368,
+      "max": 7.215417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/dietitian/availability",
+      "method": "POST",
+      "path": "/api/users/dietitian/availability",
+      "file": "src/app/api/users/dietitian/availability/route.ts",
+      "skipped": false,
+      "avg": 6.707222000000001,
+      "min": 6.475333,
+      "max": 6.90475,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/admin/system-alerts",
+      "method": "DELETE",
+      "path": "/api/admin/system-alerts",
+      "file": "src/app/api/admin/system-alerts/route.ts",
+      "skipped": false,
+      "avg": 6.703596999999999,
+      "min": 5.796375,
+      "max": 8.139458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/settings",
+      "method": "GET",
+      "path": "/api/client/settings",
+      "file": "src/app/api/client/settings/route.ts",
+      "skipped": false,
+      "avg": 6.698861333333333,
+      "min": 6.377375,
+      "max": 7.259334,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/service-plans",
+      "method": "GET",
+      "path": "/api/client/service-plans",
+      "file": "src/app/api/client/service-plans/route.ts",
+      "skipped": false,
+      "avg": 6.668,
+      "min": 6.071208,
+      "max": 7.71875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/progress/photos",
+      "method": "DELETE",
+      "path": "/api/progress/photos",
+      "file": "src/app/api/progress/photos/route.ts",
+      "skipped": false,
+      "avg": 6.629986,
+      "min": 5.908416,
+      "max": 7.435042,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/service-plans",
+      "method": "GET",
+      "path": "/api/admin/service-plans",
+      "file": "src/app/api/admin/service-plans/route.ts",
+      "skipped": false,
+      "avg": 6.608902666666666,
+      "min": 6.487833,
+      "max": 6.716625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/meals",
+      "method": "POST",
+      "path": "/api/meals",
+      "file": "src/app/api/meals/route.ts",
+      "skipped": false,
+      "avg": 6.598986,
+      "min": 6.158875,
+      "max": 7.114167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/system-alerts",
+      "method": "GET",
+      "path": "/api/system-alerts",
+      "file": "src/app/api/system-alerts/route.ts",
+      "skipped": false,
+      "avg": 6.577694666666666,
+      "min": 6.146125,
+      "max": 7.032209,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/admin/import/row",
+      "method": "PATCH",
+      "path": "/api/admin/import/row",
+      "file": "src/app/api/admin/import/row/route.ts",
+      "skipped": false,
+      "avg": 6.5761666666666665,
+      "min": 6.186041,
+      "max": 6.830875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/meals",
+      "method": "GET",
+      "path": "/api/meals",
+      "file": "src/app/api/meals/route.ts",
+      "skipped": false,
+      "avg": 6.575,
+      "min": 5.670458,
+      "max": 8.283167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/blogs",
+      "method": "POST",
+      "path": "/api/admin/blogs",
+      "file": "src/app/api/admin/blogs/route.ts",
+      "skipped": false,
+      "avg": 6.561861333333333,
+      "min": 6.107834,
+      "max": 6.837209,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/journal/compliance",
+      "method": "GET",
+      "path": "/api/journal/compliance",
+      "file": "src/app/api/journal/compliance/route.ts",
+      "skipped": false,
+      "avg": 6.548722000000001,
+      "min": 5.309791,
+      "max": 8.079084,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/journal/meals",
+      "method": "PUT",
+      "path": "/api/journal/meals",
+      "file": "src/app/api/journal/meals/route.ts",
+      "skipped": false,
+      "avg": 6.545958333333332,
+      "min": 6.1545,
+      "max": 6.81825,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/watch/settings",
+      "method": "PUT",
+      "path": "/api/watch/settings",
+      "file": "src/app/api/watch/settings/route.ts",
+      "skipped": false,
+      "avg": 6.533541666666667,
+      "min": 6.434875,
+      "max": 6.698166,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/webhooks/endpoints",
+      "method": "PUT",
+      "path": "/api/webhooks/endpoints",
+      "file": "src/app/api/webhooks/endpoints/route.ts",
+      "skipped": false,
+      "avg": 6.532764,
+      "min": 6.38575,
+      "max": 6.661917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/import/session",
+      "method": "GET",
+      "path": "/api/admin/import/session",
+      "file": "src/app/api/admin/import/session/route.ts",
+      "skipped": false,
+      "avg": 6.510041999999999,
+      "min": 5.927542,
+      "max": 7.2495,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/onboarding",
+      "method": "GET",
+      "path": "/api/client/onboarding",
+      "file": "src/app/api/client/onboarding/route.ts",
+      "skipped": false,
+      "avg": 6.501028000000001,
+      "min": 5.682375,
+      "max": 8.058167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/client/steps",
+      "method": "DELETE",
+      "path": "/api/client/steps",
+      "file": "src/app/api/client/steps/route.ts",
+      "skipped": false,
+      "avg": 6.497889,
+      "min": 5.936542,
+      "max": 7.558125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/subscriptions",
+      "method": "GET",
+      "path": "/api/subscriptions",
+      "file": "src/app/api/subscriptions/route.ts",
+      "skipped": false,
+      "avg": 6.493555333333333,
+      "min": 6.045167,
+      "max": 7.289916,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/appointment-config",
+      "method": "PUT",
+      "path": "/api/admin/appointment-config",
+      "file": "src/app/api/admin/appointment-config/route.ts",
+      "skipped": false,
+      "avg": 6.482680666666667,
+      "min": 6.293,
+      "max": 6.616375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/user/reset-password",
+      "method": "GET",
+      "path": "/api/user/reset-password",
+      "file": "src/app/api/user/reset-password/route.ts",
+      "skipped": false,
+      "avg": 6.4632776666666665,
+      "min": 3.840041,
+      "max": 8.608209,
+      "status": 400,
+      "statuses": [
+        400,
+        400,
+        400
+      ]
+    },
+    {
+      "key": "DELETE /api/client/progress",
+      "method": "DELETE",
+      "path": "/api/client/progress",
+      "file": "src/app/api/client/progress/route.ts",
+      "skipped": false,
+      "avg": 6.456833666666667,
+      "min": 6.024417,
+      "max": 7.237292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/notifications",
+      "method": "GET",
+      "path": "/api/client/notifications",
+      "file": "src/app/api/client/notifications/route.ts",
+      "skipped": false,
+      "avg": 6.4450416666666674,
+      "min": 6.015667,
+      "max": 7.009875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/journal/bca",
+      "method": "POST",
+      "path": "/api/journal/bca",
+      "file": "src/app/api/journal/bca/route.ts",
+      "skipped": false,
+      "avg": 6.435611333333334,
+      "min": 6.078,
+      "max": 6.849917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/appointment-config",
+      "method": "POST",
+      "path": "/api/admin/appointment-config",
+      "file": "src/app/api/admin/appointment-config/route.ts",
+      "skipped": false,
+      "avg": 6.429722333333333,
+      "min": 6.227667,
+      "max": 6.718458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/hydration",
+      "method": "POST",
+      "path": "/api/client/hydration",
+      "file": "src/app/api/client/hydration/route.ts",
+      "skipped": false,
+      "avg": 6.421847666666667,
+      "min": 5.929459,
+      "max": 6.987292,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/drafts",
+      "method": "GET",
+      "path": "/api/drafts",
+      "file": "src/app/api/drafts/route.ts",
+      "skipped": false,
+      "avg": 6.419375,
+      "min": 5.227583,
+      "max": 7.22725,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/journal/measurements",
+      "method": "POST",
+      "path": "/api/journal/measurements",
+      "file": "src/app/api/journal/measurements/route.ts",
+      "skipped": false,
+      "avg": 6.410861,
+      "min": 5.94625,
+      "max": 6.668375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/profile",
+      "method": "GET",
+      "path": "/api/client/profile",
+      "file": "src/app/api/client/profile/route.ts",
+      "skipped": false,
+      "avg": 6.407194333333333,
+      "min": 4.632,
+      "max": 8.348625,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/system-alerts",
+      "method": "POST",
+      "path": "/api/system-alerts",
+      "file": "src/app/api/system-alerts/route.ts",
+      "skipped": false,
+      "avg": 6.394694333333334,
+      "min": 5.13175,
+      "max": 7.67225,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "PUT /api/admin/subscription-plans",
+      "method": "PUT",
+      "path": "/api/admin/subscription-plans",
+      "file": "src/app/api/admin/subscription-plans/route.ts",
+      "skipped": false,
+      "avg": 6.3915,
+      "min": 5.847666,
+      "max": 6.798084,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/food-logs",
+      "method": "POST",
+      "path": "/api/food-logs",
+      "file": "src/app/api/food-logs/route.ts",
+      "skipped": false,
+      "avg": 6.355597333333333,
+      "min": 6.286167,
+      "max": 6.436875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/purchase-request",
+      "method": "GET",
+      "path": "/api/client/purchase-request",
+      "file": "src/app/api/client/purchase-request/route.ts",
+      "skipped": false,
+      "avg": 6.352528333333333,
+      "min": 5.942459,
+      "max": 6.624667,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/users/dietitian/availability",
+      "method": "PUT",
+      "path": "/api/users/dietitian/availability",
+      "file": "src/app/api/users/dietitian/availability/route.ts",
+      "skipped": false,
+      "avg": 6.341833666666667,
+      "min": 6.106792,
+      "max": 6.552542,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/journal",
+      "method": "PUT",
+      "path": "/api/journal",
+      "file": "src/app/api/journal/route.ts",
+      "skipped": false,
+      "avg": 6.327194333333334,
+      "min": 5.802792,
+      "max": 6.599333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/payment-links",
+      "method": "POST",
+      "path": "/api/payment-links",
+      "file": "src/app/api/payment-links/route.ts",
+      "skipped": false,
+      "avg": 6.325222,
+      "min": 5.674458,
+      "max": 6.858417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/notifications",
+      "method": "POST",
+      "path": "/api/client/notifications",
+      "file": "src/app/api/client/notifications/route.ts",
+      "skipped": false,
+      "avg": 6.3239860000000006,
+      "min": 5.732583,
+      "max": 6.788375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/admin/system-alerts",
+      "method": "GET",
+      "path": "/api/admin/system-alerts",
+      "file": "src/app/api/admin/system-alerts/route.ts",
+      "skipped": false,
+      "avg": 6.319944666666667,
+      "min": 6.284208,
+      "max": 6.342459,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/admin/transformations",
+      "method": "POST",
+      "path": "/api/admin/transformations",
+      "file": "src/app/api/admin/transformations/route.ts",
+      "skipped": false,
+      "avg": 6.316138666666667,
+      "min": 6.048541,
+      "max": 6.456,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/lifestyle-info",
+      "method": "POST",
+      "path": "/api/client/lifestyle-info",
+      "file": "src/app/api/client/lifestyle-info/route.ts",
+      "skipped": false,
+      "avg": 6.311277666666666,
+      "min": 5.455708,
+      "max": 7.012375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/progress",
+      "method": "POST",
+      "path": "/api/client/progress",
+      "file": "src/app/api/client/progress/route.ts",
+      "skipped": false,
+      "avg": 6.282194333333334,
+      "min": 6.130708,
+      "max": 6.583666,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/journal/meals",
+      "method": "GET",
+      "path": "/api/journal/meals",
+      "file": "src/app/api/journal/meals/route.ts",
+      "skipped": false,
+      "avg": 6.2672636666666675,
+      "min": 5.899709,
+      "max": 6.752166,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/reports/test-id",
+      "method": "GET",
+      "path": "/api/reports/test-id",
+      "file": "src/app/api/reports/[fileId]/route.ts",
+      "skipped": false,
+      "avg": 6.2672636666666675,
+      "min": 5.210708,
+      "max": 7.623375,
+      "status": 400,
+      "statuses": [
+        400,
+        400,
+        400
+      ]
+    },
+    {
+      "key": "POST /api/journal",
+      "method": "POST",
+      "path": "/api/journal",
+      "file": "src/app/api/journal/route.ts",
+      "skipped": false,
+      "avg": 6.230694333333333,
+      "min": 6.068708,
+      "max": 6.362375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/payment-receipt",
+      "method": "GET",
+      "path": "/api/client/payment-receipt",
+      "file": "src/app/api/client/payment-receipt/route.ts",
+      "skipped": false,
+      "avg": 6.222180666666667,
+      "min": 4.761833,
+      "max": 7.898167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/sleep",
+      "method": "POST",
+      "path": "/api/client/sleep",
+      "file": "src/app/api/client/sleep/route.ts",
+      "skipped": false,
+      "avg": 6.217722333333334,
+      "min": 5.183583,
+      "max": 7.053334,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/journal/activity",
+      "method": "POST",
+      "path": "/api/journal/activity",
+      "file": "src/app/api/journal/activity/route.ts",
+      "skipped": false,
+      "avg": 6.211958333333333,
+      "min": 6.003708,
+      "max": 6.495125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/journal/meals",
+      "method": "DELETE",
+      "path": "/api/journal/meals",
+      "file": "src/app/api/journal/meals/route.ts",
+      "skipped": false,
+      "avg": 6.211681,
+      "min": 4.776542,
+      "max": 7.913167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/client/onboarding",
+      "method": "POST",
+      "path": "/api/client/onboarding",
+      "file": "src/app/api/client/onboarding/route.ts",
+      "skipped": false,
+      "avg": 6.207541666666667,
+      "min": 6.110792,
+      "max": 6.279666,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/users/dietitian/availability/setup",
+      "method": "POST",
+      "path": "/api/users/dietitian/availability/setup",
+      "file": "src/app/api/users/dietitian/availability/setup/route.ts",
+      "skipped": false,
+      "avg": 6.204556,
+      "min": 5.932084,
+      "max": 6.346167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/woocommerce/orders",
+      "method": "POST",
+      "path": "/api/woocommerce/orders",
+      "file": "src/app/api/woocommerce/orders/route.ts",
+      "skipped": false,
+      "avg": 6.160916666666666,
+      "min": 6.03375,
+      "max": 6.316917,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/fitness",
+      "method": "PUT",
+      "path": "/api/fitness",
+      "file": "src/app/api/fitness/route.ts",
+      "skipped": false,
+      "avg": 6.153819666666666,
+      "min": 5.978667,
+      "max": 6.318167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/subscriptions",
+      "method": "POST",
+      "path": "/api/subscriptions",
+      "file": "src/app/api/subscriptions/route.ts",
+      "skipped": false,
+      "avg": 6.132556,
+      "min": 5.541084,
+      "max": 7.078334,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/progress",
+      "method": "GET",
+      "path": "/api/client/progress",
+      "file": "src/app/api/client/progress/route.ts",
+      "skipped": false,
+      "avg": 6.1086529999999994,
+      "min": 6.055542,
+      "max": 6.17675,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "DELETE /api/messages/groups/test-id",
+      "method": "DELETE",
+      "path": "/api/messages/groups/test-id",
+      "file": "src/app/api/messages/groups/[groupId]/route.ts",
+      "skipped": false,
+      "avg": 6.050291333333334,
+      "min": 4.823166,
+      "max": 8.0545,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "PUT /api/client/settings",
+      "method": "PUT",
+      "path": "/api/client/settings",
+      "file": "src/app/api/client/settings/route.ts",
+      "skipped": false,
+      "avg": 6.048096999999999,
+      "min": 5.826083,
+      "max": 6.375208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/support/bug-report",
+      "method": "PATCH",
+      "path": "/api/support/bug-report",
+      "file": "src/app/api/support/bug-report/route.ts",
+      "skipped": false,
+      "avg": 6.042958333333334,
+      "min": 5.6375,
+      "max": 6.814125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/journal/steps",
+      "method": "POST",
+      "path": "/api/journal/steps",
+      "file": "src/app/api/journal/steps/route.ts",
+      "skipped": false,
+      "avg": 6.034416666666666,
+      "min": 5.911625,
+      "max": 6.149208,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "POST /api/journal/meals",
+      "method": "POST",
+      "path": "/api/journal/meals",
+      "file": "src/app/api/journal/meals/route.ts",
+      "skipped": false,
+      "avg": 6.029610666666666,
+      "min": 5.096333,
+      "max": 6.770458,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/woocommerce/from-db",
+      "method": "GET",
+      "path": "/api/woocommerce/from-db",
+      "file": "src/app/api/woocommerce/from-db/route.ts",
+      "skipped": false,
+      "avg": 6.019708666666666,
+      "min": 5.672292,
+      "max": 6.428375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/progress/photos",
+      "method": "GET",
+      "path": "/api/progress/photos",
+      "file": "src/app/api/progress/photos/route.ts",
+      "skipped": false,
+      "avg": 5.948722,
+      "min": 5.572583,
+      "max": 6.257291,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/journal/bca",
+      "method": "GET",
+      "path": "/api/journal/bca",
+      "file": "src/app/api/journal/bca/route.ts",
+      "skipped": false,
+      "avg": 5.922819666666666,
+      "min": 5.121583,
+      "max": 6.402834,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/admin/recipes/bulk-update",
+      "method": "PUT",
+      "path": "/api/admin/recipes/bulk-update",
+      "file": "src/app/api/admin/recipes/bulk-update/route.ts",
+      "skipped": false,
+      "avg": 5.871555333333333,
+      "min": 4.852041,
+      "max": 6.523417,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/payment-links",
+      "method": "GET",
+      "path": "/api/payment-links",
+      "file": "src/app/api/payment-links/route.ts",
+      "skipped": false,
+      "avg": 5.845513666666666,
+      "min": 5.030667,
+      "max": 6.441333,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PATCH /api/journal/activity",
+      "method": "PATCH",
+      "path": "/api/journal/activity",
+      "file": "src/app/api/journal/activity/route.ts",
+      "skipped": false,
+      "avg": 5.818389,
+      "min": 4.765459,
+      "max": 6.408375,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/payment-links/webhook",
+      "method": "GET",
+      "path": "/api/payment-links/webhook",
+      "file": "src/app/api/payment-links/webhook/route.ts",
+      "skipped": false,
+      "avg": 5.787097333333333,
+      "min": 3.976625,
+      "max": 7.361209,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "POST /api/fitness",
+      "method": "POST",
+      "path": "/api/fitness",
+      "file": "src/app/api/fitness/route.ts",
+      "skipped": false,
+      "avg": 5.671625,
+      "min": 4.77625,
+      "max": 6.175167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/client/notifications/unread-count",
+      "method": "GET",
+      "path": "/api/client/notifications/unread-count",
+      "file": "src/app/api/client/notifications/unread-count/route.ts",
+      "skipped": false,
+      "avg": 5.637861000000001,
+      "min": 4.410458,
+      "max": 6.394875,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "PUT /api/client/profile",
+      "method": "PUT",
+      "path": "/api/client/profile",
+      "file": "src/app/api/client/profile/route.ts",
+      "skipped": false,
+      "avg": 5.623069666666667,
+      "min": 4.841667,
+      "max": 6.133167,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/journal/steps",
+      "method": "GET",
+      "path": "/api/journal/steps",
+      "file": "src/app/api/journal/steps/route.ts",
+      "skipped": false,
+      "avg": 5.614985666666667,
+      "min": 4.452416,
+      "max": 6.557125,
+      "status": 401,
+      "statuses": [
+        401,
+        401,
+        401
+      ]
+    },
+    {
+      "key": "GET /api/recipes/test-id",
+      "method": "GET",
+      "path": "/api/recipes/test-id",
+      "file": "src/app/api/recipes/[id]/route.ts",
+      "skipped": false,
+      "avg": 5.520194666666666,
+      "min": 5.324584,
+      "max": 5.796875,
+      "status": 400,
+      "statuses": [
+        400,
+        400,
+        400
+      ]
+    },
+    {
+      "key": "GET /api/test-email",
+      "method": "GET",
+      "path": "/api/test-email",
+      "file": "src/app/api/test-email/route.ts",
+      "skipped": false,
+      "avg": 5.395319333333333,
+      "min": 4.192792,
+      "max": 6.5635,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "PUT /api/messages/groups/test-id",
+      "method": "PUT",
+      "path": "/api/messages/groups/test-id",
+      "file": "src/app/api/messages/groups/[groupId]/route.ts",
+      "skipped": false,
+      "avg": 5.163694333333333,
+      "min": 4.719917,
+      "max": 5.725416,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/diet-templates/test-id",
+      "method": "GET",
+      "path": "/api/diet-templates/test-id",
+      "file": "src/app/api/diet-templates/[id]/route.ts",
+      "skipped": false,
+      "avg": 5.028319333333333,
+      "min": 4.924708,
+      "max": 5.092,
+      "status": 400,
+      "statuses": [
+        400,
+        400,
+        400
+      ]
+    },
+    {
+      "key": "OPTIONS /api/realtime/send",
+      "method": "OPTIONS",
+      "path": "/api/realtime/send",
+      "file": "src/app/api/realtime/send/route.ts",
+      "skipped": false,
+      "avg": 4.752069333333334,
+      "min": 3.2765,
+      "max": 7.608125,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "key": "POST /api/messages/groups",
+      "method": "POST",
+      "path": "/api/messages/groups",
+      "file": "src/app/api/messages/groups/route.ts",
+      "skipped": false,
+      "avg": 4.017736333333333,
+      "min": 3.903792,
+      "max": 4.244333,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/messages/groups",
+      "method": "GET",
+      "path": "/api/messages/groups",
+      "file": "src/app/api/messages/groups/route.ts",
+      "skipped": false,
+      "avg": 3.9412643333333333,
+      "min": 3.445459,
+      "max": 4.469417,
+      "status": 403,
+      "statuses": [
+        403,
+        403,
+        403
+      ]
+    },
+    {
+      "key": "GET /api/sentry-example-api",
+      "method": "GET",
+      "path": "/api/sentry-example-api",
+      "file": "src/app/api/sentry-example-api/route.ts",
+      "skipped": false,
+      "avg": 3.9083613333333336,
+      "min": 3.744792,
+      "max": 4.105125,
+      "status": 410,
+      "statuses": [
+        410,
+        410,
+        410
+      ]
+    },
+    {
+      "key": "GET /api/firebase-config",
+      "method": "GET",
+      "path": "/api/firebase-config",
+      "file": "src/app/api/firebase-config/route.ts",
+      "skipped": false,
+      "avg": 3.895777666666666,
+      "min": 2.8965,
+      "max": 5.72625,
+      "status": 200,
+      "statuses": [
+        200,
+        200,
+        200
+      ]
+    }
+  ]
+}

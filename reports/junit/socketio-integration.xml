@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="4" failures="0" errors="0" time="4.89">
-  <testsuite name="tests/integration/notifications-send.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-18T06:59:32" time="4.741" tests="4">
-    <testcase classname="Admin notifications send API" name="POST /api/admin/notifications/send supports multiple selected clients" time="1.202">
+<testsuites name="jest tests" tests="4" failures="0" errors="0" time="5.338">
+  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-18T10:51:05" time="3.812" tests="3">
+    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="0.966">
     </testcase>
-    <testcase classname="Admin notifications send API" name="GET /api/admin/notifications/send returns recipients with role filtering" time="1.089">
+    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.85">
     </testcase>
-    <testcase classname="Admin notifications send API" name="DELETE /api/admin/notifications/send deletes for selected users" time="0.834">
+    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.827">
     </testcase>
-    <testcase classname="Admin notifications send API" name="POST /api/admin/notifications/send returns 401 for unauthenticated request" time="0.002">
+  </testsuite>
+  <testsuite name="tests/integration/meal-plan-extend-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-18T10:51:09" time="1.396" tests="1">
+    <testcase classname="meal plan extend expected-end integrations (supertest + jest)" name="extends linked purchase expected end date and keeps meal plan end date unchanged" time="0.864">
     </testcase>
   </testsuite>
 </testsuites>
