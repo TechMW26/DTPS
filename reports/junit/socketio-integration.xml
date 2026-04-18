@@ -1,39 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="17" failures="0" errors="0" time="3.403">
-  <testsuite name="tests/integration/file-upload.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-16T09:59:16" time="3.269" tests="17">
-    <testcase classname="File Upload Integration Tests &gt; Authentication" name="should reject upload without authentication" time="0.115">
+<testsuites name="jest tests" tests="4" failures="0" errors="0" time="4.89">
+  <testsuite name="tests/integration/notifications-send.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-18T06:59:32" time="4.741" tests="4">
+    <testcase classname="Admin notifications send API" name="POST /api/admin/notifications/send supports multiple selected clients" time="1.202">
     </testcase>
-    <testcase classname="File Upload Integration Tests &gt; Authentication" name="should allow upload with authenticated user" time="0.316">
+    <testcase classname="Admin notifications send API" name="GET /api/admin/notifications/send returns recipients with role filtering" time="1.089">
     </testcase>
-    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should reject upload without file" time="0.002">
+    <testcase classname="Admin notifications send API" name="DELETE /api/admin/notifications/send deletes for selected users" time="0.834">
     </testcase>
-    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should reject invalid file type for avatar upload" time="0.003">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept valid image for avatar upload" time="0.009">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept PDF for message upload" time="0.004">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept Word document for message upload" time="0.004">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept Excel file for message upload" time="0.004">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept text file for message upload" time="0.004">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; File Size Limits" name="should reject avatar larger than 5MB" time="0.01">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; File Size Limits" name="should reject message file larger than 25MB" time="0.059">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle image message upload" time="0.006">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle video message upload" time="0.004">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle audio message upload" time="0.003">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle medical report upload" time="0.003">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; Response Format" name="should return all required fields in response" time="0.005">
-    </testcase>
-    <testcase classname="File Upload Integration Tests &gt; Response Format" name="should return file ID for database reference" time="0.004">
+    <testcase classname="Admin notifications send API" name="POST /api/admin/notifications/send returns 401 for unauthenticated request" time="0.002">
     </testcase>
   </testsuite>
 </testsuites>
