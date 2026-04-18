@@ -79,6 +79,7 @@ export interface IUnifiedPayment extends Document {
   // ========== MEAL PLAN TRACKING ==========
   mealPlanCreated: boolean;
   daysUsed: number;
+  extendedDaysUsed: number;
   remainingDays: number;
   phaseTag?: string;
   phaseNumber?: number;
@@ -169,6 +170,7 @@ export interface UnifiedPaymentInput {
   paidAt?: Date;
   mealPlanCreated?: boolean;
   daysUsed?: number;
+  extendedDaysUsed?: number;
   phaseTag?: string;
   phaseNumber?: number;
   linkedMealPlanIds?: ObjectIdLike[];
@@ -401,6 +403,11 @@ const unifiedPaymentSchema = new Schema<IUnifiedPayment>({
     default: false
   },
   daysUsed: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  extendedDaysUsed: {
     type: Number,
     default: 0,
     min: 0

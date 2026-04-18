@@ -9,6 +9,167 @@ import { clearCacheByTag } from '@/lib/api/utils';
 import { logHistoryServer } from '@/lib/server/history';
 import { addDays, format } from 'date-fns';
 
+const PURCHASE_TRACKING_FIELDS = [
+    '_id',
+    'paymentLink',
+    'planName',
+    'durationDays',
+    'durationLabel',
+    'selectedTier',
+    'extendedDaysUsed',
+    'expectedEndDate',
+    'endDate',
+    'updatedAt',
+    'createdAt'
+].join(' ');
+
+function toPositiveDurationDays(value: unknown): number {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        return Math.floor(value);
+    }
+
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        const match = normalized.match(/(\d+(?:\.\d+)?)/);
+        if (!match) return 0;
+
+        const numeric = parseFloat(match[1]);
+        if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+
+        if (/year|yr/.test(normalized)) return Math.floor(numeric * 365);
+        if (/month|mo/.test(normalized)) return Math.floor(numeric * 30);
+        if (/week|wk/.test(normalized)) return Math.floor(numeric * 7);
+
+        return Math.floor(numeric);
+    }
+
+    return 0;
+}
+
+function getRecordBaseDurationDays(record: any): number {
+    const selectedTierDuration = toPositiveDurationDays(record?.selectedTier?.durationDays);
+    if (selectedTierDuration > 0) return selectedTierDuration;
+
+    const durationLabelDays = toPositiveDurationDays(record?.durationLabel);
+    if (durationLabelDays > 0) return durationLabelDays;
+
+    return toPositiveDurationDays(record?.durationDays);
+}
+
+function getRecordUsedExtendDays(record: any): number {
+    const explicitUsed = toPositiveDurationDays(record?.extendedDaysUsed);
+    if (explicitUsed > 0) {
+        return explicitUsed;
+    }
+
+    const currentDuration = toPositiveDurationDays(record?.durationDays);
+    const baseDuration = getRecordBaseDurationDays(record);
+
+    if (currentDuration > 0 && baseDuration > 0 && currentDuration > baseDuration) {
+        return currentDuration - baseDuration;
+    }
+
+    return 0;
+}
+
+function resolveBaselineExpectedEndDate(records: any[], fallbackDate?: Date | null): Date | null {
+    if (records.length > 0) {
+        const sortedByFreshness = [...records].sort((a: any, b: any) => {
+            const aTime = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
+            const bTime = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
+            return bTime - aTime;
+        });
+
+        for (const record of sortedByFreshness) {
+            if (record?.expectedEndDate) return new Date(record.expectedEndDate);
+        }
+
+        for (const record of sortedByFreshness) {
+            if (record?.endDate) return new Date(record.endDate);
+        }
+    }
+
+    return fallbackDate || null;
+}
+
+async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<{
+    unifiedTargets: any[];
+    legacyTargets: any[];
+    relatedPaymentLinkId: string | null;
+}> {
+    if (!purchaseId) {
+        return {
+            unifiedTargets: [],
+            legacyTargets: [],
+            relatedPaymentLinkId: null
+        };
+    }
+
+    const unifiedTargetsMap = new Map<string, any>();
+    const legacyTargetsMap = new Map<string, any>();
+
+    const registerTarget = (map: Map<string, any>, record: any) => {
+        if (!record?._id) return;
+        map.set(String(record._id), record);
+    };
+
+    const [primaryUnifiedPurchase, primaryLegacyPurchase] = await Promise.all([
+        UnifiedPayment.findById(purchaseId)
+            .select(PURCHASE_TRACKING_FIELDS)
+            .lean(),
+        ClientPurchase.findById(purchaseId)
+            .select(PURCHASE_TRACKING_FIELDS)
+            .lean()
+    ]);
+
+    registerTarget(unifiedTargetsMap, primaryUnifiedPurchase);
+    registerTarget(legacyTargetsMap, primaryLegacyPurchase);
+
+    let relatedPaymentLinkId =
+        primaryUnifiedPurchase?.paymentLink?.toString?.() ||
+        primaryLegacyPurchase?.paymentLink?.toString?.() ||
+        null;
+
+    if (relatedPaymentLinkId) {
+        const [linkedUnifiedTargets, linkedLegacyTargets] = await Promise.all([
+            UnifiedPayment.find({ paymentLink: relatedPaymentLinkId })
+                .select(PURCHASE_TRACKING_FIELDS)
+                .lean(),
+            ClientPurchase.find({ paymentLink: relatedPaymentLinkId })
+                .select(PURCHASE_TRACKING_FIELDS)
+                .lean()
+        ]);
+
+        linkedUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
+        linkedLegacyTargets.forEach((record: any) => registerTarget(legacyTargetsMap, record));
+    }
+
+    // Backward compatibility: in older data, mealPlan.purchaseId may contain a paymentLink id.
+    if (unifiedTargetsMap.size === 0 && legacyTargetsMap.size === 0) {
+        const [fallbackUnifiedTargets, fallbackLegacyTargets] = await Promise.all([
+            UnifiedPayment.find({ paymentLink: purchaseId })
+                .select(PURCHASE_TRACKING_FIELDS)
+                .lean(),
+            ClientPurchase.find({ paymentLink: purchaseId })
+                .select(PURCHASE_TRACKING_FIELDS)
+                .lean()
+        ]);
+
+        fallbackUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
+        fallbackLegacyTargets.forEach((record: any) => registerTarget(legacyTargetsMap, record));
+
+        if (!relatedPaymentLinkId && (fallbackUnifiedTargets.length > 0 || fallbackLegacyTargets.length > 0)) {
+            relatedPaymentLinkId = purchaseId;
+        }
+    }
+
+    return {
+        unifiedTargets: Array.from(unifiedTargetsMap.values()),
+        legacyTargets: Array.from(legacyTargetsMap.values()),
+        relatedPaymentLinkId
+    };
+}
+
 // Helper function to get extend days from purchase/service plan
 // Checks: 1. ClientPurchase.selectedTier.extendDays
 //         2. UnifiedPayment → ServicePlan.pricingTiers (matching durationDays)
@@ -121,17 +282,28 @@ export async function POST(
             );
         }
 
-        // Track how many days have already been extended (across all extended plans for this payment)
-        // Count extension history from ALL plans linked to this payment
+        // Track how many days have already been extended.
+        // Priority: purchase-level tracked extension usage, with fallback to older extended-plan history.
         let alreadyExtended = 0;
+        const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(purchaseId);
         if (purchaseId) {
             const allLinkedPlans = await ClientMealPlan.find({
                 purchaseId: purchaseId,
                 isExtendedPlan: true
             }).lean();
-            alreadyExtended = allLinkedPlans.reduce((total: number, plan: any) => {
+            const legacyExtendedPlanUsed = allLinkedPlans.reduce((total: number, plan: any) => {
                 return total + (plan.durationDays || 0);
             }, 0);
+
+            const purchaseRecords = [
+                ...linkedPurchaseTargets.unifiedTargets,
+                ...linkedPurchaseTargets.legacyTargets
+            ];
+            const purchaseTrackedUsed = purchaseRecords.reduce((maxUsed: number, record: any) => {
+                return Math.max(maxUsed, getRecordUsedExtendDays(record));
+            }, 0);
+
+            alreadyExtended = Math.max(legacyExtendedPlanUsed, purchaseTrackedUsed);
         }
 
         const remainingExtendDays = Math.max(0, maxExtendDays - alreadyExtended);
@@ -162,86 +334,21 @@ export async function POST(
         let newExpectedEndDate: Date | null = null;
         if (purchaseId) {
             const purchaseUpdate: any = {
-                $inc: { durationDays: extendDays }
+                $inc: {
+                    durationDays: extendDays,
+                    extendedDaysUsed: extendDays
+                }
             };
 
-            const selectPurchaseFields = '_id paymentLink expectedEndDate endDate updatedAt createdAt';
-
-            const primaryUnifiedPurchase: any = await UnifiedPayment.findById(purchaseId)
-                .select(selectPurchaseFields)
-                .lean();
-
-            const primaryLegacyPurchase: any = !primaryUnifiedPurchase
-                ? await ClientPurchase.findById(purchaseId)
-                    .select(selectPurchaseFields)
-                    .lean()
-                : null;
-
-            const unifiedTargetsMap = new Map<string, any>();
-            const legacyTargetsMap = new Map<string, any>();
-
-            const registerTarget = (map: Map<string, any>, record: any) => {
-                if (!record?._id) return;
-                map.set(String(record._id), record);
-            };
-
-            registerTarget(unifiedTargetsMap, primaryUnifiedPurchase);
-            registerTarget(legacyTargetsMap, primaryLegacyPurchase);
-
-            const relatedPaymentLinkId =
-                primaryUnifiedPurchase?.paymentLink?.toString?.() ||
-                primaryLegacyPurchase?.paymentLink?.toString?.() ||
-                null;
-
-            if (relatedPaymentLinkId) {
-                const [linkedUnifiedTargets, linkedLegacyTargets] = await Promise.all([
-                    UnifiedPayment.find({ paymentLink: relatedPaymentLinkId })
-                        .select(selectPurchaseFields)
-                        .lean(),
-                    ClientPurchase.find({ paymentLink: relatedPaymentLinkId })
-                        .select(selectPurchaseFields)
-                        .lean()
-                ]);
-
-                linkedUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
-                linkedLegacyTargets.forEach((record: any) => registerTarget(legacyTargetsMap, record));
-            }
-
-            // Backward compatibility: in older data, mealPlan.purchaseId may contain a paymentLink id.
-            if (unifiedTargetsMap.size === 0 && legacyTargetsMap.size === 0) {
-                const [fallbackUnifiedTargets, fallbackLegacyTargets] = await Promise.all([
-                    UnifiedPayment.find({ paymentLink: purchaseId })
-                        .select(selectPurchaseFields)
-                        .lean(),
-                    ClientPurchase.find({ paymentLink: purchaseId })
-                        .select(selectPurchaseFields)
-                        .lean()
-                ]);
-
-                fallbackUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
-                fallbackLegacyTargets.forEach((record: any) => registerTarget(legacyTargetsMap, record));
-            }
-
-            const resolveBaselineEndDate = (record: any): Date | null => {
-                if (record?.expectedEndDate) return new Date(record.expectedEndDate);
-                if (record?.endDate) return new Date(record.endDate);
-                return null;
-            };
-
-            const baselineCandidates = [
-                primaryUnifiedPurchase,
-                ...Array.from(unifiedTargetsMap.values()),
-                primaryLegacyPurchase,
-                ...Array.from(legacyTargetsMap.values())
+            const purchaseRecords = [
+                ...linkedPurchaseTargets.unifiedTargets,
+                ...linkedPurchaseTargets.legacyTargets
             ];
 
-            for (const candidate of baselineCandidates) {
-                const candidateDate = resolveBaselineEndDate(candidate);
-                if (candidateDate) {
-                    previousExpectedEndDate = candidateDate;
-                    break;
-                }
-            }
+            previousExpectedEndDate = resolveBaselineExpectedEndDate(
+                purchaseRecords,
+                mealPlan?.endDate ? new Date(mealPlan.endDate) : null
+            );
 
             if (!previousExpectedEndDate && mealPlan?.endDate) {
                 previousExpectedEndDate = new Date(mealPlan.endDate);
@@ -256,8 +363,8 @@ export async function POST(
                 };
             }
 
-            const unifiedTargetIds = Array.from(unifiedTargetsMap.keys());
-            const legacyTargetIds = Array.from(legacyTargetsMap.keys());
+            const unifiedTargetIds = linkedPurchaseTargets.unifiedTargets.map((record: any) => String(record._id));
+            const legacyTargetIds = linkedPurchaseTargets.legacyTargets.map((record: any) => String(record._id));
 
             const updateOps: Promise<any>[] = [];
             if (unifiedTargetIds.length > 0) {
@@ -381,31 +488,47 @@ export async function GET(
         const purchaseId = mealPlan.purchaseId?.toString() || null;
         const maxExtendDays = await getExtendDaysFromPurchase(purchaseId, durationDays);
 
-        // Calculate used extend days from all extended plans linked to this payment
+        // Calculate used extend days using purchase-level tracked usage,
+        // with fallback to older extended-plan history.
         let usedExtendDays = 0;
+        const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(purchaseId);
         if (purchaseId) {
             const extendedPlans = await ClientMealPlan.find({
                 purchaseId: purchaseId,
                 isExtendedPlan: true
             }).lean();
-            usedExtendDays = extendedPlans.reduce((total: number, plan: any) => {
+            const legacyExtendedPlanUsed = extendedPlans.reduce((total: number, plan: any) => {
                 return total + (plan.durationDays || 0);
             }, 0);
+
+            const purchaseRecords = [
+                ...linkedPurchaseTargets.unifiedTargets,
+                ...linkedPurchaseTargets.legacyTargets
+            ];
+
+            const purchaseTrackedUsed = purchaseRecords.reduce((maxUsed: number, record: any) => {
+                return Math.max(maxUsed, getRecordUsedExtendDays(record));
+            }, 0);
+
+            usedExtendDays = Math.max(legacyExtendedPlanUsed, purchaseTrackedUsed);
         }
 
         const remainingExtendDays = Math.max(0, maxExtendDays - usedExtendDays);
 
         // Get plan name if available
-        let servicePlanName = '';
-        if (purchaseId) {
-            const clientPurchase: any = await ClientPurchase.findById(purchaseId).lean();
-            if (clientPurchase?.planName) {
-                servicePlanName = clientPurchase.planName;
-            } else {
-                const unifiedPayment: any = await UnifiedPayment.findById(purchaseId).lean();
-                servicePlanName = unifiedPayment?.planName || '';
-            }
-        }
+        const servicePlanName =
+            linkedPurchaseTargets.legacyTargets.find((record: any) => record?.planName)?.planName ||
+            linkedPurchaseTargets.unifiedTargets.find((record: any) => record?.planName)?.planName ||
+            '';
+
+        const purchaseRecords = [
+            ...linkedPurchaseTargets.unifiedTargets,
+            ...linkedPurchaseTargets.legacyTargets
+        ];
+        const currentExpectedEndDate = resolveBaselineExpectedEndDate(
+            purchaseRecords,
+            mealPlan?.endDate ? new Date(mealPlan.endDate) : null
+        );
 
         return NextResponse.json({
             success: true,
@@ -413,12 +536,14 @@ export async function GET(
             maxExtendDays,
             usedExtendDays,
             remainingExtendDays,
-            currentEndDate: mealPlan.endDate,
+            currentEndDate: currentExpectedEndDate || mealPlan.endDate,
+            currentExpectedEndDate,
+            currentMealPlanEndDate: mealPlan.endDate,
             planStatus: mealPlan.status,
             servicePlanName,
             // Additional info for UI
             isExtendedPlan: mealPlan.isExtendedPlan || false,
-            willCreateNewPlan: true // Inform UI that extend creates a new plan
+            willCreateNewPlan: false
         });
     } catch (error) {
         console.error('Error getting extend info:', error);

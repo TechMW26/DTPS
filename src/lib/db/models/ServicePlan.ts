@@ -84,6 +84,7 @@ export interface IClientPurchase extends Document {
   mealPlanCreated: boolean;
   mealPlanId?: mongoose.Types.ObjectId;
   daysUsed: number;
+  extendedDaysUsed?: number;
 
   createdAt: Date;
   updatedAt: Date;
@@ -334,6 +335,11 @@ const clientPurchaseSchema = new Schema({
     ref: 'ClientMealPlan'
   },
   daysUsed: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  extendedDaysUsed: {
     type: Number,
     default: 0,
     min: 0

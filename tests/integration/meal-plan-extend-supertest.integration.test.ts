@@ -150,13 +150,13 @@ describe('meal plan extend expected-end integrations (supertest + jest)', () => 
         try {
             const response = await request(server)
                 .post(`/api/client-meal-plans/${mealPlanId}/extend`)
-                .send({ extendDays: 5 });
+                .send({ extendDays: 10 });
 
             expect(response.status).toBe(200);
             expect(response.body.success).toBe(true);
-            expect(response.body.extendInfo.remainingExtendDays).toBe(5);
+            expect(response.body.extendInfo.remainingExtendDays).toBe(0);
 
-            const expectedEndAfterIso = new Date('2026-06-05T00:00:00.000Z').toISOString();
+            const expectedEndAfterIso = new Date('2026-06-10T00:00:00.000Z').toISOString();
             expect(new Date(response.body.extendInfo.newExpectedEndDate).toISOString()).toBe(expectedEndAfterIso);
 
             const refreshedMealPlan: any = await ClientMealPlan.findById(mealPlan._id).lean();
@@ -166,10 +166,37 @@ describe('meal plan extend expected-end integrations (supertest + jest)', () => 
             const refreshedLegacyPurchase: any = await ClientPurchase.findById(legacyPurchase._id).lean();
             const refreshedUnifiedPurchase: any = await UnifiedPayment.findById(unifiedPurchase._id).lean();
 
-            expect(refreshedLegacyPurchase?.durationDays).toBe(35);
-            expect(refreshedUnifiedPurchase?.durationDays).toBe(35);
+            expect(refreshedLegacyPurchase?.durationDays).toBe(40);
+            expect(refreshedUnifiedPurchase?.durationDays).toBe(40);
+            expect(refreshedLegacyPurchase?.extendedDaysUsed).toBe(10);
+            expect(refreshedUnifiedPurchase?.extendedDaysUsed).toBe(10);
             expect(new Date(refreshedLegacyPurchase?.expectedEndDate).toISOString()).toBe(expectedEndAfterIso);
             expect(new Date(refreshedUnifiedPurchase?.expectedEndDate).toISOString()).toBe(expectedEndAfterIso);
+
+            const secondAttempt = await request(server)
+                .post(`/api/client-meal-plans/${mealPlanId}/extend`)
+                .send({ extendDays: 1 });
+
+            expect(secondAttempt.status).toBe(400);
+            expect(secondAttempt.body.success).toBe(false);
+            expect(secondAttempt.body.error).toContain('No extend days remaining');
+
+            const getServer = createRouteTestServer((nextRequest) =>
+                route.GET(nextRequest, { params: Promise.resolve({ id: mealPlanId }) })
+            );
+
+            try {
+                const extendInfoResponse = await request(getServer)
+                    .get(`/api/client-meal-plans/${mealPlanId}/extend`);
+
+                expect(extendInfoResponse.status).toBe(200);
+                expect(extendInfoResponse.body.success).toBe(true);
+                expect(extendInfoResponse.body.canExtend).toBe(false);
+                expect(extendInfoResponse.body.remainingExtendDays).toBe(0);
+                expect(new Date(extendInfoResponse.body.currentExpectedEndDate).toISOString()).toBe(expectedEndAfterIso);
+            } finally {
+                getServer.close();
+            }
         } finally {
             server.close();
         }

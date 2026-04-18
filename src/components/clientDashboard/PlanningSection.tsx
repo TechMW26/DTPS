@@ -2648,8 +2648,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                               variant="outline"
                               className="flex-1"
                               onClick={closeDialog}
-                             >
-                             Cancel
+                            >
+                              Cancel
                             </Button>
                             <Button
                               className="flex-1 bg-green-600 hover:bg-green-700"
@@ -2697,38 +2697,78 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
+    const [isTriggerChecking, setIsTriggerChecking] = useState(showAsButton);
+    const [isTriggerLocked, setIsTriggerLocked] = useState(false);
+    const [triggerLockReason, setTriggerLockReason] = useState<string | null>(null);
     const [extendInfo, setExtendInfo] = useState<{
       canExtend: boolean;
       maxExtendDays: number;
       usedExtendDays: number;
       remainingExtendDays: number;
       currentEndDate: string;
+      currentExpectedEndDate?: string;
+      currentMealPlanEndDate?: string;
       planStatus: string;
       servicePlanName?: string;
     } | null>(null);
     const [error, setError] = useState<string | null>(null);
 
+    const applyTriggerLockState = (info: { canExtend?: boolean; remainingExtendDays?: number } | null | undefined) => {
+      const canUseExtend = Boolean(info?.canExtend) && Number(info?.remainingExtendDays || 0) > 0;
+      setIsTriggerLocked(!canUseExtend);
+      setTriggerLockReason(canUseExtend ? null : 'All extend days have already been used for this purchase.');
+    };
+
     // Fetch extend info when dialog opens
-    const fetchExtendInfo = async () => {
-      setIsFetching(true);
-      setError(null);
+    const fetchExtendInfo = async ({ forTriggerOnly = false }: { forTriggerOnly?: boolean } = {}) => {
+      if (forTriggerOnly) {
+        setIsTriggerChecking(true);
+      } else {
+        setIsFetching(true);
+        setError(null);
+      }
+
       try {
         const res = await fetch(`/api/client-meal-plans/${plan._id}/extend`);
         const data = await res.json();
         if (data.success) {
-          setExtendInfo(data);
+          applyTriggerLockState(data);
+          if (!forTriggerOnly) {
+            setExtendInfo(data);
+          }
         } else {
-          setError(data.error || 'Failed to load extend information');
+          if (!forTriggerOnly) {
+            setError(data.error || 'Failed to load extend information');
+          }
+          setIsTriggerLocked(false);
+          setTriggerLockReason(null);
         }
       } catch (err) {
         console.error('Error fetching extend info:', err);
-        setError('Failed to load extend information');
+        if (!forTriggerOnly) {
+          setError('Failed to load extend information');
+        }
+        setIsTriggerLocked(false);
+        setTriggerLockReason(null);
       } finally {
-        setIsFetching(false);
+        if (forTriggerOnly) {
+          setIsTriggerChecking(false);
+        } else {
+          setIsFetching(false);
+        }
       }
     };
 
+    useEffect(() => {
+      if (!showAsButton) return;
+      fetchExtendInfo({ forTriggerOnly: true });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showAsButton, plan?._id]);
+
     const handleOpenChange = (open: boolean) => {
+      if (open && isTriggerLocked) {
+        return;
+      }
       setIsOpen(open);
       if (open) {
         setExtendInfo(null);
@@ -2752,6 +2792,20 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
         if (data.success) {
           toast.success(data.message || `Plan extended by ${extendInfo.remainingExtendDays} days`);
+          setIsTriggerLocked(true);
+          setTriggerLockReason('All extend days have already been used for this purchase.');
+          setExtendInfo((prev) => {
+            if (!prev) return prev;
+            const updatedExpectedEnd = data?.extendInfo?.newExpectedEndDate || prev.currentExpectedEndDate || prev.currentEndDate;
+            return {
+              ...prev,
+              canExtend: false,
+              usedExtendDays: (prev.usedExtendDays || 0) + (prev.remainingExtendDays || 0),
+              remainingExtendDays: 0,
+              currentExpectedEndDate: updatedExpectedEnd,
+              currentEndDate: updatedExpectedEnd,
+            };
+          });
           setIsOpen(false);
           // Emit event to trigger automatic refresh across all components
           emitDataChange(DataEventTypes.MEAL_PLAN_EXTENDED, { planId: plan._id });
@@ -2778,20 +2832,30 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
             <Button
               size="sm"
               variant="outline"
-              title="Extend plan duration"
+              disabled={isTriggerChecking || isTriggerLocked}
+              title={isTriggerLocked ? (triggerLockReason || 'Extension already used') : 'Extend plan duration'}
               className="flex items-center gap-1.5"
             >
-              <CalendarPlus className="h-4 w-4" />
-              <span className="text-xs">Extend</span>
+              {isTriggerChecking ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CalendarPlus className="h-4 w-4" />
+              )}
+              <span className="text-xs">{isTriggerLocked ? 'Extended' : 'Extend'}</span>
             </Button>
           ) : (
             <Button
               size="sm"
               variant="outline"
-              title="Extend plan"
+              disabled={isTriggerChecking || isTriggerLocked}
+              title={isTriggerLocked ? (triggerLockReason || 'Extension already used') : 'Extend plan'}
               className="text-green-600 hover:text-green-700"
             >
-              <CalendarPlus className="h-4 w-4" />
+              {isTriggerChecking ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CalendarPlus className="h-4 w-4" />
+              )}
             </Button>
           )}
         </DialogTrigger>
@@ -2850,23 +2914,26 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                 {/* Current & New End Date Preview */}
                 <div className="bg-gray-50 p-3 rounded-lg border space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Current End Date</span>
+                    <span className="text-xs text-gray-500">Current Expected End Date</span>
                     <span className="text-sm font-medium">
-                      {format(new Date(extendInfo.currentEndDate), 'MMM dd, yyyy')}
+                      {format(new Date(extendInfo.currentExpectedEndDate || extendInfo.currentEndDate), 'MMM dd, yyyy')}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">New End Date</span>
+                    <span className="text-xs text-gray-500">New Expected End Date</span>
                     <span className="text-sm font-medium text-green-700">
-                      {format(addDays(new Date(extendInfo.currentEndDate), extendInfo.remainingExtendDays), 'MMM dd, yyyy')}
+                      {format(addDays(new Date(extendInfo.currentExpectedEndDate || extendInfo.currentEndDate), extendInfo.remainingExtendDays), 'MMM dd, yyyy')}
                     </span>
                   </div>
+                  <p className="text-[11px] text-gray-500">
+                    Meal plan end date remains unchanged; only purchase expected dates are extended.
+                  </p>
                 </div>
 
                 {!extendInfo.canExtend && (
                   <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
                     <p className="text-sm text-yellow-700">
-                      ⚠️ No extend days remaining for this plan.
+                      ⚠️ All extend days have already been used for this purchase.
                     </p>
                   </div>
                 )}
