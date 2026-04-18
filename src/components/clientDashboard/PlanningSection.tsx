@@ -2648,8 +2648,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                               variant="outline"
                               className="flex-1"
                               onClick={closeDialog}
-                            >
-                              Cancel
+                             >
+                             Cancel
                             </Button>
                             <Button
                               className="flex-1 bg-green-600 hover:bg-green-700"
