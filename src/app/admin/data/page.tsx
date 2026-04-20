@@ -102,6 +102,7 @@ interface FieldInfo {
 }
 
 type ActiveSection = 'import' | 'export' | 'updates';
+type SortOrder = 'asc' | 'desc';
 
 // Debounce hook for search optimization
 const useDebounce = (value: string, delay: number) => {
@@ -216,6 +217,13 @@ const MODEL_ICONS: Record<string, React.ElementType> = {
   default: Database
 };
 
+const normalizeUploadFieldKey = (value: string): string => {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+};
+
 export default function DataManagementPage() {
   const router = useRouter();
 
@@ -239,6 +247,8 @@ export default function DataManagementPage() {
   const [recordFields, setRecordFields] = useState<FieldInfo[]>([]);
   const [editingRecord, setEditingRecord] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sortBy, setSortBy] = useState<string>('');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -256,7 +266,7 @@ export default function DataManagementPage() {
     errors: Array<{ id: string; error: string }>;
   } | null>(null);
   const [showBulkUpdateModal, setShowBulkUpdateModal] = useState(false);
-  const [bulkUpdatePreview, setBulkUpdatePreview] = useState<Array<{ uuid: string;[key: string]: any }>>([]);
+  const [bulkUpdatePreview, setBulkUpdatePreview] = useState<Array<{ _id: string;[key: string]: any }>>([]);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   // Error Modal state
@@ -296,7 +306,7 @@ export default function DataManagementPage() {
   // Auto-search when debounced query changes
   useEffect(() => {
     if (selectedUpdateModel && debouncedSearchQuery !== undefined) {
-      searchRecords(selectedUpdateModel, debouncedSearchQuery, 1);
+      searchRecords(selectedUpdateModel, debouncedSearchQuery, 1, sortBy, sortOrder);
     }
   }, [debouncedSearchQuery, selectedUpdateModel]);
 
@@ -311,6 +321,27 @@ export default function DataManagementPage() {
     recordFields.filter((f) => !f.path.toLowerCase().includes('password')),
     [recordFields]
   );
+
+  const isUnifiedPaymentModel = selectedUpdateModel === 'UnifiedPayment';
+  const unifiedPaymentTableColumns = ['_id', 'clientName', 'clientDisplayId', 'planName', 'daysUsed', 'remainingDays'];
+
+  const bulkUpdateFieldMap = useMemo(() => {
+    const fieldMap = new Map<string, string>();
+
+    for (const field of recordFields) {
+      fieldMap.set(field.path.toLowerCase(), field.path);
+      fieldMap.set(normalizeUploadFieldKey(field.path), field.path);
+    }
+
+    if (isUnifiedPaymentModel) {
+      // Explicit aliases for spreadsheet-style UnifiedPayment headers.
+      fieldMap.set('daysused', 'daysUsed');
+      fieldMap.set('remainingdays', 'remainingDays');
+      fieldMap.set('extendeddaysused', 'extendedDaysUsed');
+    }
+
+    return fieldMap;
+  }, [recordFields, isUnifiedPaymentModel]);
 
   // Filtered models for export based on search
   const filteredExportModels = useMemo(() => {
@@ -475,7 +506,13 @@ export default function DataManagementPage() {
   };
 
   // Search records with lazy loading
-  const searchRecords = useCallback(async (modelName: string, query: string = '', page: number = 1) => {
+  const searchRecords = useCallback(async (
+    modelName: string,
+    query: string = '',
+    page: number = 1,
+    sortField?: string,
+    sortDirection: SortOrder = 'desc'
+  ) => {
     setLoading(true);
 
     // Cancel previous request
@@ -487,10 +524,21 @@ export default function DataManagementPage() {
     searchAbortRef.current = new AbortController();
 
     try {
-      const res = await fetch(
-        `/api/admin/data/records?model=${modelName}&search=${encodeURIComponent(query)}&page=${page}&limit=20`,
-        { signal: searchAbortRef.current.signal }
-      );
+      const params = new URLSearchParams({
+        model: modelName,
+        search: query,
+        page: String(page),
+        limit: '20'
+      });
+
+      if (sortField) {
+        params.set('sortBy', sortField);
+        params.set('sortOrder', sortDirection);
+      }
+
+      const res = await fetch(`/api/admin/data/records?${params.toString()}`, {
+        signal: searchAbortRef.current.signal
+      });
       const data = await res.json();
 
       if (data.success) {
@@ -509,6 +557,19 @@ export default function DataManagementPage() {
       setLoading(false);
     }
   }, []);
+
+  const handleUnifiedPaymentSort = (fieldPath: 'daysUsed' | 'remainingDays') => {
+    if (!selectedUpdateModel) return;
+
+    const defaultOrder: SortOrder = fieldPath === 'remainingDays' ? 'asc' : 'desc';
+    const nextOrder: SortOrder = sortBy === fieldPath
+      ? (sortOrder === 'asc' ? 'desc' : 'asc')
+      : defaultOrder;
+
+    setSortBy(fieldPath);
+    setSortOrder(nextOrder);
+    searchRecords(selectedUpdateModel, searchQuery, 1, fieldPath, nextOrder);
+  };
 
   // Fetch single record with related data and lazy abort control
   const fetchRecordDetails = async (modelName: string, recordId: string) => {
@@ -568,7 +629,7 @@ export default function DataManagementPage() {
         setSelectedRecord(data.record);
         setEditingRecord(null);
         // Refresh the search results
-        searchRecords(selectedUpdateModel, searchQuery, pagination.page);
+        searchRecords(selectedUpdateModel, searchQuery, pagination.page, sortBy, sortOrder);
       } else {
         toast.error(data.error || 'Update failed');
       }
@@ -797,22 +858,79 @@ export default function DataManagementPage() {
         return;
       }
 
-      // Validate that each row has uuid field (UUID is the ONLY identifier)
+      const resolveBulkFieldKey = (rawKey: string): string => {
+        const trimmedKey = rawKey.trim();
+        if (!trimmedKey) return '';
+
+        const directMatch = bulkUpdateFieldMap.get(trimmedKey.toLowerCase());
+        if (directMatch) return directMatch;
+
+        const normalizedMatch = bulkUpdateFieldMap.get(normalizeUploadFieldKey(trimmedKey));
+        return normalizedMatch || trimmedKey;
+      };
+
+      const normalizeCandidateId = (candidate: unknown): string => {
+        if (candidate === undefined || candidate === null) return '';
+
+        if (typeof candidate === 'object' && candidate !== null && '$oid' in candidate) {
+          const oidValue = (candidate as { $oid?: unknown }).$oid;
+          if (oidValue !== undefined && oidValue !== null) {
+            const normalizedOid = String(oidValue).trim();
+            if (normalizedOid && normalizedOid !== '[object Object]') {
+              return normalizedOid;
+            }
+          }
+        }
+
+        const normalized = String(candidate).trim();
+        if (normalized && normalized !== '[object Object]') {
+          return normalized;
+        }
+
+        return '';
+      };
+
+      const extractRowId = (row: Record<string, any>): string => {
+        const candidates = [row?._id, row?.id, row?.ID];
+        for (const candidate of candidates) {
+          const normalized = normalizeCandidateId(candidate);
+          if (normalized) {
+            return normalized;
+          }
+        }
+
+        // Fallback for variant id headers like " Id ", "_id " or "Object ID".
+        for (const [rawKey, value] of Object.entries(row)) {
+          const normalizedKey = normalizeUploadFieldKey(rawKey);
+          if (!['id', 'objectid', 'mongoid', 'recordid'].includes(normalizedKey)) {
+            continue;
+          }
+
+          const normalized = normalizeCandidateId(value);
+          if (normalized) {
+            return normalized;
+          }
+        }
+
+        return '';
+      };
+
+      // Validate that each row has _id field (supports id/ID aliases)
       const validData = data.filter(row => {
-        return row.uuid && String(row.uuid).trim() !== '';
+        return extractRowId(row) !== '';
       });
 
       if (validData.length === 0) {
         const availableFields = data[0] ? Object.keys(data[0]) : [];
         setErrorModal({
           show: true,
-          title: '❌ Missing Required Field: uuid',
-          message: 'No records with uuid field found. Each row must have a uuid field to identify which recipe to update. UUID is the only supported identifier.',
+          title: '❌ Missing Required Field: _id',
+          message: 'No records with _id field found. Each row must have an _id field to identify which record to update.',
           details: availableFields.length > 0 ? [
             `📋 Available fields in your file (${availableFields.length}):`,
             ...availableFields.map(f => `• ${f}`),
             '',
-            '💡 Tip: Your CSV file needs a "uuid" column. UUID is now the ONLY accepted identifier for recipe updates.'
+            '💡 Tip: Your file needs an "_id" column (or id/ID, which will be normalized to _id).'
           ] : ['No fields found in the file']
         });
         setBulkUpdateFile(null);
@@ -820,25 +938,31 @@ export default function DataManagementPage() {
         return;
       }
 
-      // Normalize uuid field
+      // Normalize identifier to _id field
       const normalizedData = validData.map(row => {
-        const uuidValue = String(row.uuid).trim();
+        const idValue = extractRowId(row);
 
-        // Create new object with uuid
+        // Create new object with _id
         const cleanRow: Record<string, any> = {};
         for (const [key, value] of Object.entries(row)) {
-          if (key !== 'uuid') {
-            cleanRow[key] = value;
-          }
+          const normalizedIncomingKey = normalizeUploadFieldKey(key);
+
+          // Skip identifier aliases after extracting canonical _id.
+          if (normalizedIncomingKey === 'id' || normalizedIncomingKey === 'uuid') continue;
+
+          const resolvedKey = resolveBulkFieldKey(key);
+          if (!resolvedKey) continue;
+
+          cleanRow[resolvedKey] = value;
         }
 
         return {
           ...cleanRow,
-          uuid: uuidValue
-        } as { uuid: string;[key: string]: any };
+          _id: idValue
+        } as { _id: string;[key: string]: any };
       });
 
-      setBulkUpdatePreview(normalizedData as Array<{ uuid: string;[key: string]: any }>);
+      setBulkUpdatePreview(normalizedData as Array<{ _id: string;[key: string]: any }>);
       setShowBulkUpdateModal(true);
       toast.success(`✅ Loaded ${normalizedData.length} records for preview`);
     } catch (error: any) {
@@ -889,23 +1013,33 @@ export default function DataManagementPage() {
       const data = await res.json();
 
       if (data.success) {
+        const updatedCount = Number(data.updated ?? data.summary?.updated ?? 0);
+        const failedCount = Number(data.failed ?? data.summary?.failed ?? 0);
+        const hasFailures = failedCount > 0;
         setBulkUpdateResult({
-          success: true,
-          updated: data.updated,
-          failed: data.failed,
+          success: !hasFailures,
+          updated: updatedCount,
+          failed: failedCount,
           errors: data.errors || []
         });
-        toast.success(`Successfully updated ${data.updated} records!`);
+
+        if (hasFailures) {
+          toast.error(`Updated ${updatedCount} records, ${failedCount} failed. Check errors in the result panel.`);
+        } else {
+          toast.success(`Successfully updated ${updatedCount} records!`);
+        }
 
         // Refresh the search results
         if (searchResults.length > 0) {
-          searchRecords(selectedUpdateModel, searchQuery, pagination.page);
+          searchRecords(selectedUpdateModel, searchQuery, pagination.page, sortBy, sortOrder);
         }
       } else {
+        const updatedCount = Number(data.updated ?? data.summary?.updated ?? 0);
+        const failedCount = Number(data.failed ?? data.summary?.failed ?? bulkUpdatePreview.length);
         setBulkUpdateResult({
           success: false,
-          updated: data.updated || 0,
-          failed: data.failed || bulkUpdatePreview.length,
+          updated: updatedCount,
+          failed: failedCount,
           errors: data.errors || [{ id: 'unknown', error: data.error || 'Bulk update failed' }]
         });
         toast.error(data.error || 'Bulk update failed');
@@ -971,10 +1105,10 @@ export default function DataManagementPage() {
 
   // Render sidebar
   const renderSidebar = () => (
-    <div className="w-64 bg-gradient-to-b from-teal-50 to-white dark:from-gray-800 dark:to-gray-900 border-r-2 border-teal-200 dark:border-teal-900 h-screen shadow-lg">
+    <div className="w-64 bg-linear-to-b from-teal-50 to-white dark:from-gray-800 dark:to-gray-900 border-r-2 border-teal-200 dark:border-teal-900 h-screen shadow-lg">
       <div className="p-5 border-b-2 border-teal-200 dark:border-teal-900 bg-white dark:bg-gray-800">
         <div className="flex items-center gap-3 mb-2">
-          <div className="p-2.5 bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
+          <div className="p-2.5 bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
             <Database className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -994,48 +1128,48 @@ export default function DataManagementPage() {
           onClick={() => handleSectionChange('import')}
           className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 font-medium text-gray-700 dark:text-gray-300 hover:bg-teal-100 dark:hover:bg-teal-900/20"
         >
-          <Upload className="w-5 h-5 flex-shrink-0" />
+          <Upload className="w-5 h-5 shrink-0" />
           <div className="text-left flex-1">
             <p className="font-semibold">Import Data</p>
             <p className="text-xs opacity-70">Upload files</p>
           </div>
-          <ChevronRight className="w-4 h-4 flex-shrink-0 text-gray-400" />
+          <ChevronRight className="w-4 h-4 shrink-0 text-gray-400" />
         </button>
 
         {/* Export Section */}
         <button
           onClick={() => handleSectionChange('export')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 font-medium ${activeSection === 'export'
-            ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
+            ? 'bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
             : 'text-gray-700 dark:text-gray-300 hover:bg-teal-100 dark:hover:bg-teal-900/20'
             }`}
         >
-          <Download className="w-5 h-5 flex-shrink-0" />
+          <Download className="w-5 h-5 shrink-0" />
           <div className="text-left flex-1">
             <p className="font-semibold">Export Data</p>
             <p className={`text-xs opacity-70 ${activeSection === 'export' ? 'text-teal-100' : ''}`}>
               Download files
             </p>
           </div>
-          {activeSection === 'export' && <ChevronRight className="w-4 h-4 flex-shrink-0" />}
+          {activeSection === 'export' && <ChevronRight className="w-4 h-4 shrink-0" />}
         </button>
 
         {/* Updates Section */}
         <button
           onClick={() => handleSectionChange('updates')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 font-medium ${activeSection === 'updates'
-            ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
+            ? 'bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] text-white shadow-lg shadow-teal-500/30'
             : 'text-gray-700 dark:text-gray-300 hover:bg-teal-100 dark:hover:bg-teal-900/20'
             }`}
         >
-          <Edit3 className="w-5 h-5 flex-shrink-0" />
+          <Edit3 className="w-5 h-5 shrink-0" />
           <div className="text-left flex-1">
             <p className="font-semibold">Update Data</p>
             <p className={`text-xs opacity-70 ${activeSection === 'updates' ? 'text-teal-100' : ''}`}>
               Search & edit
             </p>
           </div>
-          {activeSection === 'updates' && <ChevronRight className="w-4 h-4 flex-shrink-0" />}
+          {activeSection === 'updates' && <ChevronRight className="w-4 h-4 shrink-0" />}
         </button>
       </nav>
 
@@ -1061,7 +1195,7 @@ export default function DataManagementPage() {
       </div>
 
       {/* Footer */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white dark:from-gray-800 to-transparent border-t border-teal-200 dark:border-teal-900">
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-linear-to-t from-white dark:from-gray-800 to-transparent border-t border-teal-200 dark:border-teal-900">
         <p className="text-xs text-center text-gray-500 dark:text-gray-400">
           DTPS Admin
         </p>
@@ -1076,7 +1210,7 @@ export default function DataManagementPage() {
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
+            <div className="p-3 bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
               <Download className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -1115,7 +1249,7 @@ export default function DataManagementPage() {
               <button
                 onClick={() => setExportFormat('csv')}
                 className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${exportFormat === 'csv'
-                  ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
+                  ? 'bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
                   : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400'
                   }`}
               >
@@ -1125,7 +1259,7 @@ export default function DataManagementPage() {
               <button
                 onClick={() => setExportFormat('json')}
                 className={`flex items-center gap-2 px-6 py-3 rounded-lg border-2 font-medium transition-all ${exportFormat === 'json'
-                  ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
+                  ? 'bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] border-teal-600 text-white shadow-lg shadow-teal-500/30'
                   : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-teal-400'
                   }`}
               >
@@ -1144,8 +1278,8 @@ export default function DataManagementPage() {
               onClick={handleExportAll}
               disabled={exportingAll || !!exportingModel || models.length === 0}
               className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all ${exportingAll || !!exportingModel
-                  ? 'bg-orange-400 text-white cursor-wait'
-                  : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-lg shadow-orange-500/30'
+                ? 'bg-orange-400 text-white cursor-wait'
+                : 'bg-linear-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-lg shadow-orange-500/30'
                 }`}
             >
               {exportingAll ? (
@@ -1241,7 +1375,7 @@ export default function DataManagementPage() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className={`p-3 rounded-lg ${selectedExportModel === model.name
-                      ? 'bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] text-white'
+                      ? 'bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] text-white'
                       : 'bg-teal-100 dark:bg-teal-900/30'
                       }`}>
                       {isVisible ? getModelIcon(model.name) : <Database className="w-5 h-5 text-gray-400 animate-pulse" />}
@@ -1300,7 +1434,7 @@ export default function DataManagementPage() {
                         disabled={syncing || !!exportingModel || exportingAll}
                         className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors mt-3 ${syncing || !!exportingModel || exportingAll
                           ? 'bg-orange-400 text-white cursor-wait'
-                          : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
+                          : 'bg-linear-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
                           }`}
                       >
                         {syncing ? (
@@ -1343,7 +1477,7 @@ export default function DataManagementPage() {
     <div className="p-8">
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
-          <div className="p-3 bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
+          <div className="p-3 bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
             <Edit3 className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -1368,8 +1502,12 @@ export default function DataManagementPage() {
               <button
                 key={model.name}
                 onClick={() => {
+                  const defaultSortBy = model.name === 'UnifiedPayment' ? 'remainingDays' : '';
+                  const defaultSortOrder: SortOrder = defaultSortBy ? 'asc' : 'desc';
                   setSelectedUpdateModel(model.name);
-                  searchRecords(model.name, '', 1);
+                  setSortBy(defaultSortBy);
+                  setSortOrder(defaultSortOrder);
+                  searchRecords(model.name, '', 1, defaultSortBy, defaultSortOrder);
                 }}
                 className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 text-left hover:border-teal-300 dark:hover:border-teal-700 hover:shadow-lg transition-all"
               >
@@ -1513,7 +1651,7 @@ export default function DataManagementPage() {
                       />
                     )
                   ) : (
-                    <p className="text-sm text-gray-900 dark:text-white break-words">
+                    <p className="text-sm text-gray-900 dark:text-white wrap-break-word">
                       {formatFieldValue(selectedRecord[field.path], field.type)}
                     </p>
                   )}
@@ -1658,7 +1796,9 @@ export default function DataManagementPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search by any name, email, phone, planName, or field..."
+                  placeholder={isUnifiedPaymentModel
+                    ? 'Search by _id, cId/clientId, client name, email, planName, or field...'
+                    : 'Search by any name, email, phone, planName, or field...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-[#3AB1A0] focus:ring-2 focus:ring-teal-500/20 transition-all"
@@ -1673,10 +1813,10 @@ export default function DataManagementPage() {
           </div>
 
           {/* Model info */}
-          <div className="bg-gradient-to-r from-teal-50 to-teal-100 dark:from-teal-900/30 dark:to-teal-900/20 border-2 border-teal-300 dark:border-teal-800 rounded-xl p-6 mb-6">
+          <div className="bg-linear-to-r from-teal-50 to-teal-100 dark:from-teal-900/30 dark:to-teal-900/20 border-2 border-teal-300 dark:border-teal-800 rounded-xl p-6 mb-6">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-4">
-                <div className="p-3 bg-gradient-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
+                <div className="p-3 bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] rounded-lg">
                   {getModelIcon(selectedUpdateModel)}
                 </div>
                 <div>
@@ -1704,7 +1844,7 @@ export default function DataManagementPage() {
                     htmlFor="bulk-update-file"
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium cursor-pointer transition-all shadow-md hover:shadow-lg ${bulkUpdateLoading
                       ? 'bg-gray-400 cursor-wait'
-                      : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
+                      : 'bg-linear-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
                       } text-white`}
                   >
                     {bulkUpdateLoading ? (
@@ -1733,6 +1873,11 @@ export default function DataManagementPage() {
               <p className="text-xs text-gray-600 dark:text-gray-400">
                 💡 <strong>Bulk Update:</strong> Upload a file (.xlsx, .xls, .csv, .json) with <code className="bg-teal-200 dark:bg-teal-800 px-1 rounded">_id</code> column to update multiple records at once
               </p>
+              {isUnifiedPaymentModel && (
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                  ↕️ Sort by clicking <strong>Days Used</strong> or <strong>Remaining Days</strong> column headers.
+                </p>
+              )}
             </div>
           </div>
 
@@ -1750,7 +1895,7 @@ export default function DataManagementPage() {
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">No records found</h3>
               <p className="text-gray-600 dark:text-gray-400 mb-4">Try a different search term or browse all records</p>
               <button
-                onClick={() => searchRecords(selectedUpdateModel, '', 1)}
+                onClick={() => searchRecords(selectedUpdateModel, '', 1, sortBy, sortOrder)}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-[#3AB1A0] hover:bg-[#2A9A8B] text-white rounded-lg font-medium transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -1764,11 +1909,41 @@ export default function DataManagementPage() {
                   <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300 w-12">S/No</th>
-                      {visibleRecordFields.slice(0, 5).map((field) => (
-                        <th key={field.path} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
-                          {field.path}
-                        </th>
-                      ))}
+                      {(isUnifiedPaymentModel ? unifiedPaymentTableColumns : visibleRecordFields.slice(0, 5).map((f) => f.path)).map((fieldPath) => {
+                        const displayLabel = fieldPath === 'clientDisplayId'
+                          ? 'cId'
+                          : fieldPath === 'daysUsed'
+                            ? 'Days Used'
+                            : fieldPath === 'remainingDays'
+                              ? 'Remaining Days'
+                              : fieldPath;
+
+                        const isSortableUnifiedField = isUnifiedPaymentModel && (fieldPath === 'daysUsed' || fieldPath === 'remainingDays');
+
+                        if (!isSortableUnifiedField) {
+                          return (
+                            <th key={fieldPath} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
+                              {displayLabel}
+                            </th>
+                          );
+                        }
+
+                        const isActiveSort = sortBy === fieldPath;
+                        return (
+                          <th key={fieldPath} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
+                            <button
+                              type="button"
+                              onClick={() => handleUnifiedPaymentSort(fieldPath as 'daysUsed' | 'remainingDays')}
+                              className="inline-flex items-center gap-1 hover:text-[#3AB1A0] transition-colors"
+                            >
+                              <span>{displayLabel}</span>
+                              <span className={isActiveSort ? 'text-[#3AB1A0]' : 'text-gray-400'}>
+                                {isActiveSort ? (sortOrder === 'asc' ? '↑' : '↓') : '↕'}
+                              </span>
+                            </button>
+                          </th>
+                        );
+                      })}
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                   </thead>
@@ -1784,12 +1959,16 @@ export default function DataManagementPage() {
                         </td>
                         {visibleTableRows.has(index) ? (
                           <>
-                            {visibleRecordFields.slice(0, 5).map((field) => (
-                              <td key={field.path} className="px-4 py-3 text-gray-900 dark:text-white">
-                                {formatFieldValue(record[field.path], field.type).substring(0, 50)}
-                                {formatFieldValue(record[field.path], field.type).length > 50 ? '...' : ''}
-                              </td>
-                            ))}
+                            {(isUnifiedPaymentModel ? unifiedPaymentTableColumns : visibleRecordFields.slice(0, 5).map((f) => f.path)).map((fieldPath) => {
+                              const fieldType = visibleRecordFields.find((f) => f.path === fieldPath)?.type || 'String';
+                              const formatted = formatFieldValue(record[fieldPath], fieldType);
+                              return (
+                                <td key={fieldPath} className="px-4 py-3 text-gray-900 dark:text-white">
+                                  {formatted.substring(0, 50)}
+                                  {formatted.length > 50 ? '...' : ''}
+                                </td>
+                              );
+                            })}
                             <td className="px-4 py-3">
                               <button
                                 onClick={() => fetchRecordDetails(selectedUpdateModel, record._id)}
@@ -1802,8 +1981,8 @@ export default function DataManagementPage() {
                           </>
                         ) : (
                           <>
-                            {visibleRecordFields.slice(0, 5).map((field) => (
-                              <td key={field.path} className="px-4 py-3">
+                            {(isUnifiedPaymentModel ? unifiedPaymentTableColumns : visibleRecordFields.slice(0, 5).map((f) => f.path)).map((fieldPath) => (
+                              <td key={fieldPath} className="px-4 py-3">
                                 <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-1/2"></div>
                               </td>
                             ))}
@@ -1828,7 +2007,7 @@ export default function DataManagementPage() {
                     </p>
                     <div className="flex gap-2 items-center">
                       <button
-                        onClick={() => searchRecords(selectedUpdateModel, searchQuery, 1)}
+                        onClick={() => searchRecords(selectedUpdateModel, searchQuery, 1, sortBy, sortOrder)}
                         disabled={pagination.page === 1}
                         className="px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                         title="First page"
@@ -1836,7 +2015,7 @@ export default function DataManagementPage() {
                         ⬅️
                       </button>
                       <button
-                        onClick={() => searchRecords(selectedUpdateModel, searchQuery, pagination.page - 1)}
+                        onClick={() => searchRecords(selectedUpdateModel, searchQuery, pagination.page - 1, sortBy, sortOrder)}
                         disabled={pagination.page === 1}
                         className="px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                       >
@@ -1846,14 +2025,14 @@ export default function DataManagementPage() {
                         <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{pagination.page}/{pagination.totalPages}</span>
                       </div>
                       <button
-                        onClick={() => searchRecords(selectedUpdateModel, searchQuery, pagination.page + 1)}
+                        onClick={() => searchRecords(selectedUpdateModel, searchQuery, pagination.page + 1, sortBy, sortOrder)}
                         disabled={pagination.page === pagination.totalPages}
                         className="px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                       >
                         Next
                       </button>
                       <button
-                        onClick={() => searchRecords(selectedUpdateModel, searchQuery, pagination.totalPages)}
+                        onClick={() => searchRecords(selectedUpdateModel, searchQuery, pagination.totalPages, sortBy, sortOrder)}
                         disabled={pagination.page === pagination.totalPages}
                         className="px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                         title="Last page"
@@ -1876,7 +2055,7 @@ export default function DataManagementPage() {
     if (!showBulkUpdateModal) return null;
 
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center">
+      <div className="fixed inset-0 z-100 flex items-center justify-center">
         {/* Backdrop */}
         <div
           className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -1886,7 +2065,7 @@ export default function DataManagementPage() {
         {/* Modal */}
         <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden m-4">
           {/* Header */}
-          <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-4 flex items-center justify-between">
+          <div className="bg-linear-to-r from-orange-500 to-orange-600 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <FileUp className="w-6 h-6 text-white" />
               <div>
@@ -2036,7 +2215,7 @@ export default function DataManagementPage() {
                 <button
                   onClick={processBulkUpdate}
                   disabled={bulkUpdateLoading}
-                  className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-lg font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-wait"
+                  className="flex items-center gap-2 px-6 py-2 bg-linear-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-lg font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-wait"
                 >
                   {bulkUpdateLoading ? (
                     <>
@@ -2063,7 +2242,7 @@ export default function DataManagementPage() {
     if (!errorModal.show) return null;
 
     return (
-      <div className="fixed inset-0 z-[110] flex items-center justify-center">
+      <div className="fixed inset-0 z-110 flex items-center justify-center">
         {/* Backdrop */}
         <div
           className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -2073,7 +2252,7 @@ export default function DataManagementPage() {
         {/* Modal */}
         <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden m-4 animate-in fade-in zoom-in duration-200">
           {/* Header */}
-          <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4 flex items-center justify-between">
+          <div className="bg-linear-to-r from-red-500 to-red-600 px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <AlertCircle className="w-6 h-6 text-white" />
               <h2 className="text-xl font-bold text-white">{errorModal.title}</h2>
@@ -2126,7 +2305,7 @@ export default function DataManagementPage() {
           <div className="bg-gray-50 dark:bg-gray-700/50 px-6 py-4 border-t border-gray-200 dark:border-gray-600">
             <button
               onClick={() => setErrorModal({ show: false, title: '', message: '' })}
-              className="w-full px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg font-medium transition-all shadow-md hover:shadow-lg"
+              className="w-full px-4 py-3 bg-linear-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg font-medium transition-all shadow-md hover:shadow-lg"
             >
               Got it, Close
             </button>

@@ -193,4 +193,159 @@ describe('payment flow integrations (supertest + jest)', () => {
             server.close();
         }
     });
+
+    it('returns correct remaining days when days counters exist but duration metadata is missing', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: 'admin-gargi-duration-fallback@example.com',
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+
+        const now = new Date();
+        const futureStart = new Date(now);
+        futureStart.setDate(futureStart.getDate() + 30);
+        const futureEnd = new Date(now);
+        futureEnd.setDate(futureEnd.getDate() + 120);
+
+        const inProgressWithoutDuration = await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Gargi Plan - In Progress',
+            planCategory: 'weight-loss',
+            // Intentionally omit durationDays/durationLabel to verify fallback from day counters.
+            baseAmount: 5000,
+            finalAmount: 5000,
+            amount: 5000,
+            status: 'paid',
+            paymentStatus: 'paid',
+            expectedStartDate: futureStart,
+            expectedEndDate: futureEnd,
+            mealPlanCreated: false,
+            daysUsed: 64,
+            remainingDays: 26,
+            paidAt: now,
+        });
+
+        await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Gargi Plan - Fresh',
+            planCategory: 'weight-loss',
+            durationDays: 90,
+            durationLabel: '90 Days',
+            baseAmount: 4500,
+            finalAmount: 4500,
+            amount: 4500,
+            status: 'paid',
+            paymentStatus: 'paid',
+            mealPlanCreated: false,
+            daysUsed: 0,
+            remainingDays: 90,
+            paidAt: now,
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+
+        const route = await import('@/app/api/client-purchases/check/route');
+        const server = createRouteTestServer(route.GET);
+
+        try {
+            const response = await request(server)
+                .get('/api/client-purchases/check')
+                .query({ clientId: entityId(client) });
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(response.body.hasPaidPlan).toBe(true);
+
+            expect(String(response.body.purchase?._id)).toBe(entityId(inProgressWithoutDuration));
+            expect(response.body.purchase?.daysUsed).toBe(64);
+            expect(response.body.purchase?.durationDays).toBe(90);
+            expect(response.body.remainingDays).toBe(26);
+
+            const reflectedPurchase = response.body.allPurchasesNeedingMealPlan?.find(
+                (p: any) => String(p._id) === entityId(inProgressWithoutDuration)
+            );
+            expect(reflectedPurchase).toBeTruthy();
+            expect(reflectedPurchase.daysUsed).toBe(64);
+            expect(reflectedPurchase.remainingDays).toBe(26);
+        } finally {
+            server.close();
+        }
+    });
+
+    it('prioritizes the relevant in-progress purchase when multiple partially used purchases exist', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: 'admin-multi-partial-priority@example.com',
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+
+        const now = new Date();
+        const inWindowStart = new Date(now);
+        inWindowStart.setDate(inWindowStart.getDate() - 5);
+        const inWindowEnd = new Date(now);
+        inWindowEnd.setDate(inWindowEnd.getDate() + 25);
+
+        await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Older Partial Purchase',
+            planCategory: 'general-wellness',
+            durationDays: 90,
+            durationLabel: '90 Days',
+            baseAmount: 3000,
+            finalAmount: 3000,
+            amount: 3000,
+            status: 'paid',
+            paymentStatus: 'paid',
+            expectedStartDate: inWindowStart,
+            expectedEndDate: inWindowEnd,
+            mealPlanCreated: true,
+            daysUsed: 20,
+            remainingDays: 70,
+            paidAt: now,
+        });
+
+        const moreRelevantPartial = await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Current Partial Purchase',
+            planCategory: 'general-wellness',
+            durationDays: 90,
+            durationLabel: '90 Days',
+            baseAmount: 3200,
+            finalAmount: 3200,
+            amount: 3200,
+            status: 'paid',
+            paymentStatus: 'paid',
+            expectedStartDate: inWindowStart,
+            expectedEndDate: inWindowEnd,
+            mealPlanCreated: true,
+            daysUsed: 64,
+            remainingDays: 26,
+            paidAt: now,
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+
+        const route = await import('@/app/api/client-purchases/check/route');
+        const server = createRouteTestServer(route.GET);
+
+        try {
+            const response = await request(server)
+                .get('/api/client-purchases/check')
+                .query({ clientId: entityId(client) });
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(response.body.hasPaidPlan).toBe(true);
+
+            expect(String(response.body.purchase?._id)).toBe(entityId(moreRelevantPartial));
+            expect(response.body.purchase?.daysUsed).toBe(64);
+            expect(response.body.remainingDays).toBe(26);
+        } finally {
+            server.close();
+        }
+    });
 });

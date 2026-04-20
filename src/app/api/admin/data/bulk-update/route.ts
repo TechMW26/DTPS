@@ -1,10 +1,10 @@
 /**
  * API Route: Bulk Update Records
- * PUT /api/admin/data/bulk-update - Update multiple records by _id or uuid
+ * PUT /api/admin/data/bulk-update - Update multiple records by _id
  * 
- * Accepts an array of records, each must have _id OR uuid field
+ * Accepts an array of records, each must have _id field
  * Updates fields based on the data provided in each record
- * For Recipe model: supports uuid-based identification and tracks update history
+ * For Recipe model: tracks update history using _id-based updates
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -22,11 +22,11 @@ export const runtime = 'nodejs';
  */
 function parsePythonStyleArray(value: any): any {
   if (typeof value !== 'string') return value;
-  
+
   // Check if it looks like a Python-style array with single quotes
   const trimmed = value.trim();
   if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) return value;
-  
+
   // Check if it contains Python-style single quotes for strings
   if (trimmed.includes("{'") || trimmed.includes("': '") || trimmed.includes("', '")) {
     try {
@@ -36,7 +36,7 @@ function parsePythonStyleArray(value: any): any {
       // 2. 'key': value -> "key": value
       // 3. None -> null
       // 4. True/False -> true/false
-      
+
       let jsonStr = trimmed
         // Replace single quotes around keys and string values
         .replace(/'/g, '"')
@@ -46,7 +46,7 @@ function parsePythonStyleArray(value: any): any {
         .replace(/: None/g, ': null')
         .replace(/: True/g, ': true')
         .replace(/: False/g, ': false');
-      
+
       const parsed = JSON.parse(jsonStr);
       return parsed;
     } catch (e) {
@@ -66,7 +66,7 @@ function parsePythonStyleArray(value: any): any {
       }
     }
   }
-  
+
   // Try parsing as regular JSON
   try {
     return JSON.parse(trimmed);
@@ -75,9 +75,51 @@ function parsePythonStyleArray(value: any): any {
   }
 }
 
+function normalizeFieldKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function normalizeObjectIdInput(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+
+  if (typeof value === 'object') {
+    const maybeOid = (value as { $oid?: unknown }).$oid;
+    if (typeof maybeOid === 'string' && mongoose.Types.ObjectId.isValid(maybeOid)) {
+      return maybeOid;
+    }
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  if (mongoose.Types.ObjectId.isValid(raw)) {
+    return raw;
+  }
+
+  const wrappedObjectIdMatch = raw.match(/ObjectId\((['"]?)([a-fA-F0-9]{24})\1\)/i);
+  if (wrappedObjectIdMatch && mongoose.Types.ObjectId.isValid(wrappedObjectIdMatch[2])) {
+    return wrappedObjectIdMatch[2];
+  }
+
+  return null;
+}
+
+function parseBooleanLike(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return null;
+
+  const normalized = value.trim().toLowerCase();
+  if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'n', 'off'].includes(normalized)) return false;
+
+  return null;
+}
+
 interface UpdateRecord {
   _id?: string;
-  uuid?: string;
   [key: string]: any;
 }
 
@@ -86,7 +128,6 @@ interface UpdateError {
   error: string;
   errorDetails?: string;
   errorCode?: string;
-  uuid?: string;
   _id?: string;
 }
 
@@ -119,11 +160,11 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Validate all records have _id OR uuid (for Recipe model)
-    const invalidRecords = records.filter(r => !r._id && !r.uuid);
+    // Validate all records have _id
+    const invalidRecords = records.filter(r => !r._id);
     if (invalidRecords.length > 0) {
       return NextResponse.json(
-        { success: false, error: `${invalidRecords.length} records missing _id or uuid field` },
+        { success: false, error: `${invalidRecords.length} records missing required _id field` },
         { status: 400 }
       );
     }
@@ -141,8 +182,136 @@ export async function PUT(request: NextRequest) {
 
     const Model = registeredModel.model;
     const schemaFields = registeredModel.fields.map(f => f.path);
+    const schemaFieldInfoMap = new Map(registeredModel.fields.map((f) => [f.path, f]));
+    const schemaFieldCaseMap = new Map<string, string>();
+    const schemaFieldNormalizedMap = new Map<string, string>();
+    const isUnifiedPaymentModel = modelName.toLowerCase() === 'unifiedpayment';
+    const schemaFieldAliasMap = new Map<string, string>();
+
+    if (isUnifiedPaymentModel) {
+      // Defensive aliases for spreadsheet-style headers.
+      schemaFieldAliasMap.set('daysused', 'daysUsed');
+      schemaFieldAliasMap.set('remainingdays', 'remainingDays');
+      schemaFieldAliasMap.set('extendeddaysused', 'extendedDaysUsed');
+      schemaFieldAliasMap.set('durationdays', 'durationDays');
+    }
+
+    for (const schemaField of schemaFields) {
+      const lower = schemaField.toLowerCase();
+      if (!schemaFieldCaseMap.has(lower)) {
+        schemaFieldCaseMap.set(lower, schemaField);
+      }
+
+      const normalized = normalizeFieldKey(schemaField);
+      if (normalized && !schemaFieldNormalizedMap.has(normalized)) {
+        schemaFieldNormalizedMap.set(normalized, schemaField);
+      }
+    }
+
+    const resolveSchemaField = (incomingKey: string): string | null => {
+      const trimmedKey = incomingKey.trim();
+      if (!trimmedKey) return null;
+
+      const exactMatch = schemaFieldCaseMap.get(trimmedKey.toLowerCase());
+      if (exactMatch) return exactMatch;
+
+      const normalizedKey = normalizeFieldKey(trimmedKey);
+      const normalizedMatch = schemaFieldNormalizedMap.get(normalizedKey);
+      if (normalizedMatch) return normalizedMatch;
+
+      const aliasedMatch = schemaFieldAliasMap.get(normalizedKey);
+      if (aliasedMatch && schemaFieldInfoMap.has(aliasedMatch)) {
+        return aliasedMatch;
+      }
+
+      return null;
+    };
+
+    const normalizeValueForField = (rawValue: unknown, schemaField: string): { shouldSet: boolean; value?: any } => {
+      const fieldInfo = schemaFieldInfoMap.get(schemaField);
+
+      if (rawValue === '' || rawValue === null || rawValue === 'null') {
+        return { shouldSet: true, value: null };
+      }
+
+      let normalizedValue: any = rawValue;
+      if (typeof normalizedValue === 'string') {
+        normalizedValue = normalizedValue.trim();
+      }
+
+      if (typeof normalizedValue === 'string') {
+        const bool = parseBooleanLike(normalizedValue);
+        if (bool !== null && (fieldInfo?.type === 'Boolean' || normalizedValue === 'true' || normalizedValue === 'false')) {
+          return { shouldSet: true, value: bool };
+        }
+      }
+
+      const isObjectIdField = Boolean(fieldInfo?.ref) || fieldInfo?.type === 'ObjectId';
+      if (isObjectIdField) {
+        const objectId = normalizeObjectIdInput(normalizedValue);
+        if (!objectId) {
+          return { shouldSet: false };
+        }
+        return { shouldSet: true, value: objectId };
+      }
+
+      if ((fieldInfo?.isArray || /^Array</.test(fieldInfo?.type || '')) && typeof normalizedValue === 'string') {
+        const parsedArray = parsePythonStyleArray(normalizedValue);
+        if (Array.isArray(parsedArray)) {
+          return { shouldSet: true, value: parsedArray };
+        }
+        if (normalizedValue.includes(';')) {
+          const splitValues = normalizedValue
+            .split(';')
+            .map((item) => item.trim())
+            .filter(Boolean);
+          return { shouldSet: true, value: splitValues };
+        }
+      }
+
+      if (fieldInfo?.type === 'Date' && typeof normalizedValue === 'string') {
+        const parsedDate = new Date(normalizedValue);
+        if (Number.isNaN(parsedDate.getTime())) {
+          return { shouldSet: false };
+        }
+        return { shouldSet: true, value: parsedDate };
+      }
+
+      if (fieldInfo?.type === 'Number' && typeof normalizedValue === 'string') {
+        const compactValue = normalizedValue.replace(/,/g, '').trim();
+        const parsedNumber = Number(compactValue);
+        if (!Number.isNaN(parsedNumber)) {
+          return { shouldSet: true, value: parsedNumber };
+        }
+
+        // Accept friendly strings like "64 days" or "used: 64" for numeric fields.
+        const extractedNumberMatch = compactValue.match(/-?\d+(?:\.\d+)?/);
+        if (extractedNumberMatch) {
+          const extractedNumber = Number(extractedNumberMatch[0]);
+          if (!Number.isNaN(extractedNumber)) {
+            return { shouldSet: true, value: extractedNumber };
+          }
+        }
+
+        return { shouldSet: false };
+      }
+
+      if ((fieldInfo?.isNested || fieldInfo?.type === 'Mixed') && typeof normalizedValue === 'string') {
+        const parsedObject = parsePythonStyleArray(normalizedValue);
+        if (parsedObject !== normalizedValue) {
+          return { shouldSet: true, value: parsedObject };
+        }
+      }
+
+      if (typeof normalizedValue === 'string') {
+        const parsedValue = parsePythonStyleArray(normalizedValue);
+        return { shouldSet: true, value: parsedValue };
+      }
+
+      return { shouldSet: true, value: normalizedValue };
+    };
     const isRecipeModel = modelName.toLowerCase() === 'recipe';
-    
+
     // Process updates
     let updatedCount = 0;
     let failedCount = 0;
@@ -150,41 +319,34 @@ export async function PUT(request: NextRequest) {
     const errors: UpdateError[] = [];
     const updateResults: any[] = [];
 
-    // For Recipe model with uuid, process individually to track changes
+    // For Recipe model, process individually to track changes
     if (isRecipeModel) {
       for (const record of records) {
-        const { _id, uuid, ...updateData } = record;
-        const identifier = uuid || _id || 'unknown';
-        
+        const { _id, ...updateData } = record;
+        const normalizedRecordId = normalizeObjectIdInput(_id);
+        const identifier = normalizedRecordId || String(_id || 'unknown');
+
         try {
-          // Use ONLY the identifier provided - don't mix uuid and _id
-          let recipe;
-          
-          if (_id) {
-            // Use _id if provided - ignore uuid
-            if (mongoose.Types.ObjectId.isValid(_id)) {
-              recipe = await Model.findById(_id);
-            }
-          } else if (uuid) {
-            // Use uuid only if _id is NOT provided
-            const uuidStr = String(uuid);
-            const uuidNum = isNaN(Number(uuid)) ? null : Number(uuid);
-            
-            recipe = await Model.findOne({
-              $or: [
-                { uuid: uuidStr },
-                ...(uuidNum !== null ? [{ uuid: uuidNum }] : [])
-              ]
+          // _id is the only supported identifier for bulk updates
+          if (!normalizedRecordId) {
+            errors.push({
+              id: String(identifier),
+              error: 'Invalid ObjectId format',
+              errorCode: 'INVALID_OBJECT_ID',
+              _id: String(_id || '') || undefined
             });
+            failedCount++;
+            continue;
           }
 
+          const recipe = await Model.findById(normalizedRecordId);
+
           if (!recipe) {
-            errors.push({ 
+            errors.push({
               id: String(identifier),
-              error: 'Recipe not found with this identifier',
+              error: 'Record not found with this _id',
               errorCode: 'RECIPE_NOT_FOUND',
-              uuid: uuid || undefined,
-              _id: _id || undefined
+              _id: normalizedRecordId
             });
             failedCount++;
             continue;
@@ -196,22 +358,14 @@ export async function PUT(request: NextRequest) {
 
           for (const [key, value] of Object.entries(updateData)) {
             if (key.startsWith('_') || key === 'createdAt' || key === '__v' || key === 'updates') continue;
-            
-            const schemaField = schemaFields.find(sf => sf.toLowerCase() === key.toLowerCase());
+
+            const schemaField = resolveSchemaField(key);
             if (!schemaField) continue;
 
             const oldValue = (recipe as any)[schemaField];
-            let newValue = value;
-
-            // Handle special cases
-            if (newValue === '' || newValue === null || newValue === 'null') {
-              newValue = null;
-            } else if (newValue === 'true') newValue = true;
-            else if (newValue === 'false') newValue = false;
-            else if (typeof newValue === 'string') {
-              // Parse Python-style arrays (ingredients, instructions, etc.)
-              newValue = parsePythonStyleArray(newValue);
-            }
+            const normalized = normalizeValueForField(value, schemaField);
+            if (!normalized.shouldSet) continue;
+            const newValue = normalized.value;
 
             // Only track if value changed
             if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
@@ -239,7 +393,6 @@ export async function PUT(request: NextRequest) {
             timestamp: new Date(),
             ...(isRecipeModel && {
               recipeIdentifiers: {
-                uuid: String(recipe.uuid),
                 _id: String(recipe._id)
               }
             })
@@ -259,7 +412,6 @@ export async function PUT(request: NextRequest) {
           updateResults.push({
             id: identifier,
             _id: String(updated?._id),
-            ...(isRecipeModel && { uuid: String(recipe.uuid) }),
             status: 'success',
             updateId: lastUpdate?.updateId,
             changedFields: changedFields.map((f: any) => f.fieldName)
@@ -267,13 +419,12 @@ export async function PUT(request: NextRequest) {
           updatedCount++;
 
         } catch (error: any) {
-          errors.push({ 
-            id: String(identifier), 
+          errors.push({
+            id: String(identifier),
             error: 'Update failed',
             errorDetails: error.message || 'Unknown error',
             errorCode: error.code || 'UNKNOWN_ERROR',
-            uuid: uuid || undefined,
-            _id: _id || undefined
+            _id: normalizedRecordId || String(_id || '') || undefined
           });
           failedCount++;
         }
@@ -283,11 +434,12 @@ export async function PUT(request: NextRequest) {
       const bulkOps = [];
 
       for (const record of records) {
-        const { _id, uuid, ...updateData } = record;
-        const identifier = _id || uuid;
-        
+        const { _id, ...updateData } = record;
+        const normalizedRecordId = normalizeObjectIdInput(_id);
+        const identifier = normalizedRecordId || String(_id || 'unknown');
+
         // For non-Recipe models, require valid ObjectId
-        if (!_id || !mongoose.Types.ObjectId.isValid(_id)) {
+        if (!normalizedRecordId) {
           errors.push({ id: identifier || 'unknown', error: 'Invalid ObjectId format' });
           failedCount++;
           continue;
@@ -297,33 +449,53 @@ export async function PUT(request: NextRequest) {
         const cleanedData: Record<string, any> = {};
         for (const [key, value] of Object.entries(updateData)) {
           if (key.startsWith('_') || key === 'createdAt' || key === '__v') continue;
-          
-          const schemaField = schemaFields.find(sf => sf.toLowerCase() === key.toLowerCase());
-          
+
+          const schemaField = resolveSchemaField(key);
+
           if (schemaField) {
-            if (value === '' || value === null || value === 'null') {
-              cleanedData[schemaField] = null;
-            } else if (value === 'true' || value === true) {
-              cleanedData[schemaField] = true;
-            } else if (value === 'false' || value === false) {
-              cleanedData[schemaField] = false;
-            } else {
-              cleanedData[schemaField] = value;
-            }
+            const normalized = normalizeValueForField(value, schemaField);
+            if (!normalized.shouldSet) continue;
+            cleanedData[schemaField] = normalized.value;
           }
         }
 
         if (Object.keys(cleanedData).length === 0) {
-          errors.push({ id: _id, error: 'No valid fields to update' });
+          errors.push({ id: normalizedRecordId, error: 'No valid fields to update' });
           failedCount++;
           continue;
+        }
+
+        if (isUnifiedPaymentModel && normalizedRecordId) {
+          const hasDaysUsed = Object.prototype.hasOwnProperty.call(cleanedData, 'daysUsed');
+          const hasRemainingDays = Object.prototype.hasOwnProperty.call(cleanedData, 'remainingDays');
+
+          // Keep plan day counters consistent when only daysUsed is provided in upload.
+          if (hasDaysUsed && !hasRemainingDays) {
+            let durationDaysForCalc: number | null = null;
+
+            if (typeof cleanedData.durationDays === 'number') {
+              durationDaysForCalc = cleanedData.durationDays;
+            } else {
+              const existingRecord = await Model.findById(normalizedRecordId)
+                .select('durationDays')
+                .lean();
+
+              if (typeof existingRecord?.durationDays === 'number') {
+                durationDaysForCalc = existingRecord.durationDays;
+              }
+            }
+
+            if (durationDaysForCalc !== null) {
+              cleanedData.remainingDays = Math.max(0, durationDaysForCalc - Number(cleanedData.daysUsed || 0));
+            }
+          }
         }
 
         cleanedData.updatedAt = new Date();
 
         bulkOps.push({
           updateOne: {
-            filter: { _id: new mongoose.Types.ObjectId(_id) },
+            filter: { _id: new mongoose.Types.ObjectId(normalizedRecordId) },
             update: { $set: cleanedData }
           }
         });
@@ -334,19 +506,19 @@ export async function PUT(request: NextRequest) {
         try {
           const result = await Model.bulkWrite(bulkOps, { ordered: false });
           updatedCount = result.modifiedCount;
-          
+
           if (result.matchedCount < bulkOps.length) {
             const notFoundCount = bulkOps.length - result.matchedCount;
             failedCount += notFoundCount;
-            errors.push({ 
-              id: 'multiple', 
-              error: `${notFoundCount} records not found in database` 
+            errors.push({
+              id: 'multiple',
+              error: `${notFoundCount} records not found in database`
             });
           }
         } catch (bulkError: any) {
           if (bulkError.writeErrors) {
             for (const writeError of bulkError.writeErrors) {
-              const failedId = records[writeError.index]?._id || 'unknown';
+              const failedId = normalizeObjectIdInput(records[writeError.index]?._id) || String(records[writeError.index]?._id || 'unknown');
               errors.push({ id: failedId, error: writeError.errmsg || 'Write error' });
               failedCount++;
             }
@@ -364,6 +536,9 @@ export async function PUT(request: NextRequest) {
       success: true,
       message: `Bulk update completed`,
       modelName,
+      updated: updatedCount,
+      failed: failedCount,
+      noChanges: noChangesCount,
       summary: {
         total: records.length,
         updated: updatedCount,
@@ -377,8 +552,8 @@ export async function PUT(request: NextRequest) {
   } catch (error: any) {
     console.error('[BulkUpdate] Error:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error.message || 'Bulk update failed',
         updated: 0,
         failed: 0,
@@ -436,14 +611,14 @@ export async function GET(request: NextRequest) {
       modelName,
       displayName: registeredModel.displayName,
       fields,
-      requiredIdField: isRecipeModel ? 'uuid or _id' : '_id',
-      supportsUuid: isRecipeModel,
-      instructions: isRecipeModel 
-        ? 'Upload a file with uuid OR _id column and any fields you want to update. Recipe updates are tracked with unique updateIds for audit purposes.'
+      requiredIdField: '_id',
+      supportsUuid: false,
+      instructions: isRecipeModel
+        ? 'Upload a file with _id column and any fields you want to update. Recipe updates are tracked with unique updateIds for audit purposes.'
         : 'Upload a file with _id column and any fields you want to update. Only matching records will be updated.',
       ...(isRecipeModel && {
         recipeNotes: [
-          'Use uuid (e.g., "10", "11") to identify recipes - preferred for CSV updates',
+          'Use MongoDB _id to identify recipes for updates',
           'Each update generates a unique updateId for tracking',
           'All field changes are recorded in update history',
           'Include a "reason" field in your request to document why changes were made'

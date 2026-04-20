@@ -94,7 +94,16 @@ function getEffectiveDurationDays(purchase: any): number {
   if (typeof purchase?.__effectiveDurationDays === 'number') {
     return purchase.__effectiveDurationDays;
   }
-  return getDurationDaysFromSource(purchase);
+
+  const sourceDurationDays = getDurationDaysFromSource(purchase);
+  if (sourceDurationDays > 0) {
+    return sourceDurationDays;
+  }
+
+  // Fallback for records where duration metadata is missing but day counters exist.
+  const inferredDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
+  const inferredRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
+  return Math.max(0, inferredDaysUsed + inferredRemainingDays);
 }
 
 function getEffectiveDaysUsed(purchase: any): number {
@@ -423,23 +432,30 @@ export async function GET(request: NextRequest) {
 
     const computedPaidPurchases = dedupedPaidPurchases.map((purchase: any) => {
       const purchaseId = purchase?._id?.toString?.() || String(purchase?._id || '');
-      const durationDays = getDurationDaysFromSource(purchase);
+      const durationDays = getEffectiveDurationDays(purchase);
       const linkedDaysUsed = usedDaysByPurchase.get(purchaseId);
       const storedDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
 
       let effectiveDaysUsed = typeof linkedDaysUsed === 'number' ? linkedDaysUsed : storedDaysUsed;
 
-      // Future scheduled plans should not consume allocation until they start.
+      // Future scheduled plans should not consume allocation until they start,
+      // but never override an explicit stored daysUsed value.
       if (
         typeof linkedDaysUsed !== 'number' &&
+        storedDaysUsed <= 0 &&
         purchase?.expectedStartDate &&
         new Date(purchase.expectedStartDate).getTime() > now.getTime()
       ) {
         effectiveDaysUsed = 0;
       }
 
-      // Unstarted purchase should not be blocked by stale daysUsed.
-      if (typeof linkedDaysUsed !== 'number' && purchase?.mealPlanCreated === false) {
+      // Unstarted purchase should not be blocked by stale daysUsed,
+      // but respect explicit stored daysUsed updates from admin corrections.
+      if (
+        typeof linkedDaysUsed !== 'number' &&
+        storedDaysUsed <= 0 &&
+        purchase?.mealPlanCreated === false
+      ) {
         effectiveDaysUsed = 0;
       }
 
@@ -456,12 +472,42 @@ export async function GET(request: NextRequest) {
       isPurchaseEligibleForPlanning(purchase)
     );
 
-    // Find partially used purchase
-    const partiallyUsedPurchase = allActivePurchases.find((p: any) => {
-      const usedDays = getEffectiveDaysUsed(p);
-      const remaining = getEffectiveRemainingDays(p);
-      return usedDays > 0 && remaining > 0;
-    }) || null;
+    const isWithinExpectedWindow = (purchase: any): boolean => {
+      if (!purchase?.expectedStartDate) return false;
+
+      const start = new Date(purchase.expectedStartDate);
+      const end = new Date(purchase.expectedEndDate || purchase.endDate || purchase.expectedStartDate);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+
+      return start.getTime() <= now.getTime() && now.getTime() <= end.getTime();
+    };
+
+    // Find partially used purchase and prioritize the most relevant current one.
+    const partiallyUsedPurchases = allActivePurchases
+      .filter((p: any) => {
+        const usedDays = getEffectiveDaysUsed(p);
+        const remaining = getEffectiveRemainingDays(p);
+        return usedDays > 0 && remaining > 0;
+      })
+      .sort((a: any, b: any) => {
+        const aInCurrentWindow = isWithinExpectedWindow(a) ? 1 : 0;
+        const bInCurrentWindow = isWithinExpectedWindow(b) ? 1 : 0;
+        if (aInCurrentWindow !== bInCurrentWindow) {
+          return bInCurrentWindow - aInCurrentWindow;
+        }
+
+        const usedDiff = getEffectiveDaysUsed(b) - getEffectiveDaysUsed(a);
+        if (usedDiff !== 0) {
+          return usedDiff;
+        }
+
+        const aUpdatedAt = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const bUpdatedAt = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return bUpdatedAt - aUpdatedAt;
+      });
+
+    const partiallyUsedPurchase = partiallyUsedPurchases[0] || null;
 
     // Find unstarted purchases
     const unstartedPurchases = allActivePurchases
@@ -630,7 +676,7 @@ export async function GET(request: NextRequest) {
         _id: activePurchase?._id,
         planName: activePurchase?.planName,
         planCategory: activePurchase?.planCategory,
-        durationDays: getDurationDaysFromSource(activePurchase),
+        durationDays: getEffectiveDurationDays(activePurchase),
         durationLabel: activePurchase?.durationLabel,
         startDate: activePurchase?.startDate,
         endDate: activePurchase?.endDate,

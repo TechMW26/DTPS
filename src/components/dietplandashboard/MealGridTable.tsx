@@ -903,10 +903,24 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     });
   })();
 
-  // Collect unique food names across plan for find options
+  // Collect unique food names across plan for find options.
+  // Defensive parsing avoids runtime crashes when imported legacy rows have missing food fields.
   const availableFoods: string[] = Array.from(new Set(
     weekPlan.flatMap(day =>
-      Object.values(day.meals).flatMap(meal => meal.foodOptions.map(opt => opt.food.trim()).filter(f => f))
+      Object.values(day.meals || {}).flatMap(meal => {
+        if (!meal?.foodOptions?.length) return [];
+
+        return meal.foodOptions.flatMap(opt => {
+          const primaryFood = typeof opt?.food === 'string' ? opt.food.trim() : '';
+          const stackedFoods = Array.isArray(opt?.foods)
+            ? opt.foods
+              .map(item => (typeof item?.food === 'string' ? item.food.trim() : ''))
+              .filter(Boolean)
+            : [];
+
+          return [primaryFood, ...stackedFoods].filter(Boolean);
+        });
+      })
     )
   ));
 

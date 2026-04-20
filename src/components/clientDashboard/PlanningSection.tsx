@@ -308,18 +308,32 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   // Derive the selected purchase from allPurchasesNeedingMealPlan
   const selectedPurchase = useMemo(() => {
     if (!paymentCheck?.allPurchasesNeedingMealPlan?.length) return null;
+
+    const purchases = paymentCheck.allPurchasesNeedingMealPlan;
+
     if (selectedPurchaseId) {
-      return paymentCheck.allPurchasesNeedingMealPlan.find(p => p._id === selectedPurchaseId) || null;
+      return purchases.find(p => p._id === selectedPurchaseId) || null;
     }
-    // Default: the API's active purchase
-    return paymentCheck.allPurchasesNeedingMealPlan.find(p => p._id === paymentCheck.purchase?._id) || paymentCheck.allPurchasesNeedingMealPlan[0] || null;
+
+    // Defensive client-side fallback: prefer an in-progress purchase when available.
+    const partiallyUsedPurchase = purchases
+      .filter((purchase) => (purchase.daysUsed || 0) > 0 && (purchase.remainingDays || 0) > 0)
+      .sort((a, b) => (b.daysUsed || 0) - (a.daysUsed || 0))[0];
+
+    if (partiallyUsedPurchase) {
+      return partiallyUsedPurchase;
+    }
+
+    // Default: the API's active purchase.
+    return purchases.find((purchase) => purchase._id === paymentCheck.purchase?._id) || purchases[0] || null;
   }, [paymentCheck, selectedPurchaseId]);
 
   // Check if the current active purchase (daysUsed > 0) blocks switching
   const currentActivePurchaseBlocks = useMemo(() => {
-    if (!paymentCheck?.purchase) return false;
-    return (paymentCheck.purchase.daysUsed || 0) > 0;
-  }, [paymentCheck]);
+    if (!selectedPurchase && !paymentCheck?.purchase) return false;
+    const purchaseForLock = selectedPurchase || paymentCheck?.purchase;
+    return ((purchaseForLock as any)?.daysUsed || 0) > 0;
+  }, [paymentCheck, selectedPurchase]);
 
   // Success dialog state
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
