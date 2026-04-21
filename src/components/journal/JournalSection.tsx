@@ -1381,7 +1381,7 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
               />
             </div>
             <div>
-              <Label>Abd (cm)</Label>
+              <Label>Abdomen (cm)</Label>
               <Input
                 type="number"
                 step="0.1"
@@ -1469,7 +1469,7 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
                 <span className="font-medium">{startedWith.waist.toFixed(1)} cm</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Abd</span>
+                <span className="text-gray-600">Abdomen</span>
                 <span className="font-medium">{startedWith.abd.toFixed(1)} cm</span>
               </div>
               <div className="flex justify-between">
@@ -1505,7 +1505,7 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
                 <span className="font-medium">{currentlyAt.waist.toFixed(1)} cm</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Abd</span>
+                <span className="text-gray-600">Abdomen</span>
                 <span className="font-medium">{currentlyAt.abd.toFixed(1)} cm</span>
               </div>
               <div className="flex justify-between">
@@ -1545,7 +1545,7 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Abd</span>
+                <span className="text-gray-600">Abdomen</span>
                 <span className={`font-medium ${difference.abd < 0 ? 'text-green-600' : difference.abd > 0 ? 'text-red-600' : ''}`}>
                   {difference.abd >= 0 ? '+' : ''}{difference.abd.toFixed(1)} cm
                 </span>
@@ -1701,7 +1701,7 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Date</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Arm (cm)</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Waist (cm)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Abd (cm)</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Abdomen (cm)</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Chest (cm)</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Hips (cm)</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Thigh (cm)</th>

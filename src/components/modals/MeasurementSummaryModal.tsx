@@ -21,6 +21,7 @@ interface MeasurementSummaryModalProps {
 
 const measurementConfig = {
   waist: { label: 'Waist', icon: Ruler, color: 'from-blue-400 to-cyan-500' },
+  abdomen: { label: 'Abdomen', icon: Ruler, color: 'from-orange-400 to-amber-500' },
   chest: { label: 'Chest', icon: Ruler, color: 'from-purple-400 to-pink-500' },
   hips: { label: 'Hips', icon: Ruler, color: 'from-amber-400 to-orange-500' },
   arms: { label: 'Arms', icon: Ruler, color: 'from-green-400 to-emerald-500' },
@@ -29,11 +30,11 @@ const measurementConfig = {
   muscle_mass: { label: 'Muscle Mass', icon: Scale, color: 'from-teal-400 to-cyan-500' },
 };
 
-export function MeasurementSummaryModal({ 
-  isOpen, 
-  onClose, 
-  measurement, 
-  previousValue 
+export function MeasurementSummaryModal({
+  isOpen,
+  onClose,
+  measurement,
+  previousValue
 }: MeasurementSummaryModalProps) {
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -61,7 +62,7 @@ export function MeasurementSummaryModal({
   const changePercentage = previousValue ? ((change / previousValue) * 100) : 0;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-hidden"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -74,7 +75,7 @@ export function MeasurementSummaryModal({
           >
             <X className="h-4 w-4 text-gray-600" />
           </button>
-          
+
           <div className="text-center">
             <div className={`h-16 w-16 rounded-2xl bg-linear-to-br ${config?.color || 'from-gray-400 to-gray-500'} flex items-center justify-center text-white mx-auto mb-4`}>
               <Icon className="h-8 w-8" />

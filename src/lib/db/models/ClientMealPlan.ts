@@ -17,6 +17,7 @@ interface IProgressEntry {
   bodyFat?: number;
   measurements?: {
     waist?: number;
+    abdomen?: number;
     chest?: number;
     hips?: number;
     arms?: number;
@@ -147,6 +148,7 @@ const ProgressEntrySchema = new Schema({
   bodyFat: { type: Number, min: 3, max: 50 },
   measurements: {
     waist: { type: Number, min: 10, max: 200 },
+    abdomen: { type: Number, min: 10, max: 200 },
     chest: { type: Number, min: 10, max: 200 },
     hips: { type: Number, min: 10, max: 200 },
     arms: { type: Number, min: 5, max: 100 },

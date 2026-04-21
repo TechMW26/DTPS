@@ -130,7 +130,7 @@ export async function GET(request: Request) {
     ]);
 
     // Filter measurements from allProgressEntries (no separate query needed)
-    const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+    const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
     const allMeasurementEntries = (allProgressEntries as any[]).filter(e => measurementTypes.includes(e.type));
 
     // Use allWeightEntriesRaw if requested, otherwise filter from allProgressEntries
@@ -570,7 +570,7 @@ export async function POST(request: Request) {
 
     // Handle saving body measurements (multiple entries)
     if (type === 'measurements' && measurements) {
-      const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+      const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
       const savedEntries = [];
       const today = startOfDay(new Date());
 
@@ -620,7 +620,7 @@ export async function POST(request: Request) {
         const journalMeasurement = {
           arm: measurements.arms || 0,
           waist: measurements.waist || 0,
-          abd: 0, // Client app doesn't track abd
+          abd: measurements.abdomen || 0,
           chest: measurements.chest || 0,
           hips: measurements.hips || 0,
           thigh: measurements.thighs || 0,

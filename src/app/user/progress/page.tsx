@@ -34,6 +34,7 @@ type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y';
 interface MeasurementEntry {
   date: string;
   waist?: number;
+  abdomen?: number;
   hips?: number;
   chest?: number;
   arms?: number;
@@ -65,6 +66,7 @@ interface ProgressData {
   weightHistory: Array<{ date: string; weight: number }>;
   measurements: {
     waist: number;
+    abdomen: number;
     hips: number;
     chest: number;
     arms: number;
@@ -72,6 +74,7 @@ interface ProgressData {
   };
   todayMeasurements?: {
     waist: number;
+    abdomen: number;
     hips: number;
     chest: number;
     arms: number;
@@ -336,6 +339,7 @@ export default function UserProgressPage() {
   const [newWeight, setNewWeight] = useState('');
   const [measurements, setMeasurements] = useState({
     waist: '',
+    abdomen: '',
     hips: '',
     chest: '',
     arms: '',
@@ -411,6 +415,7 @@ export default function UserProgressPage() {
         if (data.measurements) {
           setMeasurements({
             waist: data.measurements.waist?.toString() || '',
+            abdomen: data.measurements.abdomen?.toString() || '',
             hips: data.measurements.hips?.toString() || '',
             chest: data.measurements.chest?.toString() || '',
             arms: data.measurements.arms?.toString() || '',
@@ -529,6 +534,7 @@ export default function UserProgressPage() {
           type: 'measurements',
           measurements: {
             waist: parseFloat(measurements.waist) || 0,
+            abdomen: parseFloat(measurements.abdomen) || 0,
             hips: parseFloat(measurements.hips) || 0,
             chest: parseFloat(measurements.chest) || 0,
             arms: parseFloat(measurements.arms) || 0,
@@ -658,8 +664,8 @@ export default function UserProgressPage() {
     bmi: 0,
     progressPercent: 0,
     weightHistory: [],
-    measurements: { waist: 0, hips: 0, chest: 0, arms: 0, thighs: 0 },
-    todayMeasurements: { waist: 0, hips: 0, chest: 0, arms: 0, thighs: 0 },
+    measurements: { waist: 0, abdomen: 0, hips: 0, chest: 0, arms: 0, thighs: 0 },
+    todayMeasurements: { waist: 0, abdomen: 0, hips: 0, chest: 0, arms: 0, thighs: 0 },
     measurementHistory: [],
     goals: { calories: 2000, protein: 120, carbs: 250, fat: 65, water: 8, steps: 10000 },
     todayIntake: { calories: 0, protein: 0, carbs: 0, fat: 0 },
@@ -669,7 +675,7 @@ export default function UserProgressPage() {
 
   // Use today's measurements if available, otherwise use latest measurements
   const displayMeasurements = data.todayMeasurements &&
-    (data.todayMeasurements.waist || data.todayMeasurements.hips || data.todayMeasurements.chest || data.todayMeasurements.arms || data.todayMeasurements.thighs)
+    (data.todayMeasurements.waist || data.todayMeasurements.abdomen || data.todayMeasurements.hips || data.todayMeasurements.chest || data.todayMeasurements.arms || data.todayMeasurements.thighs)
     ? data.todayMeasurements
     : data.measurements;
 
@@ -1275,15 +1281,16 @@ export default function UserProgressPage() {
 
               {/* Show date indicator */}
               <p className={`mb-3 text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-                {data.todayMeasurements && (data.todayMeasurements.waist || data.todayMeasurements.hips)
+                {data.todayMeasurements && (data.todayMeasurements.waist || data.todayMeasurements.abdomen || data.todayMeasurements.hips)
                   ? `Today's measurements (${format(new Date(), 'MMM d, yyyy')})`
                   : 'Latest measurements'}
               </p>
 
               {/* Responsive Grid - Larger boxes for readability */}
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                 {[
                   { label: 'Waist', value: displayMeasurements.waist, color: 'bg-[#3AB1A0]/20 text-[#3AB1A0]' },
+                  { label: 'Abdomen', value: displayMeasurements.abdomen, color: 'bg-[#DB9C6E]/20 text-[#DB9C6E]' },
                   { label: 'Hips', value: displayMeasurements.hips, color: 'bg-[#E06A26]/20 text-[#E06A26]' },
                   { label: 'Chest', value: displayMeasurements.chest, color: 'bg-[#3AB1A0]/20 text-[#3AB1A0]' },
                   { label: 'Arms', value: displayMeasurements.arms, color: 'bg-[#DB9C6E]/20 text-[#DB9C6E]' },
@@ -1310,6 +1317,7 @@ export default function UserProgressPage() {
                       <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                         <th className={`px-1 py-2 text-xs font-medium text-left ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Date</th>
                         <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Waist</th>
+                        <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Abdomen</th>
                         <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Hips</th>
                         <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Chest</th>
                         <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Arms</th>
@@ -1323,6 +1331,7 @@ export default function UserProgressPage() {
                             {format(new Date(entry.date), 'MMM d')}
                           </td>
                           <td className="px-1 py-2 text-xs font-medium text-center">{entry.waist || '-'}</td>
+                          <td className="px-1 py-2 text-xs font-medium text-center">{entry.abdomen || '-'}</td>
                           <td className="px-1 py-2 text-xs font-medium text-center">{entry.hips || '-'}</td>
                           <td className="px-1 py-2 text-xs font-medium text-center">{entry.chest || '-'}</td>
                           <td className="px-1 py-2 text-xs font-medium text-center">{entry.arms || '-'}</td>
@@ -1555,6 +1564,7 @@ export default function UserProgressPage() {
             <div className="space-y-4">
               {[
                 { key: 'waist', label: 'Waist' },
+                { key: 'abdomen', label: 'Abdomen' },
                 { key: 'hips', label: 'Hips' },
                 { key: 'chest', label: 'Chest' },
                 { key: 'arms', label: 'Arms' },

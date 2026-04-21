@@ -11,6 +11,7 @@ interface AddMeasurementModalProps {
 
 const measurementTypes = [
   { value: 'waist', label: 'Waist', unit: 'cm', icon: Ruler, color: 'from-blue-400 to-cyan-500' },
+  { value: 'abdomen', label: 'Abdomen', unit: 'cm', icon: Ruler, color: 'from-orange-400 to-amber-500' },
   { value: 'chest', label: 'Chest', unit: 'cm', icon: Ruler, color: 'from-purple-400 to-pink-500' },
   { value: 'hips', label: 'Hips', unit: 'cm', icon: Ruler, color: 'from-amber-400 to-orange-500' },
   { value: 'arms', label: 'Arms', unit: 'cm', icon: Ruler, color: 'from-green-400 to-emerald-500' },
@@ -64,7 +65,7 @@ export function AddMeasurementModal({ isOpen, onClose, onAdd }: AddMeasurementMo
         unit: selectedMeasurement?.unit || 'cm',
         notes: notes.trim() || undefined
       });
-      
+
       // Reset form
       setSelectedType('');
       setValue('');
@@ -80,7 +81,7 @@ export function AddMeasurementModal({ isOpen, onClose, onAdd }: AddMeasurementMo
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-hidden"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -102,62 +103,61 @@ export function AddMeasurementModal({ isOpen, onClose, onAdd }: AddMeasurementMo
         {/* Content - Scrollable */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto overscroll-contain">
           <div className="p-6 space-y-6">
-          {/* Measurement Type Selection */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-3">
-              Measurement Type
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              {measurementTypes.map((type) => (
-                <button
-                  key={type.value}
-                  type="button"
-                  onClick={() => setSelectedType(type.value)}
-                  className={`p-4 rounded-2xl border-2 transition-all transform hover:scale-105 ${
-                    selectedType === type.value
-                      ? 'border-emerald-500 bg-emerald-50 shadow-lg'
-                      : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
-                  }`}
-                >
-                  <div className={`h-12 w-12 rounded-xl bg-linear-to-br ${type.color} flex items-center justify-center text-white mx-auto mb-3 shadow-lg`}>
-                    <type.icon className="h-6 w-6" />
-                  </div>
-                  <p className="text-sm font-bold text-gray-900">{type.label}</p>
-                  <p className="text-xs text-gray-500 mt-1">{type.unit}</p>
-                </button>
-              ))}
+            {/* Measurement Type Selection */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-3">
+                Measurement Type
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {measurementTypes.map((type) => (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setSelectedType(type.value)}
+                    className={`p-4 rounded-2xl border-2 transition-all transform hover:scale-105 ${selectedType === type.value
+                        ? 'border-emerald-500 bg-emerald-50 shadow-lg'
+                        : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+                      }`}
+                  >
+                    <div className={`h-12 w-12 rounded-xl bg-linear-to-br ${type.color} flex items-center justify-center text-white mx-auto mb-3 shadow-lg`}>
+                      <type.icon className="h-6 w-6" />
+                    </div>
+                    <p className="text-sm font-bold text-gray-900">{type.label}</p>
+                    <p className="text-xs text-gray-500 mt-1">{type.unit}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Value Input */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-2">
-              Value {selectedMeasurement && `(${selectedMeasurement.unit})`}
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder={`Enter ${selectedMeasurement?.label.toLowerCase() || 'measurement'}`}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors"
-              required
-            />
-          </div>
+            {/* Value Input */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">
+                Value {selectedMeasurement && `(${selectedMeasurement.unit})`}
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder={`Enter ${selectedMeasurement?.label.toLowerCase() || 'measurement'}`}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors"
+                required
+              />
+            </div>
 
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-2">
-              Notes (Optional)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add any notes about this measurement..."
-              rows={3}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors resize-none"
-            />
-          </div>
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">
+                Notes (Optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add any notes about this measurement..."
+                rows={3}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors resize-none"
+              />
+            </div>
           </div>
 
           {/* Action Buttons - Sticky Footer */}

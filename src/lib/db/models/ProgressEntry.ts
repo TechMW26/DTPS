@@ -23,7 +23,7 @@ const progressEntrySchema = new Schema({
   type: {
     type: String,
     required: true,
-    enum: ['weight', 'body_fat', 'muscle_mass', 'waist', 'chest', 'hips', 'arms', 'thighs', 'height', 'photo']
+    enum: ['weight', 'body_fat', 'muscle_mass', 'waist', 'chest', 'hips', 'arms', 'thighs', 'abdomen', 'height', 'photo']
   },
   value: {
     type: mongoose.Schema.Types.Mixed, // Allow both Number and String for photos
@@ -57,7 +57,7 @@ progressEntrySchema.index({ recordedAt: -1 });
 progressEntrySchema.index({ type: 1, recordedAt: -1 });
 
 // Static method to get user progress history
-progressEntrySchema.statics.getUserProgress = function(userId: string, type?: string, limit = 50, skip = 0) {
+progressEntrySchema.statics.getUserProgress = function (userId: string, type?: string, limit = 50, skip = 0) {
   const query: any = { user: userId };
   if (type) query.type = type;
 
@@ -69,7 +69,7 @@ progressEntrySchema.statics.getUserProgress = function(userId: string, type?: st
 };
 
 // Static method to get progress within date range
-progressEntrySchema.statics.getProgressInRange = function(
+progressEntrySchema.statics.getProgressInRange = function (
   userId: string,
   startDate: Date,
   endDate: Date,
@@ -88,14 +88,14 @@ progressEntrySchema.statics.getProgressInRange = function(
 };
 
 // Static method to get latest progress entry by type
-progressEntrySchema.statics.getLatestProgress = function(userId: string, type: string) {
+progressEntrySchema.statics.getLatestProgress = function (userId: string, type: string) {
   return this.findOne({ user: userId, type })
     .sort({ recordedAt: -1 })
     .populate('user', 'firstName lastName');
 };
 
 // Static method to get weight progress data for charts
-progressEntrySchema.statics.getWeightProgressData = function(userId: string, days = 90) {
+progressEntrySchema.statics.getWeightProgressData = function (userId: string, days = 90) {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
@@ -104,12 +104,12 @@ progressEntrySchema.statics.getWeightProgressData = function(userId: string, day
     type: 'weight',
     recordedAt: { $gte: startDate }
   })
-  .select('recordedAt value')
-  .sort({ recordedAt: 1 });
+    .select('recordedAt value')
+    .sort({ recordedAt: 1 });
 };
 
 // Static method to get progress by type
-progressEntrySchema.statics.getProgressByType = function(userId: string, type: string, days = 90) {
+progressEntrySchema.statics.getProgressByType = function (userId: string, type: string, days = 90) {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
@@ -118,8 +118,8 @@ progressEntrySchema.statics.getProgressByType = function(userId: string, type: s
     type,
     recordedAt: { $gte: startDate }
   })
-  .select('recordedAt value unit notes')
-  .sort({ recordedAt: 1 });
+    .select('recordedAt value unit notes')
+    .sort({ recordedAt: 1 });
 };
 
 const ProgressEntry = mongoose.models.ProgressEntry || mongoose.model<IProgressEntry>('ProgressEntry', progressEntrySchema);

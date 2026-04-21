@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     const clientObjectId = new mongoose.Types.ObjectId(clientId);
 
     // Measurement types in ProgressEntry model (client app)
-    const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+    const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
 
     // Fetch from BOTH sources in parallel:
     // 1. JournalTracking.measurements (added by dietitian via journal)
@@ -115,6 +115,7 @@ export async function GET(request: NextRequest) {
       const fieldMap: Record<string, string> = {
         arms: 'arm',
         thighs: 'thigh',
+        abdomen: 'abd',
         waist: 'waist',
         hips: 'hips',
         chest: 'chest'
@@ -251,6 +252,7 @@ export async function POST(request: NextRequest) {
     const measurementMapping = [
       { field: 'arm', type: 'arms', value: arm },
       { field: 'waist', type: 'waist', value: waist },
+      { field: 'abd', type: 'abdomen', value: abd },
       { field: 'chest', type: 'chest', value: chest },
       { field: 'hips', type: 'hips', value: hips },
       { field: 'thigh', type: 'thighs', value: thigh }
@@ -343,7 +345,7 @@ export async function DELETE(request: NextRequest) {
     if (entryId.startsWith('pe_')) {
       // Extract minute-bucket timestamp from ID (format: pe_<epoch_ms>)
       const bucketMs = Number(entryId.replace('pe_', ''));
-      const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+      const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
 
       if (!Number.isFinite(bucketMs)) {
         return NextResponse.json({ error: 'Invalid measurement entry id' }, { status: 400 });
@@ -386,7 +388,7 @@ export async function DELETE(request: NextRequest) {
 
     // Also try to delete corresponding ProgressEntry measurements
     try {
-      const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+      const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
       await ProgressEntry.deleteMany({
         user: clientObjectId,
         type: { $in: measurementTypes },

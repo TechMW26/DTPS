@@ -13,7 +13,7 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -39,23 +39,23 @@ export async function GET(
     // Get measurements from JournalTracking
     const journalEntries = await withCache(
       `admin:clients:clientId:measurements:${JSON.stringify({
-      client: clientId,
-      measurements: { $exists: true, $ne: [] }
-    })}`,
+        client: clientId,
+        measurements: { $exists: true, $ne: [] }
+      })}`,
       async () => await JournalTracking.find({
-      client: clientId,
-      measurements: { $exists: true, $ne: [] }
-    }).sort({ date: -1 }),
+        client: clientId,
+        measurements: { $exists: true, $ne: [] }
+      }).sort({ date: -1 }),
       { ttl: 120000, tags: ['admin'] }
     );
 
     // Group by date from JournalTracking
     const measurementsByDate = new Map<string, any>();
-    
+
     for (const journal of journalEntries) {
       for (const measurement of journal.measurements) {
         const dateKey = new Date(measurement.date || journal.date).toISOString().split('T')[0];
-        
+
         if (!measurementsByDate.has(dateKey)) {
           measurementsByDate.set(dateKey, {
             _id: measurement._id?.toString() || journal._id.toString(),
@@ -73,22 +73,22 @@ export async function GET(
     }
 
     // Also get from ProgressEntry for backward compatibility
-    const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+    const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
     const progressEntries = await withCache(
       `admin:clients:clientId:measurements:${JSON.stringify({
-      user: clientId,
-      type: { $in: measurementTypes }
-    })}`,
+        user: clientId,
+        type: { $in: measurementTypes }
+      })}`,
       async () => await ProgressEntry.find({
-      user: clientId,
-      type: { $in: measurementTypes }
-    }).sort({ recordedAt: -1 }),
+        user: clientId,
+        type: { $in: measurementTypes }
+      }).sort({ recordedAt: -1 }),
       { ttl: 120000, tags: ['admin'] }
     );
 
     for (const entry of progressEntries) {
       const dateKey = new Date(entry.recordedAt).toISOString().split('T')[0];
-      
+
       if (!measurementsByDate.has(dateKey)) {
         measurementsByDate.set(dateKey, {
           _id: entry._id.toString(),
@@ -102,11 +102,12 @@ export async function GET(
           thigh: 0
         });
       }
-      
+
       const existing = measurementsByDate.get(dateKey);
       // Map ProgressEntry types to JournalTracking fields
       if (entry.type === 'arms') existing.arm = Number(entry.value);
       else if (entry.type === 'thighs') existing.thigh = Number(entry.value);
+      else if (entry.type === 'abdomen') existing.abd = Number(entry.value);
       else existing[entry.type] = Number(entry.value);
     }
 
@@ -129,7 +130,7 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -204,6 +205,7 @@ export async function POST(
     const measurementMappings = [
       { type: 'arms', value: arm },
       { type: 'waist', value: waist },
+      { type: 'abdomen', value: abd },
       { type: 'chest', value: chest },
       { type: 'hips', value: hips },
       { type: 'thighs', value: thigh }
@@ -228,8 +230,8 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       entries: savedEntries,
       journalMeasurement: measurementEntry,
       message: 'Measurements added successfully'
@@ -246,7 +248,7 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -282,7 +284,7 @@ export async function DELETE(
     const nextDay = new Date(entryDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    const measurementTypes = ['waist', 'hips', 'chest', 'arms', 'thighs'];
+    const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
     await ProgressEntry.deleteMany({
       user: clientId,
       type: { $in: measurementTypes },

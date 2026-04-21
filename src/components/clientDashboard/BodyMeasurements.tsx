@@ -186,7 +186,7 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
                 {[
                   { key: 'arm', label: 'Arm', color: 'purple' },
                   { key: 'waist', label: 'Waist', color: 'blue' },
-                  { key: 'abd', label: 'Abd', color: 'orange' },
+                  { key: 'abd', label: 'Abdomen', color: 'orange' },
                   { key: 'chest', label: 'Chest', color: 'green' },
                   { key: 'hips', label: 'Hips', color: 'pink' },
                   { key: 'thigh', label: 'Thigh', color: 'amber' }
@@ -241,7 +241,7 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
                     <th className="text-left py-2 px-2 font-medium text-gray-600">Date</th>
                     <th className="text-center py-2 px-2 font-medium text-gray-600">Arm (cm)</th>
                     <th className="text-center py-2 px-2 font-medium text-gray-600">Waist (cm)</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-600">Abd (cm)</th>
+                    <th className="text-center py-2 px-2 font-medium text-gray-600">Abdomen (cm)</th>
                     <th className="text-center py-2 px-2 font-medium text-gray-600">Chest (cm)</th>
                     <th className="text-center py-2 px-2 font-medium text-gray-600">Hips (cm)</th>
                     <th className="text-center py-2 px-2 font-medium text-gray-600">Thigh (cm)</th>
