@@ -371,7 +371,7 @@ export async function PUT(request: NextRequest) {
       const normalizedRole = (session.user.role || '').toLowerCase();
       const isAdmin = normalizedRole === 'admin';
       const isDietitian = normalizedRole === 'dietitian' || normalizedRole === 'dietician';
-      
+
       if (!isAdmin && !isDietitian) {
         return NextResponse.json({
           error: 'Only dietitians are permitted to modify expected dates',
