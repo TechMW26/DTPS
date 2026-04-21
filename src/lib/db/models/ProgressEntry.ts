@@ -2,8 +2,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 // New ProgressEntry interface for the updated model
 export interface IProgressEntry extends Document {
-  _id: string;
-  user: string;
+  _id: mongoose.Types.ObjectId;
+  user: mongoose.Types.ObjectId;
   type: string;
   value: number | string; // Allow string for photo URLs
   unit?: string;
