@@ -479,9 +479,10 @@ export async function PUT(request: NextRequest) {
               const existingRecord = await Model.findById(normalizedRecordId)
                 .select('durationDays')
                 .lean();
+              const existingDurationRecord = existingRecord as { durationDays?: number } | null;
 
-              if (typeof existingRecord?.durationDays === 'number') {
-                durationDaysForCalc = existingRecord.durationDays;
+              if (typeof existingDurationRecord?.durationDays === 'number') {
+                durationDaysForCalc = existingDurationRecord.durationDays;
               }
             }
 
