@@ -363,20 +363,24 @@ export async function PUT(request: NextRequest) {
     }
 
     // ======== EXPECTED END DATE VALIDATION ========
-    // Only dietitian can edit expected dates
-    // Edits allowed only up to one day before the current expected end date
-    // No edits allowed on or after the expected end date
-    if (expectedEndDate !== undefined) {
-      // Check if user is dietitian (only dietitians can edit expected end date)
-      if (session.user.role !== 'dietitian') {
+    // Only dietitian and admin can edit expected dates
+    // Dietitian: edits allowed only up to one day before the current expected end date
+    // Admin: can ONLY edit when dates have expired (on or after the expected end date)
+    if (expectedEndDate !== undefined || expectedStartDate !== undefined) {
+      // Check if user is admin or dietitian
+      const normalizedRole = (session.user.role || '').toLowerCase();
+      const isAdmin = normalizedRole === 'admin';
+      const isDietitian = normalizedRole === 'dietitian' || normalizedRole === 'dietician';
+      
+      if (!isAdmin && !isDietitian) {
         return NextResponse.json({
-          error: 'Only dietitians are permitted to modify the expected end date',
+          error: 'Only dietitians are permitted to modify expected dates',
           code: 'ROLE_UNAUTHORIZED'
         }, { status: 403 });
       }
 
-      // Check if purchase already has an expected end date set
-      if (currentPurchase.expectedEndDate) {
+      // Date validation logic differs by role
+      if (expectedEndDate !== undefined && currentPurchase.expectedEndDate) {
         const existingEndDate = new Date(currentPurchase.expectedEndDate);
         existingEndDate.setHours(0, 0, 0, 0);
 
@@ -387,20 +391,30 @@ export async function PUT(request: NextRequest) {
         const oneDayBeforeEnd = new Date(existingEndDate);
         oneDayBeforeEnd.setDate(oneDayBeforeEnd.getDate() - 1);
 
-        // Check if today is on or after the expected end date (not allowed)
-        if (today >= existingEndDate) {
-          return NextResponse.json({
-            error: 'Cannot modify expected end date: The expected end date has already passed or is today. Modifications are not allowed.',
-            code: 'DATE_EXPIRED'
-          }, { status: 400 });
-        }
+        if (isDietitian) {
+          // Dietitian: cannot edit on or after the expected end date
+          if (today >= existingEndDate) {
+            return NextResponse.json({
+              error: 'Cannot modify expected end date: The expected end date has already passed or is today. Modifications are not allowed.',
+              code: 'DATE_EXPIRED'
+            }, { status: 400 });
+          }
 
-        // Check if today is after one day before the expected end date (not allowed)
-        if (today > oneDayBeforeEnd) {
-          return NextResponse.json({
-            error: 'Cannot modify expected end date: Changes are only allowed up to one day before the current expected end date.',
-            code: 'DATE_TOO_CLOSE'
-          }, { status: 400 });
+          // Dietitian: cannot edit after one day before the expected end date
+          if (today > oneDayBeforeEnd) {
+            return NextResponse.json({
+              error: 'Cannot modify expected end date: Changes are only allowed up to one day before the current expected end date.',
+              code: 'DATE_TOO_CLOSE'
+            }, { status: 400 });
+          }
+        } else if (isAdmin) {
+          // Admin: can ONLY edit when dates have expired (on or after the end date)
+          if (today < existingEndDate) {
+            return NextResponse.json({
+              error: 'Admin can only modify expected dates after they have expired',
+              code: 'DATE_NOT_EXPIRED'
+            }, { status: 400 });
+          }
         }
       }
     }

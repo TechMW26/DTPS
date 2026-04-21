@@ -806,14 +806,36 @@ export default function PaymentsSection({
 
   // Open expected dates modal
   const openExpectedDatesModal = (purchase: any) => {
-    // Check if user has permission (only dietitian can edit expected dates)
-    if (!isDietitian) {
+    // Check if user has permission (admin and dietitian can edit expected dates)
+    if (!isAdmin && !isDietitian) {
       toast.error('Only dietitians are permitted to modify expected dates');
       return;
     }
 
-    // Check if expected end date already exists and validate edit window
-    if (purchase.expectedEndDate) {
+    // Admin can ONLY edit when dates have expired
+    if (isAdmin && purchase.expectedEndDate) {
+      const existingEndDate = new Date(purchase.expectedEndDate);
+      existingEndDate.setHours(0, 0, 0, 0);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (today < existingEndDate) {
+        toast.error('Admin can only modify expected dates after they have expired');
+        return;
+      }
+
+      // Admin can edit - open modal for admin
+      setSelectedPurchaseForDates(purchase);
+      setExpectedStartDateInput(purchase.expectedStartDate ? new Date(purchase.expectedStartDate).toISOString().split('T')[0] : '');
+      setExpectedEndDateInput(purchase.expectedEndDate ? new Date(purchase.expectedEndDate).toISOString().split('T')[0] : '');
+      setExpectedDateError(null);
+      setShowExpectedDatesModal(true);
+      return;
+    }
+
+    // Dietitian: Check if expected end date already exists and validate edit window
+    if (isDietitian && purchase.expectedEndDate) {
       const existingEndDate = new Date(purchase.expectedEndDate);
       existingEndDate.setHours(0, 0, 0, 0);
 
@@ -949,15 +971,30 @@ export default function PaymentsSection({
       return;
     }
 
-    // Frontend validation: Only dietitian can save expected dates
-    if (!isDietitian) {
+    // Frontend validation: Only admin and dietitian can save expected dates
+    if (!isAdmin && !isDietitian) {
       toast.error('Only dietitians are permitted to modify expected dates');
       setExpectedDateError('Only dietitians are permitted to modify expected dates');
       return;
     }
 
-    // Frontend validation: Check edit window for existing expected end date
-    if (selectedPurchaseForDates.expectedEndDate && expectedEndDateInput) {
+    // Frontend validation: Admin can ONLY save when dates have expired
+    if (isAdmin && selectedPurchaseForDates.expectedEndDate) {
+      const existingEndDate = new Date(selectedPurchaseForDates.expectedEndDate);
+      existingEndDate.setHours(0, 0, 0, 0);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (today < existingEndDate) {
+        toast.error('Admin can only modify expected dates after they have expired');
+        setExpectedDateError('Admin can only modify expected dates after they have expired');
+        return;
+      }
+    }
+
+    // Frontend validation: Check edit window for existing expected end date (only for dietitians)
+    if (!isAdmin && isDietitian && selectedPurchaseForDates.expectedEndDate && expectedEndDateInput) {
       const existingEndDate = new Date(selectedPurchaseForDates.expectedEndDate);
       existingEndDate.setHours(0, 0, 0, 0);
 
@@ -1010,6 +1047,9 @@ export default function PaymentsSection({
         } else if (data.code === 'DATE_TOO_CLOSE') {
           toast.error('Cannot modify: Too close to expected end date');
           setExpectedDateError('Changes only allowed up to one day before expected end date.');
+        } else if (data.code === 'DATE_NOT_EXPIRED') {
+          toast.error('Admin can only modify expected dates after they have expired');
+          setExpectedDateError('Admin can only modify expected dates after they have expired');
         } else {
           toast.error(data.error || 'Failed to save expected dates');
           setExpectedDateError(data.error || 'Failed to save expected dates');
@@ -2183,7 +2223,7 @@ export default function PaymentsSection({
             )}
 
             {/* Role Access Check */}
-            {!isDietitian && (
+            {!isDietitian && !isAdmin && (
               <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p className="text-sm text-amber-700">
                   ⚠️ Only dietitians have permission to modify expected dates. You can view but not edit.
@@ -2261,8 +2301,8 @@ export default function PaymentsSection({
                     tomorrow.setDate(tomorrow.getDate() + 1);
                     return tomorrow.toISOString().split('T')[0];
                   })()}
-                  disabled={!isDietitian}
-                  className={`w-full border rounded-lg p-2 mt-1 focus:ring-2 focus:ring-blue-500 ${!isDietitian ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  disabled={!isDietitian && !isAdmin}
+                  className={`w-full border rounded-lg p-2 mt-1 focus:ring-2 focus:ring-blue-500 ${(!isDietitian && !isAdmin) ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 />
                 <p className="text-xs text-gray-500 mt-1">When the client is expected to start the meal plan (must be a future date)</p>
               </div>
@@ -2281,8 +2321,8 @@ export default function PaymentsSection({
                     tomorrow.setDate(tomorrow.getDate() + 1);
                     return tomorrow.toISOString().split('T')[0];
                   })()}
-                  disabled={!isDietitian}
-                  className={`w-full border rounded-lg p-2 mt-1 focus:ring-2 focus:ring-blue-500 bg-gray-50 ${!isDietitian ? 'cursor-not-allowed' : ''}`}
+                  disabled={!isDietitian && !isAdmin}
+                  className={`w-full border rounded-lg p-2 mt-1 focus:ring-2 focus:ring-blue-500 bg-gray-50 ${(!isDietitian && !isAdmin) ? 'cursor-not-allowed' : ''}`}
                   readOnly
                 />
                 <p className="text-xs text-green-600 mt-1">
@@ -2301,9 +2341,9 @@ export default function PaymentsSection({
               </Button>
               <Button
                 onClick={saveExpectedDates}
-                disabled={savingExpectedDates || !expectedStartDateInput || !expectedEndDateInput || !isDietitian}
+                disabled={savingExpectedDates || !expectedStartDateInput || !expectedEndDateInput || (!isDietitian && !isAdmin)}
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400"
-                title={!isDietitian ? 'Only dietitians can save expected dates' : ''}
+                title={(!isDietitian && !isAdmin) ? 'Only dietitians and admins can save expected dates' : ''}
               >
                 {savingExpectedDates ? (
                   <>
