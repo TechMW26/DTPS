@@ -82,7 +82,7 @@ export async function GET(
     // If user is a client, only show notes marked as showToClient
     const isClient = session.user.role === 'client';
     const query: any = { client: clientObjectId };
-    
+
     if (isClient) {
       query.showToClient = true;
     }
@@ -91,10 +91,13 @@ export async function GET(
     const notes = await withCache(
       `users:id:notes:${JSON.stringify(query)}`,
       async () => await ClientNote.find(query)
-      .populate('createdBy', 'firstName lastName')
-      .sort({ createdAt: -1 })
+        .populate('createdBy', 'firstName lastName')
+        .sort({ createdAt: -1 })
       ,
-      { ttl: 120000, tags: ['users'] }
+      {
+        ttl: 120000,
+        tags: ['users', `users:id:${id}`, `users:id:notes:${id}`, 'client', `client:${id}`]
+      }
     );
 
     return NextResponse.json({
@@ -170,6 +173,13 @@ export async function POST(
     });
 
     await newNote.save();
+    await newNote.populate('createdBy', 'firstName lastName');
+
+    await clearCacheByTag('users');
+    await clearCacheByTag(`users:id:${id}`);
+    await clearCacheByTag(`users:id:notes:${id}`);
+    await clearCacheByTag('client');
+    await clearCacheByTag(`client:${id}`);
 
     // Log history for note creation
     await logHistoryServer({
@@ -195,7 +205,12 @@ export async function POST(
         content: newNote.content,
         showToClient: newNote.showToClient,
         attachments: newNote.attachments || [],
-        createdAt: newNote.createdAt
+        createdAt: newNote.createdAt,
+        createdBy: newNote.createdBy ? {
+          _id: (newNote.createdBy as any)._id?.toString?.() || '',
+          firstName: (newNote.createdBy as any).firstName || '',
+          lastName: (newNote.createdBy as any).lastName || ''
+        } : null
       }
     });
 

@@ -5,6 +5,7 @@ import connectDB from '@/lib/db/connection';
 import ClientNote from '@/lib/db/models/ClientNote';
 import mongoose from 'mongoose';
 import { logHistoryServer } from '@/lib/server/history';
+import { clearCacheByTag } from '@/lib/api/utils';
 
 // DELETE /api/users/[id]/notes/[noteId] - Delete a note
 export async function DELETE(
@@ -60,6 +61,12 @@ export async function DELETE(
         topicType: result.topicType
       }
     });
+
+    await clearCacheByTag('users');
+    await clearCacheByTag(`users:id:${id}`);
+    await clearCacheByTag(`users:id:notes:${id}`);
+    await clearCacheByTag('client');
+    await clearCacheByTag(`client:${id}`);
 
     return NextResponse.json({
       success: true,
@@ -142,6 +149,14 @@ export async function PATCH(
       });
     }
 
+    await updatedNote.populate('createdBy', 'firstName lastName');
+
+    await clearCacheByTag('users');
+    await clearCacheByTag(`users:id:${id}`);
+    await clearCacheByTag(`users:id:notes:${id}`);
+    await clearCacheByTag('client');
+    await clearCacheByTag(`client:${id}`);
+
     return NextResponse.json({
       success: true,
       note: {
@@ -151,7 +166,12 @@ export async function PATCH(
         content: updatedNote.content,
         showToClient: updatedNote.showToClient,
         attachments: updatedNote.attachments || [],
-        createdAt: updatedNote.createdAt
+        createdAt: updatedNote.createdAt,
+        createdBy: updatedNote.createdBy ? {
+          _id: (updatedNote.createdBy as any)._id?.toString?.() || '',
+          firstName: (updatedNote.createdBy as any).firstName || '',
+          lastName: (updatedNote.createdBy as any).lastName || ''
+        } : null
       }
     });
 

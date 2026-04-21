@@ -155,6 +155,12 @@ interface ClientNote {
   };
 }
 
+function sortNotesByCreatedAt(notes: ClientNote[]) {
+  return [...notes].sort(
+    (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
+  );
+}
+
 const NOTE_TOPIC_TYPES = [
   'General',
   'Diet Plan',
@@ -323,6 +329,14 @@ export default function HealthCounselorClientDetailPage() {
     [params.clientId]
   );
 
+  useDataRefresh(
+    DataEventTypes.NOTES_UPDATED,
+    () => {
+      fetchClientNotes();
+    },
+    [params.clientId]
+  );
+
   const fetchActivePlan = async () => {
     try {
       const mealPlanRes = await fetch(`/api/client-meal-plans?clientId=${params.clientId}`);
@@ -372,11 +386,11 @@ export default function HealthCounselorClientDetailPage() {
 
   const fetchClientNotes = async () => {
     try {
-      const response = await fetch(`/api/users/${params.clientId}/notes`);
+      const response = await fetch(`/api/users/${params.clientId}/notes`, { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         // Show all notes - health counselor can see all notes but can only delete their own
-        setClientNotes(data?.notes || []);
+        setClientNotes(sortNotesByCreatedAt(data?.notes || []));
       }
     } catch (error) {
       console.error('Error fetching notes:', error);
@@ -416,7 +430,15 @@ export default function HealthCounselorClientDetailPage() {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        const savedNote = data?.note as ClientNote | undefined;
         toast.success('Note saved successfully');
+        if (savedNote) {
+          setClientNotes(prev => sortNotesByCreatedAt([
+            savedNote,
+            ...prev.filter(note => note._id !== savedNote._id)
+          ]));
+        }
         setNewNote({
           topicType: 'General',
           date: format(new Date(), 'yyyy-MM-dd'),
@@ -427,7 +449,11 @@ export default function HealthCounselorClientDetailPage() {
         setRenewalStartDate('');
         setRenewalEndDate('');
         setIsAddingNote(false);
-        fetchClientNotes();
+        emitDataChange(DataEventTypes.NOTES_UPDATED, {
+          clientId: params.clientId,
+          noteId: savedNote?._id || null,
+          action: 'created'
+        });
       } else {
         toast.error('Failed to save note');
       }
@@ -448,6 +474,15 @@ export default function HealthCounselorClientDetailPage() {
       if (response.ok) {
         toast.success('Note deleted');
         setClientNotes(prev => prev.filter(n => n._id !== noteId));
+        if (selectedNote?._id === noteId) {
+          setSelectedNote(null);
+          setIsEditingNote(false);
+        }
+        emitDataChange(DataEventTypes.NOTES_UPDATED, {
+          clientId: params.clientId,
+          noteId,
+          action: 'deleted'
+        });
       } else {
         toast.error('Failed to delete note');
       }
@@ -535,12 +570,25 @@ export default function HealthCounselorClientDetailPage() {
       });
 
       if (response.ok) {
-        setClientNotes(prev => prev.map(n =>
-          n._id === noteId ? { ...n, showToClient } : n
-        ));
-        if (selectedNote && selectedNote._id === noteId) {
-          setSelectedNote(prev => prev ? { ...prev, showToClient } : null);
+        const data = await response.json();
+        const updatedNote = data?.note as ClientNote | undefined;
+        if (updatedNote) {
+          setClientNotes(prev => sortNotesByCreatedAt(prev.map(n =>
+            n._id === noteId ? { ...n, ...updatedNote } : n
+          )));
+        } else {
+          setClientNotes(prev => prev.map(n =>
+            n._id === noteId ? { ...n, showToClient } : n
+          ));
         }
+        if (selectedNote && selectedNote._id === noteId) {
+          setSelectedNote(prev => prev ? { ...prev, ...(updatedNote || { showToClient }) } : null);
+        }
+        emitDataChange(DataEventTypes.NOTES_UPDATED, {
+          clientId: params.clientId,
+          noteId,
+          action: 'visibility'
+        });
         toast.success(showToClient ? 'Note visible to client' : 'Note hidden from client');
       }
     } catch (error) {
@@ -587,12 +635,26 @@ export default function HealthCounselorClientDetailPage() {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        const updatedNote = data?.note as ClientNote | undefined;
         toast.success('Note updated successfully');
-        setClientNotes(prev => prev.map(n =>
-          n._id === selectedNote._id ? { ...n, ...editNote } : n
-        ));
-        setSelectedNote({ ...selectedNote, ...editNote });
+        if (updatedNote) {
+          setClientNotes(prev => sortNotesByCreatedAt(prev.map(n =>
+            n._id === selectedNote._id ? { ...n, ...updatedNote } : n
+          )));
+          setSelectedNote(prev => prev ? { ...prev, ...updatedNote } : prev);
+        } else {
+          setClientNotes(prev => prev.map(n =>
+            n._id === selectedNote._id ? { ...n, ...editNote } : n
+          ));
+          setSelectedNote({ ...selectedNote, ...editNote });
+        }
         setIsEditingNote(false);
+        emitDataChange(DataEventTypes.NOTES_UPDATED, {
+          clientId: params.clientId,
+          noteId: selectedNote._id,
+          action: 'updated'
+        });
       } else {
         toast.error('Failed to update note');
       }
