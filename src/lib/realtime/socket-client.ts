@@ -29,6 +29,11 @@ class SocketClient {
     private retryCount = 0;
     private retryTimer: ReturnType<typeof setTimeout> | null = null;
     private _connected = false;
+    private hasNetworkListeners = false;
+
+    private constructor() {
+        this.setupNetworkRecovery();
+    }
 
     static getInstance(): SocketClient {
         if (!SocketClient.instance) {
@@ -72,9 +77,11 @@ class SocketClient {
 
         this.socket = io(this.getConnectionUrl(), {
             path: '/socket.io',
-            transports: ['websocket', 'polling'],
+            // Polling-first is more reliable on restrictive Wi-Fi/corporate networks.
+            transports: ['polling', 'websocket'],
             withCredentials: true,  // send cookies for auth
             reconnection: false,    // we handle our own reconnection with backoff
+            timeout: 10000,
         });
 
         this.socket.on('connect', () => {
@@ -200,6 +207,36 @@ class SocketClient {
         }
 
         return process.env.NEXTAUTH_URL;
+    }
+
+    private setupNetworkRecovery(): void {
+        if (typeof window === 'undefined' || this.hasNetworkListeners) return;
+
+        const handleOnline = () => {
+            console.log('[SocketClient] Network online - forcing reconnect');
+            this.retryCount = 0;
+            if (this.retryTimer) {
+                clearTimeout(this.retryTimer);
+                this.retryTimer = null;
+            }
+            this.forceReconnect();
+        };
+
+        const handleOffline = () => {
+            console.log('[SocketClient] Network offline - pausing socket');
+            this._connected = false;
+            if (this.retryTimer) {
+                clearTimeout(this.retryTimer);
+                this.retryTimer = null;
+            }
+            if (this.socket) {
+                this.socket.disconnect();
+            }
+        };
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        this.hasNetworkListeners = true;
     }
 }
 
