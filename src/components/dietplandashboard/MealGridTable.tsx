@@ -32,6 +32,12 @@ type MealTypeConfigLocal = {
   time: string;
 };
 
+type BulkMealTypeEdit = {
+  previousName: string;
+  name: string;
+  time: string;
+};
+
 type MealGridTableProps = {
   weekPlan: DayPlan[];
   mealTypes: string[];
@@ -41,6 +47,7 @@ type MealGridTableProps = {
   onRemoveMealType?: (mealType: string) => void;
   onRemoveDay?: (dayIndex: number) => void;
   onUpdateMealTimes?: (timesMap: { [mealType: string]: string }) => void; // Callback to sync meal times to parent
+  onBulkUpdateMealTypes?: (mealTypeConfigs: MealTypeConfigLocal[]) => void;
   onExport?: () => void; // Callback to trigger export dialog
   readOnly?: boolean;
   clientDietaryRestrictions?: string;
@@ -129,7 +136,7 @@ function formatNotesDisplay(note: string): string[] {
   return note.split('.').map(s => s.trim()).filter(s => s.length > 0);
 }
 
-export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpdate, onAddMealType, onRemoveMealType, onRemoveDay, onUpdateMealTimes, onExport, readOnly = false, clientDietaryRestrictions = '', clientMedicalConditions = '', clientAllergies = '', clientName = '', holdDays = [], totalHeldDays = 0 }: MealGridTableProps) {
+export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpdate, onAddMealType, onRemoveMealType, onRemoveDay, onUpdateMealTimes, onBulkUpdateMealTypes, onExport, readOnly = false, clientDietaryRestrictions = '', clientMedicalConditions = '', clientAllergies = '', clientName = '', holdDays = [], totalHeldDays = 0 }: MealGridTableProps) {
 
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copySource, setCopySource] = useState<{ dayIndex: number; mealType: string } | null>(null);
@@ -143,7 +150,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const [copyOptionSource, setCopyOptionSource] = useState<{ dayIndex: number; mealType: string; optionIndex: number; option: FoodOption } | null>(null);
   const [selectedDaysForOptionCopy, setSelectedDaysForOptionCopy] = useState<number[]>([]);
   const [selectedMealsForOptionCopy, setSelectedMealsForOptionCopy] = useState<string[]>([]);
-  const [customMealTimes, setCustomMealTimes] = useState<{ [key: string]: string }>({});
+  const [customMealTimes, setCustomMealTimes] = useState<{ [key: string]: string }>(mealTimeSuggestions);
   const [currentPage, setCurrentPage] = useState(0);
   const [addMealTypeDialogOpen, setAddMealTypeDialogOpen] = useState(false);
   const [newMealTypeName, setNewMealTypeName] = useState('');
@@ -182,9 +189,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const [replaceSearchFilter, setReplaceSearchFilter] = useState('');
   const [showFindDropdown, setShowFindDropdown] = useState(false);
   const [showReplaceDropdown, setShowReplaceDropdown] = useState(false);
-  // Bulk time editor state
+  // Bulk meal-type editor state
   const [bulkTimeEditorOpen, setBulkTimeEditorOpen] = useState(false);
-  const [mealTimesForBulkEdit, setMealTimesForBulkEdit] = useState<{ [key: string]: string }>({});
+  const [mealTypeEditsForBulk, setMealTypeEditsForBulk] = useState<BulkMealTypeEdit[]>([]);
   // Remove meal type confirmation state
   const [removeMealTypeDialogOpen, setRemoveMealTypeDialogOpen] = useState(false);
   const [mealTypeToRemove, setMealTypeToRemove] = useState<string | null>(null);
@@ -403,10 +410,13 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     // Copy to all selected day and meal combinations (skip frozen days)
     selectedDays.filter(idx => !isDayFrozen(idx)).forEach(targetDayIndex => {
       selectedMeals.forEach(targetMealType => {
+        const existingTargetMeal = newWeekPlan[targetDayIndex].meals[targetMealType];
+
         // Deep copy the meal with fully new IDs
         newWeekPlan[targetDayIndex].meals[targetMealType] = {
           ...cloneMeal(sourceMeal),
           id: Math.random().toString(36).substr(2, 9),
+          time: existingTargetMeal?.time || customMealTimes[targetMealType] || mealTimeSuggestions[targetMealType] || '12:00 PM',
           name: targetMealType,
           foodOptions: sourceMeal.foodOptions.map(option => ({
             ...cloneFoodOption(option),
@@ -443,10 +453,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         // Create meal if it doesn't exist
         if (!targetMeal) {
           targetMeal = {
-            id: Math.random().toString(36).substr(2, 9),
-            time: '',
-            name: targetMealType,
-            showAlternatives: true,
+            ...createNewMeal(targetMealType),
             foodOptions: []
           };
           newWeekPlan[targetDayIndex].meals[targetMealType] = targetMeal;
@@ -548,10 +555,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         // Create meal if it doesn't exist
         if (!targetMeal) {
           targetMeal = {
-            id: Math.random().toString(36).substr(2, 9),
-            time: '',
-            name: targetMealType,
-            showAlternatives: true,
+            ...createNewMeal(targetMealType),
             foodOptions: []
           };
           newWeekPlan[targetDayIndex].meals[targetMealType] = targetMeal;
@@ -942,21 +946,26 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     // For replace action, require a replace value
     if (replaceAction === 'replace' && !replaceValue) return;
 
+    const findLower = findValue.toLowerCase();
+    const selectedMealTypeSet = new Set(selectedMealTypesForReplace.map(mt => toDisplayLabel(mt)));
+
+    const matchesText = (candidate?: string): boolean => {
+      const value = (candidate || '').trim().toLowerCase();
+      if (!value || !findLower) return false;
+      return value === findLower || value.includes(findLower) || findLower.includes(value);
+    };
+
     // Matching helper: checks food name (case-insensitive) OR recipeUuid
     const isMatch = (opt: FoodOption): boolean => {
-      const foodName = (opt.food || '').trim().toLowerCase();
-      const findLower = findValue.toLowerCase();
-      // Exact name match
-      if (foodName === findLower) return true;
+      // Match primary/combined option text
+      if (matchesText(opt.food)) return true;
       // If a recipe was selected from DB, also match by recipeUuid
       if (findRecipeId && opt.recipeUuid && opt.recipeUuid === findRecipeId) return true;
-      // Flexible: check if food name contains the search term or vice versa
-      if (foodName && findLower && (foodName.includes(findLower) || findLower.includes(foodName))) return true;
+
       // Also check stacked foods array
       if (opt.foods && opt.foods.length > 0) {
         return opt.foods.some(f => {
-          const fName = (f.food || '').trim().toLowerCase();
-          if (fName === findLower) return true;
+          if (matchesText(f.food)) return true;
           if (findRecipeId && f.recipeUuid && f.recipeUuid === findRecipeId) return true;
           return false;
         });
@@ -970,7 +979,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       if (isDayFrozen(idx)) return;
       if (!selectedDaysForReplace.includes(idx)) return;
       Object.keys(day.meals).forEach(mt => {
-        if (!selectedMealTypesForReplace.includes(mt)) return;
+        const displayMealType = toDisplayLabel(mt);
+        if (!selectedMealTypeSet.has(displayMealType) && !selectedMealTypeSet.has(mt)) return;
         const meal = day.meals[mt];
 
         if (replaceAction === 'delete') {
@@ -1027,43 +1037,76 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     setShowReplaceDropdown(false);
   };
 
-  // Bulk time editor functions
+  // Bulk meal-type editor functions
   const openBulkTimeEditor = () => {
-    const timesMap: { [key: string]: string } = {};
+    const bulkEdits: BulkMealTypeEdit[] = [];
     // Include all display meal types (default + custom from weekPlan)
     const allTypes = new Set([...mealTypes, ...displayMealTypes]);
     allTypes.forEach(mealType => {
-      timesMap[mealType] = customMealTimes[mealType] || getMealTypeTime(mealType) || mealTimeSuggestions[mealType] || '12:00 PM';
+      const config = mealTypeConfigs.find(item => item.name === mealType);
+      bulkEdits.push({
+        previousName: mealType,
+        name: config?.name || mealType,
+        time: config?.time || customMealTimes[mealType] || getMealTypeTime(mealType) || mealTimeSuggestions[mealType] || '12:00 PM'
+      });
     });
-    setMealTimesForBulkEdit(timesMap);
+    setMealTypeEditsForBulk(bulkEdits);
     setBulkTimeEditorOpen(true);
   };
 
   const handleBulkTimeUpdate = () => {
     if (!onUpdate) return;
 
-    // Update all days with new meal times
+    const sanitizedEdits = mealTypeEditsForBulk.map(edit => ({
+      previousName: edit.previousName,
+      name: edit.name.trim() || edit.previousName,
+      time: edit.time.trim() || customMealTimes[edit.previousName] || mealTimeSuggestions[edit.previousName] || '12:00 PM'
+    }));
+
+    const nextConfigs: MealTypeConfigLocal[] = [];
+    const seenNames = new Set<string>();
+    sanitizedEdits.forEach(edit => {
+      if (!seenNames.has(edit.name)) {
+        seenNames.add(edit.name);
+        nextConfigs.push({ name: edit.name, time: edit.time });
+      }
+    });
+
+    const renameMap = new Map(sanitizedEdits.map(edit => [edit.previousName, edit]));
+
+    // Update all days with renamed meal keys and new meal times
     const newWeekPlan = cloneWeekPlan(weekPlan);
     newWeekPlan.forEach(day => {
-      Object.keys(day.meals).forEach(mealType => {
-        if (mealTimesForBulkEdit[mealType]) {
-          day.meals[mealType].time = mealTimesForBulkEdit[mealType];
-        }
+      const renamedMeals: { [key: string]: Meal } = {};
+      Object.entries(day.meals).forEach(([mealType, meal]) => {
+        const edit = renameMap.get(mealType);
+        const nextName = edit?.name || mealType;
+        const nextTime = edit?.time || meal.time || customMealTimes[mealType] || mealTimeSuggestions[mealType] || '12:00 PM';
+        renamedMeals[nextName] = {
+          ...meal,
+          name: nextName,
+          time: nextTime
+        };
       });
-      // Also update meal types that exist in the bulk editor but not yet in this day
-      Object.keys(mealTimesForBulkEdit).forEach(mealType => {
-        if (day.meals[mealType] && !day.meals[mealType].time) {
-          day.meals[mealType].time = mealTimesForBulkEdit[mealType];
+      day.meals = renamedMeals;
+
+      nextConfigs.forEach(config => {
+        if (day.meals[config.name] && !day.meals[config.name].time) {
+          day.meals[config.name].time = config.time;
         }
       });
     });
 
     // Update customMealTimes for local display
-    setCustomMealTimes(mealTimesForBulkEdit);
+    setCustomMealTimes(Object.fromEntries(nextConfigs.map(config => [config.name, config.time])));
 
     // Propagate times to parent (for mealTypeConfigs / localStorage / save)
     if (onUpdateMealTimes) {
-      onUpdateMealTimes(mealTimesForBulkEdit);
+      onUpdateMealTimes(Object.fromEntries(nextConfigs.map(config => [config.name, config.time])));
+    }
+
+    if (onBulkUpdateMealTypes) {
+      onBulkUpdateMealTypes(nextConfigs);
     }
 
     // Trigger update
@@ -1075,7 +1118,10 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     const defaults = Object.fromEntries(
       DEFAULT_MEAL_TYPES_LIST.map(m => [m.name, m.time])
     );
-    setMealTimesForBulkEdit(prev => ({ ...prev, ...defaults }));
+    setMealTypeEditsForBulk(prev => prev.map(edit => ({
+      ...edit,
+      time: defaults[edit.previousName] || defaults[edit.name] || edit.time
+    })));
   };
 
   // Helper to clear labels on options
@@ -2353,28 +2399,43 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         <Dialog open={bulkTimeEditorOpen} onOpenChange={setBulkTimeEditorOpen}>
           <DialogContent className="sm:max-w-md border-gray-300 shadow-xl" style={{ zIndex: 200 }}>
             <DialogHeader>
-              <DialogTitle className="text-slate-900 font-semibold">Edit Meal Times</DialogTitle>
+              <DialogTitle className="text-slate-900 font-semibold">Edit Meal Types</DialogTitle>
               <DialogDescription className="text-slate-600">
-                Update times for all meal types across all days at once. Click "Apply Defaults" to use standard times.
+                Update meal type names and times across all days at once. Click "Apply Defaults" to use standard times.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-3">
-                {Object.keys(mealTimesForBulkEdit).map(mealType => (
-                  <div key={mealType} className="flex items-center justify-between gap-3">
-                    <Label className="text-slate-700 font-medium text-sm w-32 shrink-0">
-                      {mealType}
-                    </Label>
-                    <Input
-                      type="text"
-                      value={mealTimesForBulkEdit[mealType] || '12:00 PM'}
-                      onChange={(e) => setMealTimesForBulkEdit(prev => ({
-                        ...prev,
-                        [mealType]: e.target.value
-                      }))}
-                      placeholder="e.g., 8:00 AM"
-                      className="h-8 text-xs bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500"
-                    />
+                {mealTypeEditsForBulk.map((mealTypeEdit, index) => (
+                  <div key={mealTypeEdit.previousName} className="grid grid-cols-[minmax(0,1fr)_140px] gap-3 items-center">
+                    <div className="space-y-1">
+                      <Label className="text-slate-700 font-medium text-sm">
+                        Meal Type Name
+                      </Label>
+                      <Input
+                        type="text"
+                        value={mealTypeEdit.name}
+                        onChange={(e) => setMealTypeEditsForBulk(prev => prev.map((item, itemIndex) => (
+                          itemIndex === index ? { ...item, name: e.target.value } : item
+                        )))}
+                        placeholder="Meal type name"
+                        className="h-8 text-xs bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-slate-700 font-medium text-sm">
+                        Time
+                      </Label>
+                      <Input
+                        type="text"
+                        value={mealTypeEdit.time || '12:00 PM'}
+                        onChange={(e) => setMealTypeEditsForBulk(prev => prev.map((item, itemIndex) => (
+                          itemIndex === index ? { ...item, time: e.target.value } : item
+                        )))}
+                        placeholder="e.g., 8:00 AM"
+                        className="h-8 text-xs bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2402,7 +2463,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 style={{ backgroundColor: '#00A63E', color: 'white' }}
                 className="hover:opacity-90 shadow font-medium"
               >
-                Update All Times
+                Update Meal Types
               </Button>
             </DialogFooter>
           </DialogContent>

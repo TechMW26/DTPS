@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -91,7 +91,19 @@ export default function EditDietTemplatePage() {
   // Meals and meal types state
   const [meals, setMeals] = useState<any[]>([]);
   const [mealTypes, setMealTypes] = useState<{ name: string; time: string }[]>(DEFAULT_MEAL_TYPES_LIST);
+  const [dashboardInitialMeals, setDashboardInitialMeals] = useState<any[] | undefined>(undefined);
+  const [dashboardInitialMealTypes, setDashboardInitialMealTypes] = useState<{ name: string; time: string }[] | undefined>(undefined);
+  const latestMealsRef = useRef<any[]>([]);
+  const latestMealTypesRef = useRef<{ name: string; time: string }[]>(DEFAULT_MEAL_TYPES_LIST);
   const [activeTab, setActiveTab] = useState('details');
+
+  useEffect(() => {
+    latestMealsRef.current = meals;
+  }, [meals]);
+
+  useEffect(() => {
+    latestMealTypesRef.current = mealTypes;
+  }, [mealTypes]);
 
   useEffect(() => {
     if (!session) return;
@@ -132,9 +144,13 @@ export default function EditDietTemplatePage() {
           // Load meals and mealTypes
           if (t.meals && Array.isArray(t.meals)) {
             setMeals(t.meals);
+            setDashboardInitialMeals(t.meals);
+            latestMealsRef.current = t.meals;
           }
           if (t.mealTypes && Array.isArray(t.mealTypes)) {
             setMealTypes(t.mealTypes);
+            setDashboardInitialMealTypes(t.mealTypes);
+            latestMealTypesRef.current = t.mealTypes;
           }
         } else {
           const data = await res.json();
@@ -177,8 +193,8 @@ export default function EditDietTemplatePage() {
         },
         dietaryRestrictions: Array.isArray(selectedRestrictions) ? selectedRestrictions : [],
         isPublic,
-        meals: mealsOverride || meals,
-        mealTypes: mealTypesOverride || mealTypes
+        meals: mealsOverride || latestMealsRef.current,
+        mealTypes: mealTypesOverride || latestMealTypesRef.current
       };
 
       const res = await fetch(`/api/diet-templates/${id}`, {
@@ -419,7 +435,6 @@ export default function EditDietTemplatePage() {
               </CardHeader>
               <CardContent>
                 <DietPlanDashboard
-                  key={`diet-dashboard-${id}-${duration}`}
                   clientId={`template-${id}`}
                   clientData={{
                     name: name || 'Untitled Template',
@@ -429,18 +444,26 @@ export default function EditDietTemplatePage() {
                   }}
                   duration={Number(duration)}
                   onDurationChange={(nextDuration) => setDuration(String(nextDuration))}
-                  initialMeals={meals}
-                  initialMealTypes={mealTypes}
+                  initialMeals={dashboardInitialMeals}
+                  initialMealTypes={dashboardInitialMealTypes}
                   clientDietaryRestrictions={selectedRestrictions?.join(', ') || ''}
                   onBack={() => setActiveTab('details')}
                   onMealDataChange={(weekPlan, newMealTypes) => {
                     // Sync meal changes to state for auto-save
                     setMeals(weekPlan);
-                    if (newMealTypes) setMealTypes(newMealTypes);
+                    latestMealsRef.current = weekPlan;
+                    if (newMealTypes) {
+                      setMealTypes(newMealTypes);
+                      latestMealTypesRef.current = newMealTypes;
+                    }
                   }}
                   onSavePlan={(weekPlan, newMealTypes) => {
                     setMeals(weekPlan);
-                    if (newMealTypes) setMealTypes(newMealTypes);
+                    latestMealsRef.current = weekPlan;
+                    if (newMealTypes) {
+                      setMealTypes(newMealTypes);
+                      latestMealTypesRef.current = newMealTypes;
+                    }
                     handleSave(weekPlan, newMealTypes);
                   }}
                 />

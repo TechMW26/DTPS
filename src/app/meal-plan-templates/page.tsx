@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 interface MealPlanTemplate {
   _id: string;
   templateType?: 'plan' | 'diet';
+  isActive?: boolean;
   name: string;
   description: string;
   category: string;
@@ -81,6 +82,7 @@ function MealPlanTemplatesPageContent() {
   const [dietTemplates, setDietTemplates] = useState<MealPlanTemplate[]>([]);
   const [dietSearchTerm, setDietSearchTerm] = useState('');
   const [dietDietaryRestrictions, setDietDietaryRestrictions] = useState<string[]>([]);
+  const [dietViewTab, setDietViewTab] = useState<'active' | 'archived'>('active');
   const [dietLoading, setDietLoading] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [duplicateDialog, setDuplicateDialog] = useState<{
@@ -95,7 +97,7 @@ function MealPlanTemplatesPageContent() {
   ];
 
   useEffect(() => { if (activeTab === 'plans' && session) fetchPlanTemplates(); }, [activeTab, planSearch, session]);
-  useEffect(() => { if (activeTab === 'diet' && session) fetchDietTemplates(); }, [activeTab, dietSearchTerm, dietDietaryRestrictions, session]);
+  useEffect(() => { if (activeTab === 'diet' && session) fetchDietTemplates(); }, [activeTab, dietSearchTerm, dietDietaryRestrictions, dietViewTab, session]);
 
   useEffect(() => {
     if (searchParams?.get('success') === 'created') {
@@ -130,6 +132,9 @@ function MealPlanTemplatesPageContent() {
       const params = new URLSearchParams();
       params.append('limit', '1000');
       params.append('_t', Date.now().toString()); // Cache-bust
+      if (session?.user?.role === UserRole.ADMIN) {
+        params.append('includeInactive', 'true');
+      }
       if (dietSearchTerm) params.append('search', dietSearchTerm);
       if (dietDietaryRestrictions.length > 0)
         params.append('dietaryRestrictions', dietDietaryRestrictions.join(','));
@@ -324,9 +329,33 @@ function MealPlanTemplatesPageContent() {
 
   const filteredDietTemplates = dietTemplates
     .filter(t =>
+      (dietViewTab === 'archived'
+        ? (session?.user?.role === UserRole.ADMIN && t.isActive === false)
+        : t.isActive !== false) &&
       (dietSearchTerm === '' || t.name.toLowerCase().includes(dietSearchTerm.toLowerCase())) &&
       (dietDietaryRestrictions.length === 0 || dietDietaryRestrictions.every(r => t.dietaryRestrictions?.includes(r)))
     );
+
+  const handleRestoreDietTemplate = async (templateId: string) => {
+    if (!confirm('Restore this archived diet template?')) return;
+
+    try {
+      const response = await fetch(`/api/diet-templates/${templateId}/restore`, {
+        method: 'POST'
+      });
+
+      if (response.ok) {
+        toast.success('Diet template restored successfully');
+        fetchDietTemplates();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Failed to restore diet template');
+      }
+    } catch (error) {
+      console.error('Error restoring diet template:', error);
+      toast.error('Failed to restore diet template');
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -444,6 +473,16 @@ function MealPlanTemplatesPageContent() {
                                     </Button>
                                   </>
                                 )}
+                                {session?.user?.role === UserRole.ADMIN && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDeleteTemplate(t._id, 'plan')}
+                                    title="Delete template"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -475,6 +514,24 @@ function MealPlanTemplatesPageContent() {
                     </Button>
                   )}
                 </div>
+                {session?.user?.role === UserRole.ADMIN && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant={dietViewTab === 'active' ? 'default' : 'outline'}
+                      onClick={() => setDietViewTab('active')}
+                    >
+                      Active
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={dietViewTab === 'archived' ? 'default' : 'outline'}
+                      onClick={() => setDietViewTab('archived')}
+                    >
+                      Archived
+                    </Button>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <div className="text-xs font-medium text-gray-600">Dietary Restrictions</div>
                   <div className="flex flex-wrap gap-2">
@@ -505,9 +562,13 @@ function MealPlanTemplatesPageContent() {
               <Card>
                 <CardContent className="text-center py-12">
                   <ChefHat className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No diet templates found</h3>
-                  <p className="text-gray-600 mb-4">Try adjusting your search or restrictions</p>
-                  {(session?.user?.role === UserRole.DIETITIAN || session?.user?.role === UserRole.ADMIN) && (
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    {dietViewTab === 'archived' ? 'No archived diet templates found' : 'No diet templates found'}
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    {dietViewTab === 'archived' ? 'Archived templates will appear here.' : 'Try adjusting your search or restrictions'}
+                  </p>
+                  {dietViewTab !== 'archived' && (session?.user?.role === UserRole.DIETITIAN || session?.user?.role === UserRole.ADMIN) && (
                     <Button asChild>
                       <Link href="/meal-plan-templates/diet/create">
                         <Plus className="h-4 w-4 mr-2" />Create Diet Template
@@ -536,6 +597,9 @@ function MealPlanTemplatesPageContent() {
                             <td className="p-4">
                               <div>
                                 <p className="font-medium text-gray-900">{t.name}</p>
+                                {t.isActive === false && (
+                                  <Badge variant="outline" className="mt-1 border-amber-300 text-amber-700">Archived</Badge>
+                                )}
                                 <p className="text-xs text-gray-600 line-clamp-1">{t.description}</p>
                               </div>
                             </td>
@@ -557,10 +621,12 @@ function MealPlanTemplatesPageContent() {
                             </td>
                             <td className="p-4">
                               <div className="flex space-x-2">
-                                <Button size="sm" variant="outline" asChild>
-                                  <Link href={`/meal-plan-templates/diet/${t._id}`}>View</Link>
-                                </Button>
-                                {(session?.user?.role === UserRole.DIETITIAN || session?.user?.role === UserRole.ADMIN) && (
+                                {dietViewTab !== 'archived' && t.isActive !== false && (
+                                  <Button size="sm" variant="outline" asChild>
+                                    <Link href={`/meal-plan-templates/diet/${t._id}`}>View</Link>
+                                  </Button>
+                                )}
+                                {(session?.user?.role === UserRole.DIETITIAN || session?.user?.role === UserRole.ADMIN) && dietViewTab !== 'archived' && t.isActive !== false && (
                                   <>
                                     <Button size="sm" variant="outline" asChild>
                                       <Link href={`/meal-plan-templates/diet/${t._id}/edit`}>
@@ -582,6 +648,25 @@ function MealPlanTemplatesPageContent() {
                                       Duplicate
                                     </Button>
                                   </>
+                                )}
+                                {session?.user?.role === UserRole.ADMIN && dietViewTab !== 'archived' && t.isActive !== false && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDeleteTemplate(t._id, 'diet')}
+                                    title="Delete template"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                                  </Button>
+                                )}
+                                {session?.user?.role === UserRole.ADMIN && t.isActive === false && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleRestoreDietTemplate(t._id)}
+                                  >
+                                    Restore
+                                  </Button>
                                 )}
                               </div>
                             </td>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { formatTimeIST } from '@/lib/utils/formatDateIST';
@@ -201,6 +201,10 @@ export default function CreateDietTemplatePage() {
   // Store weekPlan and mealTypes data from DietPlanDashboard
   const [weekPlanData, setWeekPlanData] = useState<any[]>([]);
   const [mealTypesData, setMealTypesData] = useState<{ name: string; time: string }[]>(DEFAULT_MEAL_TYPES_LIST);
+  const [dashboardInitialMeals, setDashboardInitialMeals] = useState<any[] | undefined>(undefined);
+  const [dashboardInitialMealTypes, setDashboardInitialMealTypes] = useState<{ name: string; time: string }[] | undefined>(undefined);
+  const latestMealDataRef = useRef<any[]>([]);
+  const latestMealTypesRef = useRef<{ name: string; time: string }[]>(DEFAULT_MEAL_TYPES_LIST);
 
   // Combined draft data for auto-save (includes all state that should be persisted)
   const draftData = useMemo(() => ({
@@ -243,9 +247,13 @@ export default function CreateDietTemplatePage() {
           }));
           if (Array.isArray(restored.weekPlanData) && restored.weekPlanData.length > 0) {
             setWeekPlanData(restored.weekPlanData);
+            setDashboardInitialMeals(restored.weekPlanData);
+            latestMealDataRef.current = restored.weekPlanData;
           }
           if (Array.isArray(restored.mealTypesData) && restored.mealTypesData.length > 0) {
             setMealTypesData(restored.mealTypesData);
+            setDashboardInitialMealTypes(restored.mealTypesData);
+            latestMealTypesRef.current = restored.mealTypesData;
           }
           if (typeof restored.currentStep === 'number' && restored.currentStep >= 1 && restored.currentStep <= 3) {
             setCurrentStep(restored.currentStep);
@@ -279,8 +287,20 @@ export default function CreateDietTemplatePage() {
     setSelectedDay(1);
     setWeekPlanData([]);
     setMealTypesData(DEFAULT_MEAL_TYPES_LIST);
+    setDashboardInitialMeals(undefined);
+    setDashboardInitialMealTypes(undefined);
+    latestMealDataRef.current = [];
+    latestMealTypesRef.current = DEFAULT_MEAL_TYPES_LIST;
     toast.success('Draft cleared', { description: 'Starting fresh.' });
   }, [clearDraft]);
+
+  useEffect(() => {
+    latestMealDataRef.current = weekPlanData;
+  }, [weekPlanData]);
+
+  useEffect(() => {
+    latestMealTypesRef.current = mealTypesData;
+  }, [mealTypesData]);
 
   // ----------- AUTO REDIRECT FOR ROLE ---------
   useEffect(() => {
@@ -339,12 +359,16 @@ export default function CreateDietTemplatePage() {
     // Load meal types if available
     if (tmpl.mealTypes && tmpl.mealTypes.length > 0) {
       setMealTypesData(tmpl.mealTypes);
+      setDashboardInitialMealTypes(tmpl.mealTypes);
+      latestMealTypesRef.current = tmpl.mealTypes;
     }
 
     // Load meals if available
     if (tmpl.meals && tmpl.meals.length > 0) {
       console.log('[Load Template] Setting', tmpl.meals.length, 'meals');
       setWeekPlanData(tmpl.meals);
+      setDashboardInitialMeals(tmpl.meals);
+      latestMealDataRef.current = tmpl.meals;
     }
 
     setSelectedTemplateId(tmpl._id);
@@ -477,8 +501,8 @@ export default function CreateDietTemplatePage() {
         return;
       }
 
-      const mealsToSave = weekPlan || weekPlanData;
-      const mealTypesToSave = mealTypes || mealTypesData;
+      const mealsToSave = weekPlan || latestMealDataRef.current;
+      const mealTypesToSave = mealTypes || latestMealTypesRef.current;
 
       // CRITICAL FIX: Use meals length as duration to ensure complete save
       const actualDuration = mealsToSave.length || template.duration;
@@ -711,7 +735,6 @@ export default function CreateDietTemplatePage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <DietPlanDashboard
-                key={`diet-dashboard-${template.duration}-${weekPlanData.length}`}
                 clientId="template-create-new"
                 clientData={{
                   name: template.name || 'Untitled Template',
@@ -723,18 +746,26 @@ export default function CreateDietTemplatePage() {
                 onDurationChange={(nextDuration) =>
                   setTemplate(prev => ({ ...prev, duration: nextDuration }))
                 }
-                initialMeals={weekPlanData.length > 0 ? weekPlanData : undefined}
-                initialMealTypes={mealTypesData}
+                initialMeals={dashboardInitialMeals}
+                initialMealTypes={dashboardInitialMealTypes}
                 clientDietaryRestrictions={template.dietaryRestrictions?.join(', ') || ''}
                 onBack={() => setCurrentStep(2)}
                 onMealDataChange={(weekPlan, mealTypes) => {
                   // Sync both weekPlan and mealTypes changes to parent for draft auto-save
                   setWeekPlanData(weekPlan);
-                  if (mealTypes) setMealTypesData(mealTypes);
+                  latestMealDataRef.current = weekPlan;
+                  if (mealTypes) {
+                    setMealTypesData(mealTypes);
+                    latestMealTypesRef.current = mealTypes;
+                  }
                 }}
                 onSavePlan={(weekPlan, mealTypes) => {
                   setWeekPlanData(weekPlan);
-                  if (mealTypes) setMealTypesData(mealTypes);
+                  latestMealDataRef.current = weekPlan;
+                  if (mealTypes) {
+                    setMealTypesData(mealTypes);
+                    latestMealTypesRef.current = mealTypes;
+                  }
                   saveTemplate(weekPlan, mealTypes);
                 }}
               />

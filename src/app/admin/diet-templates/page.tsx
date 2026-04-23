@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import {
   Plus,
   ChefHat,
   Pencil,
+  Trash2,
   Eye,
   ArrowLeft,
   CheckCircle,
@@ -71,6 +73,7 @@ function AdminDietTemplatesPageContent() {
   const [groupedTemplates, setGroupedTemplates] = useState<GroupedTemplates>({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [dietitianFilter, setDietitianFilter] = useState('all');
   const [selectedTemplate, setSelectedTemplate] = useState<DietTemplate | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<DietTemplate>>({});
@@ -102,10 +105,10 @@ function AdminDietTemplatesPageContent() {
       if (response.ok) {
         const data = await response.json();
         const allTemplates = data.templates || [];
-        
+
         // Group templates by creator
         const grouped: GroupedTemplates = {};
-        
+
         allTemplates.forEach((template: DietTemplate) => {
           const creatorId = template.createdBy._id;
           if (!grouped[creatorId]) {
@@ -128,7 +131,7 @@ function AdminDietTemplatesPageContent() {
             grouped[creatorId].personalCount++;
           }
         });
-        
+
         setTemplates(allTemplates);
         setGroupedTemplates(grouped);
       }
@@ -156,7 +159,7 @@ function AdminDietTemplatesPageContent() {
 
   const handleSaveEdit = async () => {
     if (!selectedTemplate) return;
-    
+
     try {
       setEditLoading(true);
       const response = await fetch(`/api/diet-templates/${selectedTemplate._id}`, {
@@ -164,7 +167,7 @@ function AdminDietTemplatesPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editFormData),
       });
-      
+
       if (response.ok) {
         toast.success('Template updated successfully');
         setEditDialogOpen(false);
@@ -178,6 +181,27 @@ function AdminDietTemplatesPageContent() {
       toast.error('Failed to update template');
     } finally {
       setEditLoading(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    if (!confirm('Are you sure you want to delete this template?')) return;
+
+    try {
+      const response = await fetch(`/api/diet-templates/${templateId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        toast.success('Template deleted successfully');
+        await fetchAllTemplates();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to delete template');
+      }
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      toast.error('Failed to delete template');
     }
   };
 
@@ -217,9 +241,15 @@ function AdminDietTemplatesPageContent() {
       .join(' ') || 'Unknown';
   };
 
+  const dietitianOptions = Object.values(groupedTemplates)
+    .filter(creator => creator.role?.toLowerCase() === UserRole.DIETITIAN)
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+
   const filteredCreators = Object.values(groupedTemplates).filter(creator => {
     const searchLower = searchTerm.toLowerCase();
-    return (
+    const matchesDietitian = dietitianFilter === 'all' || creator._id === dietitianFilter;
+
+    const matchesSearch = (
       creator.firstName.toLowerCase().includes(searchLower) ||
       creator.lastName.toLowerCase().includes(searchLower) ||
       creator.templates.some(t =>
@@ -227,6 +257,8 @@ function AdminDietTemplatesPageContent() {
         t.description.toLowerCase().includes(searchLower)
       )
     );
+
+    return matchesDietitian && matchesSearch;
   });
 
   if (status === 'loading' || !session) {
@@ -298,17 +330,32 @@ function AdminDietTemplatesPageContent() {
           </Card>
         </div>
 
-        {/* Search */}
+        {/* Search + Dietitian Filter */}
         <Card>
           <CardContent className="p-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search by creator name or template name..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search by creator name or template name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={dietitianFilter} onValueChange={setDietitianFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by dietitian" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Dietitians</SelectItem>
+                  {dietitianOptions.map((creator) => (
+                    <SelectItem key={creator._id} value={creator._id}>
+                      {creator.firstName} {creator.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
@@ -408,7 +455,7 @@ function AdminDietTemplatesPageContent() {
                               )}
                             </div>
                           </div>
-                          <div className="flex gap-2 ml-4 flex-shrink-0">
+                          <div className="flex gap-2 ml-4 shrink-0">
                             <Button size="sm" variant="outline" asChild>
                               <Link href={`/meal-plan-templates/diet/${template._id}`}>
                                 <Eye className="h-4 w-4" />
@@ -420,6 +467,14 @@ function AdminDietTemplatesPageContent() {
                               onClick={() => handleEditClick(template)}
                             >
                               <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteTemplate(template._id)}
+                              title="Delete template"
+                            >
+                              <Trash2 className="h-4 w-4 text-red-600" />
                             </Button>
                           </div>
                         </div>

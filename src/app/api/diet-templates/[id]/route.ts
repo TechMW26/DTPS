@@ -11,7 +11,7 @@ import { withCache, clearCacheByTag } from '@/lib/api/utils';
 // Validation schema for meal type config
 const mealTypeConfigSchema = z.object({
   name: z.string().min(1),
-  time: z.string().default('')
+  time: z.string().optional()
 });
 
 // Validation schema for updating diet template
@@ -76,31 +76,31 @@ export async function GET(
     const template = await withCache(
       `diet-templates:id:${JSON.stringify({ _id: id, isActive: true })}`,
       async () => await DietTemplate.findOne({ _id: id, isActive: true })
-      .populate('createdBy', 'firstName lastName email')
-      .populate({
-        path: 'meals.breakfast.recipeId',
-        select: 'name description nutrition image category'
-      })
-      .populate({
-        path: 'meals.morningSnack.recipeId',
-        select: 'name description nutrition image category'
-      })
-      .populate({
-        path: 'meals.lunch.recipeId',
-        select: 'name description nutrition image category'
-      })
-      .populate({
-        path: 'meals.afternoonSnack.recipeId',
-        select: 'name description nutrition image category'
-      })
-      .populate({
-        path: 'meals.dinner.recipeId',
-        select: 'name description nutrition image category'
-      })
-      .populate({
-        path: 'meals.eveningSnack.recipeId',
-        select: 'name description nutrition image category'
-      })
+        .populate('createdBy', 'firstName lastName email')
+        .populate({
+          path: 'meals.breakfast.recipeId',
+          select: 'name description nutrition image category'
+        })
+        .populate({
+          path: 'meals.morningSnack.recipeId',
+          select: 'name description nutrition image category'
+        })
+        .populate({
+          path: 'meals.lunch.recipeId',
+          select: 'name description nutrition image category'
+        })
+        .populate({
+          path: 'meals.afternoonSnack.recipeId',
+          select: 'name description nutrition image category'
+        })
+        .populate({
+          path: 'meals.dinner.recipeId',
+          select: 'name description nutrition image category'
+        })
+        .populate({
+          path: 'meals.eveningSnack.recipeId',
+          select: 'name description nutrition image category'
+        })
       ,
       { ttl: 120000, tags: ['diet_templates'] }
     );
@@ -250,7 +250,7 @@ export async function DELETE(
 
     // First fetch the template to check ownership
     const existingTemplate = await DietTemplate.findById(id);
-    
+
     if (!existingTemplate) {
       return NextResponse.json(
         { success: false, error: 'Diet template not found' },

@@ -21,7 +21,7 @@ const getCanonicalMealTypes = () => MEAL_TYPE_KEYS.map(key => ({
 // Validation schema for meal type config
 const mealTypeConfigSchema = z.object({
   name: z.string().min(1),
-  time: z.string().default('')
+  time: z.string().optional()
 });
 
 // Validation schema for diet template (no word limits)
@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
     const difficulty = searchParams.get('difficulty');
     const dietaryRestrictions = searchParams.get('dietaryRestrictions');
     const createdBy = searchParams.get('createdBy');
+    const includeInactive = searchParams.get('includeInactive') === 'true';
     const sortBy = searchParams.get('sortBy') || 'newest';
     const limit = parseInt(searchParams.get('limit') || '10');
     const page = parseInt(searchParams.get('page') || '1');
@@ -99,17 +100,16 @@ export async function GET(request: NextRequest) {
     // Build query
     const query: any = {};
 
-    // Filter by creator - dietitians can only see their own templates, admins can see all
     if (session?.user) {
-      if (session.user.role === UserRole.ADMIN) {
-        // Admin sees all active templates
+      const isAdmin = session.user.role === UserRole.ADMIN;
+
+      // Admin can opt-in to include archived templates for recycle-bin workflows.
+      if (!(isAdmin && includeInactive)) {
         query.isActive = true;
-        if (createdBy) {
-          query.createdBy = createdBy;
-        }
-      } else if (session.user.role === UserRole.DIETITIAN) {
-        // Dietitian sees ALL their own templates (active + inactive)
-        query.createdBy = session.user.id;
+      }
+
+      if (createdBy) {
+        query.createdBy = createdBy;
       }
     } else {
       // No session - only show public active templates
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
     const templates = await withCache(
       `diet-templates:${JSON.stringify(query)}:limit=${limit}:skip=${skip}`,
       async () => await DietTemplate.find(query)
-        .populate('createdBy', 'firstName lastName')
+        .populate('createdBy', 'firstName lastName role')
         .sort(sortOptions)
         .limit(limit)
         .skip(skip)

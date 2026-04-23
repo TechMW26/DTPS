@@ -127,7 +127,7 @@ const defaultMealTypes: MealTypeConfig[] = MEAL_TYPE_KEYS.map(key => ({
 
 // Time normalization - using 12-hour format directly
 const normalizeTime = (value?: string): string => {
-  if (!value) return '12:00 PM';
+  if (!value || !value.trim()) return '';
   return value.trim();
 };
 
@@ -402,6 +402,10 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
     });
   };
 
+  const handleBulkUpdateMealTypes = (updatedConfigs: { name: string; time: string }[]) => {
+    setMealTypeConfigs(updatedConfigs);
+  };
+
   const handleSavePlan = () => {
     if (onSave) {
       // New simple callback for PlanningSection
@@ -549,6 +553,7 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
           onRemoveMealType={readOnly ? undefined : handleRemoveMealType}
           onRemoveDay={readOnly ? undefined : handleRemoveDay}
           onUpdateMealTimes={readOnly ? undefined : handleUpdateMealTimes}
+          onBulkUpdateMealTypes={readOnly ? undefined : handleBulkUpdateMealTypes}
           onExport={canExport ? () => setExportDialogOpen(true) : undefined}
           readOnly={readOnly}
           clientName={clientName}
