@@ -530,7 +530,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Only dietitians, health counselors, and admins can create recipes
-    if (session.user.role !== UserRole.DIETITIAN && session.user.role !== UserRole.HEALTH_COUNSELOR && session.user.role !== UserRole.ADMIN) {
+    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const canManageRecipes =
+      normalizedRole === UserRole.DIETITIAN ||
+      normalizedRole === UserRole.HEALTH_COUNSELOR ||
+      normalizedRole.includes('admin');
+
+    if (!canManageRecipes) {
       return NextResponse.json({
         error: 'Forbidden',
         message: 'Only dietitians, health counselors, and admins can create recipes'
@@ -747,10 +753,17 @@ export async function POST(request: NextRequest) {
     await recipe.populate('createdBy', 'firstName lastName');
 
     // Log activity
+    const normalizedRoleForLog = normalizedRole === 'dietician' ? UserRole.DIETITIAN : normalizedRole;
+    const displayNameForLog =
+      session.user.name ||
+      `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim() ||
+      session.user.email ||
+      'User';
+
     logActivity({
       userId: session.user.id,
-      userRole: session.user.role as any,
-      userName: session.user.name || '',
+      userRole: normalizedRoleForLog as any,
+      userName: displayNameForLog,
       userEmail: session.user.email || '',
       action: 'create_recipe',
       actionType: 'create',

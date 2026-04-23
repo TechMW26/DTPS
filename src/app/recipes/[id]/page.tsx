@@ -238,9 +238,10 @@ export default function RecipeViewPage() {
   const canEditRecipe = () => {
     if (!session?.user) return false;
 
-    // Only dietitians and admins can edit/delete recipes (health counselors can only view)
-    const allowedRoles = ['dietitian', 'admin'];
-    return allowedRoles.includes(session.user.role?.toLowerCase());
+    // Allow dietitians, health counselors, and admins to edit/delete recipes
+    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const isAdminRole = normalizedRole.includes('admin');
+    return isAdminRole || normalizedRole === 'dietitian' || normalizedRole === 'health_counselor';
   };
 
   const handleDeleteRecipe = () => {

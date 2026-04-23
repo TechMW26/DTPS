@@ -88,15 +88,19 @@ export async function GET(
     }
 
     // Check if user has access to view this profile
+    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const isAdminRole = normalizedRole.includes('admin');
+    const isDietitianRole = normalizedRole === UserRole.DIETITIAN || normalizedRole === 'dietician';
+    const isHealthCounselorRole = normalizedRole === UserRole.HEALTH_COUNSELOR;
 
     const hasAccess =
-      session.user.role === UserRole.ADMIN ||
+      isAdminRole ||
       session.user.id === id ||
-      ((session.user.role === UserRole.DIETITIAN || session.user.role === UserRole.HEALTH_COUNSELOR) &&
+      ((isDietitianRole || isHealthCounselorRole) &&
         user.role === UserRole.CLIENT) || // Allow dietitians/health counselors to view any client
-      (session.user.role === UserRole.CLIENT &&
+      (normalizedRole === UserRole.CLIENT &&
         (user.role === UserRole.DIETITIAN || user.role === UserRole.HEALTH_COUNSELOR)) || // Allow clients to view dietitians/health counselors
-      ((session.user.role === UserRole.DIETITIAN || session.user.role === UserRole.HEALTH_COUNSELOR) &&
+      ((isDietitianRole || isHealthCounselorRole) &&
         (user.role === UserRole.DIETITIAN || user.role === UserRole.HEALTH_COUNSELOR)); // Allow dietitians/health counselors to view each other
 
 
@@ -361,19 +365,22 @@ export async function PUT(
     }
 
     // Permission Logic:
-    const isAdmin = session.user.role === UserRole.ADMIN;
+    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const isAdmin = normalizedRole.includes('admin');
+    const isDietitianRole = normalizedRole === UserRole.DIETITIAN || normalizedRole === 'dietician';
+    const isHealthCounselorRole = normalizedRole === UserRole.HEALTH_COUNSELOR;
     const isSelf = session.user.id === id;
 
     // Dietitian can update ONLY their assigned clients (including from assignedDietitians array)
     const isDietitianEditingClient =
-      session.user.role === UserRole.DIETITIAN &&
+      isDietitianRole &&
       targetUser.role === UserRole.CLIENT &&
       (targetUser.assignedDietitian?.toString() === session.user.id ||
         targetUser.assignedDietitians?.some((d: any) => d?.toString() === session.user.id));
 
     // Health Counselor can update ONLY their assigned clients (including from assignedHealthCounselors array)
     const isHealthCounselorEditingClient =
-      session.user.role === UserRole.HEALTH_COUNSELOR &&
+      isHealthCounselorRole &&
       targetUser.role === UserRole.CLIENT &&
       (targetUser.assignedHealthCounselor?.toString() === session.user.id ||
         targetUser.assignedHealthCounselors?.some((hc: any) => hc?.toString() === session.user.id));
@@ -566,9 +573,8 @@ export async function PUT(
         return NextResponse.json({ error: 'Weight must be a positive number' }, { status: 400 });
       }
 
-      const currentRole = session.user.role as UserRole;
-      const canStaffEditFirstWeight = isAdmin || currentRole === UserRole.DIETITIAN;
-      const isClientSelfEdit = isSelf && currentRole === UserRole.CLIENT;
+      const canStaffEditFirstWeight = isAdmin || isDietitianRole;
+      const isClientSelfEdit = isSelf && normalizedRole === UserRole.CLIENT;
 
       const firstWeightValue = Number((targetUser as any)?.firstWeight?.value || 0);
       const legacyWeightValue = parseFloat(String((targetUser as any)?.weightKg || '0'));
@@ -695,6 +701,13 @@ export async function PUT(
 
     // Log activity for any update (admin, dietitian, health counselor)
     if (Object.keys(changedFields).length > 0) {
+      const normalizedRoleForLog = normalizedRole === 'dietician' ? UserRole.DIETITIAN : normalizedRole;
+      const displayNameForLog =
+        session.user.name ||
+        `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim() ||
+        session.user.email ||
+        'User';
+
       const changeDetailsList = Object.entries(changedFields).map(([field, vals]) => ({
         fieldName: field,
         oldValue: vals.old,
@@ -703,8 +716,8 @@ export async function PUT(
 
       logActivity({
         userId: session.user.id,
-        userRole: session.user.role as 'admin' | 'dietitian' | 'health_counselor' | 'client',
-        userName: session.user.name || session.user.email || 'User',
+        userRole: normalizedRoleForLog as 'admin' | 'dietitian' | 'health_counselor' | 'client',
+        userName: displayNameForLog,
         userEmail: session.user.email || '',
         action: 'update_user_profile',
         actionType: 'update',

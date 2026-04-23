@@ -387,7 +387,8 @@ export default function CreateRecipePage() {
           description: description || undefined,
           prepTime: prepTime ? parseInt(prepTime) : 0,
           cookTime: cookTime ? parseInt(cookTime) : 0,
-          servings: servings ? parseInt(servings) : 1,
+          // Keep the selected portion label (e.g. "1/2 TSP...", "GRAM") so API can parse/store correctly.
+          servings: servings ? servings.trim() : '1 serving',
           nutrition: {
             calories: calories ? parseFloat(calories) : 0,
             protein: protein ? parseFloat(protein) : 0,

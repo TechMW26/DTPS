@@ -1,19 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="6" failures="0" errors="0" time="7.569">
-  <testsuite name="tests/integration/admin-data-records-sorting.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-20T09:56:20" time="2.427" tests="1">
-    <testcase classname="admin records sorting integrations (supertest + jest)" name="sorts UnifiedPayment rows by daysUsed and remainingDays for admin table" time="0.993">
+<testsuites name="jest tests" tests="2" failures="0" errors="0" time="2.99">
+  <testsuite name="tests/integration/height-and-recipes-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-23T12:33:04" time="2.842" tests="2">
+    <testcase classname="height + recipe CRUD integrations (supertest)" name="allows assigned dietitian (dietician role alias) to update client height fields" time="0.837">
     </testcase>
-  </testsuite>
-  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-20T09:56:23" time="4.978" tests="5">
-    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="0.979">
-    </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.916">
-    </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.851">
-    </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="returns correct remaining days when days counters exist but duration metadata is missing" time="0.827">
-    </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="prioritizes the relevant in-progress purchase when multiple partially used purchases exist" time="0.847">
+    <testcase classname="height + recipe CRUD integrations (supertest)" name="supports dietitian recipe create, edit, and delete end-to-end" time="0.672">
     </testcase>
   </testsuite>
 </testsuites>

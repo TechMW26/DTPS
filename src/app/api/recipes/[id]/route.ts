@@ -137,11 +137,14 @@ export async function PUT(
     if (!recipe)
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    // Allow any dietitian, health_counselor, or admin to edit any recipe (case-insensitive)
-    const userRole = (session.user.role || '').toLowerCase();
-    const allowedRoles = ['dietitian', 'health_counselor', 'admin'];
-    if (!allowedRoles.includes(userRole)) {
-      console.log('User role not allowed for recipe edit:', userRole);
+    // Allow any dietitian, health counselor, or admin to edit any recipe
+    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const canManageRecipes =
+      normalizedRole === 'dietitian' ||
+      normalizedRole === 'health_counselor' ||
+      normalizedRole.includes('admin');
+    if (!canManageRecipes) {
+      console.log('User role not allowed for recipe edit:', normalizedRole);
       return NextResponse.json({ error: 'Forbidden', message: 'You do not have permission to edit recipes' }, { status: 403 });
     }
 
@@ -218,11 +221,14 @@ export async function DELETE(
     if (!recipe)
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    // Allow any dietitian, health_counselor, or admin to delete any recipe (case-insensitive)
-    const userRole = (session.user.role || '').toLowerCase();
-    const allowedRoles = ['dietitian', 'health_counselor', 'admin'];
-    if (!allowedRoles.includes(userRole)) {
-      console.log('User role not allowed for recipe delete:', userRole);
+    // Allow any dietitian, health counselor, or admin to delete any recipe
+    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const canManageRecipes =
+      normalizedRole === 'dietitian' ||
+      normalizedRole === 'health_counselor' ||
+      normalizedRole.includes('admin');
+    if (!canManageRecipes) {
+      console.log('User role not allowed for recipe delete:', normalizedRole);
       return NextResponse.json({ error: 'Forbidden', message: 'You do not have permission to delete recipes' }, { status: 403 });
     }
 
