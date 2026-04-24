@@ -135,6 +135,9 @@ function MealPlanTemplatesPageContent() {
       if (session?.user?.role === UserRole.ADMIN) {
         params.append('includeInactive', 'true');
       }
+      if (session?.user?.role === UserRole.DIETITIAN && session.user.id) {
+        params.append('createdBy', session.user.id);
+      }
       if (dietSearchTerm) params.append('search', dietSearchTerm);
       if (dietDietaryRestrictions.length > 0)
         params.append('dietaryRestrictions', dietDietaryRestrictions.join(','));

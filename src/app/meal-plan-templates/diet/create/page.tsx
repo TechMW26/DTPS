@@ -317,9 +317,19 @@ export default function CreateDietTemplatePage() {
 
   // ----------- FETCH DIET TEMPLATES ----------
   const fetchDietTemplates = async () => {
+    if (!session?.user?.id) {
+      setAvailableTemplates([]);
+      return;
+    }
+
     try {
       setLoadingTemplates(true);
-      const res = await fetch('/api/diet-templates?isActive=true');
+      const params = new URLSearchParams({
+        isActive: 'true',
+        createdBy: session.user.id,
+      });
+
+      const res = await fetch(`/api/diet-templates?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setAvailableTemplates(data.templates || []);

@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
 
     if (session?.user) {
       const isAdmin = session.user.role === UserRole.ADMIN;
+      const isDietitian = session.user.role === UserRole.DIETITIAN;
 
       // Admin can opt-in to include archived templates for recycle-bin workflows.
       if (!(isAdmin && includeInactive)) {
@@ -110,6 +111,9 @@ export async function GET(request: NextRequest) {
 
       if (createdBy) {
         query.createdBy = createdBy;
+      } else if (isDietitian) {
+        // Dietitians should only see their own templates unless an explicit creator filter is provided.
+        query.createdBy = session.user.id;
       }
     } else {
       // No session - only show public active templates

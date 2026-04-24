@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,7 @@ import { DietPlanDashboard } from '@/components/dietplandashboard/DietPlanDashbo
 import { useDataRefresh, emitDataChange, DataEventTypes } from '@/lib/events/useDataRefresh';
 import { DEFAULT_MEAL_TYPES_LIST } from '@/lib/mealConfig';
 import { useRealtime } from '@/hooks/useRealtime';
+import { UserRole } from '@/types';
 
 // Client Purchase interface
 interface ClientPurchase {
@@ -220,6 +222,8 @@ const normalizePaymentCheckDates = (data: any) => ({
 });
 
 export default function PlanningSection({ client, viewOnly = false, onRegisterReset }: PlanningSectionProps) {
+  const { data: session } = useSession();
+
   // Form states
   const [step, setStep] = useState<'list' | 'form' | 'meals' | 'view'>('list');
   const [planTitle, setPlanTitle] = useState('');
@@ -709,6 +713,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         // Only filter by primaryGoal for diet templates, show ALL plan templates
         ...(type === 'diet' && primaryGoal && { primaryGoal })
       });
+
+      // In dietitian workflow, load only the current dietitian's diet templates.
+      if (type === 'diet' && session?.user?.id && session.user.role === UserRole.DIETITIAN) {
+        params.append('createdBy', session.user.id);
+      }
 
       const url = type === 'plan'
         ? `/api/meal-plan-templates?templateType=plan&${params.toString()}`

@@ -7,6 +7,7 @@
 
 import { modelRegistry, ModelMatchResult, SchemaFieldInfo } from './modelRegistry';
 import { ParsedRow } from './fileParser';
+import { getMealLabel, MEAL_TYPE_KEYS, normalizeMealType } from '@/lib/mealConfig';
 
 // ============================================
 // TYPE DEFINITIONS
@@ -344,6 +345,108 @@ function parseInstructions(value: any): string[] | null {
     const items = value.split(/(?:\n|(?<=\.)(?=\s*\d+\.)|\d+\.\s*)/).map(s => s.trim()).filter(Boolean);
     if (items.length > 0) {
       return items;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Parse DietaryRecall meals from CSV/export-friendly formats.
+ * Supports JSON arrays and semicolon-delimited JSON objects.
+ */
+function parseDietaryRecallMeals(value: any): Array<{
+  mealType: string;
+  hour: string;
+  minute: string;
+  meridian: 'AM' | 'PM';
+  food: string;
+}> | null {
+  const mealTypeOrder = new Map(MEAL_TYPE_KEYS.map((key, index) => [key, index]));
+
+  const sortMeals = (meals: Array<{
+    mealType: string;
+    hour: string;
+    minute: string;
+    meridian: 'AM' | 'PM';
+    food: string;
+  }>) => meals.sort((left, right) => {
+    const leftKey = normalizeMealType(left.mealType);
+    const rightKey = normalizeMealType(right.mealType);
+    return (mealTypeOrder.get(leftKey ?? 'EARLY_MORNING') ?? 999) - (mealTypeOrder.get(rightKey ?? 'EARLY_MORNING') ?? 999);
+  });
+
+  if (value === undefined || value === null || value === '') {
+    return [];
+  }
+
+  const normalizeMealEntry = (entry: any) => {
+    if (!entry || typeof entry !== 'object') {
+      return null;
+    }
+
+    const rawMealType = String(entry.mealType || entry.type || '').trim();
+    const normalizedMealKey = normalizeMealType(rawMealType);
+    const normalizedMealType = normalizedMealKey ? getMealLabel(normalizedMealKey) : rawMealType;
+
+    const meridianRaw = String(entry.meridian || '').trim().toUpperCase();
+    const meridian = meridianRaw === 'PM' ? 'PM' : 'AM';
+
+    const hourValue = String(entry.hour ?? '').trim();
+    const minuteValue = String(entry.minute ?? '').trim();
+
+    const normalized = {
+      mealType: normalizedMealType,
+      hour: hourValue || '12',
+      minute: minuteValue || '00',
+      meridian,
+      food: String(entry.food || '').trim(),
+    };
+
+    if (!normalized.mealType && !normalized.food) {
+      return null;
+    }
+
+    return normalized;
+  };
+
+  if (Array.isArray(value)) {
+    const meals = value
+      .map(normalizeMealEntry)
+      .filter((meal): meal is NonNullable<typeof meal> => Boolean(meal));
+    return sortMeals(meals);
+  }
+
+  if (typeof value === 'object') {
+    const meal = normalizeMealEntry(value);
+    return meal ? [meal] : [];
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    const parsedJson = safeJSONParse(trimmed);
+    if (parsedJson) {
+      return parseDietaryRecallMeals(parsedJson);
+    }
+
+    const fragments = trimmed
+      .split(/;\s*(?=\{)/)
+      .map(fragment => fragment.trim())
+      .filter(Boolean);
+
+    if (fragments.length > 0) {
+      const meals = fragments
+        .map(fragment => safeJSONParse(fragment))
+        .map(normalizeMealEntry)
+        .filter((meal): meal is NonNullable<typeof meal> => Boolean(meal));
+
+      if (meals.length > 0) {
+        return sortMeals(meals);
+      }
     }
   }
 
@@ -1487,6 +1590,30 @@ export class ValidationEngine {
           } else if (typeof val === 'number') {
             transformed[field] = val === 1;
           }
+        }
+      }
+    }
+
+    // DietaryRecall-specific transformations
+    if (modelName === 'DietaryRecall') {
+      if (transformed.date) {
+        const dateValue = String(transformed.date).trim();
+        const ddmmyyyyMatch = dateValue.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (ddmmyyyyMatch) {
+          const [, day, month, year] = ddmmyyyyMatch;
+          transformed.date = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+        } else {
+          const parsedDate = new Date(dateValue);
+          if (!isNaN(parsedDate.getTime())) {
+            transformed.date = parsedDate;
+          }
+        }
+      }
+
+      if (transformed.meals !== undefined) {
+        const parsedMeals = parseDietaryRecallMeals(transformed.meals);
+        if (parsedMeals !== null) {
+          transformed.meals = parsedMeals;
         }
       }
     }
