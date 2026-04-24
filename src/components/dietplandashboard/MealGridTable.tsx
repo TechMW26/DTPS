@@ -2397,14 +2397,14 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
         {/* Bulk Time Editor Dialog */}
         <Dialog open={bulkTimeEditorOpen} onOpenChange={setBulkTimeEditorOpen}>
-          <DialogContent className="sm:max-w-md border-gray-300 shadow-xl" style={{ zIndex: 200 }}>
-            <DialogHeader>
+          <DialogContent className="sm:max-w-md border-gray-300 shadow-xl max-h-[85vh] p-0 flex flex-col overflow-hidden" style={{ zIndex: 200 }}>
+            <DialogHeader className="px-6 pt-6 pb-3 border-b border-slate-100">
               <DialogTitle className="text-slate-900 font-semibold">Edit Meal Types</DialogTitle>
               <DialogDescription className="text-slate-600">
                 Update meal type names and times across all days at once. Click "Apply Defaults" to use standard times.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 px-6 py-4 overflow-y-auto flex-1 min-h-0">
               <div className="space-y-3">
                 {mealTypeEditsForBulk.map((mealTypeEdit, index) => (
                   <div key={mealTypeEdit.previousName} className="grid grid-cols-[minmax(0,1fr)_140px] gap-3 items-center">
@@ -2454,7 +2454,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 </p>
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="px-6 py-4 border-t border-slate-100 bg-white">
               <Button variant="outline" onClick={() => setBulkTimeEditorOpen(false)} className="border-gray-300 hover:bg-slate-50 font-medium">
                 Cancel
               </Button>
