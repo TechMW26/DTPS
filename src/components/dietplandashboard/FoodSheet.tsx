@@ -89,58 +89,105 @@ export function FoodDatabasePanel({
   // Debounce search query for optimization
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  // Optimized search function that ranks results by relevance
+  const normalizeSearchText = useCallback((value: string): string => {
+    return value
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, []);
+
+  const escapeRegExp = useCallback((value: string): string => {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }, []);
+
+  // Rank search results by relevance: exact phrase > prefix > word-boundary phrase > all-words > partial.
   const searchAndRankRecipes = useCallback((recipes: FoodItem[], query: string): FoodItem[] => {
-    if (!query.trim()) return recipes;
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) return recipes;
 
-    const searchLower = query.toLowerCase().trim();
-    const searchWords = searchLower.split(/\s+/).filter(Boolean);
+    const queryWords = normalizedQuery.split(' ').filter(Boolean);
+    const queryWordSet = new Set(queryWords);
+    const queryPhraseRegex = new RegExp(`\\b${escapeRegExp(normalizedQuery)}\\b`, 'i');
 
-    // Score each recipe based on match quality
-    const scoredRecipes = recipes.map(recipe => {
-      const nameLower = recipe.menu.toLowerCase();
-      let score = 0;
+    const scoredRecipes = recipes.map((recipe, index) => {
+      const normalizedName = normalizeSearchText(recipe.menu || '');
+      const nameWords = normalizedName.split(' ').filter(Boolean);
 
-      // Exact match - highest priority
-      if (nameLower === searchLower) {
-        score = 1000;
+      if (!normalizedName) {
+        return {
+          recipe,
+          score: 0,
+          matchedWords: 0,
+          position: Number.MAX_SAFE_INTEGER,
+          lengthDiff: Number.MAX_SAFE_INTEGER,
+          index,
+        };
       }
-      // Name starts with search term - very high priority
-      else if (nameLower.startsWith(searchLower)) {
-        score = 500;
-      }
-      // Name contains search term as a whole word - high priority
-      else if (nameLower.includes(searchLower)) {
-        // Bonus if it's at a word boundary
-        const wordBoundaryMatch = new RegExp(`\\b${searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i').test(nameLower);
-        score = wordBoundaryMatch ? 300 : 200;
-      }
-      // All search words match somewhere in name - medium priority
-      else if (searchWords.every(word => nameLower.includes(word))) {
-        score = 100;
-      }
-      // Some search words match - lower priority  
-      else {
-        const matchCount = searchWords.filter(word => nameLower.includes(word)).length;
-        if (matchCount > 0) {
-          score = matchCount * 30;
+
+      const startsWithPhrase = normalizedName.startsWith(normalizedQuery);
+      const exactPhrase = normalizedName === normalizedQuery;
+      const containsPhrase = normalizedName.includes(normalizedQuery);
+      const phraseBoundaryMatch = queryPhraseRegex.test(normalizedName);
+
+      const matchedWords = queryWords.filter((word) => normalizedName.includes(word)).length;
+      const allWordsPresent = queryWords.length > 0 && matchedWords === queryWords.length;
+
+      // Consecutive token match (e.g. query: "ragi idli", name: "healthy ragi idli breakfast")
+      let consecutiveMatch = false;
+      if (queryWords.length <= nameWords.length) {
+        for (let i = 0; i <= nameWords.length - queryWords.length; i += 1) {
+          const windowWords = nameWords.slice(i, i + queryWords.length);
+          if (windowWords.join(' ') === normalizedQuery) {
+            consecutiveMatch = true;
+            break;
+          }
         }
       }
 
-      return { recipe, score };
+      let score = 0;
+      if (exactPhrase) score += 1200;
+      if (startsWithPhrase) score += 850;
+      if (phraseBoundaryMatch) score += 650;
+      if (consecutiveMatch) score += 500;
+      if (containsPhrase) score += 350;
+      if (allWordsPresent) score += 250;
+
+      if (!allWordsPresent && matchedWords > 0) {
+        // Reward high overlap for partial queries while keeping full matches above.
+        score += Math.round((matchedWords / Math.max(queryWords.length, 1)) * 180);
+      }
+
+      // Bonus when more words overlap exactly.
+      const exactWordOverlap = nameWords.filter((word) => queryWordSet.has(word)).length;
+      score += exactWordOverlap * 30;
+
+      const position = normalizedName.indexOf(normalizedQuery);
+      const lengthDiff = Math.abs(normalizedName.length - normalizedQuery.length);
+
+      return {
+        recipe,
+        score,
+        matchedWords,
+        position: position === -1 ? Number.MAX_SAFE_INTEGER : position,
+        lengthDiff,
+        index,
+      };
     });
 
-    // Filter out non-matches and sort by score (highest first)
     return scoredRecipes
-      .filter(item => item.score > 0)
+      .filter((item) => item.score > 0)
       .sort((a, b) => {
-        // Sort by score first
         if (b.score !== a.score) return b.score - a.score;
-        // Then alphabetically for same score
-        return a.recipe.menu.localeCompare(b.recipe.menu);
+        if (b.matchedWords !== a.matchedWords) return b.matchedWords - a.matchedWords;
+        if (a.position !== b.position) return a.position - b.position;
+        if (a.lengthDiff !== b.lengthDiff) return a.lengthDiff - b.lengthDiff;
+        return a.index - b.index;
       })
-      .map(item => item.recipe);
-  }, []);
+      .map((item) => item.recipe);
+  }, [normalizeSearchText, escapeRegExp]);
 
   // Fetch recipes from the database (with server-side filtering for dietary restrictions)
   useEffect(() => {
