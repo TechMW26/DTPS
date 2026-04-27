@@ -436,7 +436,6 @@ export async function GET(request: NextRequest) {
       const linkedDaysUsed = usedDaysByPurchase.get(purchaseId);
       const storedDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
       const storedRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
-      const derivedRemainingDays = Math.max(0, durationDays - storedDaysUsed);
 
       // UnifiedPayment counters are the source of truth for UI/API responses.
       // Linked meal plans are only a fallback for legacy records that never had counters populated.
@@ -469,8 +468,9 @@ export async function GET(request: NextRequest) {
         effectiveDaysUsed = 0;
       }
 
+      // IMPORTANT: When counters exist in DB, return them exactly as stored.
       const effectiveRemainingDays = hasStoredCounters
-        ? Math.min(storedRemainingDays, derivedRemainingDays)
+        ? storedRemainingDays
         : Math.max(0, durationDays - effectiveDaysUsed);
 
       (purchase as any).__effectiveDurationDays = durationDays;
