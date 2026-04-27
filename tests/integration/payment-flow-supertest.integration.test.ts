@@ -275,6 +275,54 @@ describe('payment flow integrations (supertest + jest)', () => {
         }
     });
 
+    it('clamps inconsistent stored remaining days so used plus remaining never exceeds total duration', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: 'admin-counter-consistency@example.com',
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+
+        const inconsistentPurchase = await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Inconsistent Counter Plan',
+            planCategory: 'weight-loss',
+            durationDays: 60,
+            durationLabel: '60 Days',
+            baseAmount: 3500,
+            finalAmount: 3500,
+            amount: 3500,
+            status: 'paid',
+            paymentStatus: 'paid',
+            mealPlanCreated: true,
+            daysUsed: 60,
+            remainingDays: 1,
+            paidAt: new Date('2026-04-10T07:30:00.000Z'),
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+
+        const route = await import('@/app/api/client-purchases/check/route');
+        const server = createRouteTestServer(route.GET);
+
+        try {
+            const response = await request(server)
+                .get('/api/client-purchases/check')
+                .query({ clientId: entityId(client) });
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(String(response.body.purchase?._id)).toBe(entityId(inconsistentPurchase));
+            expect(response.body.purchase?.durationDays).toBe(60);
+            expect(response.body.purchase?.daysUsed).toBe(60);
+            expect(response.body.remainingDays).toBe(0);
+            expect(response.body.canCreateMealPlan).toBe(false);
+            expect(response.body.allPurchases).toEqual([]);
+        } finally {
+            server.close();
+        }
+    });
+
     it('prioritizes the relevant in-progress purchase when multiple partially used purchases exist', async () => {
         const admin = await createUser({
             role: UserRole.ADMIN,
@@ -414,6 +462,58 @@ describe('payment flow integrations (supertest + jest)', () => {
             expect(refreshed).toBeTruthy();
             expect(refreshed.daysUsed).toBe(160);
             expect(refreshed.remainingDays).toBe(20);
+        } finally {
+            server.close();
+        }
+    });
+
+    it('synchronizes remaining days when updating days used through client purchases PUT', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: 'admin-put-sync-days@example.com',
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+
+        const purchase = await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'PUT Sync Plan',
+            planCategory: 'general-wellness',
+            durationDays: 60,
+            durationLabel: '60 Days',
+            baseAmount: 3000,
+            finalAmount: 3000,
+            amount: 3000,
+            status: 'paid',
+            paymentStatus: 'paid',
+            mealPlanCreated: true,
+            daysUsed: 59,
+            remainingDays: 1,
+            paidAt: new Date('2026-04-10T07:30:00.000Z'),
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+
+        const route = await import('@/app/api/client-purchases/route');
+        const server = createRouteTestServer(route.PUT);
+
+        try {
+            const response = await request(server)
+                .put('/api/client-purchases')
+                .send({
+                    purchaseId: entityId(purchase),
+                    daysUsed: 60,
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(response.body.totalDaysUsed).toBe(60);
+            expect(response.body.remainingDays).toBe(0);
+
+            const refreshed: any = await UnifiedPayment.findById(purchase._id).lean();
+            expect(refreshed).toBeTruthy();
+            expect(refreshed.daysUsed).toBe(60);
+            expect(refreshed.remainingDays).toBe(0);
         } finally {
             server.close();
         }

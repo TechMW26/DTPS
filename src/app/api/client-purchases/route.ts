@@ -445,6 +445,20 @@ export async function PUT(request: NextRequest) {
       updateData.daysUsed = daysUsed;
     }
 
+    if (updateData.daysUsed !== undefined) {
+      const durationDays = Math.max(
+        0,
+        Number(
+          currentPurchase.durationDays ||
+          ((currentPurchase.daysUsed || 0) + (currentPurchase.remainingDays || 0)) ||
+          0
+        )
+      );
+      const normalizedDaysUsed = Math.max(0, Number(updateData.daysUsed || 0));
+      updateData.daysUsed = normalizedDaysUsed;
+      updateData.remainingDays = Math.max(0, durationDays - normalizedDaysUsed);
+    }
+
     if (status) updateData.status = status;
 
     const updatedPurchase = await UnifiedPayment.findByIdAndUpdate(
