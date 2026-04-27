@@ -43,7 +43,6 @@ const DurationPresetSchema = new Schema<IDurationPreset>(
 
 // Index for efficient querying
 DurationPresetSchema.index({ isActive: 1, sortOrder: 1 });
-DurationPresetSchema.index({ days: 1 });
 
 const DurationPreset: Model<IDurationPreset> =
     mongoose.models.DurationPreset || mongoose.model<IDurationPreset>('DurationPreset', DurationPresetSchema);

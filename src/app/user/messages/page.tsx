@@ -693,9 +693,18 @@ export default function UserMessagesPage() {
             };
 
             recorder.onstop = () => {
-              const blob = new Blob(chunks, { type: 'audio/webm' });
-              const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.webm'), {
-                type: 'audio/webm',
+              const recorderMimeType = recorder.mimeType || mimeType;
+              const extension = recorderMimeType.includes('mp4') || recorderMimeType.includes('m4a') || recorderMimeType.includes('aac')
+                ? 'm4a'
+                : recorderMimeType.includes('ogg') || recorderMimeType.includes('opus')
+                  ? 'ogg'
+                  : recorderMimeType.includes('wav')
+                    ? 'wav'
+                    : 'webm';
+
+              const blob = new Blob(chunks, { type: recorderMimeType });
+              const compressed = new File([blob], file.name.replace(/\.[^.]+$/, `.${extension}`), {
+                type: recorderMimeType,
                 lastModified: Date.now()
               });
               finish(compressed.size < file.size ? compressed : file);

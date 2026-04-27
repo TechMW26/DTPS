@@ -36,6 +36,8 @@ interface SendMessageOptions {
   skipOptimistic?: boolean;
 }
 
+type SendableMessageType = 'text' | 'image' | 'file' | 'video' | 'audio' | 'voice';
+
 interface FailedVoiceUploadDraft {
   blob?: Blob;
   attachment: ChatAttachment;
@@ -238,7 +240,15 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
       throw new Error('No voice draft blob available for upload retry');
     }
 
-    const fileExtension = (draft.attachment.mimeType || 'audio/webm').includes('ogg') ? 'ogg' : 'webm';
+    const draftMimeType = (draft.attachment.mimeType || 'audio/webm').toLowerCase();
+    const fileExtension = draftMimeType.includes('mp4') || draftMimeType.includes('m4a') || draftMimeType.includes('aac')
+      ? 'm4a'
+      : draftMimeType.includes('ogg') || draftMimeType.includes('opus')
+        ? 'ogg'
+        : draftMimeType.includes('wav')
+          ? 'wav'
+          : 'webm';
+
     const voiceFile = new File([draft.blob], `voice_${Date.now()}.${fileExtension}`, {
       type: draft.attachment.mimeType || 'audio/webm'
     });
@@ -411,6 +421,19 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
       return;
     }
 
+    const normalizeSendableType = (type: ChatMessage['type']): SendableMessageType => {
+      switch (type) {
+        case 'image':
+        case 'file':
+        case 'video':
+        case 'audio':
+        case 'voice':
+          return type;
+        default:
+          return 'text';
+      }
+    };
+
     const failedVoiceDraft = failedVoiceDraftsRef.current.get(message._id);
     const requiresVoiceUploadRetry = Boolean(failedVoiceDraft?.blob);
 
@@ -428,7 +451,7 @@ export function ChatInterface({ recipient, onBack, className, onUserStatusChange
 
     try {
       let resendContent = message.content;
-      let resendType = message.type;
+      let resendType: SendableMessageType = normalizeSendableType(message.type);
       let resendAttachments = message.attachments;
 
       if (requiresVoiceUploadRetry && failedVoiceDraft) {

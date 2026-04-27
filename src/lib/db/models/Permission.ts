@@ -271,7 +271,6 @@ const permissionSchema = new Schema<IPermission>(
 );
 
 // Indexes
-permissionSchema.index({ key: 1 });
 permissionSchema.index({ allowedRoles: 1 });
 permissionSchema.index({ allowedUsers: 1 });
 permissionSchema.index({ category: 1 });

@@ -1843,12 +1843,15 @@ function MessagesContent() {
                               {(message.type === 'audio' || message.type === 'voice') && message.attachments?.[0] && (
                                 <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
                                   <Volume2 className="h-4 w-4 text-gray-600" />
-                                  <audio
-                                    src={message.attachments[0].url}
-                                    controls
-                                    className="flex-1"
-                                    preload="metadata"
-                                  />
+                                  <audio controls className="flex-1" preload="metadata">
+                                    <source
+                                      src={message.attachments[0].url}
+                                      type={message.attachments[0].mimeType || 'audio/*'}
+                                    />
+                                    <a href={message.attachments[0].url} target="_blank" rel="noopener noreferrer">
+                                      Open audio message
+                                    </a>
+                                  </audio>
                                 </div>
                               )}
 

@@ -170,9 +170,21 @@ export function ChatInput({
         });
       };
 
-      // Convert blob to file with proper audio format
-      const audioFile = new File([audioBlob], `voice_${Date.now()}.webm`, {
-        type: audioBlob.type || 'audio/webm'
+      const detectVoiceExtension = (mimeType: string) => {
+        const normalized = mimeType.toLowerCase();
+        if (normalized.includes('mp4') || normalized.includes('m4a') || normalized.includes('aac')) return 'm4a';
+        if (normalized.includes('ogg') || normalized.includes('opus')) return 'ogg';
+        if (normalized.includes('wav')) return 'wav';
+        if (normalized.includes('mpeg') || normalized.includes('mp3')) return 'mp3';
+        return 'webm';
+      };
+
+      const resolvedMimeType = audioBlob.type || 'audio/webm';
+      const voiceExtension = detectVoiceExtension(resolvedMimeType);
+
+      // Keep file extension aligned with MIME type to avoid cross-browser playback issues.
+      const audioFile = new File([audioBlob], `voice_${Date.now()}.${voiceExtension}`, {
+        type: resolvedMimeType
       });
 
       const duration = await getAudioDuration(audioBlob);

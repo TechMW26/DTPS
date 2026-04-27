@@ -50,7 +50,6 @@ const otpRecordSchema = new Schema<IOTPRecord>(
         expiresAt: {
             type: Date,
             required: true,
-            index: true,
         },
         createdAt: {
             type: Date,

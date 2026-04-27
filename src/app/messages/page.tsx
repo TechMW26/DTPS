@@ -1109,12 +1109,15 @@ function ClientMessagesUI() {
                         {(message.type === 'audio' || message.type === 'voice') && message.attachments?.[0] && (
                           <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg min-w-50">
                             <Volume2 className="h-5 w-5 text-gray-600 shrink-0" />
-                            <audio
-                              src={message.attachments[0].url}
-                              controls
-                              className="flex-1 h-8"
-                              preload="metadata"
-                            />
+                            <audio controls className="flex-1 h-8" preload="metadata">
+                              <source
+                                src={message.attachments[0].url}
+                                type={message.attachments[0].mimeType || 'audio/*'}
+                              />
+                              <a href={message.attachments[0].url} target="_blank" rel="noopener noreferrer">
+                                Open audio message
+                              </a>
+                            </audio>
                           </div>
                         )}
 
