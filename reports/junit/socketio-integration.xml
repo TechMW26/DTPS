@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="3" failures="0" errors="0" time="3.237">
-  <testsuite name="tests/integration/diet-templates-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-23T18:16:36" time="3.001" tests="3">
-    <testcase classname="diet template persistence integrations (supertest)" name="creates and lists diet templates with persisted meals + meal types" time="0.623">
+<testsuites name="jest tests" tests="6" failures="0" errors="0" time="7.435">
+  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-27T07:41:41" time="7.256" tests="6">
+    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="1.022">
     </testcase>
-    <testcase classname="diet template persistence integrations (supertest)" name="updates and soft-deletes diet template while preserving meal payload updates" time="0.487">
+    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.889">
     </testcase>
-    <testcase classname="diet template persistence integrations (supertest)" name="allows admin to list archived diet templates and restore them" time="0.483">
+    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.835">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="returns correct remaining days when days counters exist but duration metadata is missing" time="0.828">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="prioritizes the relevant in-progress purchase when multiple partially used purchases exist" time="0.826">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="does not overwrite stored counters when Fix Days recalculation is triggered" time="0.831">
     </testcase>
   </testsuite>
 </testsuites>

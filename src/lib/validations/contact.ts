@@ -52,6 +52,11 @@ export function normalizePhoneNumber(phone: string, defaultCountryCode: string =
     if (!digitsOnly) return '';
 
     // Common India-friendly handling (legacy DB compatibility)
+    // Handle local numbers entered with leading 0 (e.g. 09876543210).
+    // These should map to +91 + 10-digit mobile number.
+    if (defaultCountryCode === '+91' && digitsOnly.length === 11 && digitsOnly.startsWith('0')) {
+        return `${defaultCountryCode}${digitsOnly.slice(1)}`;
+    }
     if (digitsOnly.length === 10) {
         return `${defaultCountryCode}${digitsOnly}`;
     }

@@ -432,8 +432,9 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
     async redirect({ url, baseUrl }) {
-      // Use getBaseUrl() instead of baseUrl from environment
-      const safeBaseUrl = getBaseUrl();
+      // Prefer NextAuth-provided baseUrl (request origin aware).
+      // Fallback to app config only when baseUrl is missing.
+      const safeBaseUrl = baseUrl || getBaseUrl();
 
       // Allows relative callback URLs
       if (url.startsWith('/')) return `${safeBaseUrl}${url}`;

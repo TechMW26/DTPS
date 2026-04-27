@@ -5,6 +5,7 @@ import request from 'supertest';
 import { getServerSession } from 'next-auth';
 import PaymentLink from '@/lib/db/models/PaymentLink';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
+import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import '@/lib/db/models/ServicePlan';
 import { UserRole } from '@/types';
 import { entityId } from '../utils/assertions';
@@ -344,6 +345,75 @@ describe('payment flow integrations (supertest + jest)', () => {
             expect(String(response.body.purchase?._id)).toBe(entityId(moreRelevantPartial));
             expect(response.body.purchase?.daysUsed).toBe(64);
             expect(response.body.remainingDays).toBe(26);
+        } finally {
+            server.close();
+        }
+    });
+
+    it('does not overwrite stored counters when Fix Days recalculation is triggered', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: 'admin-fix-days-preserve-counters@example.com',
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+
+        const purchase = await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Counter Source of Truth Plan',
+            planCategory: 'general-wellness',
+            durationDays: 180,
+            durationLabel: '180 Days',
+            baseAmount: 6000,
+            finalAmount: 6000,
+            amount: 6000,
+            status: 'paid',
+            paymentStatus: 'paid',
+            mealPlanCreated: true,
+            daysUsed: 160,
+            remainingDays: 20,
+            paidAt: new Date('2026-04-10T07:30:00.000Z'),
+        });
+
+        // Linked plan has only 10 days to emulate the old overwrite bug path.
+        await ClientMealPlan.create({
+            clientId: client._id,
+            dietitianId: dietitian._id,
+            purchaseId: purchase._id,
+            name: 'Linked Plan With Short Duration',
+            startDate: new Date('2026-04-01T00:00:00.000Z'),
+            endDate: new Date('2026-04-10T00:00:00.000Z'),
+            duration: 10,
+            status: 'active',
+            goals: {
+                primaryGoal: 'maintenance',
+            },
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+
+        const route = await import('@/app/api/client-purchases/route');
+        const server = createRouteTestServer(route.PATCH);
+
+        try {
+            const response = await request(server)
+                .patch('/api/client-purchases')
+                .send({
+                    action: 'recalculate',
+                    purchaseId: entityId(purchase),
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            expect(response.body.oldDaysUsed).toBe(160);
+            expect(response.body.newDaysUsed).toBe(160);
+            expect(response.body.remainingDays).toBe(20);
+            expect(response.body.message).toContain('preserved');
+
+            const refreshed: any = await UnifiedPayment.findById(purchase._id).lean();
+            expect(refreshed).toBeTruthy();
+            expect(refreshed.daysUsed).toBe(160);
+            expect(refreshed.remainingDays).toBe(20);
         } finally {
             server.close();
         }

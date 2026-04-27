@@ -514,14 +514,23 @@ export async function PATCH(request: NextRequest) {
 
       const totalDaysUsed = allMealPlans.reduce((sum, plan) => sum + (plan.duration || 0), 0);
 
-      // Update all purchases proportionally or set total on the main one
+      // Preserve stored counters when present; only backfill legacy records missing counters.
       let updatedCount = 0;
       for (const purchase of allPurchases) {
-        const oldDaysUsed = purchase.daysUsed || 0;
-        // Distribute days used across purchases
-        purchase.daysUsed = totalDaysUsed;
-        await purchase.save();
-        updatedCount++;
+        const hasStoredCounters =
+          purchase.daysUsed !== undefined ||
+          purchase.remainingDays !== undefined;
+
+        const nextDaysUsed = hasStoredCounters
+          ? Math.max(0, Number(purchase.daysUsed || 0))
+          : totalDaysUsed;
+
+        const oldDaysUsed = Math.max(0, Number(purchase.daysUsed || 0));
+        if (oldDaysUsed !== nextDaysUsed) {
+          purchase.daysUsed = nextDaysUsed;
+          await purchase.save();
+          updatedCount++;
+        }
       }
 
       // Clear cache
@@ -529,7 +538,7 @@ export async function PATCH(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: `Days recalculated for ${updatedCount} purchases. Total days used: ${totalDaysUsed}`,
+        message: `Days recalculated for ${updatedCount} legacy purchases. Stored counters were preserved where present.`,
         oldDaysUsed: 0,
         newDaysUsed: totalDaysUsed,
         mealPlansCount: allMealPlans.length,
@@ -564,22 +573,31 @@ export async function PATCH(request: NextRequest) {
     }
 
     const totalDaysUsed = mealPlans.reduce((sum, plan) => sum + (plan.duration || 0), 0);
-    const oldDaysUsed = purchase.daysUsed || 0;
+    const oldDaysUsed = Math.max(0, Number(purchase.daysUsed || 0));
+    const hasStoredCounters =
+      purchase.daysUsed !== undefined ||
+      purchase.remainingDays !== undefined;
 
-    // Update the purchase
-    purchase.daysUsed = totalDaysUsed;
-    await purchase.save();
+    // Preserve explicit stored counters; only recalculate from meal plans for legacy missing-counter records.
+    const nextDaysUsed = hasStoredCounters ? oldDaysUsed : totalDaysUsed;
+
+    if (oldDaysUsed !== nextDaysUsed) {
+      purchase.daysUsed = nextDaysUsed;
+      await purchase.save();
+    }
 
     // Clear cache
     clearCacheByTag('client_purchases');
 
     return NextResponse.json({
       success: true,
-      message: `Days used recalculated: ${oldDaysUsed} → ${totalDaysUsed}`,
+      message: hasStoredCounters
+        ? `Stored days used preserved: ${oldDaysUsed}`
+        : `Days used recalculated: ${oldDaysUsed} → ${nextDaysUsed}`,
       oldDaysUsed,
-      newDaysUsed: totalDaysUsed,
+      newDaysUsed: nextDaysUsed,
       mealPlansCount: mealPlans.length,
-      remainingDays: Math.max(0, (purchase.durationDays || 0) - totalDaysUsed)
+      remainingDays: Math.max(0, (purchase.durationDays || 0) - nextDaysUsed)
     });
   } catch (error) {
     console.error('Error recalculating days used:', error);
