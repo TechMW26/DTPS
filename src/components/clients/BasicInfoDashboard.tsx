@@ -31,8 +31,9 @@ export default function BasicInfoDashboard({ data, onEdit }: BasicInfoDashboardP
   const feetNum = Math.floor(parseFloat(data.heightFeet || '0') || 0);
   const inchNum = Math.min(11, Math.max(0, Math.round(parseFloat(data.heightInch || '0') || 0)));
 
-  // Use stored heightCm if available, otherwise compute from ft/inch
-  const storedCm = parseFloat(data.heightCm || '0');
+  // Use stored heightCm only when it is in a realistic range, otherwise compute from ft/inch
+  const storedCmRaw = parseFloat(data.heightCm || '0');
+  const storedCm = storedCmRaw >= 50 && storedCmRaw <= 300 ? storedCmRaw : 0;
   const computedFromFtIn = feetNum > 0 || inchNum > 0 ? (feetNum * 12 + inchNum) * 2.54 : 0;
   const finalCm = storedCm > 0 ? storedCm : computedFromFtIn;
   const displayCm = finalCm > 0 ? finalCm.toFixed(1) : '';

@@ -14,13 +14,13 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { 
-  Plus, 
-  Pencil, 
-  Trash2, 
-  Calendar, 
-  Video, 
-  Phone, 
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Calendar,
+  Video,
+  Phone,
   MapPin,
   Clock,
   Settings,
@@ -139,7 +139,7 @@ export default function AppointmentConfigPage() {
     try {
       const url = '/api/admin/appointment-config';
       const method = editingType ? 'PUT' : 'POST';
-      const body = editingType 
+      const body = editingType
         ? { resource: 'type', id: editingType._id, ...typeForm }
         : { resource: 'type', ...typeForm };
 
@@ -157,7 +157,7 @@ export default function AppointmentConfigPage() {
         fetchConfig();
       } else {
         const err = await res.json();
-        toast.error(err.error || 'Failed to save type');
+        toast.error(err?.details?.[0]?.message || err.error || 'Failed to save type');
       }
     } catch (error) {
       toast.error('Failed to save type');
@@ -176,7 +176,7 @@ export default function AppointmentConfigPage() {
     try {
       const url = '/api/admin/appointment-config';
       const method = editingMode ? 'PUT' : 'POST';
-      const body = editingMode 
+      const body = editingMode
         ? { resource: 'mode', id: editingMode._id, ...modeForm }
         : { resource: 'mode', ...modeForm };
 
@@ -349,12 +349,12 @@ export default function AppointmentConfigPage() {
                     {types.map((type) => {
                       const IconComp = getIconComponent(type.icon || 'calendar');
                       return (
-                        <div 
+                        <div
                           key={type._id}
                           className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
                         >
                           <div className="flex items-center gap-4">
-                            <div 
+                            <div
                               className="w-10 h-10 rounded-lg flex items-center justify-center"
                               style={{ backgroundColor: type.color || '#3B82F6' }}
                             >
@@ -414,7 +414,7 @@ export default function AppointmentConfigPage() {
                     {modes.map((mode) => {
                       const IconComp = getIconComponent(mode.icon || 'video');
                       return (
-                        <div 
+                        <div
                           key={mode._id}
                           className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
                         >
@@ -468,27 +468,25 @@ export default function AppointmentConfigPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Name *</Label>
-              <Input 
-                value={typeForm.name} 
+              <Input
+                value={typeForm.name}
                 onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })}
                 placeholder="e.g., Initial Consultation"
               />
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea 
-                value={typeForm.description} 
+              <Textarea
+                value={typeForm.description}
                 onChange={(e) => setTypeForm({ ...typeForm, description: e.target.value })}
                 placeholder="Brief description of this appointment type"
               />
             </div>
             <div className="space-y-2">
               <Label>Default Duration (minutes)</Label>
-              <Input 
+              <Input
                 type="number"
-                min={15}
-                max={180}
-                value={typeForm.duration} 
+                value={typeForm.duration}
                 onChange={(e) => setTypeForm({ ...typeForm, duration: parseInt(e.target.value) || 60 })}
               />
             </div>
@@ -526,8 +524,8 @@ export default function AppointmentConfigPage() {
             </div>
             <div className="flex items-center justify-between">
               <Label>Active</Label>
-              <Switch 
-                checked={typeForm.isActive} 
+              <Switch
+                checked={typeForm.isActive}
                 onCheckedChange={(checked) => setTypeForm({ ...typeForm, isActive: checked })}
               />
             </div>
@@ -550,16 +548,16 @@ export default function AppointmentConfigPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Name *</Label>
-              <Input 
-                value={modeForm.name} 
+              <Input
+                value={modeForm.name}
                 onChange={(e) => setModeForm({ ...modeForm, name: e.target.value })}
                 placeholder="e.g., Video Call"
               />
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea 
-                value={modeForm.description} 
+              <Textarea
+                value={modeForm.description}
                 onChange={(e) => setModeForm({ ...modeForm, description: e.target.value })}
                 placeholder="Brief description of this appointment mode"
               />
@@ -584,22 +582,22 @@ export default function AppointmentConfigPage() {
             </div>
             <div className="flex items-center justify-between">
               <Label>Requires Meeting Link</Label>
-              <Switch 
-                checked={modeForm.requiresMeetingLink} 
+              <Switch
+                checked={modeForm.requiresMeetingLink}
                 onCheckedChange={(checked) => setModeForm({ ...modeForm, requiresMeetingLink: checked })}
               />
             </div>
             <div className="flex items-center justify-between">
               <Label>Requires Location</Label>
-              <Switch 
-                checked={modeForm.requiresLocation} 
+              <Switch
+                checked={modeForm.requiresLocation}
                 onCheckedChange={(checked) => setModeForm({ ...modeForm, requiresLocation: checked })}
               />
             </div>
             <div className="flex items-center justify-between">
               <Label>Active</Label>
-              <Switch 
-                checked={modeForm.isActive} 
+              <Switch
+                checked={modeForm.isActive}
                 onCheckedChange={(checked) => setModeForm({ ...modeForm, isActive: checked })}
               />
             </div>

@@ -1197,10 +1197,12 @@ export default function ClientDetailPage() {
         }
 
         // Populate form component states (with physical measurements from user or lifestyle)
-        // Get raw height values from database
-        const savedFt = parseFloat(data?.user?.heightFeet || lifestyleInfo?.heightFeet || '0') || 0;
-        const savedInch = parseFloat(data?.user?.heightInch || lifestyleInfo?.heightInch || '0') || 0;
-        const savedCm = parseFloat(data?.user?.heightCm || lifestyleInfo?.heightCm || data?.user?.height || '0') || 0;
+        // Prefer LifestyleInfo for ft/in/cm because this is the current source of truth.
+        const savedFt = parseFloat(lifestyleInfo?.heightFeet || data?.user?.heightFeet || '0') || 0;
+        const savedInch = parseFloat(lifestyleInfo?.heightInch || data?.user?.heightInch || '0') || 0;
+        const savedCmRaw = parseFloat(lifestyleInfo?.heightCm || data?.user?.height || data?.user?.heightCm || '0') || 0;
+        // Guard against invalid legacy values (e.g., "5" stored as cm).
+        const savedCm = savedCmRaw >= 50 && savedCmRaw <= 300 ? savedCmRaw : 0;
 
         // Validate ft/inch values - feet should be integer, inches should be 0-11
         const isValidFtInch = Number.isInteger(savedFt) && savedInch >= 0 && savedInch <= 11;
@@ -1430,6 +1432,9 @@ export default function ClientDetailPage() {
         // Physical measurements - send both weight and weightKg for API to handle first weight logic
         height: parseFloat(basicInfo?.heightCm as string) || undefined,
         weight: parseFloat(basicInfo?.weightKg as string) || undefined,
+        heightFeet: basicInfo?.heightFeet || undefined,
+        heightInch: basicInfo?.heightInch || undefined,
+        heightCm: basicInfo?.heightCm || undefined,
         weightKg: basicInfo?.weightKg || undefined, // Important: API uses this for first weight updates
       };
 

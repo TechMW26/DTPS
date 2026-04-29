@@ -10,7 +10,7 @@ import { z } from 'zod';
 const appointmentTypeSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  duration: z.number().min(15).max(180).default(60),
+  duration: z.number().default(60),
   color: z.string().optional(),
   icon: z.string().optional(),
   isActive: z.boolean().default(true),
@@ -26,6 +26,11 @@ const appointmentModeSchema = z.object({
   isActive: z.boolean().default(true),
   order: z.number().default(0)
 });
+
+function normalizeDuration(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 60;
+}
 
 // Helper to generate slug
 function generateSlug(name: string): string {
@@ -98,7 +103,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (resource === 'type') {
-      const validated = appointmentTypeSchema.parse(data);
+      const validated = appointmentTypeSchema.parse({
+        ...data,
+        duration: normalizeDuration(data.duration)
+      });
       const slug = generateSlug(validated.name);
 
       // Check if slug already exists
@@ -113,9 +121,9 @@ export async function POST(request: NextRequest) {
       });
       await appointmentType.save();
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: 'Appointment type created successfully',
-        type: appointmentType 
+        type: appointmentType
       }, { status: 201 });
 
     } else {
@@ -134,16 +142,20 @@ export async function POST(request: NextRequest) {
       });
       await appointmentMode.save();
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: 'Appointment mode created successfully',
-        mode: appointmentMode 
+        mode: appointmentMode
       }, { status: 201 });
     }
 
   } catch (error: any) {
     console.error('Error creating appointment config:', error);
-    
+
     if (error.name === 'ZodError') {
+      return NextResponse.json({ error: 'Validation failed', details: error.errors }, { status: 400 });
+    }
+
+    if (error.name === 'ValidationError') {
       return NextResponse.json({ error: 'Validation failed', details: error.errors }, { status: 400 });
     }
 
@@ -178,8 +190,11 @@ export async function PUT(request: NextRequest) {
     }
 
     if (resource === 'type') {
-      const validated = appointmentTypeSchema.partial().parse(data);
-      
+      const validated = appointmentTypeSchema.partial().parse({
+        ...data,
+        ...(data.duration !== undefined ? { duration: normalizeDuration(data.duration) } : {})
+      });
+
       const updated = await AppointmentType.findByIdAndUpdate(
         id,
         { $set: validated },
@@ -190,14 +205,14 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Appointment type not found' }, { status: 404 });
       }
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: 'Appointment type updated successfully',
-        type: updated 
+        type: updated
       });
 
     } else {
       const validated = appointmentModeSchema.partial().parse(data);
-      
+
       const updated = await AppointmentMode.findByIdAndUpdate(
         id,
         { $set: validated },
@@ -208,16 +223,20 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Appointment mode not found' }, { status: 404 });
       }
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: 'Appointment mode updated successfully',
-        mode: updated 
+        mode: updated
       });
     }
 
   } catch (error: any) {
     console.error('Error updating appointment config:', error);
-    
+
     if (error.name === 'ZodError') {
+      return NextResponse.json({ error: 'Validation failed', details: error.errors }, { status: 400 });
+    }
+
+    if (error.name === 'ValidationError') {
       return NextResponse.json({ error: 'Validation failed', details: error.errors }, { status: 400 });
     }
 

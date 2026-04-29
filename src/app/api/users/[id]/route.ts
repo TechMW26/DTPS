@@ -12,6 +12,14 @@ import { logActivity } from '@/lib/utils/activityLogger';
 import { validateEmail } from '@/lib/validations/auth';
 import { validatePhoneNumber } from '@/lib/validations/contact';
 
+function normalizeRole(role: unknown): string {
+  return String(role || '').toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function isAdminRole(role: unknown): boolean {
+  return normalizeRole(role).includes('admin');
+}
+
 // Helper function to log admin actions
 async function logAdminAction(
   adminId: string,
@@ -88,13 +96,13 @@ export async function GET(
     }
 
     // Check if user has access to view this profile
-    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
-    const isAdminRole = normalizedRole.includes('admin');
+    const normalizedRole = normalizeRole(session.user.role);
+    const isAdmin = isAdminRole(session.user.role);
     const isDietitianRole = normalizedRole === UserRole.DIETITIAN || normalizedRole === 'dietician';
     const isHealthCounselorRole = normalizedRole === UserRole.HEALTH_COUNSELOR;
 
     const hasAccess =
-      isAdminRole ||
+      isAdmin ||
       session.user.id === id ||
       ((isDietitianRole || isHealthCounselorRole) &&
         user.role === UserRole.CLIENT) || // Allow dietitians/health counselors to view any client
@@ -195,7 +203,7 @@ export async function PATCH(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || session.user.role !== UserRole.ADMIN) {
+    if (!session?.user || !isAdminRole(session.user.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -264,7 +272,7 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || session.user.role !== UserRole.ADMIN) {
+    if (!session?.user || !isAdminRole(session.user.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -365,8 +373,8 @@ export async function PUT(
     }
 
     // Permission Logic:
-    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
-    const isAdmin = normalizedRole.includes('admin');
+    const normalizedRole = normalizeRole(session.user.role);
+    const isAdmin = isAdminRole(session.user.role);
     const isDietitianRole = normalizedRole === UserRole.DIETITIAN || normalizedRole === 'dietician';
     const isHealthCounselorRole = normalizedRole === UserRole.HEALTH_COUNSELOR;
     const isSelf = session.user.id === id;
@@ -800,10 +808,11 @@ export async function POST(
     // ----------------------
     // PERMISSION CHECK
     // ----------------------
-    const isAdmin = session.user.role === UserRole.ADMIN;
+    const normalizedRole = normalizeRole(session.user.role);
+    const isAdmin = isAdminRole(session.user.role);
     const isSelf = session.user.id === id;
     const isDietitianAssigned =
-      session.user.role === UserRole.DIETITIAN &&
+      (normalizedRole === UserRole.DIETITIAN || normalizedRole === 'dietician') &&
       (user.assignedDietitian?.toString() === session.user.id ||
         user.assignedDietitians?.some((d: { toString: () => string }) => d.toString() === session.user.id));
 

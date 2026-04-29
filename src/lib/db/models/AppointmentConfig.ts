@@ -37,9 +37,7 @@ const appointmentTypeSchema = new Schema<IAppointmentType>({
   duration: {
     type: Number,
     required: true,
-    default: 60,
-    min: 15,
-    max: 180
+    default: 60
   },
   color: {
     type: String,
@@ -181,14 +179,22 @@ const providerAvailabilitySchema = new Schema<IProviderAvailability>({
 providerAvailabilitySchema.index({ providerId: 1, dayOfWeek: 1 });
 providerAvailabilitySchema.index({ providerId: 1, isActive: 1 });
 
+// Ensure schema updates are applied during development/hot reload
+if (mongoose.models.AppointmentType) {
+  delete mongoose.models.AppointmentType;
+}
+if (mongoose.models.AppointmentMode) {
+  delete mongoose.models.AppointmentMode;
+}
+if (mongoose.models.ProviderAvailability) {
+  delete mongoose.models.ProviderAvailability;
+}
+
 // ============ Model Exports ============
-export const AppointmentType = mongoose.models.AppointmentType || 
-  mongoose.model<IAppointmentType>('AppointmentType', appointmentTypeSchema);
+export const AppointmentType = mongoose.model<IAppointmentType>('AppointmentType', appointmentTypeSchema);
 
-export const AppointmentMode = mongoose.models.AppointmentMode || 
-  mongoose.model<IAppointmentMode>('AppointmentMode', appointmentModeSchema);
+export const AppointmentMode = mongoose.model<IAppointmentMode>('AppointmentMode', appointmentModeSchema);
 
-export const ProviderAvailability = mongoose.models.ProviderAvailability || 
-  mongoose.model<IProviderAvailability>('ProviderAvailability', providerAvailabilitySchema);
+export const ProviderAvailability = mongoose.model<IProviderAvailability>('ProviderAvailability', providerAvailabilitySchema);
 
 export default { AppointmentType, AppointmentMode, ProviderAvailability };
