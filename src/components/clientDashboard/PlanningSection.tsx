@@ -2949,7 +2949,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-500">
-                    Meal plan end date remains unchanged; only purchase expected dates are extended.
+                    Extending updates both purchase dates and the active meal plan timeline.
                   </p>
                 </div>
 

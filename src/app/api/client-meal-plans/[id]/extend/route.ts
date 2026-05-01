@@ -326,8 +326,16 @@ export async function POST(
             );
         }
 
-        // Keep meal plan end date unchanged as requested.
-        const currentMealPlanEndDate = new Date(mealPlan.endDate);
+        // Extend the active meal plan timeline as well so progress tracking and
+        // active-plan display stay consistent with the purchase allocation.
+        const previousMealPlanEndDate = new Date(mealPlan.endDate);
+        const updatedMealPlanEndDate = addDays(previousMealPlanEndDate, extendDays);
+        const currentMealPlanDuration = toPositiveDurationDays(mealPlan.duration) ||
+            Math.max(1, Math.ceil((new Date(mealPlan.endDate).getTime() - new Date(mealPlan.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+        mealPlan.endDate = updatedMealPlanEndDate;
+        mealPlan.duration = currentMealPlanDuration + extendDays;
+        await mealPlan.save();
 
         // ====== Update linked purchase allocation + expected end date (legacy and unified safe) ======
         let previousExpectedEndDate: Date | null = null;
@@ -336,7 +344,8 @@ export async function POST(
             const purchaseUpdate: any = {
                 $inc: {
                     durationDays: extendDays,
-                    extendedDaysUsed: extendDays
+                    extendedDaysUsed: extendDays,
+                    remainingDays: extendDays
                 }
             };
 
@@ -412,7 +421,9 @@ export async function POST(
                 extendDays,
                 previousExpectedEndDate: previousExpectedEndDate ? format(previousExpectedEndDate, 'yyyy-MM-dd') : null,
                 newExpectedEndDate: newExpectedEndDate ? format(newExpectedEndDate, 'yyyy-MM-dd') : null,
-                mealPlanEndDateUnchanged: format(currentMealPlanEndDate, 'yyyy-MM-dd'),
+                previousMealPlanEndDate: format(previousMealPlanEndDate, 'yyyy-MM-dd'),
+                newMealPlanEndDate: format(updatedMealPlanEndDate, 'yyyy-MM-dd'),
+                updatedMealPlanDuration: mealPlan.duration,
                 remainingExtendDays: remainingExtendDays - extendDays
             }
         });
@@ -420,13 +431,13 @@ export async function POST(
         return NextResponse.json({
             success: true,
             message: newExpectedEndDate
-                ? `Extended expected end date by ${extendDays} days. New expected end: ${format(newExpectedEndDate, 'MMM d, yyyy')}`
-                : `Extended allocation by ${extendDays} days.`,
+                ? `Extended plan by ${extendDays} days. New expected end: ${format(newExpectedEndDate, 'MMM d, yyyy')}`
+                : `Extended plan allocation by ${extendDays} days.`,
             plan: {
                 _id: mealPlan._id,
                 name: mealPlan.name,
                 startDate: mealPlan.startDate,
-                endDate: mealPlan.endDate,
+                endDate: updatedMealPlanEndDate,
                 duration: mealPlan.duration,
                 status: mealPlan.status
             },
@@ -436,7 +447,9 @@ export async function POST(
                 remainingExtendDays: remainingExtendDays - extendDays,
                 previousExpectedEndDate,
                 newExpectedEndDate,
-                mealPlanEndDate: mealPlan.endDate
+                previousMealPlanEndDate,
+                mealPlanEndDate: updatedMealPlanEndDate,
+                mealPlanDuration: mealPlan.duration
             }
         });
     } catch (error: any) {

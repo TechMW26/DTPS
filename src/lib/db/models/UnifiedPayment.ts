@@ -933,9 +933,13 @@ unifiedPaymentSchema.statics.syncRazorpayPayment = async function (
       payment.planCategory = razorpayData.planCategory;
     }
     if (razorpayData.durationDays && razorpayData.durationDays > 0) {
-      payment.durationDays = razorpayData.durationDays;
+      // Do not downgrade duration on re-sync (for example after a plan extension).
+      // Only hydrate when missing, or when incoming duration is greater.
+      if (!payment.durationDays || razorpayData.durationDays > payment.durationDays) {
+        payment.durationDays = razorpayData.durationDays;
+      }
     }
-    if (razorpayData.durationLabel && razorpayData.durationLabel.trim()) {
+    if (razorpayData.durationLabel && razorpayData.durationLabel.trim() && !payment.durationLabel) {
       payment.durationLabel = razorpayData.durationLabel;
     }
 
