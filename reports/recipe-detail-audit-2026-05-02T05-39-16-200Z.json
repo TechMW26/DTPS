@@ -1,0 +1,1078 @@
+{
+  "generatedAt": "2026-05-02T05:39:16.853Z",
+  "totalRecipes": 3544,
+  "counts": {
+    "missingDetail": 29,
+    "vegConflict": 72,
+    "totalIssues": 101
+  },
+  "missingDetail": [
+    {
+      "_id": "69b98d741e737b695ae9e76b",
+      "uuid": "4376",
+      "name": "180 gm sweet potato chaat",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69bcd82a48e14596c12fb103",
+      "uuid": "4388",
+      "name": "Spearmint Tea",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69bd1e7f12b8999e0ca0a7ba",
+      "uuid": "4389",
+      "name": "Dal with drumsticks",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69be054ec6fde5ca3eb580ef",
+      "uuid": "4391",
+      "name": "apple detox water",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69be0bfdc6fde5ca3eb58923",
+      "uuid": "4392",
+      "name": "orange detox water",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69bf783ac6fde5ca3eb6b203",
+      "uuid": "4394",
+      "name": "Egg white veg Omellete",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69c6312d231e5cea4128eb16",
+      "uuid": "4497",
+      "name": "CumiN GingeR LemoN HoneY WateR",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69c7a47fe25d860ab3602482",
+      "uuid": "4506",
+      "name": "Elaichi water",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69c7b6e2e25d860ab360db37",
+      "uuid": "4507",
+      "name": "Buttermilk Plain",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69cb62d38465126b5e6af21e",
+      "uuid": "4511",
+      "name": "roasted fish",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69ce48acce9a8c4c2a76b9bc",
+      "uuid": "4521",
+      "name": "🍋🌿 Mint Lemon Water",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69ce65e6ce9a8c4c2a777f3f",
+      "uuid": "4534",
+      "name": "🌿 Bajra Porridge",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69d625488f550e768e43e893",
+      "uuid": "4624",
+      "name": "WATERMELON SEEDS (DRY ROAST)",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69d7501f7a8881e566596897",
+      "uuid": "4682",
+      "name": "Dal",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69d7535b7a8881e56659922a",
+      "uuid": "4683",
+      "name": "Quinoa Chickpea Salad",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69d796de2a225b758d184192",
+      "uuid": "4688",
+      "name": "Multigrain bread Toast",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69d8b521c6e3acb94f678732",
+      "uuid": "4696",
+      "name": "Ginger cinnamon clove water",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69dce98bc8495119ac1fe9bf",
+      "uuid": "4752",
+      "name": "Barley Water",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69df1cd07e80a79149f5b823",
+      "uuid": "4764",
+      "name": "sesame seed",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69e07fdc4d77fc4b0b45c323",
+      "uuid": "4769",
+      "name": "chire",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69e35d1d3cda2e680cb12606",
+      "uuid": "4775",
+      "name": "Epigamia greek yogurt",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69e725ae6c543b320c9a1901",
+      "uuid": "4798",
+      "name": "Hing water",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69e74eff6c543b320c9d8303",
+      "uuid": "4800",
+      "name": "Methi jeera water",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69ecc50d90d87b1173879a52",
+      "uuid": "4852",
+      "name": "Egg white mushroom Omelette",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69f06edee684ddc8988d6c76",
+      "uuid": "4868",
+      "name": "Paneer Veg Uttapam",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69f32d58ec32233c4c3c2b2d",
+      "uuid": "4871",
+      "name": "Soya Chunk roll",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69f32ed3ec32233c4c3c538c",
+      "uuid": "4872",
+      "name": "Veg Paneer wrap",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69f47affec32233c4c481db2",
+      "uuid": "4882",
+      "name": "Chilli Chicken",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    },
+    {
+      "_id": "69f47fd1ec32233c4c488706",
+      "uuid": "4883",
+      "name": "Ginger Cardamon water",
+      "missing": {
+        "name": false,
+        "description": true,
+        "ingredients": false,
+        "instructions": false
+      }
+    }
+  ],
+  "vegConflict": [
+    {
+      "_id": "69905e95b76bd824d7fb9e22",
+      "uuid": 1108,
+      "name": "Boiled Egg White And Vegetable Salad",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "Dairy-Free",
+        "Low-Carb",
+        "Low-Fat",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69905f32b76bd824d7fb9f27",
+      "uuid": 1118,
+      "name": "Whole Wheat Banana Pancake",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906145b76bd824d7fba48d",
+      "uuid": 1180,
+      "name": "Egg White With Sprouts",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906158b76bd824d7fba4c9",
+      "uuid": 1189,
+      "name": "Two Egg White Bhurji",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein",
+        "Low-Fat"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990617fb76bd824d7fba543",
+      "uuid": 1209,
+      "name": "Mixed Vegetable Soup With Egg White",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Low-Fat",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906251b76bd824d7fba6e5",
+      "uuid": 1273,
+      "name": "Brown Bread Scrambled Egg White Tomato Cucumber Sandwich",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990628cb76bd824d7fba763",
+      "uuid": 1296,
+      "name": "Egg White Bhurji With Capsicum Onion",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990632ab76bd824d7fba881",
+      "uuid": 1331,
+      "name": "Egg Omelette",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906336b76bd824d7fba89d",
+      "uuid": 1336,
+      "name": "Egg Spinach Omellete",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "699063a7b76bd824d7fbaa84",
+      "uuid": 1350,
+      "name": "Whole Wheat Bread Egg White Omellete Sandwich",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "699064f8b76bd824d7fbae0d",
+      "uuid": 1411,
+      "name": "Boiled Egg White Salad With Cucumber Potato",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906502b76bd824d7fbae2b",
+      "uuid": 1416,
+      "name": "Egg Chapati Without Oil",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990657db76bd824d7fbaf00",
+      "uuid": 1449,
+      "name": "Vegetable Omelette",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "699066a2b76bd824d7fbb1c7",
+      "uuid": 1569,
+      "name": "SPINACH CARROT EGG SOUP",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "Gluten-Free",
+        "Vegan"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906795b76bd824d7fbb25e",
+      "uuid": 1590,
+      "name": "Egg Podimas",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906833b76bd824d7fbb30c",
+      "uuid": 1626,
+      "name": "Elaneer Payasam",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906a70b76bd824d7fbb657",
+      "uuid": 1723,
+      "name": "Kismur",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906a87b76bd824d7fbb66f",
+      "uuid": 1729,
+      "name": "Bebinca",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69906c4dbd8ff2a0e78f47f8",
+      "uuid": 1841,
+      "name": "Carrot Oats Cake",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990d6d5bd8ff2a0e78f500a",
+      "uuid": 2084,
+      "name": "Bone Broth",
+      "dietaryRestrictions": [
+        "Non-Vegetarian",
+        "Gluten-Free",
+        "Dairy-Free",
+        "Keto",
+        "Paleo",
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990d746bd8ff2a0e78f506b",
+      "uuid": 2102,
+      "name": "Egg & Veg Combo",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990d756bd8ff2a0e78f5079",
+      "uuid": 2104,
+      "name": "Egg Tomato Scramble",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990dadabd8ff2a0e78f5284",
+      "uuid": 2190,
+      "name": "Brown Rice Chicken Bowl",
+      "dietaryRestrictions": [
+        "Non-Vegetarian",
+        "Vegetarian",
+        "Vegan",
+        "Gluten-Free",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990daedbd8ff2a0e78f52ab",
+      "uuid": 2193,
+      "name": "Chicken Burrito Bowl",
+      "dietaryRestrictions": [
+        "Non-Vegetarian",
+        "Vegetarian",
+        "Vegan",
+        "Gluten-Free"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990dbb0bd8ff2a0e78f53b8",
+      "uuid": 2241,
+      "name": "Egg Momos (Steamed)",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990dbb9bd8ff2a0e78f53ef",
+      "uuid": 2244,
+      "name": "Egg Roll (Low Oil)",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Low-Fat",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990dbb9bd8ff2a0e78f53f4",
+      "uuid": 2245,
+      "name": "Egg Raita Bowl",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990dbbabd8ff2a0e78f53f9",
+      "uuid": 2246,
+      "name": "Egg Quinoa Bowl",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6990dbc2bd8ff2a0e78f5407",
+      "uuid": 2247,
+      "name": "Egg Toast",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6996df5f9e77b3305bd1c50e",
+      "uuid": "2500",
+      "name": "Boiled Chickpeas And Boiled Egg Salad",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6996eb799e77b3305bd1ceac",
+      "uuid": "2503",
+      "name": "Boiled Egg Onion Salad",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6996ed659e77b3305bd1cf75",
+      "uuid": "2504",
+      "name": "Boiled Egg Salad",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "Dairy-Free",
+        "Keto",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6996fe549e77b3305bd1d617",
+      "uuid": "2632",
+      "name": "Egg Bhurji",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6996fe629e77b3305bd1d627",
+      "uuid": "2634",
+      "name": "Egg White Omelette",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Low-Carb",
+        "Low-Fat",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6996ff899e77b3305bd1d739",
+      "uuid": "2680",
+      "name": "Egg Wrap",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6997fae19e77b3305bd1f1ad",
+      "uuid": "3023",
+      "name": "Atta Cheela With Egg",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6997fe259e77b3305bd1f593",
+      "uuid": "3053",
+      "name": "Egg Roti Without Oil (2pcs[50gms])",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6997fe409e77b3305bd1f5b0",
+      "uuid": "3055",
+      "name": "Egg Omlette",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6997fe499e77b3305bd1f5cc",
+      "uuid": "3056",
+      "name": "Egg Roti Roll With Cucumber And Carrot",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6997fe759e77b3305bd1f609",
+      "uuid": "3058",
+      "name": "Egg Roti",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6998070faface91e56c8a61a",
+      "uuid": "3115",
+      "name": "Egg Spinach Omellete",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69980786aface91e56c8a66b",
+      "uuid": "3118",
+      "name": "Egg Bhurji",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "699808c0aface91e56c8a741",
+      "uuid": "3124",
+      "name": "Egg Bhurji With Onion Tomato",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69980972aface91e56c8a7ed",
+      "uuid": "3130",
+      "name": "Egg Bhurji Roll",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69980b41aface91e56c8a8b9",
+      "uuid": "3136",
+      "name": "Whole Wheat Bread Egg White Omellete Sandwich",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6998121daface91e56c8af48",
+      "uuid": "3191",
+      "name": "Onion Egg Dosa",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6998132baface91e56c8b02f",
+      "uuid": "3200",
+      "name": "Egg Oats Dosa",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69981420aface91e56c8b0c6",
+      "uuid": "3209",
+      "name": "Scrambled Egg With Vegetables",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69982ba3aface91e56c8c0dd",
+      "uuid": "3267",
+      "name": "Scrambled Eggs With Tomato",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69983223aface91e56c8c90c",
+      "uuid": "3319",
+      "name": "Dosa With Egg",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69983bc0aface91e56c8d77f",
+      "uuid": "3390",
+      "name": "Tomato Egg Rice",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69983d37aface91e56c8d91e",
+      "uuid": "3401",
+      "name": "Egg Chapati Without Oil",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69984458aface91e56c8e172",
+      "uuid": "3441",
+      "name": "Egg White Bhurji",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "699844edaface91e56c8e1d8",
+      "uuid": "3445",
+      "name": "Toast And Boiled Egg",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69984599aface91e56c8e225",
+      "uuid": "3449",
+      "name": "Wheat Bread Egg White Omellete Sandwich",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69984ba4aface91e56c8e562",
+      "uuid": "3486",
+      "name": "Egg And Vegetable Toast",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69984bdeaface91e56c8e581",
+      "uuid": "3488",
+      "name": "Banana Pancake",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69984d93aface91e56c8e639",
+      "uuid": "3499",
+      "name": "Egg White Oats Omelette With Vegetables",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69986b40aface91e56c8ea75",
+      "uuid": "3559",
+      "name": "Egg White Bhurji With Capsicum Onion",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69987bbcaface91e56c8ef01",
+      "uuid": "3628",
+      "name": "Two Egg White Bhurji",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69988324aface91e56c8f147",
+      "uuid": "3670",
+      "name": "Capsicum Egg Bhurji",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69988364aface91e56c8f161",
+      "uuid": "3672",
+      "name": "Egg Vegetable Sandwich",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69988b83aface91e56c8f194",
+      "uuid": "3675",
+      "name": "Egg White With Sprouts",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69989099aface91e56c8f2ed",
+      "uuid": "3703",
+      "name": "Egg Wrap",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6999310aac2fbbee1998a02b",
+      "uuid": "3710",
+      "name": "Egg Bhurji With Mushroom ,Onion And Tomato",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "6999316eac2fbbee1998a045",
+      "uuid": "3712",
+      "name": "Brown Bread Egg Sandwich",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69993555ac2fbbee1998a103",
+      "uuid": "3726",
+      "name": "Mixed Vegetable Soup With Egg White",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69994b10ac2fbbee1998ad39",
+      "uuid": "3831",
+      "name": "Egg Cheela",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "High-Protein"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "699c14f5d21cc8ab847c02dd",
+      "uuid": "3924",
+      "name": "Egg Rice",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Non-Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "699d3dced21cc8ab847c2ef6",
+      "uuid": "3951",
+      "name": "Kimchi Fried Rice",
+      "dietaryRestrictions": [
+        "Vegetarian",
+        "Vegan"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69b7e795d681575181f228a3",
+      "uuid": "4328",
+      "name": "boiled egg white",
+      "dietaryRestrictions": [
+        "Vegetarian"
+      ],
+      "tags": []
+    },
+    {
+      "_id": "69d75692603af53d0807e1ba",
+      "uuid": "4684",
+      "name": "Egg Drop Soup Without Chicken Broth",
+      "dietaryRestrictions": [],
+      "tags": [
+        "soup",
+        "eggs",
+        "vegetarian"
+      ]
+    }
+  ]
+}

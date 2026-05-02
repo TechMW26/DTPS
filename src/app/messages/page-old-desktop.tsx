@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useRealtime } from '@/hooks/useRealtime';
 import { useSimpleWebRTC } from '@/hooks/useSimpleWebRTC';
@@ -1714,7 +1715,15 @@ function MessagesContent() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2" />
+                <div className="flex items-center space-x-2">
+                  {selectedUser.user.role === 'client' && selectedUser.user._id && (
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/dietician/clients/${selectedUser.user._id}`} aria-label="View client dashboard">
+                        View Dashboard
+                      </Link>
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* Messages */}

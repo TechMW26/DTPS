@@ -58,7 +58,25 @@ function getDefaultClickActionForRole(role: NotificationTargetRole): string {
   return '/dashboard';
 }
 
-function getAccessibleClientQuery(session: any): Record<string, unknown> {
+type AccessibleSession = {
+  user: {
+    id: string;
+    role: UserRole;
+  };
+};
+
+type RecipientUserRow = {
+  _id: unknown;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  avatar?: string;
+  role?: string;
+  status?: string;
+  fcmTokens?: unknown;
+};
+
+function getAccessibleClientQuery(session: AccessibleSession): Record<string, unknown> {
   const query: Record<string, unknown> = {
     role: UserRole.CLIENT,
   };
@@ -96,13 +114,23 @@ function getValidFcmTokenCount(rawTokens: unknown): number {
   if (!Array.isArray(rawTokens)) return 0;
 
   const validTokens = rawTokens
-    .map((entry: any) => (typeof entry === 'string' ? normalizeFcmTokenValue(entry) : normalizeFcmTokenValue(entry?.token)))
+    .map((entry: unknown) => {
+      if (typeof entry === 'string') {
+        return normalizeFcmTokenValue(entry);
+      }
+
+      if (entry && typeof entry === 'object' && 'token' in entry) {
+        return normalizeFcmTokenValue((entry as { token?: unknown }).token);
+      }
+
+      return '';
+    })
     .filter(Boolean);
 
   return new Set(validTokens).size;
 }
 
-function mapRecipient(user: any) {
+function mapRecipient(user: RecipientUserRow) {
   const tokenCount = getValidFcmTokenCount(user?.fcmTokens);
 
   return {
@@ -111,6 +139,7 @@ function mapRecipient(user: any) {
     email: String(user.email || ''),
     avatar: user.avatar,
     role: String(user.role || UserRole.CLIENT),
+    status: String(user.status || ''),
     hasFcmToken: tokenCount > 0,
     tokenCount,
   };
@@ -401,6 +430,7 @@ export async function GET(request: NextRequest) {
       email: string;
       avatar?: string;
       role: string;
+      status?: string;
       hasFcmToken: boolean;
       tokenCount?: number;
     }> = [];
@@ -409,13 +439,13 @@ export async function GET(request: NextRequest) {
       const effectiveRoles = requestedRoles.length > 0 ? requestedRoles : DEFAULT_ADMIN_TARGET_ROLES;
 
       const users = await User.find({ role: { $in: effectiveRoles } })
-        .select('_id firstName lastName email avatar role fcmTokens')
+        .select('_id firstName lastName email avatar role status fcmTokens')
         .sort({ firstName: 1, lastName: 1 });
 
       recipients = users.map(mapRecipient);
     } else {
       const clients = await User.find(getAccessibleClientQuery(session))
-        .select('_id firstName lastName email avatar role fcmTokens')
+        .select('_id firstName lastName email avatar role status fcmTokens')
         .sort({ firstName: 1, lastName: 1 });
 
       recipients = clients.map(mapRecipient);

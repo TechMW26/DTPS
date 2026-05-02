@@ -10,22 +10,22 @@ interface Recipe {
   name: string;
   description?: string;
   image?: string;
-  ingredients: Array<{
+  ingredients?: Array<{
     name: string;
     quantity: number;
     unit: string;
     remarks?: string;
   }>;
-  instructions: string[];
-  prepTime: number;
-  cookTime: number;
-  servings: number;
+  instructions?: string[];
+  prepTime?: number;
+  cookTime?: number;
+  servings?: number;
   servingSize?: string;
-  nutrition: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
+  nutrition?: {
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
   };
   category?: string;
   cuisine?: string;
@@ -45,22 +45,40 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
   }, [params]);
 
   useEffect(() => {
-    if (recipeId) {
-      fetchRecipe();
-    }
+    if (!recipeId) return;
+
+    const controller = new AbortController();
+    fetchRecipe(recipeId, controller.signal);
+
+    return () => {
+      controller.abort();
+    };
   }, [recipeId]);
 
-  const fetchRecipe = async () => {
+  const fetchRecipe = async (targetRecipeId: string, signal?: AbortSignal) => {
     try {
-      const response = await fetch(`/api/recipes/${recipeId}`);
+      setRecipe(null);
+      setLoading(true);
+      const response = await fetch(`/api/recipes/${targetRecipeId}`, {
+        cache: 'no-store',
+        signal,
+      });
       if (response.ok) {
         const data = await response.json();
-        setRecipe(data.recipe);
+        if (data?.recipe && String(data.recipe._id) === String(targetRecipeId)) {
+          setRecipe(data.recipe);
+        }
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
       console.error('Error fetching recipe:', error);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   };
 
@@ -139,11 +157,11 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
         <div className="flex items-center gap-4 text-sm text-gray-600">
           <div className="flex items-center gap-1">
             <Clock className="h-4 w-4" />
-            <span>{recipe.prepTime + recipe.cookTime} min</span>
+            <span>{(recipe.prepTime || 0) + (recipe.cookTime || 0)} min</span>
           </div>
           <div className="flex items-center gap-1">
             <Users className="h-4 w-4" />
-            <span>{recipe.servingSize || `${recipe.servings} serving${Number(recipe.servings) > 1 ? 's' : ''}`}</span>
+            <span>{recipe.servingSize || `${recipe.servings || 1} serving${Number(recipe.servings || 1) > 1 ? 's' : ''}`}</span>
           </div>
         </div>
       </div>
@@ -154,7 +172,7 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
           Ingredients:
         </h2>
         <ul className="space-y-3">
-          {recipe.ingredients.map((ingredient, index) => (
+          {(recipe.ingredients || []).map((ingredient, index) => (
             <li key={index} className="flex items-start text-gray-700">
               <span className="mr-3 mt-1.5 h-1.5 w-1.5 rounded-full bg-gray-900 shrink-0"></span>
               <span className="text-base leading-relaxed">
@@ -166,6 +184,9 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
             </li>
           ))}
         </ul>
+        {(!recipe.ingredients || recipe.ingredients.length === 0) && (
+          <p className="text-sm text-gray-500">Ingredients are not available for this recipe yet.</p>
+        )}
       </div>
 
       {/* Instructions Section */}
@@ -174,7 +195,7 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
           Instructions:
         </h2>
         <ol className="space-y-4">
-          {recipe.instructions.map((instruction, index) => (
+          {(recipe.instructions || []).map((instruction, index) => (
             <li key={index} className="flex items-start text-gray-700">
               <span className="mr-3 font-bold text-gray-900 shrink-0">
                 {index + 1}.
@@ -185,6 +206,9 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
             </li>
           ))}
         </ol>
+        {(!recipe.instructions || recipe.instructions.length === 0) && (
+          <p className="text-sm text-gray-500">Instructions are not available for this recipe yet.</p>
+        )}
       </div>
 
       {/* Nutrition Info */}
@@ -194,19 +218,19 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
         </h2>
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-blue-50 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{recipe.nutrition.calories}</p>
+            <p className="text-2xl font-bold text-blue-600">{recipe.nutrition?.calories || 0}</p>
             <p className="text-sm text-blue-700 mt-1">Calories</p>
           </div>
           <div className="bg-green-50 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">{recipe.nutrition.protein}g</p>
+            <p className="text-2xl font-bold text-green-600">{recipe.nutrition?.protein || 0}g</p>
             <p className="text-sm text-green-700 mt-1">Protein</p>
           </div>
           <div className="bg-yellow-50 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-600">{recipe.nutrition.carbs}g</p>
+            <p className="text-2xl font-bold text-yellow-600">{recipe.nutrition?.carbs || 0}g</p>
             <p className="text-sm text-yellow-700 mt-1">Carbs</p>
           </div>
           <div className="bg-purple-50 rounded-2xl p-4 text-center">
-            <p className="text-2xl font-bold text-purple-600">{recipe.nutrition.fat}g</p>
+            <p className="text-2xl font-bold text-purple-600">{recipe.nutrition?.fat || 0}g</p>
             <p className="text-sm text-purple-700 mt-1">Fat</p>
           </div>
         </div>
@@ -232,7 +256,7 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
       )}
 
       {/* Bottom Navigation Placeholder */}
-    
+
     </div>
   );
 }

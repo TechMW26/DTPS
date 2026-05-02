@@ -56,9 +56,63 @@ const getDurationDaysFromSource = (source: any): number => {
   );
 };
 
+const getEffectiveDurationDays = (purchase: any): number => {
+  if (typeof purchase?.__effectiveDurationDays === 'number') {
+    return purchase.__effectiveDurationDays;
+  }
+
+  const sourceDurationDays = getDurationDaysFromSource(purchase);
+  if (sourceDurationDays > 0) {
+    return sourceDurationDays;
+  }
+
+  const inferredDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
+  const inferredRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
+  return Math.max(0, inferredDaysUsed + inferredRemainingDays);
+};
+
+const getEffectiveDaysUsed = (purchase: any): number => {
+  if (typeof purchase?.__effectiveDaysUsed === 'number') {
+    return purchase.__effectiveDaysUsed;
+  }
+
+  return Math.max(0, Number(purchase?.daysUsed || 0));
+};
+
+const getEffectiveRemainingDays = (purchase: any): number => {
+  if (typeof purchase?.__effectiveRemainingDays === 'number') {
+    return purchase.__effectiveRemainingDays;
+  }
+
+  const durationDays = getEffectiveDurationDays(purchase);
+  const storedDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
+  const storedRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
+  const hasStoredCounters =
+    purchase?.daysUsed !== undefined ||
+    purchase?.remainingDays !== undefined;
+
+  if (hasStoredCounters) {
+    return storedRemainingDays;
+  }
+
+  return Math.max(0, durationDays - storedDaysUsed);
+};
+
+const shouldPreserveStoredCounters = (purchase: any, recalculatedDaysUsed: number): boolean => {
+  const hasStoredCounters =
+    purchase?.daysUsed !== undefined ||
+    purchase?.remainingDays !== undefined;
+
+  if (!hasStoredCounters) {
+    return false;
+  }
+
+  const storedDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
+  return storedDaysUsed > Math.max(0, Number(recalculatedDaysUsed || 0));
+};
+
 const isPurchaseActiveForPlanning = (purchase: any, now: Date): boolean => {
-  const durationDays = getDurationDaysFromSource(purchase);
-  const remainingDays = Math.max(0, durationDays - (purchase.daysUsed || 0));
+  const remainingDays = getEffectiveRemainingDays(purchase);
   if (remainingDays <= 0) return false;
 
   // If expected end date is explicitly set, honor it for active-window checks.
@@ -213,10 +267,9 @@ export async function GET(request: NextRequest) {
       const purchaseObj = purchase.toObject();
       const now = new Date();
 
-      // Calculate plan-based remaining days (allocation)
-      const durationDays = getDurationDaysFromSource(purchaseObj);
-      const daysUsed = purchaseObj.daysUsed || 0;
-      const remainingDays = Math.max(0, durationDays - daysUsed);
+      const durationDays = getEffectiveDurationDays(purchaseObj);
+      const daysUsed = getEffectiveDaysUsed(purchaseObj);
+      const remainingDays = getEffectiveRemainingDays(purchaseObj);
 
       // Calculate calendar days until end date (for expiration)
       const endDate = purchaseObj.expectedEndDate || purchaseObj.endDate;
@@ -230,7 +283,8 @@ export async function GET(request: NextRequest) {
       return {
         ...purchaseObj,
         durationDays,
-        remainingDays,  // Plan allocation remaining (durationDays - daysUsed)
+        daysUsed,
+        remainingDays,
         calendarDaysUntilEnd, // Days until expectedEndDate/endDate
         isExpired
       };
@@ -543,9 +597,19 @@ export async function PATCH(request: NextRequest) {
 
         const oldDaysUsed = Math.max(0, Number(purchase.daysUsed || 0));
         const nextMealPlanCreated = purchaseMealPlans.length > 0 || (allPurchases.length === 1 && allMealPlans.length > 0);
+        const preserveStoredCounters = shouldPreserveStoredCounters(purchase, nextDaysUsed);
+        const finalDaysUsed = preserveStoredCounters ? oldDaysUsed : nextDaysUsed;
+        const finalRemainingDays = preserveStoredCounters
+          ? Math.max(0, Number(purchase.remainingDays || 0))
+          : Math.max(0, getEffectiveDurationDays(purchase) - finalDaysUsed);
 
-        if (oldDaysUsed !== nextDaysUsed || Boolean(purchase.mealPlanCreated) !== nextMealPlanCreated) {
-          purchase.daysUsed = nextDaysUsed;
+        if (
+          oldDaysUsed !== finalDaysUsed ||
+          Math.max(0, Number(purchase.remainingDays || 0)) !== finalRemainingDays ||
+          Boolean(purchase.mealPlanCreated) !== nextMealPlanCreated
+        ) {
+          purchase.daysUsed = finalDaysUsed;
+          purchase.remainingDays = finalRemainingDays;
           purchase.mealPlanCreated = nextMealPlanCreated;
           await purchase.save();
           updatedCount++;
@@ -595,9 +659,19 @@ export async function PATCH(request: NextRequest) {
     const oldDaysUsed = Math.max(0, Number(purchase.daysUsed || 0));
     const nextDaysUsed = totalDaysUsed;
     const nextMealPlanCreated = mealPlans.length > 0;
+    const preserveStoredCounters = shouldPreserveStoredCounters(purchase, nextDaysUsed);
+    const finalDaysUsed = preserveStoredCounters ? oldDaysUsed : nextDaysUsed;
+    const finalRemainingDays = preserveStoredCounters
+      ? Math.max(0, Number(purchase.remainingDays || 0))
+      : Math.max(0, getEffectiveDurationDays(purchase) - finalDaysUsed);
 
-    if (oldDaysUsed !== nextDaysUsed || Boolean(purchase.mealPlanCreated) !== nextMealPlanCreated) {
-      purchase.daysUsed = nextDaysUsed;
+    if (
+      oldDaysUsed !== finalDaysUsed ||
+      Math.max(0, Number(purchase.remainingDays || 0)) !== finalRemainingDays ||
+      Boolean(purchase.mealPlanCreated) !== nextMealPlanCreated
+    ) {
+      purchase.daysUsed = finalDaysUsed;
+      purchase.remainingDays = finalRemainingDays;
       purchase.mealPlanCreated = nextMealPlanCreated;
       await purchase.save();
     }
@@ -607,11 +681,13 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Days used recalculated: ${oldDaysUsed} → ${nextDaysUsed}`,
+      message: preserveStoredCounters
+        ? `Days used preserved at ${oldDaysUsed}; stored purchase counters remain authoritative.`
+        : `Days used recalculated: ${oldDaysUsed} → ${finalDaysUsed}`,
       oldDaysUsed,
-      newDaysUsed: nextDaysUsed,
+      newDaysUsed: finalDaysUsed,
       mealPlansCount: mealPlans.length,
-      remainingDays: Math.max(0, (purchase.durationDays || 0) - nextDaysUsed)
+      remainingDays: finalRemainingDays
     });
   } catch (error) {
     console.error('Error recalculating days used:', error);

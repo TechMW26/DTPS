@@ -192,6 +192,13 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
     return `${year}-${month}-${day}`;
   };
 
+  // Helper to parse a date string (YYYY-MM-DD) to a Date object
+  // Handles timezone correctly by creating a local date (not UTC)
+  const parseLocalDate = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day, 0, 0, 0, 0); // Create local date at midnight
+  };
+
   // Helper to add days to a date
   const addDaysToDate = (date: Date, days: number): Date => {
     const result = new Date(date);
@@ -201,7 +208,8 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
 
   const buildDays = (count: number): DayPlan[] => {
     const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const baseDate = startDate ? new Date(startDate) : new Date();
+    // Use the helper to parse the date string as a local date (not UTC)
+    const baseDate = startDate ? parseLocalDate(startDate) : new Date();
 
     return Array.from({ length: count }).map((_, index) => {
       const dayDate = addDaysToDate(baseDate, index);
@@ -233,7 +241,18 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
 
       return newDays.map((d, i) => ({
         ...d,
-        ...(initialMeals[i] || {}), // Preserve all fields from initialMeals including isHeld, isCopiedFromHold
+        // Preserve hold-related and specific fields from initialMeals, but KEEP recalculated day/date
+        isHeld: initialMeals[i]?.isHeld,
+        holdReason: initialMeals[i]?.holdReason,
+        holdDate: initialMeals[i]?.holdDate,
+        isCopiedFromHold: initialMeals[i]?.isCopiedFromHold,
+        originalDayIndex: initialMeals[i]?.originalDayIndex,
+        wasHeld: initialMeals[i]?.wasHeld,
+        resumedDate: initialMeals[i]?.resumedDate,
+        // Override with recalculated values from buildDays to fix date mismatch
+        day: d.day, // Use newly calculated day label with correct date
+        date: d.date, // Use newly calculated date
+        // Load meals and note from initialMeals
         meals: normalizeMealKeys(initialMeals[i]?.meals || {}),
         note: initialMeals[i]?.note || ''
       }));
@@ -249,7 +268,18 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
       setWeekPlan(prev => {
         return newDays.map((d, i) => ({
           ...d,
-          ...(prev[i] || {}), // Preserve all fields including isHeld, isCopiedFromHold
+          // Preserve hold-related and specific fields from previous state, but KEEP recalculated day/date
+          isHeld: prev[i]?.isHeld,
+          holdReason: prev[i]?.holdReason,
+          holdDate: prev[i]?.holdDate,
+          isCopiedFromHold: prev[i]?.isCopiedFromHold,
+          originalDayIndex: prev[i]?.originalDayIndex,
+          wasHeld: prev[i]?.wasHeld,
+          resumedDate: prev[i]?.resumedDate,
+          // Override with recalculated values from buildDays to fix date mismatch
+          day: d.day, // Use newly calculated day label with correct date
+          date: d.date, // Use newly calculated date
+          // Preserve meals and note from previous state
           meals: prev[i]?.meals || {},
           note: prev[i]?.note || ''
         }));
@@ -273,7 +303,18 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
 
       setWeekPlan(adjustedDays.map((d, i) => ({
         ...d,
-        ...(initialMeals[i] || {}), // Preserve all fields including isHeld, isCopiedFromHold
+        // Preserve hold-related and specific fields from initialMeals, but KEEP recalculated day/date
+        isHeld: initialMeals[i]?.isHeld,
+        holdReason: initialMeals[i]?.holdReason,
+        holdDate: initialMeals[i]?.holdDate,
+        isCopiedFromHold: initialMeals[i]?.isCopiedFromHold,
+        originalDayIndex: initialMeals[i]?.originalDayIndex,
+        wasHeld: initialMeals[i]?.wasHeld,
+        resumedDate: initialMeals[i]?.resumedDate,
+        // Override with recalculated values from buildDays to fix date mismatch
+        day: d.day, // Use newly calculated day label with correct date
+        date: d.date, // Use newly calculated date
+        // Load meals and note from initialMeals
         meals: normalizeMealKeys(initialMeals[i]?.meals || {}),
         note: initialMeals[i]?.note || ''
       })));

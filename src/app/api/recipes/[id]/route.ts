@@ -8,6 +8,12 @@ import mongoose from 'mongoose';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { normalizeToArray, normalizeNutritionValue } from '@/lib/recipe-normalize';
 
+function jsonNoStore(body: unknown, init?: ResponseInit) {
+  const response = NextResponse.json(body, init);
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
+}
+
 /**
  * Parse servings string to extract numeric value
  * Examples:
@@ -51,14 +57,14 @@ export async function GET(
 
     // Validate ObjectId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ error: 'Invalid recipe ID format' }, { status: 400 });
+      return jsonNoStore({ error: 'Invalid recipe ID format' }, { status: 400 });
     }
 
     const [session] = await Promise.all([
       getServerSession(authOptions),
       connectDB(),
     ]);
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session) return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
 
     // Fetch recipe with populated creator in a single query
     let recipe = await Recipe.findById(id)
@@ -66,7 +72,7 @@ export async function GET(
       .lean();
 
     if (!recipe)
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      return jsonNoStore({ error: 'Not found' }, { status: 404 });
 
     // Ensure proper typing for recipe data
     const recipeData = recipe as Record<string, any>;
@@ -103,10 +109,10 @@ export async function GET(
 
     await Recipe.findByIdAndUpdate(id, { $inc: { views: 1 } });
 
-    return NextResponse.json({ success: true, recipe: recipeData });
+    return jsonNoStore({ success: true, recipe: recipeData });
   } catch (error: any) {
     console.error('Error fetching recipe:', error?.message || error);
-    return NextResponse.json({ error: 'Failed to fetch recipe', details: error?.message }, { status: 500 });
+    return jsonNoStore({ error: 'Failed to fetch recipe', details: error?.message }, { status: 500 });
   }
 }
 

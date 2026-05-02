@@ -19,8 +19,6 @@ import {
   Search,
   Send,
   Trash2,
-  User,
-  Users,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -41,6 +39,7 @@ interface Recipient {
   email: string;
   avatar?: string;
   role: RecipientRole;
+  status?: 'active' | 'inactive' | 'suspended' | string;
   hasFcmToken?: boolean;
   tokenCount?: number;
 }
@@ -73,6 +72,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [clientStatusFilter, setClientStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   const [sendResult, setSendResult] = useState<{
     success: boolean;
@@ -136,6 +136,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
             email?: unknown;
             avatar?: unknown;
             role?: unknown;
+            status?: unknown;
             hasFcmToken?: unknown;
             tokenCount?: unknown;
           }>;
@@ -154,6 +155,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
                 email: String(recipient?.email || '').trim(),
                 avatar: typeof recipient?.avatar === 'string' ? recipient.avatar : undefined,
                 role,
+                status: String(recipient?.status || '').trim().toLowerCase(),
                 hasFcmToken: Boolean(recipient?.hasFcmToken),
                 tokenCount: Number(recipient?.tokenCount || 0),
               };
@@ -189,13 +191,28 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
   }, [isAdmin, recipients, selectedRoles]);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredRecipients = useMemo(
+  const statusFilteredRecipients = useMemo(
     () => roleFilteredRecipients.filter((recipient) => {
+      if (clientStatusFilter === 'all') {
+        return true;
+      }
+
+      if (recipient.role !== 'client') {
+        return false;
+      }
+
+      return String(recipient.status || '').toLowerCase() === clientStatusFilter;
+    }),
+    [roleFilteredRecipients, clientStatusFilter]
+  );
+
+  const filteredRecipients = useMemo(
+    () => statusFilteredRecipients.filter((recipient) => {
       const safeName = recipient.name.toLowerCase();
       const safeEmail = recipient.email.toLowerCase();
       return safeName.includes(normalizedQuery) || safeEmail.includes(normalizedQuery);
     }),
-    [roleFilteredRecipients, normalizedQuery]
+    [statusFilteredRecipients, normalizedQuery]
   );
 
   const cleanupRoleFilteredRecipients = useMemo(() => {
@@ -650,6 +667,34 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
                         <X className="h-4 w-4 text-muted-foreground" />
                       </button>
                     )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Client Status:</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={clientStatusFilter === 'all' ? 'default' : 'outline'}
+                      onClick={() => setClientStatusFilter('all')}
+                    >
+                      All
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={clientStatusFilter === 'active' ? 'default' : 'outline'}
+                      onClick={() => setClientStatusFilter('active')}
+                    >
+                      Active
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={clientStatusFilter === 'inactive' ? 'default' : 'outline'}
+                      onClick={() => setClientStatusFilter('inactive')}
+                    >
+                      Inactive
+                    </Button>
                   </div>
 
                   <div className="h-56 border rounded-md p-2 overflow-y-auto">

@@ -39,21 +39,41 @@ export default function RecipeDetailPage() {
   const [servingMultiplier, setServingMultiplier] = useState(1);
 
   useEffect(() => {
-    fetchRecipeDetail();
+    const recipeId = String(params?.id || '').trim();
+    if (!recipeId) return;
+
+    const controller = new AbortController();
+    fetchRecipeDetail(recipeId, controller.signal);
+
+    return () => {
+      controller.abort();
+    };
   }, [params.id]);
 
-  const fetchRecipeDetail = async () => {
+  const fetchRecipeDetail = async (recipeId: string, signal?: AbortSignal) => {
     try {
+      setRecipe(null);
       setLoading(true);
-      const response = await fetch(`/api/recipes/${params.id}`);
+      const response = await fetch(`/api/recipes/${recipeId}`, {
+        cache: 'no-store',
+        signal,
+      });
       if (response.ok) {
         const data = await response.json();
-        setRecipe(data.recipe);
+        if (data?.recipe && String(data.recipe._id) === recipeId) {
+          setRecipe(data.recipe);
+        }
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
       console.error('Error fetching recipe:', error);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   };
 

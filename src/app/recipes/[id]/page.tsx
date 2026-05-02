@@ -172,15 +172,25 @@ export default function RecipeViewPage() {
   }, [session?.user?.role]);
 
   useEffect(() => {
-    if (recipeId) {
-      fetchRecipe();
-    }
+    if (!recipeId) return;
+
+    const controller = new AbortController();
+    fetchRecipe(recipeId, controller.signal);
+
+    return () => {
+      controller.abort();
+    };
   }, [recipeId]);
 
-  const fetchRecipe = async () => {
+  const fetchRecipe = async (targetRecipeId: string, signal?: AbortSignal) => {
     try {
+      setError('');
+      setRecipe(null);
       setLoading(true);
-      const response = await fetch(`/api/recipes/${recipeId}`);
+      const response = await fetch(`/api/recipes/${targetRecipeId}`, {
+        cache: 'no-store',
+        signal,
+      });
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -192,16 +202,22 @@ export default function RecipeViewPage() {
       }
 
       const data = await response.json();
-      if (data.success && data.recipe) {
+      if (data.success && data.recipe && String(data.recipe._id) === String(targetRecipeId)) {
         setRecipe(data.recipe);
       } else {
-        setError('Invalid recipe data received');
+        setError('Recipe data mismatch. Please refresh and try again.');
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
       console.error('Error fetching recipe:', error);
       setError('Failed to load recipe');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   };
 

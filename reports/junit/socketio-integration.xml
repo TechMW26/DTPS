@@ -1,21 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="8" failures="0" errors="0" time="8.974">
-  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-04-27T08:32:57" time="8.811" tests="8">
-    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="1.032">
+<testsuites name="jest tests" tests="9" failures="0" errors="0" time="9.125">
+  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-01T10:19:09" time="8.938" tests="9">
+    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="0.985">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.903">
+    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.871">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.834">
+    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.835">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="returns correct remaining days when days counters exist but duration metadata is missing" time="0.826">
+    <testcase classname="payment flow integrations (supertest + jest)" name="returns correct remaining days when days counters exist but duration metadata is missing" time="0.833">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="clamps inconsistent stored remaining days so used plus remaining never exceeds total duration" time="0.842">
+    <testcase classname="payment flow integrations (supertest + jest)" name="keeps client-purchases GET aligned with check-route stored counters" time="0.86">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="prioritizes the relevant in-progress purchase when multiple partially used purchases exist" time="0.92">
+    <testcase classname="payment flow integrations (supertest + jest)" name="clamps inconsistent stored remaining days so used plus remaining never exceeds total duration" time="0.822">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="does not overwrite stored counters when Fix Days recalculation is triggered" time="0.84">
+    <testcase classname="payment flow integrations (supertest + jest)" name="prioritizes the relevant in-progress purchase when multiple partially used purchases exist" time="0.827">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="synchronizes remaining days when updating days used through client purchases PUT" time="0.846">
+    <testcase classname="payment flow integrations (supertest + jest)" name="does not overwrite stored counters when Fix Days recalculation is triggered" time="0.819">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="synchronizes remaining days when updating days used through client purchases PUT" time="0.825">
     </testcase>
   </testsuite>
 </testsuites>

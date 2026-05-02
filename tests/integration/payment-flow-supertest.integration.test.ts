@@ -275,6 +275,73 @@ describe('payment flow integrations (supertest + jest)', () => {
         }
     });
 
+    it('keeps client-purchases GET aligned with check-route stored counters', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: 'admin-client-purchases-get-alignment@example.com',
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+
+        const purchase = await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Counter Alignment Plan',
+            planCategory: 'general-wellness',
+            durationDays: 90,
+            durationLabel: '90 Days',
+            baseAmount: 5000,
+            finalAmount: 5000,
+            amount: 5000,
+            status: 'paid',
+            paymentStatus: 'paid',
+            mealPlanCreated: true,
+            daysUsed: 64,
+            remainingDays: 26,
+            paidAt: new Date('2026-04-12T07:30:00.000Z'),
+        });
+
+        await UnifiedPayment.collection.updateOne(
+            { _id: purchase._id },
+            { $set: { remainingDays: 10 } }
+        );
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+
+        const listRoute = await import('@/app/api/client-purchases/route');
+        const checkRoute = await import('@/app/api/client-purchases/check/route');
+        const listServer = createRouteTestServer(listRoute.GET);
+        const checkServer = createRouteTestServer(checkRoute.GET);
+
+        try {
+            const [listResponse, checkResponse] = await Promise.all([
+                request(listServer)
+                    .get('/api/client-purchases')
+                    .query({ clientId: entityId(client) }),
+                request(checkServer)
+                    .get('/api/client-purchases/check')
+                    .query({ clientId: entityId(client) }),
+            ]);
+
+            expect(listResponse.status).toBe(200);
+            expect(listResponse.body.success).toBe(true);
+            expect(checkResponse.status).toBe(200);
+            expect(checkResponse.body.success).toBe(true);
+
+            const listedPurchase = listResponse.body.purchases.find(
+                (item: any) => String(item._id) === entityId(purchase)
+            );
+
+            expect(listedPurchase).toBeTruthy();
+            expect(listedPurchase.daysUsed).toBe(64);
+            expect(listedPurchase.remainingDays).toBe(10);
+            expect(checkResponse.body.purchase?.daysUsed).toBe(64);
+            expect(checkResponse.body.remainingDays).toBe(10);
+        } finally {
+            listServer.close();
+            checkServer.close();
+        }
+    });
+
     it('clamps inconsistent stored remaining days so used plus remaining never exceeds total duration', async () => {
         const admin = await createUser({
             role: UserRole.ADMIN,

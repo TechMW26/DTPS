@@ -495,7 +495,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     setDraftSaveStatus('saving');
 
     try {
-      const startDateObj = new Date(startDate);
+      // Parse startDate as a local date (not UTC) to avoid timezone issues
+      const [year, month, day] = startDate.split('-').map(Number);
+      const startDateObj = new Date(year, month - 1, day, 0, 0, 0, 0); // Create local date at midnight
       const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const mealsData = mealPayload.meals;
       const mealTypesData = mealPayload.mealTypes;
@@ -602,6 +604,13 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   }, [step]);
   // ============ END DRAFT AUTO-SAVE ============
 
+  // Helper to parse a date string (YYYY-MM-DD) to a Date object
+  // Handles timezone correctly by creating a local date (not UTC)
+  const parseLocalDate = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day, 0, 0, 0, 0); // Create local date at midnight
+  };
+
   // Don't auto-restore drafts on mount - this was causing navigation issues
   // Drafts will be restored only when user explicitly clicks "Create New Plan"
   // The hasMountedRef is no longer needed for this purpose
@@ -609,7 +618,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   // Calculate end date when duration or start date changes
   useEffect(() => {
     if (startDate && duration > 0) {
-      const start = new Date(startDate);
+      const start = parseLocalDate(startDate);
       const end = addDays(start, duration - 1);
       setEndDate(format(end, 'yyyy-MM-dd'));
     }
@@ -622,10 +631,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const startDate = new Date(plan.startDate);
+    const startDate = parseLocalDate(plan.startDate);
     startDate.setHours(0, 0, 0, 0);
 
-    const endDate = new Date(plan.endDate);
+    const endDate = parseLocalDate(plan.endDate);
     endDate.setHours(0, 0, 0, 0);
 
     return today >= startDate && today <= endDate;

@@ -1,0 +1,140 @@
+issueType,_id,uuid,name,missingName,missingDescription,missingIngredients,missingInstructions,dietaryRestrictions,tags
+veg-nonveg-conflict,69905e95b76bd824d7fb9e22,1108,Boiled Egg White And Vegetable Salad,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""Dairy-Free"",""Low-Carb"",""Low-Fat"",""High-Protein""]",[]
+veg-nonveg-conflict,69905f32b76bd824d7fb9f27,1118,Whole Wheat Banana Pancake,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69906145b76bd824d7fba48d,1180,Egg White With Sprouts,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69906158b76bd824d7fba4c9,1189,Two Egg White Bhurji,false,false,false,false,"[""Vegetarian"",""High-Protein"",""Low-Fat""]",[]
+veg-nonveg-conflict,6990617fb76bd824d7fba543,1209,Mixed Vegetable Soup With Egg White,false,false,false,false,"[""Vegetarian"",""Low-Fat"",""High-Protein""]",[]
+veg-nonveg-conflict,6990619bb76bd824d7fba581,1221,Rice with mixed veggies and paneer,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,699061dbb76bd824d7fba622,1242,Bread Omelette,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69906251b76bd824d7fba6e5,1273,Brown Bread Scrambled Egg White Tomato Cucumber Sandwich,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6990628cb76bd824d7fba763,1296,Egg White Bhurji With Capsicum Onion,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6990632ab76bd824d7fba881,1331,Egg Omelette,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69906336b76bd824d7fba89d,1336,Egg Spinach Omellete,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,699063a7b76bd824d7fbaa84,1350,Whole Wheat Bread Egg White Omellete Sandwich,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6990645eb76bd824d7fbacd2,1367,Sauteed Eggplant,false,false,false,false,"[""Vegetarian"",""Vegan"",""Gluten-Free""]",[]
+veg-nonveg-conflict,6990648db76bd824d7fbad1f,1378,Baigan Bharta,false,false,false,false,"[""Vegetarian"",""Vegan"",""Gluten-Free""]",[]
+veg-nonveg-conflict,699064f8b76bd824d7fbae0d,1411,Boiled Egg White Salad With Cucumber Potato,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69906502b76bd824d7fbae2b,1416,Egg Chapati Without Oil,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6990657db76bd824d7fbaf00,1449,Vegetable Omelette,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69906669b76bd824d7fbb0fa,1533,KETO PANEER CHEESE CHEELA,false,false,false,false,"[""Vegetarian"",""Keto"",""Low-Carb"",""High-Protein""]",[]
+veg-nonveg-conflict,699066a2b76bd824d7fbb1c7,1569,SPINACH CARROT EGG SOUP,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""Gluten-Free"",""Vegan""]",[]
+veg-nonveg-conflict,69906795b76bd824d7fbb25e,1590,Egg Podimas,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69906833b76bd824d7fbb30c,1626,Elaneer Payasam,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,699068dcb76bd824d7fbb3e1,1668,Kara Kuzhambu,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,6990692fb76bd824d7fbb445,1687,Brinjal Curry,false,false,false,false,"[""Vegetarian"",""Gluten-Free""]",[]
+veg-nonveg-conflict,69906a70b76bd824d7fbb657,1723,Kismur,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian""]",[]
+veg-nonveg-conflict,69906a87b76bd824d7fbb66f,1729,Bebinca,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69906c42bd8ff2a0e78f47ee,1839,Apple Oats Cake,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69906c4dbd8ff2a0e78f47f8,1841,Carrot Oats Cake,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69906c5bbd8ff2a0e78f480d,1845,Coconut Flour Cake,false,false,false,false,"[""Vegetarian"",""Gluten-Free""]",[]
+veg-nonveg-conflict,69906c5cbd8ff2a0e78f4812,1846,Almond Flour Cake,false,false,false,false,"[""Vegetarian"",""Gluten-Free"",""Dairy-Free""]",[]
+veg-nonveg-conflict,6990d6d5bd8ff2a0e78f500a,2084,Bone Broth,false,false,false,false,"[""Non-Vegetarian"",""Gluten-Free"",""Dairy-Free"",""Keto"",""Paleo"",""Vegetarian""]",[]
+veg-nonveg-conflict,6990d746bd8ff2a0e78f506b,2102,Egg & Veg Combo,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6990d756bd8ff2a0e78f5079,2104,Egg Tomato Scramble,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,6990d8cfbd8ff2a0e78f51fa,2177,Vegetable Bharta,false,false,false,false,"[""Vegetarian"",""Vegan""]",[]
+veg-nonveg-conflict,6990dadabd8ff2a0e78f5284,2190,Brown Rice Chicken Bowl,false,false,false,false,"[""Non-Vegetarian"",""Vegetarian"",""Vegan"",""Gluten-Free"",""High-Protein""]",[]
+veg-nonveg-conflict,6990daedbd8ff2a0e78f52ab,2193,Chicken Burrito Bowl,false,false,false,false,"[""Non-Vegetarian"",""Vegetarian"",""Vegan"",""Gluten-Free""]",[]
+veg-nonveg-conflict,6990db96bd8ff2a0e78f538e,2234,Bharma Bengan With Achar,false,false,false,false,"[""Vegetarian"",""Vegan""]",[]
+veg-nonveg-conflict,6990dbb0bd8ff2a0e78f53b8,2241,Egg Momos (Steamed),false,false,false,false,"[""Vegetarian"",""Non-Vegetarian""]",[]
+veg-nonveg-conflict,6990dbb9bd8ff2a0e78f53ef,2244,Egg Roll (Low Oil),false,false,false,false,"[""Vegetarian"",""Low-Fat"",""High-Protein""]",[]
+veg-nonveg-conflict,6990dbb9bd8ff2a0e78f53f4,2245,Egg Raita Bowl,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6990dbbabd8ff2a0e78f53f9,2246,Egg Quinoa Bowl,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6990dbc2bd8ff2a0e78f5407,2247,Egg Toast,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,6990dc56bd8ff2a0e78f54eb,2285,Omelette Toast,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6990e24bbd8ff2a0e78f5780,2374,Bangan (Long Eggplants ) Sabji,false,false,false,false,"[""Vegetarian"",""Vegan""]",[]
+veg-nonveg-conflict,6996df5f9e77b3305bd1c50e,2500,Boiled Chickpeas And Boiled Egg Salad,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6996eb799e77b3305bd1ceac,2503,Boiled Egg Onion Salad,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6996ed659e77b3305bd1cf75,2504,Boiled Egg Salad,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""Dairy-Free"",""Keto"",""High-Protein""]",[]
+veg-nonveg-conflict,6996fe549e77b3305bd1d617,2632,Egg Bhurji,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6996fe629e77b3305bd1d622,2633,Scrambled Eggs,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6996fe629e77b3305bd1d627,2634,Egg White Omelette,false,false,false,false,"[""Vegetarian"",""Low-Carb"",""Low-Fat"",""High-Protein""]",[]
+veg-nonveg-conflict,6996fe6a9e77b3305bd1d62b,2635,Vegetable Omelette,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,6996ff899e77b3305bd1d739,2680,Egg Wrap,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6997009d9e77b3305bd1d858,2739,Theeyal,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,699703019e77b3305bd1da3b,2817,Undhiyu,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,6997c8d69e77b3305bd1e362,2872,Litti Chokha (2medium ball approx.90g+ chokha approx.180g),false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,6997c8e39e77b3305bd1e372,2876,Baingan Chokha,false,false,false,false,"[""Vegetarian"",""Vegan""]",[]
+veg-nonveg-conflict,6997c9109e77b3305bd1e39b,2886,Santula,false,false,false,false,"[""Vegetarian"",""Vegan"",""Gluten-Free""]",[]
+veg-nonveg-conflict,6997fae19e77b3305bd1f1ad,3023,Atta Cheela With Egg,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6997fda59e77b3305bd1f4d4,3045,Oats Eggs Banana Almond And Milk Pancake (1serving- approx.2pcs medium pancakes),false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6997fe259e77b3305bd1f593,3053,Egg Roti Without Oil (2pcs[50gms]),false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6997fe409e77b3305bd1f5b0,3055,Egg Omlette,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6997fe499e77b3305bd1f5cc,3056,Egg Roti Roll With Cucumber And Carrot,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6997fe759e77b3305bd1f609,3058,Egg Roti,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6998070faface91e56c8a61a,3115,Egg Spinach Omellete,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69980786aface91e56c8a66b,3118,Egg Bhurji,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian""]",[]
+veg-nonveg-conflict,699808c0aface91e56c8a741,3124,Egg Bhurji With Onion Tomato,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69980972aface91e56c8a7ed,3130,Egg Bhurji Roll,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian""]",[]
+veg-nonveg-conflict,69980b41aface91e56c8a8b9,3136,Whole Wheat Bread Egg White Omellete Sandwich,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,699811ccaface91e56c8aee4,3188,Sauteed Eggplant,false,false,false,false,"[""Vegetarian"",""Vegan"",""Gluten-Free""]",[]
+veg-nonveg-conflict,6998121daface91e56c8af48,3191,Onion Egg Dosa,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian""]",[]
+veg-nonveg-conflict,6998132baface91e56c8b02f,3200,Egg Oats Dosa,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69981420aface91e56c8b0c6,3209,Scrambled Egg With Vegetables,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69982ba3aface91e56c8c0dd,3267,Scrambled Eggs With Tomato,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69982cc5aface91e56c8c33f,3273,Sauteed Paneer And Veggies,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69983223aface91e56c8c90c,3319,Dosa With Egg,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian""]",[]
+veg-nonveg-conflict,699834e3aface91e56c8cc1e,3325,Baigan Bharta,false,false,false,false,"[""Vegetarian"",""Vegan"",""Gluten-Free""]",[]
+veg-nonveg-conflict,699835e0aface91e56c8cd36,3332,Brinjal Tomato Sabji,false,false,false,false,"[""Vegetarian"",""Vegan""]",[]
+veg-nonveg-conflict,69983bc0aface91e56c8d77f,3390,Tomato Egg Rice,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69983c97aface91e56c8d888,3396,Brown Bread Omelette,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69983d37aface91e56c8d91e,3401,Egg Chapati Without Oil,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69984458aface91e56c8e172,3441,Egg White Bhurji,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,699844edaface91e56c8e1d8,3445,Toast And Boiled Egg,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69984599aface91e56c8e225,3449,Wheat Bread Egg White Omellete Sandwich,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,699848e0aface91e56c8e3db,3466,Litti Chokha,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69984a06aface91e56c8e490,3474,Omelette With Tomato Onion And Capsicum,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69984ba4aface91e56c8e562,3486,Egg And Vegetable Toast,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69984bdeaface91e56c8e581,3488,Banana Pancake,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69984d93aface91e56c8e639,3499,Egg White Oats Omelette With Vegetables,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69986b40aface91e56c8ea75,3559,Egg White Bhurji With Capsicum Onion,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69986cc0aface91e56c8eaca,3567,Litti Chokha,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,699873e7aface91e56c8ed2f,3601,Omlette Chapati Roll,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69987ac6aface91e56c8eeb3,3625,Omelette,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69987bbcaface91e56c8ef01,3628,Two Egg White Bhurji,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69988177aface91e56c8f0d0,3661,Omelette With Vegetable,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69988324aface91e56c8f147,3670,Capsicum Egg Bhurji,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69988364aface91e56c8f161,3672,Egg Vegetable Sandwich,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian""]",[]
+veg-nonveg-conflict,69988b83aface91e56c8f194,3675,Egg White With Sprouts,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69988c63aface91e56c8f1d4,3680,Brinjal Sabji,false,false,false,false,"[""Vegetarian"",""Vegan""]",[]
+veg-nonveg-conflict,69988faaaface91e56c8f2ab,3697,Roasted veggies with soya chunks (1serving-250g),false,false,false,false,"[""Vegetarian"",""Vegan"",""High-Protein""]",[]
+veg-nonveg-conflict,69988ff9aface91e56c8f2bc,3699,Bread Omelette,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69989099aface91e56c8f2ed,3703,Egg Wrap,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6999310aac2fbbee1998a02b,3710,"Egg Bhurji With Mushroom ,Onion And Tomato",false,false,false,false,"[""Vegetarian"",""Non-Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,6999316eac2fbbee1998a045,3712,Brown Bread Egg Sandwich,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian""]",[]
+veg-nonveg-conflict,69993555ac2fbbee1998a103,3726,Mixed Vegetable Soup With Egg White,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,69994b10ac2fbbee1998ad39,3831,Egg Cheela,false,false,false,false,"[""Vegetarian"",""High-Protein""]",[]
+veg-nonveg-conflict,699c031dd21cc8ab847bfa6c,3901,Grilled Eggplant And Feta Cheese Salad,false,false,false,false,"[""Vegetarian"",""Mediterranean""]",[]
+veg-nonveg-conflict,699c14f5d21cc8ab847c02dd,3924,Egg Rice,false,false,false,false,"[""Vegetarian"",""Non-Vegetarian""]",[]
+veg-nonveg-conflict,699d3dced21cc8ab847c2ef6,3951,Kimchi Fried Rice,false,false,false,false,"[""Vegetarian"",""Vegan""]",[]
+veg-nonveg-conflict,69b58e6fd681575181f02d2d,4297,paneer salad with veggies,false,false,false,false,"[""Vegetarian""]",[]
+veg-nonveg-conflict,69b7e795d681575181f228a3,4328,boiled egg white,false,false,false,false,"[""Vegetarian""]",[]
+missing-detail,69b98d741e737b695ae9e76b,4376,180 gm sweet potato chaat,false,true,false,false,,
+missing-detail,69bcd82a48e14596c12fb103,4388,Spearmint Tea,false,true,false,false,,
+missing-detail,69bd1e7f12b8999e0ca0a7ba,4389,Dal with drumsticks,false,true,false,false,,
+missing-detail,69be054ec6fde5ca3eb580ef,4391,apple detox water,false,true,false,false,,
+missing-detail,69be0bfdc6fde5ca3eb58923,4392,orange detox water,false,true,false,false,,
+missing-detail,69bf783ac6fde5ca3eb6b203,4394,Egg white veg Omellete,false,true,false,false,,
+missing-detail,69c6312d231e5cea4128eb16,4497,CumiN GingeR LemoN HoneY WateR,false,true,false,false,,
+missing-detail,69c7a47fe25d860ab3602482,4506,Elaichi water,false,true,false,false,,
+missing-detail,69c7b6e2e25d860ab360db37,4507,Buttermilk Plain,false,true,false,false,,
+missing-detail,69cb62d38465126b5e6af21e,4511,roasted fish,false,true,false,false,,
+missing-detail,69ce48acce9a8c4c2a76b9bc,4521,🍋🌿 Mint Lemon Water,false,true,false,false,,
+missing-detail,69ce65e6ce9a8c4c2a777f3f,4534,🌿 Bajra Porridge,false,true,false,false,,
+missing-detail,69d625488f550e768e43e893,4624,WATERMELON SEEDS (DRY ROAST),false,true,false,false,,
+missing-detail,69d7501f7a8881e566596897,4682,Dal,false,true,false,false,,
+missing-detail,69d7535b7a8881e56659922a,4683,Quinoa Chickpea Salad,false,true,false,false,,
+veg-nonveg-conflict,69d75692603af53d0807e1ba,4684,Egg Drop Soup Without Chicken Broth,false,false,false,false,[],"[""soup"",""eggs"",""vegetarian""]"
+missing-detail,69d796de2a225b758d184192,4688,Multigrain bread Toast,false,true,false,false,,
+missing-detail,69d8b521c6e3acb94f678732,4696,Ginger cinnamon clove water,false,true,false,false,,
+missing-detail,69dce98bc8495119ac1fe9bf,4752,Barley Water,false,true,false,false,,
+missing-detail,69df1cd07e80a79149f5b823,4764,sesame seed,false,true,false,false,,
+missing-detail,69e07fdc4d77fc4b0b45c323,4769,chire,false,true,false,false,,
+missing-detail,69e35d1d3cda2e680cb12606,4775,Epigamia greek yogurt,false,true,false,false,,
+missing-detail,69e725ae6c543b320c9a1901,4798,Hing water,false,true,false,false,,
+missing-detail,69e74eff6c543b320c9d8303,4800,Methi jeera water,false,true,false,false,,
+missing-detail,69ecc50d90d87b1173879a52,4852,Egg white mushroom Omelette,false,true,false,false,,
+missing-detail,69f06edee684ddc8988d6c76,4868,Paneer Veg Uttapam,false,true,false,false,,
+missing-detail,69f32d58ec32233c4c3c2b2d,4871,Soya Chunk roll,false,true,false,false,,
+missing-detail,69f32ed3ec32233c4c3c538c,4872,Veg Paneer wrap,false,true,false,false,,
+missing-detail,69f47affec32233c4c481db2,4882,Chilli Chicken,false,true,false,false,,
+missing-detail,69f47fd1ec32233c4c488706,4883,Ginger Cardamon water,false,true,false,false,,
