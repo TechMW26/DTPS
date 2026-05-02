@@ -113,6 +113,7 @@ export default function UserMessagesPage() {
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState<UploadingMediaState | null>(null);
   const [failedAttachments, setFailedAttachments] = useState<Set<string>>(new Set());
+  const [attachmentRetryTick, setAttachmentRetryTick] = useState<Record<string, number>>({});
   const [voicePlayingId, setVoicePlayingId] = useState<string | null>(null);
   const [voiceProgress, setVoiceProgress] = useState<Record<string, number>>({});
   const [voiceDurations, setVoiceDurations] = useState<Record<string, number>>({});
@@ -142,6 +143,67 @@ export default function UserMessagesPage() {
   const openLightbox = (url: string) => {
     setLightboxImage(url);
     setLightboxOpen(true);
+  };
+
+  const detectAudioExtension = (mimeType: string) => {
+    const normalized = mimeType.toLowerCase();
+    if (normalized.includes('mp4') || normalized.includes('m4a') || normalized.includes('aac')) return 'm4a';
+    if (normalized.includes('ogg') || normalized.includes('opus')) return 'ogg';
+    if (normalized.includes('wav')) return 'wav';
+    if (normalized.includes('mpeg') || normalized.includes('mp3')) return 'mp3';
+    if (normalized.includes('flac')) return 'flac';
+    return 'webm';
+  };
+
+  const resolveAttachmentUrl = (rawUrl: string, messageId: string) => {
+    if (!rawUrl) return '';
+
+    let resolvedUrl = rawUrl.trim();
+    if (!resolvedUrl) return '';
+
+    if (/^\/\//.test(resolvedUrl) && typeof window !== 'undefined') {
+      resolvedUrl = `${window.location.protocol}${resolvedUrl}`;
+    } else if (/^\//.test(resolvedUrl) && typeof window !== 'undefined') {
+      resolvedUrl = `${window.location.origin}${resolvedUrl}`;
+    }
+
+    const retryTick = attachmentRetryTick[messageId] || 0;
+    if (retryTick > 0) {
+      const separator = resolvedUrl.includes('?') ? '&' : '?';
+      resolvedUrl = `${resolvedUrl}${separator}retry=${retryTick}`;
+    }
+
+    return resolvedUrl;
+  };
+
+  const markAttachmentFailed = (messageId: string) => {
+    setFailedAttachments((prev) => new Set([...prev, messageId]));
+  };
+
+  const retryAttachment = (messageId: string) => {
+    const audio = audioRefs.current[messageId];
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      audioRefs.current[messageId] = null;
+    }
+
+    setVoicePlayingId((prev) => (prev === messageId ? null : prev));
+    setVoiceProgress((prev) => ({ ...prev, [messageId]: 0 }));
+    setVoiceDurations((prev) => {
+      const next = { ...prev };
+      delete next[messageId];
+      return next;
+    });
+    setFailedAttachments((prev) => {
+      const next = new Set(prev);
+      next.delete(messageId);
+      return next;
+    });
+    setAttachmentRetryTick((prev) => ({
+      ...prev,
+      [messageId]: (prev[messageId] || 0) + 1
+    }));
   };
 
   // Refs for SSE callbacks to avoid stale closures
@@ -1105,7 +1167,7 @@ export default function UserMessagesPage() {
         const voiceBlob = new Blob(recordChunksRef.current, { type: actualMimeType });
 
         // Determine file extension based on MIME type
-        const ext = actualMimeType.includes('mp4') ? 'mp4' : 'webm';
+        const ext = detectAudioExtension(actualMimeType);
         const voiceFile = new File([voiceBlob], `voice_${Date.now()}.${ext}`, { type: actualMimeType });
 
         if (recordStreamRef.current) {
@@ -1412,10 +1474,11 @@ export default function UserMessagesPage() {
                           .filter(Boolean);
                         const firstContentLine = contentLines[0] || '';
                         const url = attachment?.url || '';
+                        const resolvedUrl = resolveAttachmentUrl(url, message._id);
                         const mimeType = (attachment?.mimeType || '').toLowerCase();
                         const filename = (attachment?.filename || '').toLowerCase();
-                        const lowerUrl = url.toLowerCase();
-                        const hasValidUrl = !!url && /^https?:\/\//i.test(url);
+                        const lowerUrl = resolvedUrl.toLowerCase();
+                        const hasValidUrl = !!resolvedUrl && (/^https?:\/\//i.test(resolvedUrl) || /^blob:/i.test(resolvedUrl));
                         const failed = failedAttachments.has(message._id);
 
                         // Check if URL is from ImageKit and appears to be an image
@@ -1459,14 +1522,6 @@ export default function UserMessagesPage() {
                           : rawContent;
                         const hasCaption = imageCaption && !mediaLabels.includes(imageCaption.trim());
 
-                        const retryAttachment = () => {
-                          setFailedAttachments((prev) => {
-                            const next = new Set(prev);
-                            next.delete(message._id);
-                            return next;
-                          });
-                        };
-
                         if (attachment) {
                           switch (resolvedType) {
                             case 'image':
@@ -1474,7 +1529,7 @@ export default function UserMessagesPage() {
                                 return (
                                   <button
                                     type="button"
-                                    onClick={retryAttachment}
+                                    onClick={() => retryAttachment(message._id)}
                                     className="w-55 h-40 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
                                     style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
                                   >
@@ -1491,12 +1546,12 @@ export default function UserMessagesPage() {
                                     </span>
                                   )}
                                   <img
-                                    src={attachment.thumbnail || url}
+                                    src={attachment.thumbnail || resolvedUrl}
                                     alt="Image attachment"
                                     className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                    onClick={() => openLightbox(url)}
+                                    onClick={() => openLightbox(resolvedUrl)}
                                     style={{ maxWidth: '220px', maxHeight: '260px', objectFit: 'cover' }}
-                                    onError={() => setFailedAttachments((prev) => new Set([...prev, message._id]))}
+                                    onError={() => markAttachmentFailed(message._id)}
                                   />
                                   {hasCaption && (
                                     isMealPicture ? (
@@ -1515,7 +1570,7 @@ export default function UserMessagesPage() {
                                 return (
                                   <button
                                     type="button"
-                                    onClick={retryAttachment}
+                                    onClick={() => retryAttachment(message._id)}
                                     className="w-55 h-40 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
                                     style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
                                   >
@@ -1527,14 +1582,14 @@ export default function UserMessagesPage() {
                               return (
                                 <div className="relative">
                                   <video
-                                    src={url}
+                                    src={resolvedUrl}
                                     controls
                                     preload="metadata"
                                     playsInline
                                     poster={attachment.thumbnail}
                                     className="rounded-lg bg-black"
                                     style={{ maxWidth: '220px', maxHeight: '260px' }}
-                                    onError={() => setFailedAttachments((prev) => new Set([...prev, message._id]))}
+                                    onError={() => markAttachmentFailed(message._id)}
                                   />
                                   <div className="mt-1 text-[11px] opacity-70">Video • {formatFileSize(attachment.size)}</div>
                                   {hasCaption && <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">{message.content}</p>}
@@ -1546,7 +1601,7 @@ export default function UserMessagesPage() {
                                 return (
                                   <button
                                     type="button"
-                                    onClick={retryAttachment}
+                                    onClick={() => retryAttachment(message._id)}
                                     className="w-55 h-24 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
                                     style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
                                   >
@@ -1558,10 +1613,11 @@ export default function UserMessagesPage() {
                               return (
                                 <div className="flex items-center gap-3 min-w-50 max-w-65 py-1">
                                   <audio
+                                    key={`${message._id}-${attachmentRetryTick[message._id] || 0}`}
                                     ref={(element) => {
                                       if (element) audioRefs.current[message._id] = element;
                                     }}
-                                    src={url}
+                                    src={resolvedUrl}
                                     preload="metadata"
                                     onTimeUpdate={(event) => {
                                       const audio = event.currentTarget;
@@ -1583,8 +1639,8 @@ export default function UserMessagesPage() {
                                       const audioElement = e.currentTarget as HTMLAudioElement;
                                       const errorCode = audioElement?.error?.code;
                                       const errorMessage = audioElement?.error?.message || 'Unknown audio error';
-                                      console.warn(`Audio load error for message ${message._id}:`, errorCode, errorMessage);
-                                      setFailedAttachments((prev) => new Set([...prev, message._id]));
+                                      console.warn(`Audio load error for message ${message._id}:`, errorCode, errorMessage, resolvedUrl);
+                                      markAttachmentFailed(message._id);
                                     }}
                                     className="hidden"
                                   />
@@ -1640,7 +1696,7 @@ export default function UserMessagesPage() {
                                 return (
                                   <button
                                     type="button"
-                                    onClick={retryAttachment}
+                                    onClick={() => retryAttachment(message._id)}
                                     className="w-55 h-24 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
                                     style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
                                   >
@@ -1652,7 +1708,7 @@ export default function UserMessagesPage() {
                               return (
                                 <div className="max-w-65">
                                   <a
-                                    href={url}
+                                    href={resolvedUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className={`flex items-center gap-3 rounded-lg p-2.5 ${isOwn ? 'bg-white/10 hover:bg-white/15' : isDarkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-gray-100 hover:bg-gray-200'}`}

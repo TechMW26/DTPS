@@ -175,7 +175,7 @@ export function ChatBubble({
               : attachment.filename;
 
           return (
-            <div className="max-w-[280px] min-w-[200px]">
+            <div className="max-w-70 min-w-50">
               {/* WhatsApp-style voice message */}
               <div className="flex items-center gap-2">
                 <audio
@@ -287,7 +287,7 @@ export function ChatBubble({
 
       default:
         return (
-          <p className="text-sm whitespace-pre-wrap break-words">
+          <p className="text-sm whitespace-pre-wrap wrap-break-word">
             {message.content}
           </p>
         );
@@ -343,8 +343,8 @@ export function ChatBubble({
               ? "bg-[#dcf8c6] text-gray-900 rounded-br-none hover:bg-[#d4f4c1]"
               : "bg-white text-gray-900 rounded-bl-none hover:bg-gray-50",
             // WhatsApp-like tail effect
-            isLastInGroup && isOwn && "after:content-[''] after:absolute after:top-0 after:-right-2 after:w-0 after:h-0 after:border-l-[8px] after:border-l-[#dcf8c6] after:border-t-[8px] after:border-t-transparent",
-            isLastInGroup && !isOwn && "after:content-[''] after:absolute after:top-0 after:-left-2 after:w-0 after:h-0 after:border-r-[8px] after:border-r-white after:border-t-[8px] after:border-t-transparent",
+            isLastInGroup && isOwn && "after:content-[''] after:absolute after:top-0 after:-right-2 after:w-0 after:h-0 after:border-l-8 after:border-l-[#dcf8c6] after:border-t-8 after:border-t-transparent",
+            isLastInGroup && !isOwn && "after:content-[''] after:absolute after:top-0 after:-left-2 after:w-0 after:h-0 after:border-r-8 after:border-r-white after:border-t-8 after:border-t-transparent",
             // Animation classes
             "animate-in slide-in-from-bottom-2 duration-300"
           )}>

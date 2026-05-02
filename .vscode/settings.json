@@ -4,6 +4,23 @@
   "tailwindCSS.lint.invalidScreen": "warning",
   "tailwindCSS.lint.invalidConfigPath": "warning",
   "tailwindCSS.lint.invalidTailwindDirective": "warning",
+  "files.exclude": {
+    "**/.next": true
+  },
+  "search.exclude": {
+    "**/.next": true
+  },
+  "files.watcherExclude": {
+    "**/.next/**": true
+  },
+  "js/ts.tsserver.watchOptions": {
+    "excludeDirectories": [
+      "**/.next",
+      "**/.next/**",
+      "**/.next/standalone/**"
+    ]
+  },
+  "javascript.implicitProjectConfig.checkJs": false,
   "editor.codeActionsOnSave": {
     "source.fixAll": "explicit"
   }

@@ -1,23 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="9" failures="0" errors="0" time="9.125">
-  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-01T10:19:09" time="8.938" tests="9">
-    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="0.985">
+<testsuites name="jest tests" tests="12" failures="0" errors="0" time="8.382">
+  <testsuite name="tests/integration/socket/voice-image-messages.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-02T07:27:55" time="8.249" tests="12">
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Voice Messages" name="should store voice message with correct type and attachments in database" time="0.589">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.871">
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Voice Messages" name="should return voice message with attachments via client API" time="0.618">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.835">
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Voice Messages" name="should return voice message with attachments via staff API" time="0.619">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="returns correct remaining days when days counters exist but duration metadata is missing" time="0.833">
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Voice Messages" name="should send voice message via POST and emit socket event with attachments" time="0.582">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="keeps client-purchases GET aligned with check-route stored counters" time="0.86">
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Meal Pictures (Image Messages)" name="should store meal picture with correct type and attachments in database" time="0.555">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="clamps inconsistent stored remaining days so used plus remaining never exceeds total duration" time="0.822">
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Meal Pictures (Image Messages)" name="should return meal picture with attachments via client API" time="0.553">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="prioritizes the relevant in-progress purchase when multiple partially used purchases exist" time="0.827">
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Meal Pictures (Image Messages)" name="should return meal picture with attachments via staff API" time="0.555">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="does not overwrite stored counters when Fix Days recalculation is triggered" time="0.819">
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Meal Pictures (Image Messages)" name="should send meal picture via POST and emit socket event with attachments" time="0.586">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="synchronizes remaining days when updating days used through client purchases PUT" time="0.825">
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Socket Method Fix Verification" name="should use sendToUser (not emitToUser) for message_read events" time="0.597">
+    </testcase>
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Attachment URL Validation" name="should return valid HTTPS URLs for voice message attachments" time="0.558">
+    </testcase>
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Attachment URL Validation" name="should return valid HTTPS URLs for image message attachments" time="0.555">
+    </testcase>
+    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Multiple Attachment Types in Conversation" name="should handle mixed message types (text, voice, image) in same conversation" time="0.572">
     </testcase>
   </testsuite>
 </testsuites>
