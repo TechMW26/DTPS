@@ -955,24 +955,57 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const handleFindReplace = () => {
     if (readOnly || !onUpdate) return;
     const findValue = (findFoodTarget || manualFindFoodName || findRecipeSearch).trim();
-    const replaceValue = (replaceFoodValue || replaceRecipeSearch).trim();
+    const selectedReplacementRecipe = replaceRecipeId
+      ? recipes.find(r => r._id === replaceRecipeId)
+      : null;
+    const replaceValue = (replaceFoodValue || replaceRecipeSearch || selectedReplacementRecipe?.name || '').trim();
 
     if (!findValue || selectedDaysForReplace.length === 0 || selectedMealTypesForReplace.length === 0) return;
 
     // For replace action, require a replace value
     if (replaceAction === 'replace' && !replaceValue) return;
 
-    const findLower = findValue.toLowerCase();
+    const normalizeForMatch = (value?: string): string => {
+      return (value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    const findLower = normalizeForMatch(findValue);
     const selectedMealTypeSet = new Set(selectedMealTypesForReplace.map(mt => toDisplayLabel(mt)));
 
+    const resolvedReplaceNutrition = replaceRecipeNutrition || (selectedReplacementRecipe
+      ? {
+        cal: String(selectedReplacementRecipe.nutrition?.calories ?? 0),
+        protein: String(selectedReplacementRecipe.nutrition?.protein ?? 0),
+        carbs: String(selectedReplacementRecipe.nutrition?.carbs ?? 0),
+        fats: String((selectedReplacementRecipe.nutrition as any)?.fat ?? (selectedReplacementRecipe.nutrition as any)?.fats ?? 0),
+        unit: typeof selectedReplacementRecipe.servings === 'number'
+          ? `${selectedReplacementRecipe.servings} serving`
+          : (selectedReplacementRecipe.servings || '1 serving')
+      }
+      : null);
+
     const matchesText = (candidate?: string): boolean => {
-      const value = (candidate || '').trim().toLowerCase();
+      const value = normalizeForMatch(candidate);
       if (!value || !findLower) return false;
-      return value === findLower || value.includes(findLower) || findLower.includes(value);
+      if (value === findLower || value.includes(findLower) || findLower.includes(value)) {
+        return true;
+      }
+      const findTokens = findLower.split(' ').filter(Boolean);
+      return findTokens.length > 0 && findTokens.every(token => value.includes(token));
+    };
+
+    const isFoodItemMatch = (foodItem: MealFoodItem): boolean => {
+      if (matchesText(foodItem.food)) return true;
+      if (findRecipeId && foodItem.recipeUuid && foodItem.recipeUuid === findRecipeId) return true;
+      return false;
     };
 
     // Matching helper: checks food name (case-insensitive) OR recipeUuid
-    const isMatch = (opt: FoodOption): boolean => {
+    const isOptionMatch = (opt: FoodOption): boolean => {
       // Match primary/combined option text
       if (matchesText(opt.food)) return true;
       // If a recipe was selected from DB, also match by recipeUuid
@@ -980,13 +1013,59 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
       // Also check stacked foods array
       if (opt.foods && opt.foods.length > 0) {
-        return opt.foods.some(f => {
-          if (matchesText(f.food)) return true;
-          if (findRecipeId && f.recipeUuid && f.recipeUuid === findRecipeId) return true;
-          return false;
-        });
+        return opt.foods.some(isFoodItemMatch);
       }
       return false;
+    };
+
+    const buildReplacedFoodItem = (): MealFoodItem => {
+      return {
+        id: Math.random().toString(36).substr(2, 9),
+        food: replaceValue,
+        unit: resolvedReplaceNutrition?.unit || '',
+        cal: resolvedReplaceNutrition?.cal || '',
+        carbs: resolvedReplaceNutrition?.carbs || '',
+        fats: resolvedReplaceNutrition?.fats || '',
+        protein: resolvedReplaceNutrition?.protein || '',
+        recipeUuid: replaceRecipeId || undefined
+      };
+    };
+
+    const recalculateOptionFromFoods = (option: FoodOption): FoodOption => {
+      const foods = option.foods || [];
+      if (foods.length === 0) {
+        return {
+          ...option,
+          food: '',
+          unit: '',
+          cal: '',
+          carbs: '',
+          fats: '',
+          protein: '',
+          recipeUuid: undefined,
+          foods: undefined
+        };
+      }
+
+      const totals = foods.reduce((acc, item) => {
+        acc.cal += parseFloat(item.cal) || 0;
+        acc.carbs += parseFloat(item.carbs) || 0;
+        acc.fats += parseFloat(item.fats) || 0;
+        acc.protein += parseFloat(item.protein) || 0;
+        return acc;
+      }, { cal: 0, carbs: 0, fats: 0, protein: 0 });
+
+      return {
+        ...option,
+        food: foods.map(item => item.food).filter(Boolean).join(' + '),
+        unit: foods.length > 1 ? 'Multiple' : (foods[0]?.unit || ''),
+        cal: formatNum(totals.cal),
+        carbs: formatNum(totals.carbs),
+        fats: formatNum(totals.fats),
+        protein: formatNum(totals.protein),
+        recipeUuid: foods.length === 1 ? foods[0]?.recipeUuid : undefined,
+        foods
+      };
     };
 
     const newWeekPlan = cloneWeekPlan(weekPlan);
@@ -1000,52 +1079,90 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         const meal = day.meals[mt];
 
         if (replaceAction === 'delete') {
-          // Delete matching food options
-          meal.foodOptions = meal.foodOptions.filter(opt => !isMatch(opt));
+          // Delete matching foods/options. For stacked foods, delete only matched rows and recalculate.
+          meal.foodOptions = meal.foodOptions
+            .map(opt => {
+              if (opt.foods && opt.foods.length > 0) {
+                const remainingFoods = opt.foods.filter(item => !isFoodItemMatch(item));
+                if (remainingFoods.length === opt.foods.length) {
+                  // No item-level matches; if option-level matched legacy data, drop whole option.
+                  if (isOptionMatch(opt)) return null;
+                  return opt;
+                }
+                return recalculateOptionFromFoods({ ...opt, foods: remainingFoods });
+              }
+              return isOptionMatch(opt) ? null : opt;
+            })
+            .filter((opt): opt is FoodOption => Boolean(opt));
           // Clear labels for remaining options
-          meal.foodOptions.forEach((opt, i) => {
+          meal.foodOptions.forEach((opt) => {
             opt.label = '';
           });
         } else {
-          // Replace matching food options with name and nutrition
+          // Replace matching food options with name and nutrition.
+          // For stacked foods, replace only matched rows, then recalculate totals.
           meal.foodOptions = meal.foodOptions.map(opt => {
-            if (isMatch(opt)) {
-              const updatedOpt = {
+            if (opt.foods && opt.foods.length > 0) {
+              let replacedAny = false;
+              const nextFoods = opt.foods.map(item => {
+                if (!isFoodItemMatch(item)) return item;
+                replacedAny = true;
+                return buildReplacedFoodItem();
+              });
+
+              if (replacedAny) {
+                return recalculateOptionFromFoods({ ...opt, foods: nextFoods });
+              }
+
+              // Legacy fallback: if option-level match but no per-item match, replace whole option.
+              if (isOptionMatch(opt)) {
+                if (resolvedReplaceNutrition) {
+                  return recalculateOptionFromFoods({ ...opt, foods: [buildReplacedFoodItem()] });
+                }
+                return {
+                  ...opt,
+                  food: replaceValue,
+                  cal: '',
+                  protein: '',
+                  carbs: '',
+                  fats: '',
+                  unit: '',
+                  recipeUuid: undefined,
+                  foods: undefined
+                };
+              }
+
+              return opt;
+            }
+
+            if (!isOptionMatch(opt)) return opt;
+
+            if (resolvedReplaceNutrition) {
+              return {
                 ...opt,
                 food: replaceValue,
-                recipeUuid: replaceRecipeId || opt.recipeUuid
+                recipeUuid: replaceRecipeId || undefined,
+                cal: resolvedReplaceNutrition.cal,
+                protein: resolvedReplaceNutrition.protein,
+                carbs: resolvedReplaceNutrition.carbs,
+                fats: resolvedReplaceNutrition.fats,
+                unit: resolvedReplaceNutrition.unit,
+                foods: [buildReplacedFoodItem()]
               };
-              // Update nutrition if we have it from the selected recipe
-              if (replaceRecipeNutrition) {
-                updatedOpt.cal = replaceRecipeNutrition.cal;
-                updatedOpt.protein = replaceRecipeNutrition.protein;
-                updatedOpt.carbs = replaceRecipeNutrition.carbs;
-                updatedOpt.fats = replaceRecipeNutrition.fats;
-                updatedOpt.unit = replaceRecipeNutrition.unit;
-                // Keep stacked foods consistent with the replaced recipe.
-                updatedOpt.foods = [{
-                  id: Math.random().toString(36).substr(2, 9),
-                  food: replaceValue,
-                  unit: replaceRecipeNutrition.unit,
-                  cal: replaceRecipeNutrition.cal,
-                  carbs: replaceRecipeNutrition.carbs,
-                  fats: replaceRecipeNutrition.fats,
-                  protein: replaceRecipeNutrition.protein,
-                  recipeUuid: replaceRecipeId || undefined
-                }];
-              } else {
-                // If replacing by text only, clear stale duplicated nutrition values.
-                updatedOpt.cal = '';
-                updatedOpt.protein = '';
-                updatedOpt.carbs = '';
-                updatedOpt.fats = '';
-                updatedOpt.unit = '';
-                updatedOpt.recipeUuid = undefined;
-                updatedOpt.foods = undefined;
-              }
-              return updatedOpt;
             }
-            return opt;
+
+            // If replacing by plain text only, clear stale nutrition values.
+            return {
+              ...opt,
+              food: replaceValue,
+              cal: '',
+              protein: '',
+              carbs: '',
+              fats: '',
+              unit: '',
+              recipeUuid: undefined,
+              foods: undefined
+            };
           });
         }
       });
