@@ -429,6 +429,12 @@ export default function Sidebar({ className, isDarkMode = false }: SidebarProps)
             description: 'Manage staff permissions'
           },
           {
+            href: '/admin/real-time-api',
+            label: 'Real-Time API Errors',
+            icon: AlertTriangle,
+            description: 'Monitor runtime API errors in real time'
+          },
+          {
             href: '/profile',
             label: 'Profile',
             icon: User,
