@@ -348,4 +348,112 @@ describe('diet template persistence integrations (supertest)', () => {
             restoreServer.close();
         }
     });
+
+    it('API calories summary excludes alternative foods', async () => {
+        const dietitian = await createUser({ role: UserRole.DIETITIAN });
+
+        (getServerSession as jest.Mock).mockResolvedValue({
+            user: toSessionUser(dietitian, UserRole.DIETITIAN),
+        });
+
+        const template = await DietTemplate.create({
+            name: 'Alternative Exclusion Template',
+            description: 'Main food calories should exclude alternatives in API summary',
+            category: 'maintenance',
+            duration: 7,
+            targetCalories: { min: 1200, max: 2000 },
+            targetMacros: {
+                protein: { min: 60, max: 130 },
+                carbs: { min: 120, max: 230 },
+                fat: { min: 30, max: 75 },
+            },
+            dietaryRestrictions: [],
+            tags: [],
+            meals: [
+                {
+                    id: 'day-1',
+                    day: 'Day 1',
+                    date: '2026-04-24',
+                    meals: {
+                        Breakfast: {
+                            id: 'meal-breakfast',
+                            name: 'Breakfast',
+                            time: '09:00 AM',
+                            foodOptions: [
+                                {
+                                    id: 'main-1',
+                                    label: 'Main',
+                                    food: 'Oats',
+                                    unit: '1 bowl',
+                                    cal: '200',
+                                    carbs: '30',
+                                    fats: '5',
+                                    protein: '10',
+                                    isAlternative: false,
+                                },
+                                {
+                                    id: 'alt-1',
+                                    label: 'Alternative',
+                                    food: 'Granola',
+                                    unit: '1 bowl',
+                                    cal: '500',
+                                    carbs: '70',
+                                    fats: '15',
+                                    protein: '12',
+                                    isAlternative: true,
+                                },
+                            ],
+                        },
+                    },
+                    note: '',
+                },
+            ],
+            mealTypes: [{ name: 'Breakfast', time: '09:00 AM' }],
+            isPublic: false,
+            isPremium: false,
+            isActive: true,
+            difficulty: 'intermediate',
+            prepTime: { daily: 25, weekly: 175 },
+            targetAudience: {
+                ageGroup: [],
+                activityLevel: [],
+                healthConditions: [],
+                goals: [],
+            },
+            createdBy: dietitian._id,
+        });
+
+        const listRoute = await import('@/app/api/diet-templates/route');
+        const byIdRoute = await import('@/app/api/diet-templates/[id]/route');
+        const templateId = entityId(template);
+
+        const listServer = createRouteTestServer((nextRequest) => listRoute.GET(nextRequest));
+        const byIdServer = createRouteTestServer((nextRequest) =>
+            byIdRoute.GET(nextRequest, { params: Promise.resolve({ id: templateId }) })
+        );
+
+        try {
+            const listResponse = await request(listServer)
+                .get('/api/diet-templates?limit=100&page=1');
+
+            expect(listResponse.status).toBe(200);
+            const match = (listResponse.body?.templates || []).find((t: any) => t._id === templateId);
+            expect(match).toBeTruthy();
+            expect(match.averageDailyCalories).toBe(200);
+
+            const getResponse = await request(byIdServer)
+                .get(`/api/diet-templates/${templateId}`);
+
+            expect(getResponse.status).toBe(200);
+            expect(getResponse.body?.template?._id).toBe(templateId);
+            // GET by id should still preserve alternative rows in payload,
+            // but summary calories should continue to come from main foods only.
+            expect(getResponse.body?.template?.meals?.[0]?.meals?.Breakfast?.foodOptions?.length).toBe(2);
+            const altOption = getResponse.body?.template?.meals?.[0]?.meals?.Breakfast?.foodOptions?.find((opt: any) => opt.isAlternative === true);
+            expect(altOption?.food).toBe('Granola');
+        } finally {
+            listServer.close();
+            byIdServer.close();
+        }
+    });
 });

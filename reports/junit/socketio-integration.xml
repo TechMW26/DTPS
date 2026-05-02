@@ -1,29 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="12" failures="0" errors="0" time="8.382">
-  <testsuite name="tests/integration/socket/voice-image-messages.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-02T07:27:55" time="8.249" tests="12">
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Voice Messages" name="should store voice message with correct type and attachments in database" time="0.589">
+<testsuites name="jest tests" tests="4" failures="0" errors="0" time="1.475">
+  <testsuite name="tests/integration/diet-templates-supertest.integration.test.ts" errors="0" failures="0" skipped="3" timestamp="2026-05-02T11:24:53" time="1.359" tests="4">
+    <testcase classname="diet template persistence integrations (supertest)" name="creates and lists diet templates with persisted meals + meal types" time="0">
+      <skipped/>
     </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Voice Messages" name="should return voice message with attachments via client API" time="0.618">
+    <testcase classname="diet template persistence integrations (supertest)" name="updates and soft-deletes diet template while preserving meal payload updates" time="0">
+      <skipped/>
     </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Voice Messages" name="should return voice message with attachments via staff API" time="0.619">
+    <testcase classname="diet template persistence integrations (supertest)" name="allows admin to list archived diet templates and restore them" time="0">
+      <skipped/>
     </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Voice Messages" name="should send voice message via POST and emit socket event with attachments" time="0.582">
-    </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Meal Pictures (Image Messages)" name="should store meal picture with correct type and attachments in database" time="0.555">
-    </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Meal Pictures (Image Messages)" name="should return meal picture with attachments via client API" time="0.553">
-    </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Meal Pictures (Image Messages)" name="should return meal picture with attachments via staff API" time="0.555">
-    </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Meal Pictures (Image Messages)" name="should send meal picture via POST and emit socket event with attachments" time="0.586">
-    </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Socket Method Fix Verification" name="should use sendToUser (not emitToUser) for message_read events" time="0.597">
-    </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Attachment URL Validation" name="should return valid HTTPS URLs for voice message attachments" time="0.558">
-    </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Attachment URL Validation" name="should return valid HTTPS URLs for image message attachments" time="0.555">
-    </testcase>
-    <testcase classname="Voice Messages and Meal Pictures Integration Tests &gt; Multiple Attachment Types in Conversation" name="should handle mixed message types (text, voice, image) in same conversation" time="0.572">
+    <testcase classname="diet template persistence integrations (supertest)" name="API calories summary excludes alternative foods" time="0.436">
     </testcase>
   </testsuite>
 </testsuites>

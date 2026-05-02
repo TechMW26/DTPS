@@ -270,9 +270,16 @@ DietTemplateSchema.virtual('averageDailyCalories').get(function () {
       let dayCalories = 0;
       Object.values(day.meals).forEach((meal: any) => {
         if (meal?.foodOptions && Array.isArray(meal.foodOptions)) {
-          meal.foodOptions.forEach((food: any) => {
-            dayCalories += parseFloat(food.cal) || 0;
-          });
+          meal.foodOptions
+            .filter((food: any) => {
+              // Backward compatibility: older data may mark alternatives only by label.
+              const byFlag = food?.isAlternative === true;
+              const byLabel = typeof food?.label === 'string' && /alternative/i.test(food.label);
+              return !(byFlag || byLabel);
+            })
+            .forEach((food: any) => {
+              dayCalories += parseFloat(food.cal) || 0;
+            });
         }
       });
       if (dayCalories > 0) {

@@ -379,7 +379,23 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     const newWeekPlan = cloneWeekPlan(weekPlan);
     const meal = newWeekPlan[dayIndex].meals[mealType];
     if (meal && meal.foodOptions[optionIndex]) {
-      (meal.foodOptions[optionIndex] as Record<string, unknown>)[field] = value;
+      const option = meal.foodOptions[optionIndex];
+      const previousFood = (option.food || '').trim();
+      (option as Record<string, unknown>)[field] = value;
+
+      // If food name is manually changed, clear linked recipe id + stale nutrition
+      // so duplicated templates do not keep previous macros for a new food.
+      if (field === 'food') {
+        const nextFood = value.trim();
+        if (nextFood !== previousFood) {
+          option.recipeUuid = undefined;
+          option.cal = '';
+          option.carbs = '';
+          option.fats = '';
+          option.protein = '';
+          option.unit = '';
+        }
+      }
       onUpdate(newWeekPlan);
     }
   };
@@ -1006,6 +1022,26 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 updatedOpt.carbs = replaceRecipeNutrition.carbs;
                 updatedOpt.fats = replaceRecipeNutrition.fats;
                 updatedOpt.unit = replaceRecipeNutrition.unit;
+                // Keep stacked foods consistent with the replaced recipe.
+                updatedOpt.foods = [{
+                  id: Math.random().toString(36).substr(2, 9),
+                  food: replaceValue,
+                  unit: replaceRecipeNutrition.unit,
+                  cal: replaceRecipeNutrition.cal,
+                  carbs: replaceRecipeNutrition.carbs,
+                  fats: replaceRecipeNutrition.fats,
+                  protein: replaceRecipeNutrition.protein,
+                  recipeUuid: replaceRecipeId || undefined
+                }];
+              } else {
+                // If replacing by text only, clear stale duplicated nutrition values.
+                updatedOpt.cal = '';
+                updatedOpt.protein = '';
+                updatedOpt.carbs = '';
+                updatedOpt.fats = '';
+                updatedOpt.unit = '';
+                updatedOpt.recipeUuid = undefined;
+                updatedOpt.foods = undefined;
               }
               return updatedOpt;
             }
@@ -1660,9 +1696,28 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                       const newWeekPlan = cloneWeekPlan(weekPlan);
                                                       const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                       if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
-                                                        meal.foodOptions[optionIndex].foods![foodIndex].food = e.target.value;
-                                                        // Update combined food name
-                                                        meal.foodOptions[optionIndex].food = meal.foodOptions[optionIndex].foods!.map(f => f.food).join(' + ');
+                                                        const nextFoodName = e.target.value;
+                                                        const foodRow = meal.foodOptions[optionIndex].foods![foodIndex];
+                                                        const prevFoodName = (foodRow.food || '').trim();
+                                                        foodRow.food = nextFoodName;
+
+                                                        if (nextFoodName.trim() !== prevFoodName) {
+                                                          // Manual rename means previous recipe mapping is no longer valid.
+                                                          foodRow.recipeUuid = undefined;
+                                                          foodRow.cal = '';
+                                                          foodRow.carbs = '';
+                                                          foodRow.fats = '';
+                                                          foodRow.protein = '';
+                                                          foodRow.unit = '';
+                                                        }
+
+                                                        const allFoods = meal.foodOptions[optionIndex].foods!;
+                                                        meal.foodOptions[optionIndex].food = allFoods.map(f => f.food).join(' + ');
+                                                        meal.foodOptions[optionIndex].cal = formatNum(allFoods.reduce((sum, f) => sum + (parseFloat(f.cal) || 0), 0));
+                                                        meal.foodOptions[optionIndex].carbs = formatNum(allFoods.reduce((sum, f) => sum + (parseFloat(f.carbs) || 0), 0));
+                                                        meal.foodOptions[optionIndex].fats = formatNum(allFoods.reduce((sum, f) => sum + (parseFloat(f.fats) || 0), 0));
+                                                        meal.foodOptions[optionIndex].protein = formatNum(allFoods.reduce((sum, f) => sum + (parseFloat(f.protein) || 0), 0));
+                                                        meal.foodOptions[optionIndex].unit = allFoods.length > 1 ? 'Multiple' : allFoods[0]?.unit || '';
                                                         onUpdate(newWeekPlan);
                                                       }
                                                     }}

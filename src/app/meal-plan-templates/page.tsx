@@ -251,13 +251,75 @@ function MealPlanTemplatesPageContent() {
         return obj;
       };
 
+      const formatNum = (value: number): string => {
+        if (!Number.isFinite(value)) return '0';
+        return parseFloat(value.toFixed(2)).toString();
+      };
+
+      // Ensure duplicated diet templates do not carry stale top-level nutrition values
+      // when the source option has stacked `foods` entries.
+      const normalizeDuplicatedMeals = (meals: any[]): any[] => {
+        return meals.map((day: any) => {
+          if (!day?.meals || typeof day.meals !== 'object') return day;
+
+          const normalizedMeals: Record<string, any> = {};
+          Object.entries(day.meals).forEach(([mealKey, mealValue]) => {
+            const meal = mealValue as any;
+            if (!meal?.foodOptions || !Array.isArray(meal.foodOptions)) {
+              normalizedMeals[mealKey] = meal;
+              return;
+            }
+
+            const normalizedOptions = meal.foodOptions.map((option: any) => {
+              const isAlternative = option?.isAlternative === true || (typeof option?.label === 'string' && /alternative/i.test(option.label));
+
+              if (!Array.isArray(option?.foods) || option.foods.length === 0) {
+                return {
+                  ...option,
+                  isAlternative
+                };
+              }
+
+              const totals = option.foods.reduce((acc: any, food: any) => {
+                acc.cal += parseFloat(food?.cal) || 0;
+                acc.carbs += parseFloat(food?.carbs) || 0;
+                acc.fats += parseFloat(food?.fats) || 0;
+                acc.protein += parseFloat(food?.protein) || 0;
+                return acc;
+              }, { cal: 0, carbs: 0, fats: 0, protein: 0 });
+
+              return {
+                ...option,
+                isAlternative,
+                food: option.foods.map((food: any) => food?.food || '').filter(Boolean).join(' + '),
+                unit: option.foods.length > 1 ? 'Multiple' : (option.foods[0]?.unit || option.unit || ''),
+                cal: formatNum(totals.cal),
+                carbs: formatNum(totals.carbs),
+                fats: formatNum(totals.fats),
+                protein: formatNum(totals.protein)
+              };
+            });
+
+            normalizedMeals[mealKey] = {
+              ...meal,
+              foodOptions: normalizedOptions
+            };
+          });
+
+          return {
+            ...day,
+            meals: normalizedMeals
+          };
+        });
+      };
+
       // Build a clean payload with only the fields the POST API expects
       const duplicateData: any = {
         name: newName.trim(),
         description: src.description || '',
         category: src.category,
         duration: src.duration,
-        meals: stripIds(src.meals || []),
+        meals: normalizeDuplicatedMeals(stripIds(src.meals || [])),
         mealTypes: (src.mealTypes || []).map((mt: any) => ({ name: mt.name, time: mt.time || '' })),
         dietaryRestrictions: src.dietaryRestrictions || [],
         tags: src.tags || [],
