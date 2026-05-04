@@ -10,7 +10,7 @@ export default function UserError({
     reset,
 }: {
     error: Error & { digest?: string };
-    reset: () => void;
+    reset: () => void; 
 }) {
     useEffect(() => {
         // Log error to monitoring service
