@@ -796,7 +796,9 @@ export default function PaymentsSection({
     if (!purchase?.endDate && !purchase?.expectedEndDate) return false;
     const endDate = new Date(purchase.expectedEndDate || purchase.endDate);
     const today = new Date();
-    const daysUntilEnd = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    endDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    const daysUntilEnd = Math.floor((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     return daysUntilEnd >= 0 && daysUntilEnd <= days;
   };
 
@@ -808,29 +810,7 @@ export default function PaymentsSection({
   const openExpectedDatesModal = (purchase: any) => {
     // Check if user has permission (admin and dietitian can edit expected dates)
     if (!isAdmin && !isDietitian) {
-      toast.error('Only dietitians are permitted to modify expected dates');
-      return;
-    }
-
-    // Admin can ONLY edit when dates have expired
-    if (isAdmin && purchase.expectedEndDate) {
-      const existingEndDate = new Date(purchase.expectedEndDate);
-      existingEndDate.setHours(0, 0, 0, 0);
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (today < existingEndDate) {
-        toast.error('Admin can only modify expected dates after they have expired');
-        return;
-      }
-
-      // Admin can edit - open modal for admin
-      setSelectedPurchaseForDates(purchase);
-      setExpectedStartDateInput(purchase.expectedStartDate ? new Date(purchase.expectedStartDate).toISOString().split('T')[0] : '');
-      setExpectedEndDateInput(purchase.expectedEndDate ? new Date(purchase.expectedEndDate).toISOString().split('T')[0] : '');
-      setExpectedDateError(null);
-      setShowExpectedDatesModal(true);
+      toast.error('Only admins and dietitians are permitted to modify expected dates');
       return;
     }
 
@@ -927,9 +907,14 @@ export default function PaymentsSection({
 
   // Check if expected dates can be edited (for UI display)
   const canEditExpectedEndDateForPurchase = (purchase: any): { allowed: boolean; reason?: string } => {
-    // Only dietitian can edit
-    if (!isDietitian) {
-      return { allowed: false, reason: 'Only dietitians can modify expected dates' };
+    // Only admin and dietitian can edit
+    if (!isDietitian && !isAdmin) {
+      return { allowed: false, reason: 'Only admins and dietitians can modify expected dates' };
+    }
+
+    // Admin can edit expected dates at any time
+    if (isAdmin) {
+      return { allowed: true };
     }
 
     // If no existing expected end date, editing is allowed
@@ -973,24 +958,9 @@ export default function PaymentsSection({
 
     // Frontend validation: Only admin and dietitian can save expected dates
     if (!isAdmin && !isDietitian) {
-      toast.error('Only dietitians are permitted to modify expected dates');
-      setExpectedDateError('Only dietitians are permitted to modify expected dates');
+      toast.error('Only admins and dietitians are permitted to modify expected dates');
+      setExpectedDateError('Only admins and dietitians are permitted to modify expected dates');
       return;
-    }
-
-    // Frontend validation: Admin can ONLY save when dates have expired
-    if (isAdmin && selectedPurchaseForDates.expectedEndDate) {
-      const existingEndDate = new Date(selectedPurchaseForDates.expectedEndDate);
-      existingEndDate.setHours(0, 0, 0, 0);
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (today < existingEndDate) {
-        toast.error('Admin can only modify expected dates after they have expired');
-        setExpectedDateError('Admin can only modify expected dates after they have expired');
-        return;
-      }
     }
 
     // Frontend validation: Check edit window for existing expected end date (only for dietitians)
@@ -1039,17 +1009,14 @@ export default function PaymentsSection({
       } else {
         // Handle specific error codes from backend
         if (data.code === 'ROLE_UNAUTHORIZED') {
-          toast.error('Only dietitians are permitted to modify expected dates');
-          setExpectedDateError('Only dietitians are permitted to modify expected dates');
+          toast.error('Only admins and dietitians are permitted to modify expected dates');
+          setExpectedDateError('Only admins and dietitians are permitted to modify expected dates');
         } else if (data.code === 'DATE_EXPIRED') {
           toast.error('Cannot modify: Expected end date has passed');
           setExpectedDateError('Expected end date has passed. No modifications allowed.');
         } else if (data.code === 'DATE_TOO_CLOSE') {
           toast.error('Cannot modify: Too close to expected end date');
           setExpectedDateError('Changes only allowed up to one day before expected end date.');
-        } else if (data.code === 'DATE_NOT_EXPIRED') {
-          toast.error('Admin can only modify expected dates after they have expired');
-          setExpectedDateError('Admin can only modify expected dates after they have expired');
         } else {
           toast.error(data.error || 'Failed to save expected dates');
           setExpectedDateError(data.error || 'Failed to save expected dates');
@@ -2226,7 +2193,7 @@ export default function PaymentsSection({
             {!isDietitian && !isAdmin && (
               <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p className="text-sm text-amber-700">
-                  ⚠️ Only dietitians have permission to modify expected dates. You can view but not edit.
+                  ⚠️ Only admins and dietitians have permission to modify expected dates. You can view but not edit.
                 </p>
               </div>
             )}
@@ -2284,19 +2251,21 @@ export default function PaymentsSection({
                   type="date"
                   value={expectedStartDateInput}
                   onChange={(e) => {
+                    const nextStartDate = e.target.value;
+                    const shouldAutoFillEndDate = !expectedEndDateInput;
                     setExpectedStartDateInput(e.target.value);
-                    // Auto-calculate end date if durationDays is available
-                    if (e.target.value && selectedPurchaseForDates?.durationDays) {
-                      const start = new Date(e.target.value);
+                    // Keep a smart default for end date, but allow manual overrides.
+                    if (nextStartDate && selectedPurchaseForDates?.durationDays && shouldAutoFillEndDate) {
+                      const start = new Date(nextStartDate);
                       const end = new Date(start);
                       end.setDate(start.getDate() + selectedPurchaseForDates.durationDays - 1);
                       setExpectedEndDateInput(end.toISOString().split('T')[0]);
-                    } else {
+                    } else if (!nextStartDate) {
                       setExpectedEndDateInput('');
                     }
                     setExpectedDateError(null); // Clear error on change
                   }}
-                  min={(() => {
+                  min={isAdmin ? undefined : (() => {
                     const tomorrow = new Date();
                     tomorrow.setDate(tomorrow.getDate() + 1);
                     return tomorrow.toISOString().split('T')[0];
@@ -2304,11 +2273,15 @@ export default function PaymentsSection({
                   disabled={!isDietitian && !isAdmin}
                   className={`w-full border rounded-lg p-2 mt-1 focus:ring-2 focus:ring-blue-500 ${(!isDietitian && !isAdmin) ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 />
-                <p className="text-xs text-gray-500 mt-1">When the client is expected to start the meal plan (must be a future date)</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {isAdmin
+                    ? 'Admins can set historical or future expected start dates.'
+                    : 'When the client is expected to start the meal plan (must be a future date)'}
+                </p>
               </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-700">Expected End Date (Auto-calculated)</label>
+                <label className="text-sm font-medium text-gray-700">Expected End Date *</label>
                 <input
                   type="date"
                   value={expectedEndDateInput}
@@ -2316,18 +2289,15 @@ export default function PaymentsSection({
                     setExpectedEndDateInput(e.target.value);
                     setExpectedDateError(null); // Clear error on change
                   }}
-                  min={expectedStartDateInput || (() => {
+                  min={isAdmin ? undefined : (expectedStartDateInput || (() => {
                     const tomorrow = new Date();
                     tomorrow.setDate(tomorrow.getDate() + 1);
                     return tomorrow.toISOString().split('T')[0];
-                  })()}
+                  })())}
                   disabled={!isDietitian && !isAdmin}
-                  className={`w-full border rounded-lg p-2 mt-1 focus:ring-2 focus:ring-blue-500 bg-gray-50 ${(!isDietitian && !isAdmin) ? 'cursor-not-allowed' : ''}`}
-                  readOnly
+                  className={`w-full border rounded-lg p-2 mt-1 focus:ring-2 focus:ring-blue-500 ${(!isDietitian && !isAdmin) ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                 />
-                <p className="text-xs text-green-600 mt-1">
-                  ✓ Auto-calculated based on start date + {selectedPurchaseForDates?.durationDays} days duration
-                </p>
+                <p className="text-xs text-green-600 mt-1">Set the expected completion date for this purchase.</p>
               </div>
             </div>
 

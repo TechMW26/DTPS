@@ -456,4 +456,31 @@ describe('diet template persistence integrations (supertest)', () => {
             byIdServer.close();
         }
     });
+
+    it('returns 401 for dietitian session missing id to avoid inconsistent template filtering', async () => {
+        const listRoute = await import('@/app/api/diet-templates/route');
+
+        (getServerSession as jest.Mock).mockResolvedValue({
+            user: {
+                email: 'dietitian@test.com',
+                role: UserRole.DIETITIAN,
+                firstName: 'Diet',
+                lastName: 'itian',
+                // Intentionally no id
+            },
+        });
+
+        const listServer = createRouteTestServer((nextRequest) => listRoute.GET(nextRequest));
+
+        try {
+            const response = await request(listServer)
+                .get('/api/diet-templates?limit=50&page=1');
+
+            expect(response.status).toBe(401);
+            expect(response.body?.success).toBe(false);
+            expect(response.body?.error).toMatch(/invalid session/i);
+        } finally {
+            listServer.close();
+        }
+    });
 });

@@ -111,6 +111,25 @@ const shouldPreserveStoredCounters = (purchase: any, recalculatedDaysUsed: numbe
   return storedDaysUsed > Math.max(0, Number(recalculatedDaysUsed || 0));
 };
 
+const getStartOfDayIST = (value: Date | string | number): Date => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+
+  const [year, month, day] = formatter.format(new Date(value)).split('-');
+  return new Date(`${year}-${month}-${day}T00:00:00+05:30`);
+};
+
+const getCalendarDaysUntilEndIST = (endDateValue: Date | string, referenceDate: Date = new Date()): number => {
+  const endDay = getStartOfDayIST(endDateValue);
+  const currentDay = getStartOfDayIST(referenceDate);
+  const diffMs = endDay.getTime() - currentDay.getTime();
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+};
+
 const isPurchaseActiveForPlanning = (purchase: any, now: Date): boolean => {
   const remainingDays = getEffectiveRemainingDays(purchase);
   if (remainingDays <= 0) return false;
@@ -274,7 +293,7 @@ export async function GET(request: NextRequest) {
       // Calculate calendar days until end date (for expiration)
       const endDate = purchaseObj.expectedEndDate || purchaseObj.endDate;
       const calendarDaysUntilEnd = endDate
-        ? Math.max(0, Math.ceil((new Date(endDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+        ? getCalendarDaysUntilEndIST(endDate, now)
         : remainingDays;
 
       // A purchase is expired if endDate has passed OR all days are used
@@ -419,7 +438,7 @@ export async function PUT(request: NextRequest) {
     // ======== EXPECTED END DATE VALIDATION ========
     // Only dietitian and admin can edit expected dates
     // Dietitian: edits allowed only up to one day before the current expected end date
-    // Admin: can ONLY edit when dates have expired (on or after the expected end date)
+    // Admin: edits allowed at any time
     if (expectedEndDate !== undefined || expectedStartDate !== undefined) {
       // Check if user is admin or dietitian
       const normalizedRole = (session.user.role || '').toLowerCase();
@@ -428,7 +447,7 @@ export async function PUT(request: NextRequest) {
 
       if (!isAdmin && !isDietitian) {
         return NextResponse.json({
-          error: 'Only dietitians are permitted to modify expected dates',
+          error: 'Only admins and dietitians are permitted to modify expected dates',
           code: 'ROLE_UNAUTHORIZED'
         }, { status: 403 });
       }
@@ -459,14 +478,6 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({
               error: 'Cannot modify expected end date: Changes are only allowed up to one day before the current expected end date.',
               code: 'DATE_TOO_CLOSE'
-            }, { status: 400 });
-          }
-        } else if (isAdmin) {
-          // Admin: can ONLY edit when dates have expired (on or after the end date)
-          if (today < existingEndDate) {
-            return NextResponse.json({
-              error: 'Admin can only modify expected dates after they have expired',
-              code: 'DATE_NOT_EXPIRED'
             }, { status: 400 });
           }
         }

@@ -50,6 +50,10 @@ type RuntimeRecord = {
 
 type ApiResponse = {
     records: RuntimeRecord[];
+    summary?: {
+        critical: number;
+        new: number;
+    };
     pagination: {
         page: number;
         limit: number;
@@ -109,6 +113,7 @@ export default function RealTimeApiErrorsPage() {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
+    const [summary, setSummary] = useState<{ critical: number; new: number }>({ critical: 0, new: 0 });
 
     const [search, setSearch] = useState('');
     const [sourceFilter, setSourceFilter] = useState('all');
@@ -133,7 +138,7 @@ export default function RealTimeApiErrorsPage() {
                 params.set('search', search.trim());
             }
 
-            const response = await fetch(`/api/admin/real-time-api?${params.toString()}`);
+            const response = await fetch(`/api/admin/real-time-api?${params.toString()}`, { cache: 'no-store' });
             if (!response.ok) {
                 throw new Error('Failed to load runtime errors');
             }
@@ -142,6 +147,10 @@ export default function RealTimeApiErrorsPage() {
             setRecords(data.records || []);
             setTotalPages(data.pagination?.totalPages || 1);
             setTotal(data.pagination?.total || 0);
+            setSummary({
+                critical: data.summary?.critical || 0,
+                new: data.summary?.new || 0,
+            });
         } catch (error) {
             console.error('Failed to fetch runtime errors:', error);
             toast.error('Failed to load runtime errors');
@@ -162,15 +171,9 @@ export default function RealTimeApiErrorsPage() {
         return () => clearInterval(interval);
     }, [fetchRecords]);
 
-    const criticalCount = useMemo(
-        () => records.filter((record) => record.priority === 'critical' || record.type === 'critical').length,
-        [records]
-    );
+    const criticalCount = useMemo(() => summary.critical, [summary.critical]);
 
-    const newCount = useMemo(
-        () => records.filter((record) => record.status === 'new').length,
-        [records]
-    );
+    const newCount = useMemo(() => summary.new, [summary.new]);
 
     if (session?.user?.role !== UserRole.ADMIN) {
         return (

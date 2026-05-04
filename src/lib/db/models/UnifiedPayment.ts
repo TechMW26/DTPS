@@ -560,6 +560,18 @@ unifiedPaymentSchema.index(
 
 // ========== INSTANCE METHODS ==========
 
+const getStartOfDayIST = (value: Date | string | number): Date => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+
+  const [year, month, day] = formatter.format(new Date(value)).split('-');
+  return new Date(`${year}-${month}-${day}T00:00:00+05:30`);
+};
+
 // Get remaining days for the plan (based on allocation: durationDays - daysUsed)
 unifiedPaymentSchema.methods.getRemainingDays = function (this: IUnifiedPayment): number {
   // Plan allocation remaining = durationDays - daysUsed
@@ -572,12 +584,12 @@ unifiedPaymentSchema.methods.getRemainingDays = function (this: IUnifiedPayment)
 unifiedPaymentSchema.methods.getCalendarDaysUntilEnd = function (this: IUnifiedPayment): number {
   if (!this.endDate && !this.expectedEndDate) return 0;
 
-  const now = new Date();
+  const now = getStartOfDayIST(new Date());
   const endDateValue = this.expectedEndDate ?? this.endDate;
   if (!endDateValue) return 0;
-  const endDate = new Date(endDateValue);
+  const endDate = getStartOfDayIST(endDateValue);
   const diffTime = endDate.getTime() - now.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
   return Math.max(0, diffDays);
 };

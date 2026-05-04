@@ -351,4 +351,84 @@ describe('template loading integration', () => {
             'Template Lunch'
         ); // Added from template
     });
+
+    /**
+     * Scenario: Legacy rows may keep nutrition/food data only inside `foods` array
+     * while top-level `food` text and `id` are empty. Meal type must still remain
+     * visible in the grid header list.
+     */
+    it('should keep legacy meal types visible when only nested foods exist', () => {
+        const normalizeMealType = (name: string): string | undefined => {
+            const upper = name.toUpperCase().replace(/\s+/g, '_');
+            const known = ['EARLY_MORNING', 'BREAKFAST', 'LUNCH', 'DINNER'];
+            return known.includes(upper) ? upper : undefined;
+        };
+
+        const MEAL_TYPES: Record<string, { label: string }> = {
+            EARLY_MORNING: { label: 'Early Morning' },
+            BREAKFAST: { label: 'Breakfast' },
+            LUNCH: { label: 'Lunch' },
+            DINNER: { label: 'Dinner' },
+        };
+
+        const toDisplayLabel = (mt: string): string => {
+            const key = normalizeMealType(mt);
+            return key ? MEAL_TYPES[key].label : mt;
+        };
+
+        const weekPlan = [
+            {
+                id: 'day-1',
+                day: 'Day 1',
+                date: '2026-05-02',
+                meals: {
+                    MID_MORNING: {
+                        // Legacy shape: no meal.id
+                        time: '11:00 AM',
+                        name: 'Mid Morning',
+                        foodOptions: [
+                            {
+                                // Legacy shape: no top-level `food`
+                                food: '',
+                                unit: '',
+                                cal: '',
+                                carbs: '',
+                                fats: '',
+                                protein: '',
+                                foods: [
+                                    {
+                                        id: 'food-1',
+                                        food: 'Roasted Chana',
+                                        unit: '30g',
+                                        cal: '120',
+                                        carbs: '18',
+                                        fats: '2',
+                                        protein: '6',
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+                note: '',
+            },
+        ];
+
+        // Mirrors current MealGridTable display-meal-type behavior.
+        const allMealTypes = new Set<string>();
+        weekPlan.forEach((day: any) => {
+            Object.keys(day.meals).forEach((mt) => {
+                const label = toDisplayLabel(mt);
+                if (!allMealTypes.has(label)) {
+                    const meal = day.meals[mt];
+                    if (meal && typeof meal === 'object') {
+                        allMealTypes.add(label);
+                    }
+                }
+            });
+        });
+
+        const displayMealTypes = Array.from(allMealTypes);
+        expect(displayMealTypes).toContain('MID_MORNING');
+    });
 });

@@ -101,6 +101,8 @@ export default function UserSubscriptionsPage() {
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [loadingReceipt, setLoadingReceipt] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
+  const [plansError, setPlansError] = useState<string | null>(null);
 
   // Prevent body scroll when modal is open
   useBodyScrollLock(showReceiptModal);
@@ -131,12 +133,20 @@ export default function UserSubscriptionsPage() {
 
   const fetchSubscriptions = async () => {
     try {
-      const response = await fetch('/api/client/subscriptions');
+      setSubscriptionError(null);
+      const response = await fetch('/api/client/subscriptions', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         setSubscriptions(data.subscriptions || []);
+      } else {
+        const errorMsg = 'Failed to load your subscriptions';
+        setSubscriptionError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
+      const errorMsg = 'Unable to load subscriptions. Please check your connection and try again.';
+      setSubscriptionError(errorMsg);
+      toast.error(errorMsg);
       console.error('Error fetching subscriptions:', error);
     } finally {
       setLoading(false);
@@ -145,12 +155,20 @@ export default function UserSubscriptionsPage() {
 
   const fetchAvailablePlans = async () => {
     try {
-      const response = await fetch('/api/subscription-plans?isActive=true');
+      setPlansError(null);
+      const response = await fetch('/api/subscription-plans?isActive=true', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         setAvailablePlans(data.plans || []);
+      } else {
+        const errorMsg = 'Failed to load available plans';
+        setPlansError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
+      const errorMsg = 'Unable to load plans. Please check your connection and try again.';
+      setPlansError(errorMsg);
+      toast.error(errorMsg);
       console.error('Error fetching plans:', error);
     }
   };
@@ -434,8 +452,8 @@ export default function UserSubscriptionsPage() {
               <TabsTrigger
                 value="my-plans"
                 className={`rounded-lg ${isDarkMode
-                    ? 'data-[state=active]:bg-black data-[state=active]:text-white data-[state=inactive]:text-gray-300'
-                    : 'data-[state=active]:bg-white'
+                  ? 'data-[state=active]:bg-black data-[state=active]:text-white data-[state=inactive]:text-gray-300'
+                  : 'data-[state=active]:bg-white'
                   }`}
               >
                 My Plans
@@ -443,8 +461,8 @@ export default function UserSubscriptionsPage() {
               <TabsTrigger
                 value="browse"
                 className={`rounded-lg ${isDarkMode
-                    ? 'data-[state=active]:bg-black data-[state=active]:text-white data-[state=inactive]:text-gray-300'
-                    : 'data-[state=active]:bg-white'
+                  ? 'data-[state=active]:bg-black data-[state=active]:text-white data-[state=inactive]:text-gray-300'
+                  : 'data-[state=active]:bg-white'
                   }`}
               >
                 Browse Plans
@@ -624,10 +642,10 @@ export default function UserSubscriptionsPage() {
 
                         <Button
                           className={`w-full ${alreadyPurchased
-                              ? isDarkMode
-                                ? 'bg-gray-800 text-gray-400'
-                                : 'bg-gray-200 text-gray-500'
-                              : 'bg-[#E06A26] hover:bg-[#d15a1a]'
+                            ? isDarkMode
+                              ? 'bg-gray-800 text-gray-400'
+                              : 'bg-gray-200 text-gray-500'
+                            : 'bg-[#E06A26] hover:bg-[#d15a1a]'
                             }`}
                           disabled={alreadyPurchased || purchasing === plan._id}
                           onClick={() => handlePurchase(plan)}

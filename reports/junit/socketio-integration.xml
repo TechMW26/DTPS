@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="4" failures="0" errors="0" time="2.59">
-  <testsuite name="tests/integration/diet-templates-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-02T11:43:26" time="2.459" tests="4">
-    <testcase classname="diet template persistence integrations (supertest)" name="creates and lists diet templates with persisted meals + meal types" time="0.41">
+<testsuites name="jest tests" tests="6" failures="0" errors="0" time="1.333">
+  <testsuite name="tests/integration/template-loading.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-02T12:05:42" time="1.202" tests="6">
+    <testcase classname="template loading integration" name="should deep clone meal data when applying template mapping" time="0.039">
     </testcase>
-    <testcase classname="diet template persistence integrations (supertest)" name="updates and soft-deletes diet template while preserving meal payload updates" time="0.303">
+    <testcase classname="template loading integration" name="should normalize meal keys from canonical form to display names" time="0.002">
     </testcase>
-    <testcase classname="diet template persistence integrations (supertest)" name="allows admin to list archived diet templates and restore them" time="0.291">
+    <testcase classname="template loading integration" name="should update editingPlan.meals when loading template in edit mode" time="0.002">
     </testcase>
-    <testcase classname="diet template persistence integrations (supertest)" name="API calories summary excludes alternative foods" time="0.291">
+    <testcase classname="template loading integration" name="should map template meals to correct days based on day mapping" time="0.001">
+    </testcase>
+    <testcase classname="template loading integration" name="should merge template meals with existing meals without overwriting" time="0.001">
+    </testcase>
+    <testcase classname="template loading integration" name="should keep legacy meal types visible when only nested foods exist" time="0.001">
     </testcase>
   </testsuite>
 </testsuites>

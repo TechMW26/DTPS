@@ -89,7 +89,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const difficulty = searchParams.get('difficulty');
     const dietaryRestrictions = searchParams.get('dietaryRestrictions');
-    const createdBy = searchParams.get('createdBy');
+    const createdByRaw = searchParams.get('createdBy');
+    const createdBy = createdByRaw && createdByRaw !== 'undefined' && createdByRaw !== 'null'
+      ? createdByRaw
+      : null;
     const includeInactive = searchParams.get('includeInactive') === 'true';
     const sortBy = searchParams.get('sortBy') || 'newest';
     const limit = parseInt(searchParams.get('limit') || '10');
@@ -113,6 +116,13 @@ export async function GET(request: NextRequest) {
         query.createdBy = createdBy;
       } else if (isDietitian) {
         // Dietitians should only see their own templates unless an explicit creator filter is provided.
+        // Guard against incomplete session payloads to avoid random empty-result glitches.
+        if (!session.user.id) {
+          return NextResponse.json(
+            { success: false, error: 'Invalid session. Please re-login.' },
+            { status: 401 }
+          );
+        }
         query.createdBy = session.user.id;
       }
     } else {
@@ -190,8 +200,9 @@ export async function GET(request: NextRequest) {
         sortOptions = { createdAt: -1 };
     }
 
+    const cacheScope = `${session?.user?.role || 'guest'}:${session?.user?.id || 'anon'}`;
     const templates = await withCache(
-      `diet-templates:${JSON.stringify(query)}:limit=${limit}:skip=${skip}`,
+      `diet-templates:${cacheScope}:${JSON.stringify(query)}:sort=${sortBy}:limit=${limit}:skip=${skip}`,
       async () => await DietTemplate.find(query)
         .populate('createdBy', 'firstName lastName role')
         .sort(sortOptions)

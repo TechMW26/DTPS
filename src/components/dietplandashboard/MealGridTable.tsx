@@ -895,8 +895,10 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         const label = toDisplayLabel(mt);
         if (!allMealTypes.has(label)) {
           const meal = day.meals[mt];
-          // Include if it has food OR if it was explicitly created as a meal
-          if (meal?.foodOptions?.some(opt => opt.food?.trim()) || meal?.id) {
+          // Include any persisted meal row to avoid hiding saved meal types.
+          // This prevents "missing meal type" issues when food text is empty but
+          // foods are stored in nested arrays or IDs are absent in legacy payloads.
+          if (meal && typeof meal === 'object') {
             allMealTypes.add(label);
           }
         }

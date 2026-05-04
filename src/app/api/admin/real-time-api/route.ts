@@ -78,10 +78,14 @@ const endpointToSection = (endpoint?: string, role?: string): string => {
     }
 };
 
+const isAdminRole = (role?: string): boolean => {
+    return normalizeRole(role) === UserRole.ADMIN || String(role || '').toLowerCase().includes('admin');
+};
+
 export async function GET(request: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
-        if (!session?.user || session.user.role !== UserRole.ADMIN) {
+        if (!session?.user || !isAdminRole(session.user.role)) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -116,15 +120,11 @@ export async function GET(request: NextRequest) {
             ];
         }
 
-        const [rawAlerts, total] = await Promise.all([
-            SystemAlert.find(query)
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit)
-                .populate('createdBy', 'firstName lastName email role')
-                .lean(),
-            SystemAlert.countDocuments(query)
-        ]);
+        // Filter by role/section depends on enriched fields, so paginate after enrichment.
+        const rawAlerts = await SystemAlert.find(query)
+            .sort({ createdAt: -1 })
+            .populate('createdBy', 'firstName lastName email role')
+            .lean();
 
         const actorIds = Array.from(new Set(
             rawAlerts
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
 
         const actorMap = new Map<string, any>(actorDocs.map((doc: any) => [String(doc._id), doc]));
 
-        const records = rawAlerts
+        const filteredRecords = rawAlerts
             .map((alert: any): RuntimeErrorRecord => {
                 const details = (alert.details || {}) as Record<string, unknown>;
 
@@ -227,8 +227,17 @@ export async function GET(request: NextRequest) {
             .filter((record) => (role === 'all' ? true : record.actor.role === normalizeRole(role)))
             .filter((record) => (section === 'all' ? true : record.section === normalizeSection(section)));
 
-        return NextResponse.json({
+        const total = filteredRecords.length;
+        const records = filteredRecords.slice(skip, skip + limit);
+        const critical = filteredRecords.filter((record) => record.priority === 'critical' || record.type === 'critical').length;
+        const fresh = filteredRecords.filter((record) => record.status === 'new').length;
+
+        const response = NextResponse.json({
             records,
+            summary: {
+                critical,
+                new: fresh
+            },
             pagination: {
                 page,
                 limit,
@@ -236,6 +245,8 @@ export async function GET(request: NextRequest) {
                 totalPages: Math.max(Math.ceil(total / limit), 1)
             }
         });
+        response.headers.set('Cache-Control', 'no-store');
+        return response;
     } catch (error) {
         console.error('Error fetching real-time API runtime errors:', error);
         return NextResponse.json({ error: 'Failed to fetch runtime errors' }, { status: 500 });

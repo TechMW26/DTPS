@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 import {
   CreditCard,
   Download,
@@ -57,6 +58,7 @@ export default function UserBillingPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasData, setHasData] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Real-time SSE: auto-refresh billing data when payment status changes
   useRealtime({
@@ -82,14 +84,23 @@ export default function UserBillingPage() {
   const fetchBillingData = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/client/billing');
+      setErrorMessage(null);
+      const response = await fetch('/api/client/billing', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         setSubscription(data.subscription);
         setInvoices(data.invoices || []);
         setHasData(!!(data.subscription || (data.invoices && data.invoices.length > 0)));
+      } else {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to fetch billing data' }));
+        const errorMsg = errorData.message || 'Failed to fetch billing data';
+        setErrorMessage(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (error) {
+      const errorMsg = 'Unable to load billing data. Please check your connection and try again.';
+      setErrorMessage(errorMsg);
+      toast.error(errorMsg);
       console.error('Error fetching billing data:', error);
     } finally {
       setLoading(false);
@@ -164,6 +175,46 @@ export default function UserBillingPage() {
     return (
       <div className={`fixed inset-0 flex items-center justify-center z-[100] ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
         <SpoonGifLoader size="lg" />
+      </div>
+    );
+  }
+
+  // Show error state if there's an error
+  if (errorMessage && !loading) {
+    return (
+      <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
+        {/* Header */}
+        <div className={`sticky top-0 z-40 transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'} border-b`}>
+          <div className="relative flex items-center justify-center px-4 py-4">
+            <Link href="/user" className="absolute left-4 flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#ff9500]/10 transition-colors">
+              <ArrowLeft className={`w-5 h-5 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`} />
+            </Link>
+            <h1 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-black'}`}>Billing</h1>
+            <button
+              onClick={fetchBillingData}
+              className="absolute right-4 flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#ff9500]/10 transition-colors"
+            >
+              <RefreshCw className={`w-5 h-5 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center justify-center px-4 py-16">
+          <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 ${isDarkMode ? 'bg-red-900/20' : 'bg-red-100'}`}>
+            <AlertCircle className={`w-10 h-10 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`} />
+          </div>
+          <h2 className={`text-xl font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Unable to Load Billing Data</h2>
+          <p className={`text-center mb-6 max-w-md ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            {errorMessage}
+          </p>
+          <Button
+            onClick={fetchBillingData}
+            className="bg-[#3AB1A0] hover:bg-[#3AB1A0]/90 text-white"
+          >
+            <RefreshCw className="w-4 h-4 mr-1" />
+            Try Again
+          </Button>
+        </div>
       </div>
     );
   }
