@@ -1,6 +1,7 @@
 import React from 'react';
 import { headers } from 'next/headers';
 import PerPageSelect from '@/components/wati/PerPageSelect';
+import { COUNTRY_CODES } from '@/lib/constants/countries';
 
 async function fetchContacts(search: string, limit: number, skip: number) {
   const hdrs = await headers();
@@ -18,9 +19,14 @@ async function fetchContacts(search: string, limit: number, skip: number) {
   return res.json();
 }
 
-export default async function WatiContactsPage({ searchParams }: { searchParams: Promise<{ q?: string, page?: string, perPage?: string }> }) {
+export default async function WatiContactsPage({ searchParams }: { searchParams: Promise<{ q?: string, code?: string, page?: string, perPage?: string }> }) {
   const s = await searchParams;
-  const q = s?.q || '';
+  const rawQuery = s?.q || '';
+  const selectedCodeFromParams = s?.code || '+91';
+  const normalizedCode = COUNTRY_CODES.some((c) => c.code === selectedCodeFromParams) ? selectedCodeFromParams : '+91';
+  const q = rawQuery ? `${normalizedCode}${rawQuery.replace(/\D/g, '')}` : '';
+  const selectedCode = normalizedCode;
+  const qWithoutCode = q.startsWith(normalizedCode) ? q.slice(normalizedCode.length).trim() : rawQuery;
   const perPage = Math.max(1, Math.min(Number(s?.perPage || 10), 50));
   const page = Math.max(1, Number(s?.page || 1));
   const skip = (page - 1) * perPage;
@@ -31,11 +37,17 @@ export default async function WatiContactsPage({ searchParams }: { searchParams:
       {/* <h1 className="text-2xl font-semibold mb-4">WATI Contacts</h1> */}
       <form className="mb-4 md:flex md:items-center md:w-[30%] md:mx-auto gap-2 sm:gap-3 justify-center " action="/wati-contacts" method="get">
         <div className="flex items-center border rounded w-full  sm:max-w-lg md:max-w-xl">
-          <span className="px-2 text-xs text-gray-500">+91</span>
+          <select name="code" defaultValue={selectedCode} className="px-2 py-1.5 text-xs text-gray-500 bg-transparent border-r outline-none">
+            {COUNTRY_CODES.map((country) => (
+              <option key={`${country.code}-${country.country}`} value={country.code}>
+                {country.flag} {country.code}
+              </option>
+            ))}
+          </select>
           <input
             type="text"
             name="q"
-            defaultValue={q}
+            defaultValue={qWithoutCode}
             placeholder="Your registered whatsapp number"
             className="px-3 py-1.5 placeholder:text-xs flex-1 outline-none text-sm"
           />
@@ -63,7 +75,7 @@ export default async function WatiContactsPage({ searchParams }: { searchParams:
           </tbody>
         </table>
       </div>
-      <div className="max-w-3xl hidden mx-auto mt-5 sm:mt-6 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 px-2">
+      <div className="max-w-3xl hidden sm:flex mx-auto mt-5 sm:mt-6 flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 px-2">
         {/* <div className="text-xs sm:text-sm text-gray-600 self-start sm:self-auto">Total: {total}</div> */}
         <form action="/wati-contacts" method="get" className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <input type="hidden" name="q" value={q} />

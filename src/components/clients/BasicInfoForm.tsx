@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Save } from 'lucide-react';
+import { COUNTRY_CODES } from '@/lib/constants/countries';
 
 // Goal category interface for dynamic loading
 interface GoalCategory {
@@ -24,6 +25,20 @@ const defaultGoals: GoalCategory[] = [
   { _id: '4', name: 'Maintain Weight', value: 'maintain-weight', isActive: true },
   { _id: '5', name: 'Disease Management', value: 'disease-management', isActive: true },
 ];
+
+const sortedCountryCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+
+const detectCountryCode = (phoneValue?: string): string => {
+  if (!phoneValue) return '+91';
+  const match = sortedCountryCodes.find((country) => phoneValue.startsWith(country.code));
+  return match?.code || '+91';
+};
+
+const stripCountryCode = (phoneValue?: string): string => {
+  if (!phoneValue) return '';
+  const code = detectCountryCode(phoneValue);
+  return phoneValue.replace(code, '').replace(/^[\s-]?/, '').trim();
+};
 
 export interface BasicInfoData {
   firstName: string;
@@ -232,18 +247,10 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
           <Label htmlFor="phone">Phone *</Label>
           <div className="flex gap-2">
             <Select
-              value={(() => {
-                if (!phone) return '+91';
-                // Match country codes: +91, +1, +44, +971, +65, +61, +49, +33 (order by length desc for proper matching)
-                const match = phone.match(/^\+(971|91|44|65|61|49|33|1)/);
-                return match ? `+${match[1]}` : '+91';
-              })()}
+              value={detectCountryCode(phone)}
               onValueChange={(code) => {
                 if (disablePhone) return;
-                // Extract just the number part using specific country code patterns
-                const codeMatch = phone?.match(/^\+(971|91|44|65|61|49|33|1)/);
-                const currentCode = codeMatch ? `+${codeMatch[1]}` : '';
-                const currentNumber = currentCode ? phone?.replace(currentCode, '').replace(/^[\s-]?/, '').trim() : phone?.trim() || '';
+                const currentNumber = stripCountryCode(phone);
                 onChange('phone', `${code}${currentNumber}`);
               }}
               disabled={disablePhone}
@@ -252,33 +259,20 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
                 <SelectValue placeholder="Code" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="+91">🇮🇳 +91</SelectItem>
-                <SelectItem value="+1">🇺🇸 +1</SelectItem>
-                <SelectItem value="+44">🇬🇧 +44</SelectItem>
-                <SelectItem value="+971">🇦🇪 +971</SelectItem>
-                <SelectItem value="+65">🇸🇬 +65</SelectItem>
-                <SelectItem value="+61">🇦🇺 +61</SelectItem>
-                <SelectItem value="+49">🇩🇪 +49</SelectItem>
-                <SelectItem value="+33">🇫🇷 +33</SelectItem>
+                {COUNTRY_CODES.map((country) => (
+                  <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
+                    {country.flag} {country.code}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Input
               id="phone"
               className="flex-1"
-              value={(() => {
-                if (!phone) return '';
-                // Remove specific country code prefix and any space/dash after it
-                const codeMatch = phone.match(/^\+(971|91|44|65|61|49|33|1)/);
-                if (codeMatch) {
-                  return phone.replace(`+${codeMatch[1]}`, '').replace(/^[\s-]?/, '').trim();
-                }
-                return phone.trim();
-              })()}
+              value={stripCountryCode(phone)}
               onChange={e => {
                 if (disablePhone) return;
-                // Extract country code from current phone or default to +91
-                const match = phone?.match(/^\+(971|91|44|65|61|49|33|1)/);
-                const code = match ? `+${match[1]}` : '+91';
+                const code = detectCountryCode(phone);
                 onChange('phone', `${code}${e.target.value}`);
               }}
               placeholder="9000000000"
@@ -321,15 +315,9 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
             <Label htmlFor="altPhone">Alternative Phone Number</Label>
             <div className="flex gap-2">
               <Select
-                value={(() => {
-                  if (!altPhone) return '+91';
-                  const match = altPhone.match(/^\+(971|91|44|65|61|49|33|1)/);
-                  return match ? `+${match[1]}` : '+91';
-                })()}
+                value={detectCountryCode(altPhone)}
                 onValueChange={(code) => {
-                  const codeMatch = altPhone?.match(/^\+(971|91|44|65|61|49|33|1)/);
-                  const currentCode = codeMatch ? `+${codeMatch[1]}` : '';
-                  const currentNumber = currentCode ? altPhone?.replace(currentCode, '').replace(/^[\s-]?/, '').trim() : altPhone?.trim() || '';
+                  const currentNumber = stripCountryCode(altPhone);
                   onChange('altPhone', `${code}${currentNumber}`);
                 }}
               >
@@ -337,30 +325,19 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
                   <SelectValue placeholder="Code" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="+91">🇮🇳 +91</SelectItem>
-                  <SelectItem value="+1">🇺🇸 +1</SelectItem>
-                  <SelectItem value="+44">🇬🇧 +44</SelectItem>
-                  <SelectItem value="+971">🇦🇪 +971</SelectItem>
-                  <SelectItem value="+65">🇸🇬 +65</SelectItem>
-                  <SelectItem value="+61">🇦🇺 +61</SelectItem>
-                  <SelectItem value="+49">🇩🇪 +49</SelectItem>
-                  <SelectItem value="+33">🇫🇷 +33</SelectItem>
+                  {COUNTRY_CODES.map((country) => (
+                    <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
+                      {country.flag} {country.code}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Input
                 id="altPhone"
                 className="flex-1"
-                value={(() => {
-                  if (!altPhone) return '';
-                  const codeMatch = altPhone.match(/^\+(971|91|44|65|61|49|33|1)/);
-                  if (codeMatch) {
-                    return altPhone.replace(`+${codeMatch[1]}`, '').replace(/^[\s-]?/, '').trim();
-                  }
-                  return altPhone.trim();
-                })()}
+                value={stripCountryCode(altPhone)}
                 onChange={e => {
-                  const match = altPhone?.match(/^\+(971|91|44|65|61|49|33|1)/);
-                  const code = match ? `+${match[1]}` : '+91';
+                  const code = detectCountryCode(altPhone);
                   onChange('altPhone', `${code}${e.target.value}`);
                 }}
                 placeholder="9000000000"

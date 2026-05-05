@@ -11,6 +11,8 @@ import { UserRole, UserStatus } from "@/types";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getClientId, getDietitianId, getHealthCounselorId } from "@/lib/utils";
 import { validateEmail } from "@/lib/validations/auth";
+import { validatePhoneNumber } from "@/lib/validations/contact";
+import { COUNTRY_CODES } from "@/lib/constants/countries";
 
 interface Client {
   _id: string;
@@ -79,6 +81,19 @@ export default function AdminClientsPage() {
     dateOfBirth: "",
     assignedDietitian: "",
   });
+  const [countryCode, setCountryCode] = useState('+91');
+
+  const sortedCountryCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+  const detectCountryCode = (phoneValue?: string) => {
+    if (!phoneValue) return '+91';
+    const match = sortedCountryCodes.find((c) => phoneValue.startsWith(c.code));
+    return match?.code || '+91';
+  };
+  const stripCountryCode = (phoneValue?: string) => {
+    if (!phoneValue) return '';
+    const code = detectCountryCode(phoneValue);
+    return phoneValue.replace(code, '').replace(/^[\s-]?/, '').trim();
+  };
 
   const filtered = data; // No client-side filtering, use API search instead
 
@@ -134,6 +149,7 @@ export default function AdminClientsPage() {
   function openCreate() {
     setEditing(null);
     setForm({ email: "", firstName: "", lastName: "", phone: "", gender: "", dateOfBirth: "", assignedDietitian: "" });
+    setCountryCode('+91');
     setOpen(true);
   }
 
@@ -146,11 +162,12 @@ export default function AdminClientsPage() {
       email: u.email || "",
       firstName: u.firstName,
       lastName: u.lastName,
-      phone: u.phone || "",
+      phone: stripCountryCode(u.phone || ""),
       gender: u.gender || "",
       dateOfBirth: u.dateOfBirth ? u.dateOfBirth.substring(0, 10) : "",
       assignedDietitian: dietitianId,
     });
+    setCountryCode(detectCountryCode(u.phone || ""));
     setOpen(true);
   }
 
@@ -169,6 +186,12 @@ export default function AdminClientsPage() {
       return;
     }
 
+    const phoneValidation = validatePhoneNumber(`${countryCode}${String(form.phone).replace(/\D/g, '')}`, countryCode);
+    if (!phoneValidation.isValid) {
+      setError(phoneValidation.error || 'Please enter a valid phone number');
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
@@ -178,7 +201,7 @@ export default function AdminClientsPage() {
         firstName: form.firstName,
         lastName: form.lastName,
         role: UserRole.CLIENT,
-        phone: form.phone,
+        phone: phoneValidation.normalized,
         gender: form.gender || undefined,
         dateOfBirth: form.dateOfBirth ? new Date(form.dateOfBirth) : undefined,
         assignedDietitian: form.assignedDietitian || undefined,
@@ -514,7 +537,25 @@ export default function AdminClientsPage() {
               </div>
               <div className="col-span-2">
                 <label className="text-sm text-gray-600">Phone / WhatsApp <span className="text-red-500">*</span></label>
-                <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+91XXXXXXXXXX" />
+                <div className="flex items-center gap-2">
+                  <Select value={countryCode} onValueChange={setCountryCode}>
+                    <SelectTrigger className="w-24">
+                      <SelectValue placeholder="Code" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {COUNTRY_CODES.map((country) => (
+                        <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
+                          {country.flag} {country.code}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={form.phone}
+                    onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 15) }))}
+                    placeholder="Phone number"
+                  />
+                </div>
               </div>
               <div className="col-span-2">
                 <label className="text-sm text-gray-600">Email (Optional)</label>

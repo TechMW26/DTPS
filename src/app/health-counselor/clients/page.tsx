@@ -36,6 +36,8 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { ExternalLink, RefreshCw, Search, Users, Plus, UserPlus, XCircle } from 'lucide-react';
 import { validateEmail } from '@/lib/validations/auth';
+import { validatePhoneNumber } from '@/lib/validations/contact';
+import { COUNTRY_CODES } from '@/lib/constants/countries';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -150,6 +152,7 @@ export default function HealthCounselorClientsPage() {
     gender: '',
     dateOfBirth: '',
   });
+  const [createCountryCode, setCreateCountryCode] = useState('+91');
 
   // Tag management state
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
@@ -388,13 +391,19 @@ export default function HealthCounselorClientsPage() {
       return;
     }
 
+    const phoneValidation = validatePhoneNumber(`${createCountryCode}${String(createForm.phone).replace(/\D/g, '')}`, createCountryCode);
+    if (!phoneValidation.isValid) {
+      toast.error(phoneValidation.error || 'Please enter a valid phone number');
+      return;
+    }
+
     try {
       setSaving(true);
       const payload = {
         email: createForm.email || undefined,
         firstName: createForm.firstName,
         lastName: createForm.lastName,
-        phone: createForm.phone,
+        phone: phoneValidation.normalized,
         gender: createForm.gender || undefined,
         dateOfBirth: createForm.dateOfBirth ? new Date(createForm.dateOfBirth) : undefined,
         role: 'client',
@@ -422,6 +431,7 @@ export default function HealthCounselorClientsPage() {
         gender: '',
         dateOfBirth: '',
       });
+      setCreateCountryCode('+91');
       setCurrentPage(1);
       await fetchMyClients(1, pageSize, debouncedSearch);
     } catch (error: any) {
@@ -869,11 +879,25 @@ export default function HealthCounselorClientsPage() {
             </div>
             <div className="col-span-2">
               <label className="text-sm text-gray-600">Phone / WhatsApp <span className="text-red-500">*</span></label>
-              <Input
-                value={createForm.phone}
-                onChange={e => setCreateForm(f => ({ ...f, phone: e.target.value }))}
-                placeholder="+91XXXXXXXXXX"
-              />
+              <div className="flex items-center gap-2">
+                <Select value={createCountryCode} onValueChange={setCreateCountryCode}>
+                  <SelectTrigger className="w-24">
+                    <SelectValue placeholder="Code" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {COUNTRY_CODES.map((country) => (
+                      <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
+                        {country.flag} {country.code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={createForm.phone}
+                  onChange={e => setCreateForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 15) }))}
+                  placeholder="Phone number"
+                />
+              </div>
             </div>
             <div className="col-span-2">
               <label className="text-sm text-gray-600">Email (Optional)</label>
