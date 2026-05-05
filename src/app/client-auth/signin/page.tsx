@@ -8,11 +8,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Eye, EyeOff, Mail, Lock, ArrowLeft, Leaf, Phone, MessageSquare } from 'lucide-react';
 import { signInSchema, SignInInput } from '@/lib/validations/auth';
 import { validatePhoneNumber } from '@/lib/validations/contact';
+import { COUNTRY_CODES } from '@/lib/constants/countries';
 import Image from 'next/image';
 
 type LoginMode = 'otp' | 'email';
@@ -30,6 +32,7 @@ export default function ClientSignInPage() {
   // OTP login state
   const [loginMode, setLoginMode] = useState<LoginMode>('otp');
   const [otpStep, setOtpStep] = useState<OTPStep>('phone');
+  const [countryCode, setCountryCode] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState(['', '', '', '']);
   const [otpSent, setOtpSent] = useState(false);
@@ -123,9 +126,9 @@ export default function ClientSignInPage() {
 
   // Send OTP
   const handleSendOtp = async () => {
-    const phoneValidation = validatePhoneNumber(phoneNumber, '+91');
+    const phoneValidation = validatePhoneNumber(`${countryCode}${phoneNumber}`, countryCode);
     if (!phoneValidation.isValid) {
-      setError(phoneValidation.error || 'Please enter a valid 10-digit phone number');
+      setError(phoneValidation.error || 'Please enter a valid phone number');
       return;
     }
 
@@ -166,9 +169,9 @@ export default function ClientSignInPage() {
       return;
     }
 
-    const phoneValidation = validatePhoneNumber(phoneNumber, '+91');
+    const phoneValidation = validatePhoneNumber(`${countryCode}${phoneNumber}`, countryCode);
     if (!phoneValidation.isValid) {
-      setError(phoneValidation.error || 'Please enter a valid 10-digit phone number');
+      setError(phoneValidation.error || 'Please enter a valid phone number');
       return;
     }
 
@@ -365,20 +368,33 @@ export default function ClientSignInPage() {
                   {/* Phone Input */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-700">WhatsApp Number</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                        <Phone className="w-5 h-5 text-gray-500" />
-                      </div>
-                      <div className="absolute inset-y-0 left-12 flex items-center pointer-events-none">
-                        <span className="text-gray-500 text-sm">+91</span>
-                      </div>
+                    <div className="flex items-center h-12 sm:h-14 bg-[#3AB1A0]/5 border border-[#3AB1A0]/20 rounded-xl overflow-hidden px-2 focus-within:border-[#3AB1A0] focus-within:ring-1 focus-within:ring-[#3AB1A0]">
+                      <Select value={countryCode} onValueChange={setCountryCode}>
+                        <SelectTrigger className="w-24 h-full border-0 bg-transparent px-2 focus:ring-0 focus:outline-none text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          {COUNTRY_CODES.map((country) => (
+                            <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
+                              <span className="flex items-center gap-2">
+                                <span>{country.flag}</span>
+                                <span>{country.code}</span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <div className="w-px h-6 bg-[#3AB1A0]/20 mx-2" />
+                      <Phone className="w-5 h-5 text-gray-500 mr-2 shrink-0" />
+
                       <Input
                         type="tel"
-                        placeholder="Enter 10-digit number"
+                        placeholder="Enter phone number"
                         value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                        className="h-12 sm:h-14 pl-20 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
-                        maxLength={10}
+                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                        className="flex-1 h-full border-0 outline-none bg-transparent text-black placeholder:text-gray-400 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none shadow-none"
+                        maxLength={15}
                       />
                     </div>
                     <p className="text-xs text-gray-500 flex items-center gap-1">
@@ -392,7 +408,7 @@ export default function ClientSignInPage() {
                     type="button"
                     onClick={handleSendOtp}
                     className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
-                    disabled={isLoading || phoneNumber.length !== 10}
+                    disabled={isLoading || phoneNumber.replace(/\D/g, '').length < 6}
                   >
                     {isLoading ? 'Sending OTP...' : 'Send OTP'}
                   </Button>
@@ -417,7 +433,7 @@ export default function ClientSignInPage() {
                   <p className="text-center text-gray-600 text-sm mb-4">
                     Enter the 4-digit OTP sent to
                     <br />
-                    <span className="font-semibold text-gray-800">+91 {phoneNumber}</span>
+                    <span className="font-semibold text-gray-800">{countryCode} {phoneNumber}</span>
                   </p>
 
                   {/* OTP Input */}
