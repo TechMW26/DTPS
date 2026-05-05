@@ -63,7 +63,39 @@ const mealTimeSuggestions: { [key: string]: string } = Object.fromEntries(
   DEFAULT_MEAL_TYPES_LIST.map(m => [m.name, m.time])
 );
 
+const normalizeTo12Hour = (value?: string): string => {
+  if (!value || !value.trim()) return '';
+  const trimmed = value.trim();
+
+  const twelveHourMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (twelveHourMatch) {
+    const hours = parseInt(twelveHourMatch[1], 10);
+    const minutes = twelveHourMatch[2];
+    const period = twelveHourMatch[3].toUpperCase();
+    if (hours >= 1 && hours <= 12) {
+      return `${String(hours).padStart(2, '0')}:${minutes} ${period}`;
+    }
+  }
+
+  const twentyFourHourMatch = trimmed.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (twentyFourHourMatch) {
+    const h24 = parseInt(twentyFourHourMatch[1], 10);
+    const minutes = twentyFourHourMatch[2];
+    const period = h24 >= 12 ? 'PM' : 'AM';
+    const h12 = h24 % 12 || 12;
+    return `${String(h12).padStart(2, '0')}:${minutes} ${period}`;
+  }
+
+  return trimmed;
+};
+
+
+
+
+
 const DAYS_PER_PAGE = 14;
+
+
 
 // ============ DEEP CLONE HELPERS ============
 // Deep-clone a FoodItem
@@ -99,6 +131,19 @@ function cloneDay(day: DayPlan): DayPlan {
 // Deep-clone the entire weekPlan array
 function cloneWeekPlan(plan: DayPlan[]): DayPlan[] {
   return plan.map(cloneDay);
+}
+
+function hasMeaningfulMealData(meal?: Meal): boolean {
+  if (!meal) return false;
+  if (meal.time?.trim()) return true;
+  if (!Array.isArray(meal.foodOptions) || meal.foodOptions.length === 0) return false;
+  return meal.foodOptions.some(opt => {
+    if ((opt.food || '').trim()) return true;
+    if (Array.isArray(opt.foods)) {
+      return opt.foods.some(f => (f?.food || '').trim());
+    }
+    return false;
+  });
 }
 
 // Helper to format a number to at most 2 decimal places (strips trailing zeros)
@@ -224,6 +269,51 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     }
   }, [mealTypeConfigs]);
 
+  // Self-heal legacy/canonical meal keys (e.g. BREAKFAST) into display labels (e.g. Breakfast)
+  // so all grid operations read/write the same key and meals don't appear to vanish.
+  useEffect(() => {
+    if (readOnly || !onUpdate || !Array.isArray(weekPlan) || weekPlan.length === 0) return;
+
+    const needsNormalization = weekPlan.some(day =>
+      Object.keys(day.meals || {}).some(rawKey => {
+        const canonicalKey = normalizeMealType(rawKey);
+        if (!canonicalKey || !MEAL_TYPES[canonicalKey]) return false;
+        return rawKey !== MEAL_TYPES[canonicalKey].label;
+      })
+    );
+
+    if (!needsNormalization) return;
+
+    const normalizedWeekPlan = cloneWeekPlan(weekPlan).map(day => {
+      const nextMeals: Record<string, Meal> = {};
+
+      Object.entries(day.meals || {}).forEach(([rawKey, meal]) => {
+        const canonicalKey = normalizeMealType(rawKey);
+        const normalizedKey = canonicalKey && MEAL_TYPES[canonicalKey]
+          ? MEAL_TYPES[canonicalKey].label
+          : rawKey;
+
+        const existing = nextMeals[normalizedKey];
+        if (!existing) {
+          nextMeals[normalizedKey] = { ...meal, name: normalizedKey };
+          return;
+        }
+
+        // If duplicate keys collapse to same normalized label, keep richer meal payload.
+        const keepIncoming =
+          hasMeaningfulMealData(meal) && !hasMeaningfulMealData(existing);
+
+        if (keepIncoming) {
+          nextMeals[normalizedKey] = { ...meal, name: normalizedKey };
+        }
+      });
+
+      return { ...day, meals: nextMeals };
+    });
+
+    onUpdate(normalizedWeekPlan);
+  }, [weekPlan, readOnly, onUpdate]);
+
   // Fetch recipes when Find & Replace dialog opens
   useEffect(() => {
     if (findReplaceDialogOpen && recipes.length === 0) {
@@ -251,7 +341,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
   const createNewMeal = (mealType: string): Meal => ({
     id: Math.random().toString(36).substr(2, 9),
-    time: customMealTimes[mealType] || mealTimeSuggestions[mealType] || '12:00 PM',
+    time: normalizeTo12Hour(customMealTimes[mealType]) || normalizeTo12Hour(mealTimeSuggestions[mealType]) || '12:00 PM',
     name: mealType,
     showAlternatives: true,
     foodOptions: [
@@ -307,19 +397,20 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const updateMealTime = (dayIndex: number, mealType: string, time: string) => {
     if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
+    const normalizedTime = normalizeTo12Hour(time);
     if (newWeekPlan[dayIndex].meals[mealType]) {
-      newWeekPlan[dayIndex].meals[mealType].time = time;
+      newWeekPlan[dayIndex].meals[mealType].time = normalizedTime;
       onUpdate(newWeekPlan);
 
       // Keep the header meal-type timing in sync with manual cell edits
       setCustomMealTimes(prev => ({
         ...prev,
-        [mealType]: time
+        [mealType]: normalizedTime
       }));
 
       // Persist updated meal-type timing in parent configs (used on save/reopen)
       if (onUpdateMealTimes) {
-        onUpdateMealTimes({ [mealType]: time });
+        onUpdateMealTimes({ [mealType]: normalizedTime });
       }
     }
   };
@@ -432,7 +523,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         newWeekPlan[targetDayIndex].meals[targetMealType] = {
           ...cloneMeal(sourceMeal),
           id: Math.random().toString(36).substr(2, 9),
-          time: existingTargetMeal?.time || customMealTimes[targetMealType] || mealTimeSuggestions[targetMealType] || '12:00 PM',
+          time: normalizeTo12Hour(existingTargetMeal?.time) || normalizeTo12Hour(customMealTimes[targetMealType]) || normalizeTo12Hour(mealTimeSuggestions[targetMealType]) || '12:00 PM',
           name: targetMealType,
           foodOptions: sourceMeal.foodOptions.map(option => ({
             ...cloneFoodOption(option),
@@ -732,7 +823,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     if (readOnly || !onUpdate || !onAddMealType) return;
     const name = newMealTypeName.trim();
     if (!name) return;
-    const time = newMealTime || '12:00 PM';
+    const time = normalizeTo12Hour(newMealTime) || '12:00 PM';
 
     // Create meal in all days if missing (skip frozen days)
     const newWeekPlan = cloneWeekPlan(weekPlan);
@@ -762,36 +853,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     });
     onUpdate(newWeekPlan);
 
-    // Store custom time and compute position based on time ordering
+    // Store custom time and keep meal type order stable
     setCustomMealTimes(prev => ({ ...prev, [name]: time }));
-
-    // Use getMealTypeTime for consistent sorting
-    const getMealTime = (mt: string) => {
-      if (mt === name) return time;
-      for (const day of weekPlan) {
-        if (day.meals[mt]?.time) return day.meals[mt].time;
-      }
-      return customMealTimes[mt] || mealTimeSuggestions[mt] || '12:00 PM';
-    };
-
-    // Sort ALL meals by time, not by canonical type (matching displayMealTypes sorting)
-    const sorted = [...mealTypes, name].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => {
-      const timeA = getMealTime(a);
-      const timeB = getMealTime(b);
-      const timeValueA = getTimeNumericValue(timeA);
-      const timeValueB = getTimeNumericValue(timeB);
-
-      // Sort by time first
-      if (timeValueA !== timeValueB) {
-        return timeValueA - timeValueB;
-      }
-
-      // If same time, canonical types come before custom
-      const orderA = getCanonicalSortOrder(a);
-      const orderB = getCanonicalSortOrder(b);
-      return orderA - orderB;
-    });
-    const position = sorted.indexOf(name);
+    const position = mealTypes.length;
     onAddMealType(name, position, time);
 
     setAddMealTypeDialogOpen(false);
@@ -819,16 +883,16 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const getMealTypeTime = (mealType: string): string => {
     // 1. Check customMealTimes first (reflects latest user edits & parent mealTypeConfigs)
     if (customMealTimes[mealType]) {
-      return customMealTimes[mealType];
+      return normalizeTo12Hour(customMealTimes[mealType]) || customMealTimes[mealType];
     }
     // 2. Check weekPlan meal data (from DB)
     for (const day of weekPlan) {
       if (day.meals[mealType]?.time) {
-        return day.meals[mealType].time;
+        return normalizeTo12Hour(day.meals[mealType].time) || day.meals[mealType].time;
       }
     }
     // 3. Fall back to default suggestions
-    return mealTimeSuggestions[mealType] || '12:00 PM';
+    return normalizeTo12Hour(mealTimeSuggestions[mealType]) || '12:00 PM';
   };
 
   // Convert 12h time string (e.g. "01:00 PM") to minutes since midnight for sorting
@@ -879,50 +943,41 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     return undefined;
   };
 
-  // Get all unique meal types (default + custom) sorted by time
+  // Get all unique meal types (default + custom) without reordering
   // Includes all mealTypes from parent (via mealTypeConfigs) AND any custom meals in weekPlan
   const displayMealTypes = (() => {
-    const allMealTypes = new Set<string>();
+    const orderedMealTypes: string[] = [];
+    const seenMealTypes = new Set<string>();
 
     // Add all meal types from parent's mealTypeConfigs (via mealTypes prop)
     // These are the tracked meal types that should always display
-    mealTypes.forEach(mt => allMealTypes.add(toDisplayLabel(mt)));
+    mealTypes.forEach(mt => {
+      const label = toDisplayLabel(mt);
+      if (!seenMealTypes.has(label)) {
+        seenMealTypes.add(label);
+        orderedMealTypes.push(label);
+      }
+    });
 
     // Add any additional meal types from weekPlan that aren't in parent's config
     // (for safety - in case meals exist that weren't properly added to config)
     weekPlan.forEach(day => {
       Object.keys(day.meals).forEach(mt => {
         const label = toDisplayLabel(mt);
-        if (!allMealTypes.has(label)) {
+        if (!seenMealTypes.has(label)) {
           const meal = day.meals[mt];
           // Include any persisted meal row to avoid hiding saved meal types.
           // This prevents "missing meal type" issues when food text is empty but
           // foods are stored in nested arrays or IDs are absent in legacy payloads.
           if (meal && typeof meal === 'object') {
-            allMealTypes.add(label);
+            seenMealTypes.add(label);
+            orderedMealTypes.push(label);
           }
         }
       });
     });
 
-    // Sort ALL meal types by time (chronologically, 24-hour), regardless of canonical or custom
-    // This ensures custom meals appear in their proper chronological position
-    return Array.from(allMealTypes).sort((a, b) => {
-      const timeA = getMealTypeTime(a);
-      const timeB = getMealTypeTime(b);
-      const timeValueA = getTimeNumericValue(timeA);
-      const timeValueB = getTimeNumericValue(timeB);
-
-      // Sort purely by time
-      if (timeValueA !== timeValueB) {
-        return timeValueA - timeValueB;
-      }
-
-      // If same time, canonical types come before custom types
-      const orderA = getCanonicalSortOrder(a);
-      const orderB = getCanonicalSortOrder(b);
-      return orderA - orderB;
-    });
+    return orderedMealTypes;
   })();
 
   // Collect unique food names across plan for find options.
@@ -1202,7 +1257,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       bulkEdits.push({
         previousName: mealType,
         name: config?.name || mealType,
-        time: config?.time || customMealTimes[mealType] || getMealTypeTime(mealType) || mealTimeSuggestions[mealType] || '12:00 PM'
+        time: normalizeTo12Hour(config?.time) || normalizeTo12Hour(customMealTimes[mealType]) || normalizeTo12Hour(getMealTypeTime(mealType)) || normalizeTo12Hour(mealTimeSuggestions[mealType]) || '12:00 PM'
       });
     });
     setMealTypeEditsForBulk(bulkEdits);
@@ -1215,7 +1270,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     const sanitizedEdits = mealTypeEditsForBulk.map(edit => ({
       previousName: edit.previousName,
       name: edit.name.trim() || edit.previousName,
-      time: edit.time.trim() || customMealTimes[edit.previousName] || mealTimeSuggestions[edit.previousName] || '12:00 PM'
+      time: normalizeTo12Hour(edit.time.trim()) || normalizeTo12Hour(customMealTimes[edit.previousName]) || normalizeTo12Hour(mealTimeSuggestions[edit.previousName]) || '12:00 PM'
     }));
 
     const nextConfigs: MealTypeConfigLocal[] = [];
@@ -1236,7 +1291,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       Object.entries(day.meals).forEach(([mealType, meal]) => {
         const edit = renameMap.get(mealType);
         const nextName = edit?.name || mealType;
-        const nextTime = edit?.time || meal.time || customMealTimes[mealType] || mealTimeSuggestions[mealType] || '12:00 PM';
+        const nextTime = normalizeTo12Hour(edit?.time) || normalizeTo12Hour(meal.time) || normalizeTo12Hour(customMealTimes[mealType]) || normalizeTo12Hour(mealTimeSuggestions[mealType]) || '12:00 PM';
         renamedMeals[nextName] = {
           ...meal,
           name: nextName,
@@ -1271,7 +1326,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
   const applyDefaultMealTimes = () => {
     const defaults = Object.fromEntries(
-      DEFAULT_MEAL_TYPES_LIST.map(m => [m.name, m.time])
+      DEFAULT_MEAL_TYPES_LIST.map(m => [m.name, normalizeTo12Hour(m.time) || m.time])
     );
     setMealTypeEditsForBulk(prev => prev.map(edit => ({
       ...edit,
@@ -1687,7 +1742,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                 <div className="flex items-center gap-2">
                                   <Input
                                     type="text"
-                                    value={meal.time}
+                                    value={normalizeTo12Hour(meal.time)}
                                     onChange={(e) => updateMealTime(actualDayIndex, mealType, e.target.value)}
                                     placeholder="e.g., 8:00 AM"
                                     className="h-9 text-xs flex-1 bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500 font-mono"
@@ -2602,7 +2657,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                       </Label>
                       <Input
                         type="text"
-                        value={mealTypeEdit.time || '12:00 PM'}
+                        value={normalizeTo12Hour(mealTypeEdit.time) || '12:00 PM'}
                         onChange={(e) => setMealTypeEditsForBulk(prev => prev.map((item, itemIndex) => (
                           itemIndex === index ? { ...item, time: e.target.value } : item
                         )))}

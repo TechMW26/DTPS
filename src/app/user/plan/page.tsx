@@ -884,22 +884,8 @@ export default function UserPlanPage() {
       }
     });
 
-    // Sort all slots by time (chronologically)
-    const parseTime = (timeStr: string): number => {
-      if (!timeStr) return 1200;
-      const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
-      if (!match) return 1200;
-      let hours = parseInt(match[1], 10);
-      const minutes = parseInt(match[2], 10);
-      const period = match[3]?.toUpperCase();
-
-      if (period === 'PM' && hours !== 12) hours += 12;
-      if (period === 'AM' && hours === 12) hours = 0;
-
-      return hours * 100 + minutes;
-    };
-
-    return slots.sort((a, b) => parseTime(a.time) - parseTime(b.time));
+    // Keep planner/API order stable; do not reorder by time.
+    return slots;
   };
 
   const allMealSlots = getAllMealSlots();

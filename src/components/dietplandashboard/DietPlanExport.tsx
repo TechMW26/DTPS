@@ -148,36 +148,34 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     return undefined;
   };
 
-  // Get all unique meal types from weekPlan and sort by time
+  // Get all unique meal types from weekPlan while preserving planner order
   const getAllMealTypesSorted = (): string[] => {
-    const allMealTypes = new Set<string>();
+    const orderedMealTypes: string[] = [];
+    const seenMealTypes = new Set<string>();
+
+    // 1) Start with planner-configured order
+    mealTypes.forEach(mt => {
+      const label = toDisplayLabel(mt);
+      if (!seenMealTypes.has(label)) {
+        seenMealTypes.add(label);
+        orderedMealTypes.push(label);
+      }
+    });
+
+    // 2) Add any extra meal types present in data (custom/legacy), in discovery order
     weekPlan.forEach(day => {
       Object.keys(day.meals).forEach(mt => {
         const label = toDisplayLabel(mt);
         const meal = day.meals[mt];
         // Only include if it has food
-        if (meal?.foodOptions?.some(opt => opt.food?.trim())) {
-          allMealTypes.add(label);
+        if (meal?.foodOptions?.some(opt => opt.food?.trim()) && !seenMealTypes.has(label)) {
+          seenMealTypes.add(label);
+          orderedMealTypes.push(label);
         }
       });
     });
 
-    return Array.from(allMealTypes).sort((a, b) => {
-      const timeA = getMealTime(a);
-      const timeB = getMealTime(b);
-      const timeValueA = getTimeNumericValue(timeA);
-      const timeValueB = getTimeNumericValue(timeB);
-
-      // Sort purely by time
-      if (timeValueA !== timeValueB) {
-        return timeValueA - timeValueB;
-      }
-
-      // If same time, canonical types come before custom types
-      const orderA = getCanonicalSortOrder(a);
-      const orderB = getCanonicalSortOrder(b);
-      return orderA - orderB;
-    });
+    return orderedMealTypes;
   };
 
   // Calculate daily totals (only main foods, exclude alternatives)

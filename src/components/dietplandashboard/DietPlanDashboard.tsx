@@ -128,7 +128,28 @@ const defaultMealTypes: MealTypeConfig[] = MEAL_TYPE_KEYS.map(key => ({
 // Time normalization - using 12-hour format directly
 const normalizeTime = (value?: string): string => {
   if (!value || !value.trim()) return '';
-  return value.trim();
+  const trimmed = value.trim();
+
+  const twelveHourMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (twelveHourMatch) {
+    const hours = parseInt(twelveHourMatch[1], 10);
+    const minutes = twelveHourMatch[2];
+    const period = twelveHourMatch[3].toUpperCase();
+    if (hours >= 1 && hours <= 12) {
+      return `${String(hours).padStart(2, '0')}:${minutes} ${period}`;
+    }
+  }
+
+  const twentyFourHourMatch = trimmed.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (twentyFourHourMatch) {
+    const h24 = parseInt(twentyFourHourMatch[1], 10);
+    const minutes = twentyFourHourMatch[2];
+    const period = h24 >= 12 ? 'PM' : 'AM';
+    const h12 = h24 % 12 || 12;
+    return `${String(h12).padStart(2, '0')}:${minutes} ${period}`;
+  }
+
+  return trimmed;
 };
 
 // Normalize meal keys in a day's meals object
@@ -160,7 +181,7 @@ const normalizeMealKeys = (meals: Record<string, Meal>): Record<string, Meal> =>
         ...current,
         name: displayName,
         // Prefer user-saved time over canonical default
-        time: current.time || canonicalTime || '12:00 PM',
+        time: normalizeTime(current.time) || canonicalTime || '12:00 PM',
         foodOptions: current.foodOptions ? current.foodOptions.map(cloneOption) : []
       };
     }
@@ -408,7 +429,7 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
     const alreadyExists = mealTypeConfigs.some(m => m.name === newMealType);
     if (alreadyExists) return;
 
-    const mealTime = time || '12:00 PM';
+    const mealTime = normalizeTime(time) || '12:00 PM';
     const newConfig: MealTypeConfig = { name: newMealType, time: mealTime };
 
     if (position !== undefined && position >= 0 && position <= mealTypeConfigs.length) {
