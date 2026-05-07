@@ -14,6 +14,7 @@ import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { updateClientStatusFromMealPlan } from '@/lib/status/computeClientStatus';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { format, startOfDay } from 'date-fns';
 
 // Validation schema for client meal plan assignment
 const clientMealPlanSchema = z.object({
@@ -88,6 +89,49 @@ const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
       });
     });
   });
+};
+
+const dateKey = (value: unknown): string | null => {
+  if (!value) return null;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return format(startOfDay(date), 'yyyy-MM-dd');
+};
+
+const applyFrozenFlagsFromFreezedDays = (plan: any) => {
+  const meals = Array.isArray(plan?.meals) ? plan.meals : [];
+  const freezedDays = Array.isArray(plan?.freezedDays) ? plan.freezedDays : [];
+
+  if (meals.length === 0 || freezedDays.length === 0) {
+    return plan;
+  }
+
+  const frozenDateSet = new Set(
+    freezedDays
+      .map((fd: any) => dateKey(fd?.date))
+      .filter((v: string | null): v is string => Boolean(v))
+  );
+
+  if (frozenDateSet.size === 0) {
+    return plan;
+  }
+
+  const normalizedMeals = meals.map((meal: any) => {
+    const mealDateKey = dateKey(meal?.date);
+    if (!mealDateKey) return meal;
+
+    // Preserve existing true flag but also enforce frozen from freezedDays source of truth.
+    if (frozenDateSet.has(mealDateKey)) {
+      return { ...meal, isFrozen: true };
+    }
+
+    return meal;
+  });
+
+  return {
+    ...plan,
+    meals: normalizedMeals,
+  };
 };
 
 // GET /api/client-meal-plans - Get client meal plans
@@ -245,8 +289,9 @@ export async function GET(request: NextRequest) {
     const enrichedMealPlans = await Promise.all(mealPlans.map(async (plan: any) => {
       // If purchaseId is already populated with payment data, format it properly
       if (plan.purchaseId && typeof plan.purchaseId === 'object') {
+        const planWithFrozenMeals = applyFrozenFlagsFromFreezedDays(plan);
         return {
-          ...plan,
+          ...planWithFrozenMeals,
           paymentInfo: {
             _id: plan.purchaseId._id,
             planName: plan.purchaseId.planName || 'N/A',
@@ -280,8 +325,9 @@ export async function GET(request: NextRequest) {
           .lean();
 
         if (payment) {
+          const planWithFrozenMeals = applyFrozenFlagsFromFreezedDays(plan);
           return {
-            ...plan,
+            ...planWithFrozenMeals,
             paymentInfo: {
               _id: payment._id,
               planName: payment.planName || 'N/A',
@@ -302,8 +348,9 @@ export async function GET(request: NextRequest) {
       }
 
       // No payment found
+      const planWithFrozenMeals = applyFrozenFlagsFromFreezedDays(plan);
       return {
-        ...plan,
+        ...planWithFrozenMeals,
         paymentInfo: null
       };
     }));

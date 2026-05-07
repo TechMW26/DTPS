@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
         const section = searchParams.get('section') || 'all';
 
         const query: Record<string, unknown> = {
-            type: { $in: ['error', 'critical'] }
+            type: { $in: ['error', 'critical', 'warning'] }
         };
 
         if (source !== 'all') query.source = source;

@@ -348,6 +348,66 @@ export async function PUT(request: NextRequest) {
     delete updateData._id;
     delete updateData.__v;
     delete updateData.createdAt;
+
+    // UnifiedPayment guardrail:
+    // Keep durationDays/daysUsed/remainingDays consistent so manual remainingDays edits
+    // do not later "gain" extra days when other saves recompute counters.
+    if (modelName === 'UnifiedPayment') {
+      const hasDaysUsed = Object.prototype.hasOwnProperty.call(updateData, 'daysUsed');
+      const hasRemainingDays = Object.prototype.hasOwnProperty.call(updateData, 'remainingDays');
+      const hasDurationDays = Object.prototype.hasOwnProperty.call(updateData, 'durationDays');
+
+      const toNumber = (value: unknown): number | null => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+
+      const existingPayment = await registeredModel.model
+        .findById(recordId)
+        .select('durationDays daysUsed remainingDays')
+        .lean() as { durationDays?: number; daysUsed?: number; remainingDays?: number } | null;
+
+      let durationDaysForCalc: number | null = hasDurationDays ? toNumber(updateData.durationDays) : null;
+
+      if (durationDaysForCalc === null) {
+        durationDaysForCalc = typeof existingPayment?.durationDays === 'number'
+          ? existingPayment.durationDays
+          : null;
+      }
+
+      const daysUsedNum = toNumber(updateData.daysUsed);
+      const remainingDaysNum = toNumber(updateData.remainingDays);
+      const existingDaysUsed = toNumber(existingPayment?.daysUsed);
+      const existingRemainingDays = toNumber(existingPayment?.remainingDays);
+
+      // If only remainingDays is provided, derive daysUsed so both stay in sync.
+      if (hasRemainingDays && !hasDaysUsed && durationDaysForCalc !== null && remainingDaysNum !== null) {
+        updateData.remainingDays = Math.max(0, remainingDaysNum);
+        updateData.daysUsed = Math.max(0, durationDaysForCalc - updateData.remainingDays);
+      }
+
+      // If only daysUsed is provided, derive remainingDays.
+      if (hasDaysUsed && !hasRemainingDays && durationDaysForCalc !== null && daysUsedNum !== null) {
+        updateData.daysUsed = Math.max(0, daysUsedNum);
+        updateData.remainingDays = Math.max(0, durationDaysForCalc - updateData.daysUsed);
+      }
+
+      // If both are present (common from full-form save), infer which value was edited.
+      // Priority: if remainingDays changed and daysUsed didn't, preserve remainingDays.
+      if (hasDaysUsed && hasRemainingDays && durationDaysForCalc !== null && daysUsedNum !== null && remainingDaysNum !== null) {
+        const remainingChanged = existingRemainingDays !== null && remainingDaysNum !== existingRemainingDays;
+        const daysUsedChanged = existingDaysUsed !== null && daysUsedNum !== existingDaysUsed;
+
+        if (remainingChanged && !daysUsedChanged) {
+          updateData.remainingDays = Math.max(0, remainingDaysNum);
+          updateData.daysUsed = Math.max(0, durationDaysForCalc - updateData.remainingDays);
+        } else if (daysUsedChanged && !remainingChanged) {
+          updateData.daysUsed = Math.max(0, daysUsedNum);
+          updateData.remainingDays = Math.max(0, durationDaysForCalc - updateData.daysUsed);
+        }
+      }
+    }
+
     updateData.updatedAt = new Date();
 
     const updatedRecord = await registeredModel.model.findByIdAndUpdate(

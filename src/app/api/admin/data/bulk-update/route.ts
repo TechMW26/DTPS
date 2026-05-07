@@ -468,26 +468,51 @@ export async function PUT(request: NextRequest) {
         if (isUnifiedPaymentModel && normalizedRecordId) {
           const hasDaysUsed = Object.prototype.hasOwnProperty.call(cleanedData, 'daysUsed');
           const hasRemainingDays = Object.prototype.hasOwnProperty.call(cleanedData, 'remainingDays');
+          const hasDurationDays = Object.prototype.hasOwnProperty.call(cleanedData, 'durationDays');
+
+          const toNumber = (value: unknown): number | null => {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+          };
+
+          const existingRecord = await Model.findById(normalizedRecordId)
+            .select('durationDays daysUsed remainingDays')
+            .lean() as { durationDays?: number; daysUsed?: number; remainingDays?: number } | null;
+
+          let durationDaysForCalc: number | null = hasDurationDays ? toNumber(cleanedData.durationDays) : null;
+
+          if (durationDaysForCalc === null && typeof existingRecord?.durationDays === 'number') {
+            durationDaysForCalc = existingRecord.durationDays;
+          }
+
+          const daysUsedNum = toNumber(cleanedData.daysUsed);
+          const remainingDaysNum = toNumber(cleanedData.remainingDays);
+          const existingDaysUsed = toNumber(existingRecord?.daysUsed);
+          const existingRemainingDays = toNumber(existingRecord?.remainingDays);
+
+          // Keep plan day counters consistent when only remainingDays is provided in upload.
+          if (hasRemainingDays && !hasDaysUsed && durationDaysForCalc !== null && remainingDaysNum !== null) {
+            cleanedData.remainingDays = Math.max(0, remainingDaysNum);
+            cleanedData.daysUsed = Math.max(0, durationDaysForCalc - cleanedData.remainingDays);
+          }
 
           // Keep plan day counters consistent when only daysUsed is provided in upload.
-          if (hasDaysUsed && !hasRemainingDays) {
-            let durationDaysForCalc: number | null = null;
+          if (hasDaysUsed && !hasRemainingDays && durationDaysForCalc !== null && daysUsedNum !== null) {
+            cleanedData.daysUsed = Math.max(0, daysUsedNum);
+            cleanedData.remainingDays = Math.max(0, durationDaysForCalc - cleanedData.daysUsed);
+          }
 
-            if (typeof cleanedData.durationDays === 'number') {
-              durationDaysForCalc = cleanedData.durationDays;
-            } else {
-              const existingRecord = await Model.findById(normalizedRecordId)
-                .select('durationDays')
-                .lean();
-              const existingDurationRecord = existingRecord as { durationDays?: number } | null;
+          // If both are provided, infer which side changed from existing record.
+          if (hasDaysUsed && hasRemainingDays && durationDaysForCalc !== null && daysUsedNum !== null && remainingDaysNum !== null) {
+            const remainingChanged = existingRemainingDays !== null && remainingDaysNum !== existingRemainingDays;
+            const daysUsedChanged = existingDaysUsed !== null && daysUsedNum !== existingDaysUsed;
 
-              if (typeof existingDurationRecord?.durationDays === 'number') {
-                durationDaysForCalc = existingDurationRecord.durationDays;
-              }
-            }
-
-            if (durationDaysForCalc !== null) {
-              cleanedData.remainingDays = Math.max(0, durationDaysForCalc - Number(cleanedData.daysUsed || 0));
+            if (remainingChanged && !daysUsedChanged) {
+              cleanedData.remainingDays = Math.max(0, remainingDaysNum);
+              cleanedData.daysUsed = Math.max(0, durationDaysForCalc - cleanedData.remainingDays);
+            } else if (daysUsedChanged && !remainingChanged) {
+              cleanedData.daysUsed = Math.max(0, daysUsedNum);
+              cleanedData.remainingDays = Math.max(0, durationDaysForCalc - cleanedData.daysUsed);
             }
           }
         }

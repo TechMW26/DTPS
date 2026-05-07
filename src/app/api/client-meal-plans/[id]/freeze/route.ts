@@ -132,10 +132,10 @@ export async function GET(
       return NextResponse.json({ error: 'Meal plan not found' }, { status: 404 });
     }
 
-    // Calculate plan duration
+    // Keep duration tied to original plan length (freeze days must not increase duration)
     const startDate = new Date(mealPlan.startDate);
     const endDate = new Date(mealPlan.endDate);
-    const durationDays = differenceInDays(endDate, startDate) + 1;
+    const durationDays = mealPlan.duration || (differenceInDays(endDate, startDate) + 1);
 
     // Check if this plan is linked to a purchase (for shared freeze tracking)
     const purchaseId = mealPlan.purchaseId?.toString() || null;
@@ -370,7 +370,10 @@ export async function POST(
       const originalDayName = fullDayNames[originalDateObj.getDay()];
 
       // Find the original day number from the original meal
-      const originalMealIndex = meals.findIndex((m: any) => m.date === format(originalDate, 'yyyy-MM-dd'));
+      const originalMealIndex = meals.findIndex((m: any) => {
+        if (!m?.date) return false;
+        return format(startOfDay(new Date(m.date)), 'yyyy-MM-dd') === format(originalDate, 'yyyy-MM-dd');
+      });
       const originalDayNum = originalMealIndex >= 0 ? originalMealIndex + 1 : i + 1;
       const originalFreezeDateLabel = `${originalDayOfMonth} - Day ${originalDayNum} - ${originalDayName}`;
 
@@ -390,7 +393,8 @@ export async function POST(
     // Mark original frozen days with isFrozen: true
     const frozenDateStrings = validFreezeDates.map(d => format(d, 'yyyy-MM-dd'));
     const mealsWithFrozenMarked = meals.map((meal: any) => {
-      if (frozenDateStrings.includes(meal.date)) {
+      const mealDateStr = meal?.date ? format(startOfDay(new Date(meal.date)), 'yyyy-MM-dd') : null;
+      if (mealDateStr && frozenDateStrings.includes(mealDateStr)) {
         return { ...meal, isFrozen: true };
       }
       return meal;
@@ -546,7 +550,7 @@ export async function DELETE(
     // Remove isFrozen flag from originally frozen days
     const updatedMeals = meals
       .filter((meal: any) => {
-        const mealDateStr = meal.date;
+        const mealDateStr = meal?.date ? format(startOfDay(new Date(meal.date)), 'yyyy-MM-dd') : '';
         // Remove the freeze recovery meals that were added
         if (addedDatesToRemove.includes(mealDateStr)) {
           return false;
@@ -554,7 +558,7 @@ export async function DELETE(
         return true;
       })
       .map((meal: any) => {
-        const mealDateStr = meal.date;
+        const mealDateStr = meal?.date ? format(startOfDay(new Date(meal.date)), 'yyyy-MM-dd') : '';
         // Remove isFrozen flag from unfrozen dates
         if (datesToUnfreeze.includes(mealDateStr) && meal.isFrozen) {
           const { isFrozen, ...mealWithoutFrozen } = meal;

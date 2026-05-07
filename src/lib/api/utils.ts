@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import crypto from 'crypto';
+import { logApiError } from '@/lib/utils/activityLogger';
 
 // Re-export memory cache utilities for easy access in all APIs
 export { serverCache, withCache, clearCacheByTag } from '@/lib/cache/memoryCache';
@@ -74,11 +75,13 @@ export async function withAPIHandler<T>(
     requireAuth?: boolean;
     requireAdmin?: boolean;
     timeoutMs?: number;
+    request?: NextRequest;
   } = {}
 ): Promise<NextResponse> {
-  const { requireAuth = true, requireAdmin = false, timeoutMs = 8000 } = options;
+  const { requireAuth = true, requireAdmin = false, timeoutMs = 8000, request } = options;
 
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let sessionRef: Awaited<ReturnType<typeof getServerSession>> | null = null;
 
   try {
     // Run auth check and DB connection in PARALLEL (instead of sequential)
@@ -97,6 +100,7 @@ export async function withAPIHandler<T>(
       Promise.race([dbPromise, timeoutPromise]),
     ]);
     if (timeoutId) clearTimeout(timeoutId);
+    sessionRef = session;
 
     // Validate auth result
     if (requireAuth) {
@@ -129,6 +133,28 @@ export async function withAPIHandler<T>(
     });
   } catch (error: any) {
     if (timeoutId) clearTimeout(timeoutId);
+
+    // Log to SystemAlert (fire-and-forget — do not await to avoid latency)
+    const endpoint = request ? new URL(request.url).pathname : 'unknown';
+    const method = request?.method || 'UNKNOWN';
+    const statusCode = error.message?.includes('timeout') ? 504
+      : error.message?.includes('Database connection') ? 503
+      : error.name === 'ValidationError' ? 400
+      : 500;
+    logApiError(endpoint, method, error, statusCode, {
+      endpoint,
+      path: endpoint,
+      section: endpoint.startsWith('/api/admin') ? 'admin'
+        : endpoint.startsWith('/api/client') ? 'client'
+        : endpoint.startsWith('/api/dietitian-panel') ? 'dietitian'
+        : endpoint.startsWith('/api/health-counselor') ? 'health_counselor'
+        : 'internal',
+      userId: sessionRef?.user?.id,
+      userName: sessionRef?.user?.name,
+      userEmail: sessionRef?.user?.email,
+      userRole: sessionRef?.user?.role,
+    }).catch(() => { /* silent — logging must not block response */ });
+
     // Handle specific error types
     if (error.message?.includes('timeout')) {
       return errorResponse('Request timeout', 504, 'TIMEOUT');
@@ -149,6 +175,39 @@ export async function withAPIHandler<T>(
       'INTERNAL_ERROR'
     );
   }
+}
+
+/**
+ * Log an API route error to SystemAlert (for use in manual route catch blocks).
+ * Fire-and-forget — never throws.
+ *
+ * @example
+ * } catch (error) {
+ *   captureApiError(req, error, session);
+ *   return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+ * }
+ */
+export function captureApiError(
+  request: NextRequest,
+  error: unknown,
+  session?: { user?: { id?: string; name?: string | null; email?: string | null; role?: string } } | null
+): void {
+  const endpoint = new URL(request.url).pathname;
+  const method = request.method;
+  const err = error instanceof Error ? error : new Error(String(error));
+  logApiError(endpoint, method, err, 500, {
+    endpoint,
+    path: endpoint,
+    section: endpoint.startsWith('/api/admin') ? 'admin'
+      : endpoint.startsWith('/api/client') ? 'client'
+      : endpoint.startsWith('/api/dietitian-panel') ? 'dietitian'
+      : endpoint.startsWith('/api/health-counselor') ? 'health_counselor'
+      : 'internal',
+    userId: session?.user?.id,
+    userName: session?.user?.name,
+    userEmail: session?.user?.email,
+    userRole: session?.user?.role,
+  }).catch(() => { /* silent */ });
 }
 
 /**

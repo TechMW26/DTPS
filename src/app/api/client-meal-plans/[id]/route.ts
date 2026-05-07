@@ -8,6 +8,7 @@ import { authOptions } from '@/lib/auth';
 import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { logHistoryServer } from '@/lib/server/history';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { format, startOfDay } from 'date-fns';
 
 const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
   if (!Array.isArray(meals) || meals.length === 0) return false;
@@ -40,6 +41,48 @@ const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
   });
 };
 
+const dateKey = (value: unknown): string | null => {
+  if (!value) return null;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return format(startOfDay(date), 'yyyy-MM-dd');
+};
+
+const applyFrozenFlagsFromFreezedDays = (plan: any) => {
+  const meals = Array.isArray(plan?.meals) ? plan.meals : [];
+  const freezedDays = Array.isArray(plan?.freezedDays) ? plan.freezedDays : [];
+
+  if (meals.length === 0 || freezedDays.length === 0) {
+    return plan;
+  }
+
+  const frozenDateSet = new Set(
+    freezedDays
+      .map((fd: any) => dateKey(fd?.date))
+      .filter((v: string | null): v is string => Boolean(v))
+  );
+
+  if (frozenDateSet.size === 0) {
+    return plan;
+  }
+
+  const normalizedMeals = meals.map((meal: any) => {
+    const mealDateKey = dateKey(meal?.date);
+    if (!mealDateKey) return meal;
+
+    if (frozenDateSet.has(mealDateKey)) {
+      return { ...meal, isFrozen: true };
+    }
+
+    return meal;
+  });
+
+  return {
+    ...plan,
+    meals: normalizedMeals,
+  };
+};
+
 // GET single meal plan by ID
 export async function GET(
   request: NextRequest,
@@ -70,9 +113,11 @@ export async function GET(
       );
     }
 
+    const planWithFrozenMeals = applyFrozenFlagsFromFreezedDays(mealPlan.toObject ? mealPlan.toObject() : mealPlan);
+
     return NextResponse.json({
       success: true,
-      mealPlan
+      mealPlan: planWithFrozenMeals
     });
   } catch (error) {
     console.error('Error fetching meal plan:', error);
@@ -246,10 +291,12 @@ export async function PUT(
       }
     }
 
+    const updatedPlanWithFrozenMeals = applyFrozenFlagsFromFreezedDays(updatedPlan.toObject ? updatedPlan.toObject() : updatedPlan);
+
     return NextResponse.json({
       success: true,
       message: isPublishing ? 'Meal plan published successfully' : 'Meal plan updated successfully',
-      mealPlan: updatedPlan
+      mealPlan: updatedPlanWithFrozenMeals
     });
   } catch (error) {
     console.error('Error updating meal plan:', error);

@@ -55,6 +55,7 @@ interface DietTemplateResp {
   };
   dietaryRestrictions: string[];
   tags: string[];
+  mealTypes?: { name: string; time: string }[];
   meals: DayPlan[];
   difficulty?: string;
   isPublic?: boolean;
@@ -151,17 +152,32 @@ const parseTimeToMinutes = (timeStr: string): number => {
 };
 
 // Sort meals by time
-const sortMealsByTime = (meals: { [mealType: string]: Meal }): [string, Meal][] => {
+const sortMealsByTime = (
+  meals: { [mealType: string]: Meal },
+  templateMealTypes?: { name: string; time: string }[]
+): [string, Meal][] => {
+  const schedule = new Map<string, string>();
+  if (Array.isArray(templateMealTypes)) {
+    templateMealTypes.forEach((mealType) => {
+      const name = String(mealType?.name || '').trim();
+      if (!name) return;
+      schedule.set(name.toLowerCase().replace(/[\s-_]/g, ''), String(mealType?.time || '').trim());
+    });
+  }
+
   return Object.entries(meals).sort(([typeA, mealA], [typeB, mealB]) => {
-    // First sort by time if available
-    const timeA = parseTimeToMinutes(mealA.time);
-    const timeB = parseTimeToMinutes(mealB.time);
+    const normalizedTypeA = typeA.toLowerCase().replace(/[\s-_]/g, '');
+    const normalizedTypeB = typeB.toLowerCase().replace(/[\s-_]/g, '');
+
+    // First sort by template schedule time when available, then meal payload time.
+    const timeA = parseTimeToMinutes(schedule.get(normalizedTypeA) || mealA.time);
+    const timeB = parseTimeToMinutes(schedule.get(normalizedTypeB) || mealB.time);
 
     if (timeA !== timeB) return timeA - timeB;
 
     // Then by meal type order
-    const orderA = MEAL_TYPE_ORDER[typeA.toLowerCase().replace(/[\s-_]/g, '')] || 50;
-    const orderB = MEAL_TYPE_ORDER[typeB.toLowerCase().replace(/[\s-_]/g, '')] || 50;
+    const orderA = MEAL_TYPE_ORDER[normalizedTypeA] || 50;
+    const orderB = MEAL_TYPE_ORDER[normalizedTypeB] || 50;
 
     return orderA - orderB;
   });
@@ -553,9 +569,12 @@ export default function DietTemplateViewPage() {
                         <CardContent className="p-0">
                           {Object.keys(template.meals[selectedDay].meals || {}).length > 0 ? (
                             <div className="divide-y divide-gray-100">
-                              {sortMealsByTime(template.meals[selectedDay].meals).map(([mealType, meal]: [string, any]) => {
+                              {sortMealsByTime(template.meals[selectedDay].meals, template.mealTypes).map(([mealType, meal]: [string, any]) => {
                                 const MealIcon = getMealIcon(mealType);
                                 const mealColorClass = getMealTypeColor(mealType);
+                                const scheduleTime = (template.mealTypes || []).find(
+                                  (mt) => String(mt?.name || '').toLowerCase().replace(/[\s-_]/g, '') === mealType.toLowerCase().replace(/[\s-_]/g, '')
+                                )?.time;
 
                                 // Separate primary and alternative foods
                                 const primaryFoods = meal.foodOptions?.filter((f: FoodOption, idx: number) =>
@@ -577,10 +596,10 @@ export default function DietTemplateViewPage() {
                                           <h4 className="font-medium text-sm text-gray-900 capitalize">
                                             {meal.name || mealType.replace(/[-_]/g, ' ')}
                                           </h4>
-                                          {meal.time && (
+                                          {(scheduleTime || meal.time) && (
                                             <span className="text-xs text-gray-500 flex items-center gap-1">
                                               <Clock className="h-3 w-3" />
-                                              {meal.time}
+                                              {scheduleTime || meal.time}
                                             </span>
                                           )}
                                         </div>

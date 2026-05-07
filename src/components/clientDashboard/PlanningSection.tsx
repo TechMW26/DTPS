@@ -2002,13 +2002,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [plan._id]);
 
-    // Calculate plan duration - use freezeInfo when available for updated dates after freezing
-    // The display shows: startDate to (extended) endDate with the TOTAL calendar days
-    // Active days = durationDays - totalFreezeCount (frozen days)
+    // Keep duration as original plan days. Freeze days can extend end date, but must not inflate duration.
     const planStartDate = freezeInfo?.startDate ? new Date(freezeInfo.startDate) : new Date(plan.startDate);
     const planEndDate = freezeInfo?.endDate ? new Date(freezeInfo.endDate) : new Date(plan.endDate);
-    // Duration from API (freezeInfo) already accounts for extended end date
-    const displayDurationDays = freezeInfo?.durationDays || Math.ceil((planEndDate.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const displayDurationDays = freezeInfo?.durationDays || plan.duration || Math.ceil((planEndDate.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     // For backward compatibility with existing code that uses startDate/endDate
     const startDate = planStartDate;
     const endDate = planEndDate;
@@ -2129,6 +2126,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
         if (data.success) {
           toast.success(data.message);
+          onFreeze();
           // Mark data as changed and close dialog immediately
           setSelectedDates([]);
           setShowConfirmation(false);
@@ -2170,6 +2168,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
         if (data.success) {
           toast.success(data.message);
+          onFreeze();
           // Mark data as changed and close dialog immediately
           setSelectedUnfreezeDates([]);
           stateRef.current.dataChanged = true;

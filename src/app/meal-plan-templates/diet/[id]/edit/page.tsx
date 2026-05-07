@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
-import { DEFAULT_MEAL_TYPES_LIST, DIETARY_RESTRICTIONS } from '@/lib/mealConfig';
+import { DEFAULT_MEAL_TYPES_LIST, DIETARY_RESTRICTIONS, MEAL_TYPES, normalizeMealType } from '@/lib/mealConfig';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, ChefHat, Target, AlertCircle, Save, Leaf, UtensilsCrossed } from 'lucide-react';
 import Link from 'next/link';
@@ -58,6 +58,113 @@ const normalizeRestrictionsArray = (restrictions: string[] | undefined): string[
       return match || r; // Return canonical form or original if no match
     })
     .filter(Boolean);
+};
+
+const normalizeTemplateTime = (value?: string): string => {
+  if (!value || !value.trim()) return '';
+  const trimmed = value.trim();
+
+  const twelveHour = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (twelveHour) {
+    const hours = parseInt(twelveHour[1], 10);
+    const minutes = twelveHour[2];
+    const period = twelveHour[3].toUpperCase();
+    if (hours >= 1 && hours <= 12) {
+      return `${String(hours).padStart(2, '0')}:${minutes} ${period}`;
+    }
+  }
+
+  const twentyFourHour = trimmed.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (twentyFourHour) {
+    const h24 = parseInt(twentyFourHour[1], 10);
+    const minutes = twentyFourHour[2];
+    const period = h24 >= 12 ? 'PM' : 'AM';
+    const h12 = h24 % 12 || 12;
+    return `${String(h12).padStart(2, '0')}:${minutes} ${period}`;
+  }
+
+  return trimmed;
+};
+
+const normalizeTemplateMealName = (rawName?: string): string => {
+  const name = String(rawName || '').trim();
+  if (!name) return name;
+  const mealKey = normalizeMealType(name);
+  return mealKey ? MEAL_TYPES[mealKey].label : name;
+};
+
+const buildTemplateMealSchedule = (
+  meals: any[],
+  mealTypes: { name: string; time: string }[]
+): { name: string; time: string }[] => {
+  const schedule = new Map<string, string>();
+
+  mealTypes.forEach((mealType) => {
+    const name = normalizeTemplateMealName(mealType?.name);
+    if (!name) return;
+
+    const mealKey = normalizeMealType(name);
+    const fallbackTime = mealKey ? MEAL_TYPES[mealKey].time12h : '12:00 PM';
+    const time = normalizeTemplateTime(mealType?.time) || fallbackTime;
+    if (!schedule.has(name)) {
+      schedule.set(name, time);
+    }
+  });
+
+  meals.forEach((day: any) => {
+    const dayMeals = day?.meals && typeof day.meals === 'object' ? day.meals : {};
+    Object.entries(dayMeals).forEach(([mealKeyRaw, mealRaw]) => {
+      const meal = mealRaw as any;
+      const name = normalizeTemplateMealName(meal?.name || mealKeyRaw);
+      if (!name) return;
+
+      const normalizedTime = normalizeTemplateTime(meal?.time);
+      if (!schedule.has(name)) {
+        const key = normalizeMealType(name);
+        schedule.set(name, normalizedTime || (key ? MEAL_TYPES[key].time12h : '12:00 PM'));
+      } else if (normalizedTime) {
+        schedule.set(name, normalizedTime);
+      }
+    });
+  });
+
+  return Array.from(schedule.entries()).map(([name, time]) => ({ name, time }));
+};
+
+const syncMealsWithSchedule = (
+  meals: any[],
+  mealTypes: { name: string; time: string }[]
+): any[] => {
+  const schedule = new Map<string, string>(mealTypes.map((mealType) => [mealType.name, mealType.time]));
+
+  return meals.map((day: any) => {
+    const dayMeals = day?.meals && typeof day.meals === 'object' ? day.meals : {};
+    const normalizedMeals: Record<string, any> = {};
+
+    Object.entries(dayMeals).forEach(([mealKeyRaw, mealRaw]) => {
+      const meal = mealRaw as any;
+      const name = normalizeTemplateMealName(meal?.name || mealKeyRaw);
+      if (!name) return;
+
+      const normalizedTime =
+        schedule.get(name) ||
+        normalizeTemplateTime(meal?.time) ||
+        (normalizeMealType(name) ? MEAL_TYPES[normalizeMealType(name) as keyof typeof MEAL_TYPES].time12h : '12:00 PM');
+
+      if (!normalizedMeals[name]) {
+        normalizedMeals[name] = {
+          ...meal,
+          name,
+          time: normalizedTime
+        };
+      }
+    });
+
+    return {
+      ...day,
+      meals: normalizedMeals
+    };
+  });
 };
 
 export default function EditDietTemplatePage() {
@@ -179,6 +286,11 @@ export default function EditDietTemplatePage() {
       setSaving(true);
       setError('');
 
+      const mealsToSave = mealsOverride || latestMealsRef.current;
+      const mealTypesToSave = mealTypesOverride || latestMealTypesRef.current;
+      const normalizedMealTypes = buildTemplateMealSchedule(mealsToSave, mealTypesToSave);
+      const normalizedMeals = syncMealsWithSchedule(mealsToSave, normalizedMealTypes);
+
       const updateData = {
         name: name.trim(),
         description: description.trim(),
@@ -193,8 +305,8 @@ export default function EditDietTemplatePage() {
         },
         dietaryRestrictions: Array.isArray(selectedRestrictions) ? selectedRestrictions : [],
         isPublic,
-        meals: mealsOverride || latestMealsRef.current,
-        mealTypes: mealTypesOverride || latestMealTypesRef.current
+        meals: normalizedMeals,
+        mealTypes: normalizedMealTypes
       };
 
       const res = await fetch(`/api/diet-templates/${id}`, {
