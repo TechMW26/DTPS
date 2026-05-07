@@ -90,6 +90,27 @@ const normalizeTo12Hour = (value?: string): string => {
 };
 
 
+/**
+ * Convert a stored 12h time string ("09:00 AM") to HTML time-input value ("09:00" 24h).
+ * Returns empty string if the input cannot be parsed.
+ */
+const to24HourForInput = (time: string): string => {
+  if (!time) return '';
+  const match = time.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (match) {
+    let h = parseInt(match[1], 10);
+    const m = match[2];
+    const period = match[3].toUpperCase();
+    if (period === 'AM') { if (h === 12) h = 0; }
+    else { if (h !== 12) h += 12; }
+    return `${String(h).padStart(2, '0')}:${m}`;
+  }
+  // Already 24h? pass through
+  if (time.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/)) return time.trim();
+  return '';
+};
+
+
 
 
 
@@ -370,10 +391,39 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     return day && (day as any).isFrozen === true;
   };
 
+  /**
+   * Resolve the actual key used in day.meals for a given mealType display name.
+   * Handles mismatches between stored keys (e.g. "BREAKFAST", "breakfast") and
+   * display labels (e.g. "Breakfast").
+   */
+  const resolveActualMealKey = (day: DayPlan, mealType: string): string => {
+    // 1. Exact match
+    if (day.meals[mealType] !== undefined) return mealType;
+    // 2. Try canonical UPPER_SNAKE key (e.g. "Early Morning" → "EARLY_MORNING")
+    const upperKey = mealType.toUpperCase().trim().replace(/[\s_-]+/g, '_');
+    if (day.meals[upperKey] !== undefined) return upperKey;
+    // 3. Canonical display label via MEAL_TYPES (e.g. "EARLY_MORNING" → "Early Morning")
+    if (MEAL_TYPE_KEYS.includes(upperKey as (typeof MEAL_TYPE_KEYS)[number])) {
+      const label = MEAL_TYPES[upperKey as (typeof MEAL_TYPE_KEYS)[number]].label;
+      if (day.meals[label] !== undefined) return label;
+    }
+    // 4. normalizeMealType alias lookup (e.g. "NIGHT" → "DINNER" → "Dinner")
+    const normalized = normalizeMealType(mealType);
+    if (normalized) {
+      const canonicalKey = normalized as string;
+      if (day.meals[canonicalKey] !== undefined) return canonicalKey;
+      const canonicalLabel = MEAL_TYPES[normalized].label;
+      if (day.meals[canonicalLabel] !== undefined) return canonicalLabel;
+    }
+    // 5. Fallback: return as-is (addMealToCell will create a new entry)
+    return mealType;
+  };
+
   const addMealToCell = (dayIndex: number, mealType: string) => {
     if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
-    const existingMeal = newWeekPlan[dayIndex].meals[mealType];
+    const actualKey = resolveActualMealKey(newWeekPlan[dayIndex], mealType);
+    const existingMeal = newWeekPlan[dayIndex].meals[actualKey];
     if (!existingMeal) {
       // Create brand new meal with initial option
       newWeekPlan[dayIndex].meals[mealType] = createNewMeal(mealType);
@@ -398,8 +448,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
     const normalizedTime = normalizeTo12Hour(time);
-    if (newWeekPlan[dayIndex].meals[mealType]) {
-      newWeekPlan[dayIndex].meals[mealType].time = normalizedTime;
+    const actualKey = resolveActualMealKey(newWeekPlan[dayIndex], mealType);
+    if (newWeekPlan[dayIndex].meals[actualKey]) {
+      newWeekPlan[dayIndex].meals[actualKey].time = normalizedTime;
       onUpdate(newWeekPlan);
 
       // Keep the header meal-type timing in sync with manual cell edits
@@ -418,9 +469,10 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const toggleAlternatives = (dayIndex: number, mealType: string) => {
     if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
-    if (newWeekPlan[dayIndex].meals[mealType]) {
-      newWeekPlan[dayIndex].meals[mealType].showAlternatives =
-        !newWeekPlan[dayIndex].meals[mealType].showAlternatives;
+    const actualKey = resolveActualMealKey(newWeekPlan[dayIndex], mealType);
+    if (newWeekPlan[dayIndex].meals[actualKey]) {
+      newWeekPlan[dayIndex].meals[actualKey].showAlternatives =
+        !newWeekPlan[dayIndex].meals[actualKey].showAlternatives;
       onUpdate(newWeekPlan);
     }
   };
@@ -428,7 +480,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const addFoodOption = (dayIndex: number, mealType: string, isAlternative: boolean = false) => {
     if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
-    const meal = newWeekPlan[dayIndex].meals[mealType];
+    const actualKey = resolveActualMealKey(newWeekPlan[dayIndex], mealType);
+    const meal = newWeekPlan[dayIndex].meals[actualKey];
     if (meal) {
       meal.foodOptions.push({
         id: Math.random().toString(36).substr(2, 9),
@@ -452,7 +505,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const removeFoodOption = (dayIndex: number, mealType: string, optionIndex: number) => {
     if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
-    const meal = newWeekPlan[dayIndex].meals[mealType];
+    const actualKey = resolveActualMealKey(newWeekPlan[dayIndex], mealType);
+    const meal = newWeekPlan[dayIndex].meals[actualKey];
     if (meal) {
       meal.foodOptions.splice(optionIndex, 1);
       onUpdate(newWeekPlan);
@@ -468,7 +522,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   ) => {
     if (readOnly || !onUpdate || isDayFrozen(dayIndex)) return;
     const newWeekPlan = cloneWeekPlan(weekPlan);
-    const meal = newWeekPlan[dayIndex].meals[mealType];
+    const actualKey = resolveActualMealKey(newWeekPlan[dayIndex], mealType);
+    const meal = newWeekPlan[dayIndex].meals[actualKey];
     if (meal && meal.foodOptions[optionIndex]) {
       const option = meal.foodOptions[optionIndex];
       const previousFood = (option.food || '').trim();
@@ -799,8 +854,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     if (onUpdate) {
       const newWeekPlan = cloneWeekPlan(weekPlan);
       newWeekPlan.forEach(day => {
-        if (day.meals[mealType]) {
-          day.meals[mealType].time = time;
+        const actualKey = resolveActualMealKey(day, mealType);
+        if (day.meals[actualKey]) {
+          day.meals[actualKey].time = time;
         }
       });
       onUpdate(newWeekPlan);
@@ -925,8 +981,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   // Helper: resolve a meal type string to its canonical display label
   // e.g. "EARLY_MORNING" → "Early Morning", "Early Morning" → "Early Morning"
   const toDisplayLabel = (mt: string): string => {
-    const key = normalizeMealType(mt);
-    if (key && MEAL_TYPES[key]) return MEAL_TYPES[key].label;
+    // Only convert exact canonical key forms (e.g. EARLY_MORNING → Early Morning)
+    // Do NOT apply alias mappings (e.g. NIGHT → DINNER) — user-defined names like "Night" must stay as-is
+    const upperKey = mt.toUpperCase().trim().replace(/[\s_-]+/g, '_');
+    if (MEAL_TYPE_KEYS.includes(upperKey as (typeof MEAL_TYPE_KEYS)[number])) {
+      return MEAL_TYPES[upperKey as (typeof MEAL_TYPE_KEYS)[number]].label;
+    }
     return mt; // keep as-is for truly custom types
   };
 
@@ -1301,8 +1361,31 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       day.meals = renamedMeals;
 
       nextConfigs.forEach(config => {
-        if (day.meals[config.name] && !day.meals[config.name].time) {
-          day.meals[config.name].time = config.time;
+        if (day.meals[config.name]) {
+          // Update time on existing meal entry
+          if (!day.meals[config.name].time) {
+            day.meals[config.name].time = config.time;
+          }
+        } else {
+          // NEW meal type — add empty entry so column appears in the grid
+          day.meals[config.name] = {
+            id: Math.random().toString(36).substr(2, 9),
+            time: config.time,
+            name: config.name,
+            showAlternatives: true,
+            foodOptions: [
+              {
+                id: Math.random().toString(36).substr(2, 9),
+                label: '',
+                food: '',
+                unit: '',
+                cal: '',
+                carbs: '',
+                fats: '',
+                protein: ''
+              }
+            ]
+          };
         }
       });
     });
@@ -1720,6 +1803,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                     </td>
                     {allMealTypesForDay.map((mealType, index) => {
                       const meal = getMealForDay(actualDayIndex, mealType);
+                      // Resolve the actual key stored in weekPlan.meals (may differ in casing/format)
+                      const resolvedMealKey = resolveActualMealKey(day, mealType);
                       const isCustomMeal = !mealTypes.includes(mealType);
                       return (
                         <React.Fragment key={`${day.id}-${mealType}`}>
@@ -2600,10 +2685,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
               <div className="space-y-3">
                 <Label className="text-slate-900 font-semibold text-sm">Meal Time</Label>
                 <Input
-                  type="text"
-                  value={newMealTime}
-                  onChange={(e) => setNewMealTime(e.target.value)}
-                  placeholder="e.g., 8:00 AM"
+                  type="time"
+                  value={to24HourForInput(newMealTime)}
+                  onChange={(e) => {
+                    const val12h = e.target.value ? normalizeTo12Hour(e.target.value) || e.target.value : '';
+                    setNewMealTime(val12h);
+                  }}
                   className="h-9 text-xs bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500 font-medium"
                 />
               </div>
@@ -2656,12 +2743,14 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                         Time
                       </Label>
                       <Input
-                        type="text"
-                        value={normalizeTo12Hour(mealTypeEdit.time) || '12:00 PM'}
-                        onChange={(e) => setMealTypeEditsForBulk(prev => prev.map((item, itemIndex) => (
-                          itemIndex === index ? { ...item, time: e.target.value } : item
-                        )))}
-                        placeholder="e.g., 8:00 AM"
+                        type="time"
+                        value={to24HourForInput(mealTypeEdit.time)}
+                        onChange={(e) => {
+                          const val12h = e.target.value ? normalizeTo12Hour(e.target.value) || e.target.value : '';
+                          setMealTypeEditsForBulk(prev => prev.map((item, itemIndex) => (
+                            itemIndex === index ? { ...item, time: val12h } : item
+                          )));
+                        }}
                         className="h-8 text-xs bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500"
                       />
                     </div>
