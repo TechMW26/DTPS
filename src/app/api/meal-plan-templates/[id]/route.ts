@@ -6,6 +6,11 @@ import MealPlanTemplate from '@/lib/db/models/MealPlanTemplate';
 import { UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+import mongoose from 'mongoose';
+
+function isValidObjectId(id: string): boolean {
+  return mongoose.Types.ObjectId.isValid(id);
+}
 
 export async function GET(
   request: NextRequest,
@@ -13,6 +18,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ success: false, error: 'Invalid template id' }, { status: 400 });
+    }
+
     await connectDB();
     const template = await withCache(
       `meal-plan-templates:id:${JSON.stringify(id)}`,
@@ -47,6 +56,10 @@ export async function PUT(
     }
 
     const { id } = await params;
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ success: false, error: 'Invalid template id' }, { status: 400 });
+    }
+
     await connectDB();
 
     const body = await request.json();
@@ -130,6 +143,10 @@ export async function PATCH(
     }
 
     const { id } = await params;
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ success: false, error: 'Invalid template id' }, { status: 400 });
+    }
+
     await connectDB();
 
     const body = await request.json();
@@ -197,6 +214,10 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ success: false, error: 'Invalid template id' }, { status: 400 });
+    }
+
     await connectDB();
 
     const existingTemplate = await withCache(

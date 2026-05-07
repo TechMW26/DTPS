@@ -15,8 +15,9 @@ const supertest = require('supertest');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const RUNS = parseInt(process.env.RUNS || '3', 10);
+const WARMUP_RUNS = parseInt(process.env.WARMUP_RUNS || '1', 10);
 
-const request = supertest(BASE_URL);
+const request = supertest.agent(BASE_URL);
 
 // ── All discovered API routes ────────────────────────────────────────
 // Dynamic segments get a dummy value so the route resolves.
@@ -373,6 +374,16 @@ const SKIP_METHODS = new Set([
 
 // ── Helpers ──────────────────────────────────────────────────────────
 async function benchmark(method, path, runs) {
+    for (let i = 0; i < WARMUP_RUNS; i++) {
+        try {
+            await request[method.toLowerCase()](path)
+                .timeout({ response: 15000, deadline: 20000 })
+                .set('Accept', 'application/json');
+        } catch {
+            // Ignore warmup errors - warmup exists only to remove cold-start skew.
+        }
+    }
+
     const times = [];
     const statuses = [];
     for (let i = 0; i < runs; i++) {
@@ -405,7 +416,7 @@ function padL(str, len) {
 
 // ── Main ─────────────────────────────────────────────────────────────
 async function main() {
-    console.log(`\n🔥 API Benchmark — ${BASE_URL} — ${RUNS} run(s) per endpoint\n`);
+    console.log(`\n🔥 API Benchmark — ${BASE_URL} — ${RUNS} measured run(s), ${WARMUP_RUNS} warmup run(s) per endpoint\n`);
 
     // Quick health check
     try {

@@ -1747,14 +1747,14 @@ export default function ClientDetailPage() {
   };
 
   const displayCurrentWeight = (() => {
-    // Current weight comes from weight log (most recent entry)
-    // DO NOT fall back to basicInfo.weightKg - that's the first/baseline weight
-    if (currentWeightKg && Number.isFinite(currentWeightKg) && currentWeightKg > 0) return currentWeightKg;
-    // Fallback to most recent weight log entry
+    // Current weight should prefer weight log (most recent entry).
+    // This avoids transient/stale summary values overriding tracker truth.
     if (weightLog.length > 0) {
       const latest = weightLog[0]; // weightLog is sorted newest first
       if (Number.isFinite(latest.weight) && latest.weight > 0) return latest.weight;
     }
+    // Fallback to cached summary state.
+    if (currentWeightKg && Number.isFinite(currentWeightKg) && currentWeightKg > 0) return currentWeightKg;
     return null;
   })();
 
@@ -2538,6 +2538,7 @@ export default function ClientDetailPage() {
                 clientId={params.clientId as string}
                 userRole="dietitian"
                 disableFirstWeight={false}
+                currentWeightKg={displayCurrentWeight}
                 onRegisterReset={(fn: () => void) => registerReset('forms', fn)}
               />
             </div>

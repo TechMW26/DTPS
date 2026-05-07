@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db/connect';
 import { ServicePlan } from '@/lib/db/models/ServicePlan';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import mongoose from 'mongoose';
 
 // GET - Fetch a single service plan by ID
 export async function GET(
@@ -10,7 +11,13 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        { error: 'Invalid service plan id' },
+        { status: 400 }
+      );
+    }
+
     await dbConnect();
 
     const plan = await withCache(

@@ -22,31 +22,29 @@ export async function GET(req: NextRequest) {
     ];
   }
 
-  const total = await WatiContact.countDocuments(query);
+  const totalPromise = withCache(
+    `wati-contacts:count:${JSON.stringify(query)}`,
+    async () => await WatiContact.countDocuments(query),
+    { ttl: 120000, tags: ['wati_contacts'] }
+  );
 
-  // Fetch minimal fields and compute level from customParams if not set
-  const docs = await withCache(
-      `wati-contacts:${JSON.stringify(query)}`,
-      async () => await WatiContact.find(query)
-    .select('firstName fullName phone level customParams')
-    ,
-      { ttl: 120000, tags: ['wati_contacts'] }
-    );
+  // Sort and paginate in DB to avoid loading the whole collection in memory.
+  const itemsPromise = withCache(
+    `wati-contacts:list:${JSON.stringify(query)}:skip=${skip}:limit=${limit}`,
+    async () => {
+      const docs = await WatiContact.find(query)
+        .select('firstName fullName phone level')
+        .sort({ level: -1, _id: 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
 
-  const withLevel = docs.map((d: any) => {
-    let derived = typeof d.level === 'number' ? d.level : undefined;
-    if (derived === undefined && Array.isArray(d.customParams)) {
-      const p = d.customParams.find((p: any) => String(p.name).toLowerCase() === 'level');
-      if (p) {
-        const n = Number(p.value);
-        if (!Number.isNaN(n)) derived = n;
-      }
-    }
-    return { ...d, level: typeof derived === 'number' ? derived : 0 };
-  });
+      return docs.map((d: any) => ({ ...d, level: typeof d.level === 'number' ? d.level : 0 }));
+    },
+    { ttl: 120000, tags: ['wati_contacts'] }
+  );
 
-  withLevel.sort((a: any, b: any) => (b.level ?? 0) - (a.level ?? 0));
-  const items = withLevel.slice(skip, skip + limit);
+  const [total, items] = await Promise.all([totalPromise, itemsPromise]);
 
   return NextResponse.json({ items, total });
 }

@@ -79,7 +79,10 @@ const dietTemplateSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
 
-    const session = await getServerSession(authOptions);
+    // Avoid session lookup cost for anonymous/public requests.
+    const hasAuthCookie = request.headers.get('cookie')?.includes('next-auth.session-token') ||
+      request.headers.get('cookie')?.includes('__Secure-next-auth.session-token');
+    const session = hasAuthCookie ? await getServerSession(authOptions) : null;
 
     await connectDB();
 
@@ -201,21 +204,36 @@ export async function GET(request: NextRequest) {
     }
 
     const cacheScope = `${session?.user?.role || 'guest'}:${session?.user?.id || 'anon'}`;
-    const templates = await withCache(
+    const templatesPromise = withCache(
       `diet-templates:${cacheScope}:${JSON.stringify(query)}:sort=${sortBy}:limit=${limit}:skip=${skip}`,
       async () => await DietTemplate.find(query)
         .populate('createdBy', 'firstName lastName role')
         .sort(sortOptions)
         .limit(limit)
         .skip(skip)
+        .lean()
       ,
       { ttl: 120000, tags: ['diet_templates'] }
     );
 
-    const total = await DietTemplate.countDocuments(query);
+    const totalPromise = withCache(
+      `diet-templates:count:${cacheScope}:${JSON.stringify(query)}`,
+      async () => await DietTemplate.countDocuments(query),
+      { ttl: 120000, tags: ['diet_templates'] }
+    );
 
     // Get categories for filtering
-    const categories = await DietTemplate.distinct('category', { isActive: true });
+    const categoriesPromise = withCache(
+      'diet-templates:categories:active',
+      async () => await DietTemplate.distinct('category', { isActive: true }),
+      { ttl: 120000, tags: ['diet_templates'] }
+    );
+
+    const [templates, total, categories] = await Promise.all([
+      templatesPromise,
+      totalPromise,
+      categoriesPromise,
+    ]);
 
     return NextResponse.json({
       success: true,

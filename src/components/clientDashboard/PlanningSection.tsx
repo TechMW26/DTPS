@@ -345,12 +345,18 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   const [recalculating, setRecalculating] = useState(false);
 
   // Recalculate daysUsed based on actual meal plans
-  const recalculateDaysUsed = async () => {
+  const recalculateDaysUsed = async ({
+    silent = false,
+    skipStatusRefresh = false
+  }: {
+    silent?: boolean;
+    skipStatusRefresh?: boolean;
+  } = {}) => {
     setRecalculating(true);
     try {
       // Build request body - use purchaseId if available, otherwise use clientId
       const requestBody: { action: string; purchaseId?: string; clientId?: string } = {
-        action: 'recalculate'
+        action: 'repair'
       };
 
       if (selectedPurchase?._id || paymentCheck?.purchase?._id) {
@@ -367,14 +373,22 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
       const data = await res.json();
       if (data.success) {
-        toast.success(`Days recalculated: ${data.oldDaysUsed} → ${data.newDaysUsed}`);
-        checkPaymentStatus(); // Refresh to show new values
+        if (!silent) {
+          toast.success(`Days repaired: ${data.oldDaysUsed} → ${data.newDaysUsed}`);
+        }
+        if (!skipStatusRefresh) {
+          checkPaymentStatus(); // Refresh to show new values
+        }
       } else {
-        toast.error(data.error || 'Failed to recalculate');
+        if (!silent) {
+          toast.error(data.error || 'Failed to recalculate');
+        }
       }
     } catch (error) {
       console.error('Error recalculating days:', error);
-      toast.error('Failed to recalculate days used');
+      if (!silent) {
+        toast.error('Failed to recalculate days used');
+      }
     } finally {
       setRecalculating(false);
     }
@@ -420,11 +434,16 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
   // ============ DRAFT AUTO-SAVE TO DB ============
   const [draftPlanId, setDraftPlanId] = useState<string | null>(null); // Tracks the draft plan _id in DB
+  const draftPlanIdRef = useRef<string | null>(null);
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const latestMealDataRef = useRef<{ meals: any[]; mealTypes: { name: string; time: string }[] } | null>(null);
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const draftSaveInProgressRef = useRef(false);
   const draftSaveFailCountRef = useRef(0); // Track consecutive failures for backoff
+
+  useEffect(() => {
+    draftPlanIdRef.current = draftPlanId;
+  }, [draftPlanId]);
 
   // Called by DietPlanDashboard on every meal data change
   const isEditModeRef = useRef(isEditMode);
@@ -434,6 +453,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
   const handleMealDataChange = useCallback((weekPlan: any[], mealTypes: { name: string; time: string }[]) => {
     latestMealDataRef.current = { meals: weekPlan, mealTypes };
+    // Update state immediately so UI reflects removed meal types
+    setInitialMealTypes(mealTypes);
     // Reset fail count when new data arrives (user is still working)
     draftSaveFailCountRef.current = 0;
 
@@ -548,6 +569,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           body: JSON.stringify(payload)
         });
         if (res.ok) {
+          draftPlanIdRef.current = draftPlanId;
           setDraftSaveStatus('saved');
           draftSaveFailCountRef.current = 0;
         } else {
@@ -570,6 +592,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.mealPlan?._id) {
+            draftPlanIdRef.current = data.mealPlan._id;
             setDraftPlanId(data.mealPlan._id);
           }
           setDraftSaveStatus('saved');
@@ -1218,8 +1241,14 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       console.log('[Publish Plan] Saving with actualDuration:', actualDuration, 'meals:', mealsWithDates.length);
 
       let data: any;
+      const publishDraftId = draftPlanIdRef.current || draftPlanId || (editingPlan?.status === 'draft' ? editingPlan._id : null);
 
-      if (draftPlanId) {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+
+      if (publishDraftId) {
         // Publish existing draft → update status to active
         const payload: any = {
           name: planTitle,
@@ -1243,7 +1272,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
         console.log('[Publish Plan] Draft update payload:', { duration: payload.duration, mealsCount: payload.meals.length });
 
-        const res = await fetch(`/api/client-meal-plans/${draftPlanId}`, {
+        const res = await fetch(`/api/client-meal-plans/${publishDraftId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1257,7 +1286,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         }
         data = await res.json();
         if (data.success) {
-          data.mealPlan = data.mealPlan || { _id: draftPlanId };
+          data.mealPlan = data.mealPlan || { _id: publishDraftId };
         }
       } else {
         // Create new plan directly as active
@@ -1411,6 +1440,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     setPlanKey(prev => prev + 1); // Reset key to force fresh component
 
     // Reset draft state
+    draftPlanIdRef.current = null;
     setDraftPlanId(null);
     setDraftSaveStatus('idle');
     latestMealDataRef.current = null;
@@ -1503,6 +1533,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     setPlanKey(prev => prev + 1); // Force re-mount
     // If editing a draft, set draftPlanId so autosave works
     if (plan.status === 'draft') {
+      draftPlanIdRef.current = plan._id;
       setDraftPlanId(plan._id);
     }
     setStep('meals');
@@ -4099,7 +4130,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     variant="outline"
                     size="sm"
                     className="border-amber-600 text-amber-700 hover:bg-amber-100"
-                    onClick={recalculateDaysUsed}
+                    onClick={() => recalculateDaysUsed()}
                     disabled={recalculating}
                     title="Recalculate days used from actual meal plans"
                   >
@@ -4175,7 +4206,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={recalculateDaysUsed}
+                      onClick={() => recalculateDaysUsed()}
                       disabled={recalculating}
                       className="text-xs text-gray-500 hover:text-green-700"
                       title="Recalculate days used from actual meal plans"
@@ -4416,16 +4447,17 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                 variant="outline"
                 size="sm"
                 onClick={async () => {
+                  await recalculateDaysUsed({ silent: true, skipStatusRefresh: true });
                   await Promise.all([
                     fetchClientPlans(),
                     checkPaymentStatus(true)
                   ]);
-                  toast.success('Refreshed successfully');
+                  toast.success('Refreshed and repaired successfully');
                 }}
-                disabled={checkingPayment || loadingPlans}
-                title="Refresh plans and payment status"
+                disabled={checkingPayment || loadingPlans || recalculating}
+                title="Repair counters and refresh plans/payment status"
               >
-                <RefreshCw className={`h-4 w-4 ${checkingPayment || loadingPlans ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 ${checkingPayment || loadingPlans || recalculating ? 'animate-spin' : ''}`} />
               </Button>
               {/* Create New Plan Button - Hidden in viewOnly mode (health counselor) */}
               {!viewOnly && (

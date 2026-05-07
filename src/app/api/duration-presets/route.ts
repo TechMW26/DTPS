@@ -4,16 +4,21 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import DurationPreset from '@/lib/db/models/DurationPreset';
 import { UserRole } from '@/types';
+import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // GET - Fetch all duration presets (accessible by all authenticated users)
 export async function GET() {
     try {
         await connectDB();
 
-        const presets = await DurationPreset.find({ isActive: true })
-            .sort({ sortOrder: 1, days: 1 })
-            .select('days label')
-            .lean();
+        const presets = await withCache(
+            'duration-presets:active',
+            async () => await DurationPreset.find({ isActive: true })
+                .sort({ sortOrder: 1, days: 1 })
+                .select('days label')
+                .lean(),
+            { ttl: 300000, tags: ['duration_presets'] }
+        );
 
         return NextResponse.json({
             success: true,
@@ -70,6 +75,8 @@ export async function POST(req: NextRequest) {
             sortOrder,
             createdBy: session.user.id
         });
+
+        clearCacheByTag('duration_presets');
 
         return NextResponse.json({
             success: true,
@@ -137,6 +144,8 @@ export async function PUT(req: NextRequest) {
             );
         }
 
+        clearCacheByTag('duration_presets');
+
         return NextResponse.json({
             success: true,
             preset,
@@ -181,6 +190,8 @@ export async function DELETE(req: NextRequest) {
                 { status: 404 }
             );
         }
+
+        clearCacheByTag('duration_presets');
 
         return NextResponse.json({
             success: true,

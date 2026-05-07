@@ -111,6 +111,42 @@ const shouldPreserveStoredCounters = (purchase: any, recalculatedDaysUsed: numbe
   return storedDaysUsed > Math.max(0, Number(recalculatedDaysUsed || 0));
 };
 
+const getLinkedMealPlanDaysUsed = (mealPlans: any[]): number => {
+  return mealPlans.reduce((sum, plan) => sum + Math.max(0, Number(plan?.duration || 0)), 0);
+};
+
+const applyPurchaseCounters = ({
+  purchase,
+  mealPlans,
+  preserveStoredCounters
+}: {
+  purchase: any;
+  mealPlans: any[];
+  preserveStoredCounters: boolean;
+}) => {
+  const recalculatedDaysUsed = getLinkedMealPlanDaysUsed(mealPlans);
+  const oldDaysUsed = Math.max(0, Number(purchase.daysUsed || 0));
+  const oldRemainingDays = Math.max(0, Number(purchase.remainingDays || 0));
+  const nextMealPlanCreated = mealPlans.length > 0;
+  const durationDays = getEffectiveDurationDays(purchase);
+
+  const finalDaysUsed = preserveStoredCounters
+    ? oldDaysUsed
+    : Math.min(durationDays, recalculatedDaysUsed);
+  const finalRemainingDays = preserveStoredCounters
+    ? oldRemainingDays
+    : Math.max(0, durationDays - finalDaysUsed);
+
+  return {
+    recalculatedDaysUsed,
+    oldDaysUsed,
+    oldRemainingDays,
+    nextMealPlanCreated,
+    finalDaysUsed,
+    finalRemainingDays
+  };
+};
+
 const getStartOfDayIST = (value: Date | string | number): Date => {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata',
@@ -502,9 +538,25 @@ export async function PUT(request: NextRequest) {
       updateData.parentPaymentId = parentPurchaseId || null;
     }
 
-    // If addDaysUsed is provided, ADD to existing daysUsed (for multiple meal plans)
+    // If addDaysUsed is provided for a specific meal plan, recalculate from linked plans
+    // to keep this operation idempotent (prevents double counting from repeated publish calls).
     if (addDaysUsed !== undefined && addDaysUsed > 0) {
-      updateData.daysUsed = (currentPurchase.daysUsed || 0) + addDaysUsed;
+      if (mealPlanId) {
+        const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
+        const linkedMealPlans = await ClientMealPlan.find({
+          purchaseId,
+          status: { $in: ['active', 'completed', 'paused'] }
+        }).select('duration');
+
+        const recalculatedDaysUsed = linkedMealPlans.reduce((sum: number, plan: any) => {
+          return sum + Math.max(0, Number(plan?.duration || 0));
+        }, 0);
+
+        updateData.daysUsed = recalculatedDaysUsed;
+        updateData.mealPlanCreated = linkedMealPlans.length > 0;
+      } else {
+        updateData.daysUsed = (currentPurchase.daysUsed || 0) + addDaysUsed;
+      }
     } else if (daysUsed !== undefined) {
       // Legacy: direct set (for backwards compatibility)
       updateData.daysUsed = daysUsed;
@@ -567,9 +619,11 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { purchaseId, clientId, action } = body;
 
-    if (action !== 'recalculate') {
+    if (action !== 'recalculate' && action !== 'repair') {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
+
+    const shouldRepairCounters = action === 'repair';
 
     // Import ClientMealPlan model
     const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
@@ -591,7 +645,7 @@ export async function PATCH(request: NextRequest) {
         status: { $in: ['active', 'completed'] }
       });
 
-      const totalDaysUsed = allMealPlans.reduce((sum, plan) => sum + (plan.duration || 0), 0);
+      const totalDaysUsed = getLinkedMealPlanDaysUsed(allMealPlans);
 
       // Manual "Fix Days" must reflect actual meal plans, even when stored counters exist.
       let updatedCount = 0;
@@ -600,28 +654,28 @@ export async function PATCH(request: NextRequest) {
           (plan) => plan.purchaseId?.toString() === purchase._id.toString()
         );
 
-        const nextDaysUsed = purchaseMealPlans.length > 0
-          ? purchaseMealPlans.reduce((sum, plan) => sum + (plan.duration || 0), 0)
+        const effectiveMealPlans = purchaseMealPlans.length > 0
+          ? purchaseMealPlans
           : allPurchases.length === 1
-            ? totalDaysUsed
-            : 0;
+            ? allMealPlans
+            : [];
 
-        const oldDaysUsed = Math.max(0, Number(purchase.daysUsed || 0));
-        const nextMealPlanCreated = purchaseMealPlans.length > 0 || (allPurchases.length === 1 && allMealPlans.length > 0);
-        const preserveStoredCounters = shouldPreserveStoredCounters(purchase, nextDaysUsed);
-        const finalDaysUsed = preserveStoredCounters ? oldDaysUsed : nextDaysUsed;
-        const finalRemainingDays = preserveStoredCounters
-          ? Math.max(0, Number(purchase.remainingDays || 0))
-          : Math.max(0, getEffectiveDurationDays(purchase) - finalDaysUsed);
+        const counterState = applyPurchaseCounters({
+          purchase,
+          mealPlans: effectiveMealPlans,
+          preserveStoredCounters: shouldRepairCounters
+            ? false
+            : shouldPreserveStoredCounters(purchase, getLinkedMealPlanDaysUsed(effectiveMealPlans))
+        });
 
         if (
-          oldDaysUsed !== finalDaysUsed ||
-          Math.max(0, Number(purchase.remainingDays || 0)) !== finalRemainingDays ||
-          Boolean(purchase.mealPlanCreated) !== nextMealPlanCreated
+          counterState.oldDaysUsed !== counterState.finalDaysUsed ||
+          counterState.oldRemainingDays !== counterState.finalRemainingDays ||
+          Boolean(purchase.mealPlanCreated) !== counterState.nextMealPlanCreated
         ) {
-          purchase.daysUsed = finalDaysUsed;
-          purchase.remainingDays = finalRemainingDays;
-          purchase.mealPlanCreated = nextMealPlanCreated;
+          purchase.daysUsed = counterState.finalDaysUsed;
+          purchase.remainingDays = counterState.finalRemainingDays;
+          purchase.mealPlanCreated = counterState.nextMealPlanCreated;
           await purchase.save();
           updatedCount++;
         }
@@ -632,7 +686,9 @@ export async function PATCH(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: `Days recalculated from actual meal plans for ${updatedCount} purchase(s).`,
+        message: shouldRepairCounters
+          ? `Purchase counters repaired from meal plans for ${updatedCount} purchase(s).`
+          : `Days recalculated from actual meal plans for ${updatedCount} purchase(s).`,
         oldDaysUsed: 0,
         newDaysUsed: totalDaysUsed,
         mealPlansCount: allMealPlans.length,
@@ -666,24 +722,23 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
-    const totalDaysUsed = mealPlans.reduce((sum, plan) => sum + (plan.duration || 0), 0);
-    const oldDaysUsed = Math.max(0, Number(purchase.daysUsed || 0));
-    const nextDaysUsed = totalDaysUsed;
-    const nextMealPlanCreated = mealPlans.length > 0;
-    const preserveStoredCounters = shouldPreserveStoredCounters(purchase, nextDaysUsed);
-    const finalDaysUsed = preserveStoredCounters ? oldDaysUsed : nextDaysUsed;
-    const finalRemainingDays = preserveStoredCounters
-      ? Math.max(0, Number(purchase.remainingDays || 0))
-      : Math.max(0, getEffectiveDurationDays(purchase) - finalDaysUsed);
+    const totalDaysUsed = getLinkedMealPlanDaysUsed(mealPlans);
+    const counterState = applyPurchaseCounters({
+      purchase,
+      mealPlans,
+      preserveStoredCounters: shouldRepairCounters
+        ? false
+        : shouldPreserveStoredCounters(purchase, totalDaysUsed)
+    });
 
     if (
-      oldDaysUsed !== finalDaysUsed ||
-      Math.max(0, Number(purchase.remainingDays || 0)) !== finalRemainingDays ||
-      Boolean(purchase.mealPlanCreated) !== nextMealPlanCreated
+      counterState.oldDaysUsed !== counterState.finalDaysUsed ||
+      counterState.oldRemainingDays !== counterState.finalRemainingDays ||
+      Boolean(purchase.mealPlanCreated) !== counterState.nextMealPlanCreated
     ) {
-      purchase.daysUsed = finalDaysUsed;
-      purchase.remainingDays = finalRemainingDays;
-      purchase.mealPlanCreated = nextMealPlanCreated;
+      purchase.daysUsed = counterState.finalDaysUsed;
+      purchase.remainingDays = counterState.finalRemainingDays;
+      purchase.mealPlanCreated = counterState.nextMealPlanCreated;
       await purchase.save();
     }
 
@@ -692,13 +747,15 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: preserveStoredCounters
-        ? `Days used preserved at ${oldDaysUsed}; stored purchase counters remain authoritative.`
-        : `Days used recalculated: ${oldDaysUsed} → ${finalDaysUsed}`,
-      oldDaysUsed,
-      newDaysUsed: finalDaysUsed,
+      message: shouldRepairCounters
+        ? `Purchase counters repaired: ${counterState.oldDaysUsed} → ${counterState.finalDaysUsed}`
+        : (counterState.finalDaysUsed === counterState.oldDaysUsed && counterState.finalRemainingDays === counterState.oldRemainingDays
+          ? `Days used preserved at ${counterState.oldDaysUsed}; stored purchase counters remain authoritative.`
+          : `Days used recalculated: ${counterState.oldDaysUsed} → ${counterState.finalDaysUsed}`),
+      oldDaysUsed: counterState.oldDaysUsed,
+      newDaysUsed: counterState.finalDaysUsed,
       mealPlansCount: mealPlans.length,
-      remainingDays: finalRemainingDays
+      remainingDays: counterState.finalRemainingDays
     });
   } catch (error) {
     console.error('Error recalculating days used:', error);

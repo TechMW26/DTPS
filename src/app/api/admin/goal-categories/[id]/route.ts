@@ -4,6 +4,11 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import GoalCategory from '@/lib/db/models/GoalCategory';
 import { clearCacheByTag } from '@/lib/api/utils';
+import mongoose from 'mongoose';
+
+function isValidObjectId(id: string): boolean {
+  return mongoose.Types.ObjectId.isValid(id);
+}
 
 // GET /api/admin/goal-categories/[id] - Get single goal category
 export async function GET(
@@ -12,6 +17,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ error: 'Invalid goal category id' }, { status: 400 });
+    }
     await connectDB();
 
     const category = await GoalCategory.findById(id).lean();
@@ -38,6 +46,9 @@ export async function PUT(
     }
 
     const { id } = await params;
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ error: 'Invalid goal category id' }, { status: 400 });
+    }
     const body = await req.json();
     const { name, value, description, icon, isActive, order } = body;
 
@@ -86,6 +97,9 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ error: 'Invalid goal category id' }, { status: 400 });
+    }
     await connectDB();
 
     const category = await GoalCategory.findByIdAndDelete(id);

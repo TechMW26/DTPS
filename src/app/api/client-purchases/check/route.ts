@@ -443,33 +443,44 @@ export async function GET(request: NextRequest) {
         purchase?.daysUsed !== undefined ||
         purchase?.remainingDays !== undefined;
 
+      const countersExceedDuration =
+        storedDaysUsed > durationDays ||
+        (storedDaysUsed + storedRemainingDays) > durationDays;
+
       let effectiveDaysUsed = hasStoredCounters
         ? storedDaysUsed
         : (typeof linkedDaysUsed === 'number' ? linkedDaysUsed : storedDaysUsed);
 
-      // Future scheduled plans should not consume allocation until they start,
-      // but never override an explicit stored daysUsed value.
+      // If stored counters are inconsistent (e.g. 45 used for a 30-day plan),
+      // prefer linked meal-plan usage when available and always cap by duration.
+      if (hasStoredCounters && countersExceedDuration) {
+        if (typeof linkedDaysUsed === 'number') {
+          effectiveDaysUsed = linkedDaysUsed;
+        }
+        effectiveDaysUsed = Math.min(durationDays, Math.max(0, effectiveDaysUsed));
+      }
+
+      // Future scheduled purchases should not consume allocation until they start.
+      // If no linked meal plan usage exists yet, stale copied counters must be ignored.
       if (
         typeof linkedDaysUsed !== 'number' &&
-        storedDaysUsed <= 0 &&
         purchase?.expectedStartDate &&
         new Date(purchase.expectedStartDate).getTime() > now.getTime()
       ) {
         effectiveDaysUsed = 0;
       }
 
-      // Unstarted purchase should not be blocked by stale daysUsed,
-      // but respect explicit stored daysUsed updates from admin corrections.
+      // Unstarted purchase should not be blocked by stale daysUsed.
+      // For records with no linked plan usage yet, keep usage at zero.
       if (
         typeof linkedDaysUsed !== 'number' &&
-        storedDaysUsed <= 0 &&
-        purchase?.mealPlanCreated === false
+        purchase?.mealPlanCreated !== true
       ) {
         effectiveDaysUsed = 0;
       }
 
-      // IMPORTANT: When counters exist in DB, return them exactly as stored.
-      const effectiveRemainingDays = hasStoredCounters
+      // Keep stored counters by default, but normalize inconsistent values.
+      const effectiveRemainingDays = (hasStoredCounters && !countersExceedDuration)
         ? storedRemainingDays
         : Math.max(0, durationDays - effectiveDaysUsed);
 
@@ -591,18 +602,22 @@ export async function GET(request: NextRequest) {
       );
       const aggregatedRemainingDays = Math.max(0, aggregatedTotalPurchasedDays - aggregatedTotalDaysUsed);
 
+      // Allow multi-phase planning: if aggregated remaining days > 0, user can create a new meal plan
+      const canCreate = aggregatedRemainingDays > 0 && accessContext.permissions.effectiveCreateMealPlans;
+
       console.info('[MEAL_PLAN_ELIGIBILITY_DEBUG]', {
         clientId,
         hasPaidPlan: hasPaidHistory,
-        canCreateMealPlan: false,
+        canCreateMealPlan: canCreate,
         role: session.user.role,
+        aggregatedRemainingDays,
         accessContext,
       });
 
       return NextResponse.json({
         success: true,
         hasPaidPlan: hasPaidHistory,
-        canCreateMealPlan: false,
+        canCreateMealPlan: canCreate,
         access: accessContext,
         clientStatus: updatedClientStatus,
         purchase: fallbackPurchase ? {
