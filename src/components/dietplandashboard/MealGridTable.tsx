@@ -295,9 +295,16 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   useEffect(() => {
     if (readOnly || !onUpdate || !Array.isArray(weekPlan) || weekPlan.length === 0) return;
 
+    const toCanonicalKeyOnly = (rawKey: string): (typeof MEAL_TYPE_KEYS)[number] | null => {
+      const upperKey = rawKey.toUpperCase().trim().replace(/[\s_-]+/g, '_');
+      return MEAL_TYPE_KEYS.includes(upperKey as (typeof MEAL_TYPE_KEYS)[number])
+        ? (upperKey as (typeof MEAL_TYPE_KEYS)[number])
+        : null;
+    };
+
     const needsNormalization = weekPlan.some(day =>
       Object.keys(day.meals || {}).some(rawKey => {
-        const canonicalKey = normalizeMealType(rawKey);
+        const canonicalKey = toCanonicalKeyOnly(rawKey);
         if (!canonicalKey || !MEAL_TYPES[canonicalKey]) return false;
         return rawKey !== MEAL_TYPES[canonicalKey].label;
       })
@@ -309,7 +316,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       const nextMeals: Record<string, Meal> = {};
 
       Object.entries(day.meals || {}).forEach(([rawKey, meal]) => {
-        const canonicalKey = normalizeMealType(rawKey);
+        const canonicalKey = toCanonicalKeyOnly(rawKey);
         const normalizedKey = canonicalKey && MEAL_TYPES[canonicalKey]
           ? MEAL_TYPES[canonicalKey].label
           : rawKey;

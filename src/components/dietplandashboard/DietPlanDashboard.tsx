@@ -12,7 +12,6 @@ import {
   MEAL_TYPE_KEYS,
   getMealLabel,
   sortMealsByType,
-  normalizeMealType,
   type MealTypeKey
 } from '@/lib/mealConfig';
 
@@ -152,6 +151,13 @@ const normalizeTime = (value?: string): string => {
   return trimmed;
 };
 
+const toCanonicalMealKeyOnly = (mealName: string): MealTypeKey | null => {
+  const upperKey = mealName.toUpperCase().trim().replace(/[\s_-]+/g, '_');
+  return MEAL_TYPE_KEYS.includes(upperKey as MealTypeKey)
+    ? (upperKey as MealTypeKey)
+    : null;
+};
+
 // Normalize meal keys in a day's meals object
 // Converts keys like "EARLY_MORNING" to "Early Morning" and deduplicates
 // Also deep-clones food options to prevent reference sharing with initialMeals
@@ -167,7 +173,7 @@ const normalizeMealKeys = (meals: Record<string, Meal>): Record<string, Meal> =>
   Object.keys(meals).forEach(mealName => {
     const current = meals[mealName];
     if (!current) return;
-    const mealKey = normalizeMealType(mealName);
+    const mealKey = toCanonicalMealKeyOnly(mealName);
     const displayName = mealKey ? MEAL_TYPES[mealKey].label : mealName;
     const canonicalTime = mealKey ? MEAL_TYPES[mealKey].time12h : undefined;
     if (normalized[displayName]) {
@@ -351,7 +357,7 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
       const seen = new Set<string>();
       const normalized: MealTypeConfig[] = [];
       for (const meal of initialMealTypes) {
-        const key = normalizeMealType(meal.name);
+        const key = toCanonicalMealKeyOnly(meal.name);
         const label = key ? MEAL_TYPES[key].label : meal.name;
         // IMPORTANT: Always prefer the user-saved time from DB (meal.time).
         // Only fall back to canonical default if no saved time exists.
