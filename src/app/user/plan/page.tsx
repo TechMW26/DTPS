@@ -83,6 +83,7 @@ interface Meal {
 interface DayPlan {
   date: Date;
   meals: Meal[];
+  mealTypes?: Array<{ name: string; time: string }>; // Dietitian's custom meal types
   totalCalories: number;
   hasPlan: boolean;
   dailyNote?: string;
@@ -454,6 +455,7 @@ export default function UserPlanPage() {
           ? {
             date: new Date(data.date),
             meals: data.meals || [],
+            mealTypes: data.mealTypes || [],
             totalCalories: data.totalCalories || 0,
             hasPlan: true,
             planDetails: data.planDetails
@@ -461,6 +463,7 @@ export default function UserPlanPage() {
           : {
             date: date,
             meals: [],
+            mealTypes: [],
             totalCalories: 0,
             hasPlan: false
           };
@@ -511,6 +514,7 @@ export default function UserPlanPage() {
           ? {
             date: new Date(data.date),
             meals: data.meals || [],
+            mealTypes: data.mealTypes || [],
             totalCalories: data.totalCalories || 0,
             hasPlan: true,
             dailyNote: data.dailyNote || '',
@@ -521,6 +525,7 @@ export default function UserPlanPage() {
           : {
             date: date,
             meals: [],
+            mealTypes: [],
             totalCalories: 0,
             hasPlan: false,
             dailyNote: '',
@@ -826,16 +831,15 @@ export default function UserPlanPage() {
     return slot?.time || '';
   };
 
-  // Get all meal slots - merge defaults with actual meals, including custom meals
-  // Key fix: include ALL API meals (even empty ones) to preserve their times,
-  // and normalize legacy types to prevent duplicates.
+  // Get all meal slots - respect dietitian's custom meal types if configured
+  // This ensures users see ONLY the meal types the dietitian published
   const getAllMealSlots = (): Meal[] => {
     if (!dayPlan?.hasPlan) {
       return [];
     }
 
     const slots: Meal[] = [];
-    const processedTypes = new Set<string>();
+    const processedTypeKeys = new Set<string>();
 
     // Helper to normalize a meal type to canonical camelCase
     const normalizeMealTypeKey = (type: string): string => {
@@ -847,6 +851,12 @@ export default function UserPlanPage() {
       return type;
     };
 
+    // Canonical comparison key used for dedupe + ordering (ignores case/spaces/underscores/hyphens)
+    const toTypeCompareKey = (type: string): string =>
+      normalizeMealTypeKey(type)
+        .toLowerCase()
+        .replace(/[\s_-]+/g, '');
+
     // First, add ALL meals from the API (including those with 0 items).
     // The API returns meals that the dietitian configured, so they should
     // all be shown — even empty ones get "No food allotted" display.
@@ -855,9 +865,10 @@ export default function UserPlanPage() {
         if (!meal.type) return;
 
         const normalizedType = normalizeMealTypeKey(meal.type);
+        const compareKey = toTypeCompareKey(normalizedType);
 
         // Skip if we already have this type (prevents duplicates from legacy names)
-        if (processedTypes.has(normalizedType)) return;
+        if (processedTypeKeys.has(compareKey)) return;
 
         const defaultSlot = DEFAULT_MEAL_SLOTS.find(s => s.type === normalizedType);
         slots.push({
@@ -865,26 +876,69 @@ export default function UserPlanPage() {
           type: normalizedType,
           time: meal.time || defaultSlot?.time || '12:00 PM'
         });
-        processedTypes.add(normalizedType);
+        processedTypeKeys.add(compareKey);
       });
     }
 
-    // Add empty default slots only for types not returned by the API
-    DEFAULT_MEAL_SLOTS.forEach(slot => {
-      if (!processedTypes.has(slot.type)) {
+    // IMPORTANT: Only add default meal slots if the plan does NOT have custom mealTypes
+    // If dietitian configured specific meal types, show ONLY those (even if empty)
+    // This ensures the UI reflects exactly what the dietitian published
+    const hasCustomMealTypes = dayPlan?.mealTypes && dayPlan.mealTypes.length > 0;
+
+    if (hasCustomMealTypes && dayPlan.mealTypes) {
+      // Dietitian configured custom meal types - add them for any missing types
+      dayPlan.mealTypes.forEach((mealType: any) => {
+        const rawName = mealType.name || '';
+        const typeKey = toTypeCompareKey(rawName);
+
+        // Skip if already processed from meals
+        if (processedTypeKeys.has(typeKey)) return;
+
         slots.push({
-          id: `empty-${slot.type}`,
-          type: slot.type,
-          time: slot.time,
+          id: `empty-${typeKey}`,
+          type: typeKey,
+          time: mealType.time || '12:00 PM',
           totalCalories: 0,
           items: [],
           isCompleted: false
         });
-        processedTypes.add(slot.type);
-      }
-    });
+        processedTypeKeys.add(typeKey);
+      });
+    } else {
+      // No custom mealTypes configured - add default meal slots only for missing types
+      DEFAULT_MEAL_SLOTS.forEach(slot => {
+        const compareKey = toTypeCompareKey(slot.type);
+        if (!processedTypeKeys.has(compareKey)) {
+          slots.push({
+            id: `empty-${slot.type}`,
+            type: slot.type,
+            time: slot.time,
+            totalCalories: 0,
+            items: [],
+            isCompleted: false
+          });
+          processedTypeKeys.add(compareKey);
+        }
+      });
+    }
 
-    // Keep planner/API order stable; do not reorder by time.
+    // IMPORTANT: If dietitian mealTypes exist, force the exact published sequence.
+    // This is NOT time sorting; it is ordering by dietitian-defined mealTypes.
+    if (hasCustomMealTypes && dayPlan.mealTypes) {
+      const orderMap = new Map<string, number>();
+      dayPlan.mealTypes.forEach((mealType: any, index: number) => {
+        orderMap.set(toTypeCompareKey(mealType.name || ''), index);
+      });
+
+      slots.sort((a, b) => {
+        const indexA = orderMap.get(toTypeCompareKey(a.type));
+        const indexB = orderMap.get(toTypeCompareKey(b.type));
+        const safeA = indexA ?? Number.MAX_SAFE_INTEGER;
+        const safeB = indexB ?? Number.MAX_SAFE_INTEGER;
+        return safeA - safeB;
+      });
+    }
+
     return slots;
   };
 

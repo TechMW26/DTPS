@@ -182,6 +182,7 @@ export async function GET(request: NextRequest) {
         reason: freezeInfo.reason || 'Day frozen by dietitian',
         frozenAt: freezeInfo.createdAt
       } : null,
+      mealTypes: mealPlan.mealTypes || [], // Return dietitian's custom meal types
       planDetails: {
         id: mealPlan._id,
         name: mealPlan.name,
