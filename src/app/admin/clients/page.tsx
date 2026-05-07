@@ -12,7 +12,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { getClientId, getDietitianId, getHealthCounselorId } from "@/lib/utils";
 import { validateEmail } from "@/lib/validations/auth";
 import { validatePhoneNumber } from "@/lib/validations/contact";
-import { COUNTRY_CODES } from "@/lib/constants/countries";
+import { COUNTRY_CODES, COUNTRY_CODE_OPTIONS } from "@/lib/constants/countries";
 
 interface Client {
   _id: string;
@@ -543,7 +543,7 @@ export default function AdminClientsPage() {
                       <SelectValue placeholder="Code" />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
-                      {COUNTRY_CODES.map((country) => (
+                      {COUNTRY_CODE_OPTIONS.map((country) => (
                         <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
                           {country.flag} {country.code}
                         </SelectItem>

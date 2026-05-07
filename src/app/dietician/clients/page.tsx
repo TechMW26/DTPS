@@ -37,7 +37,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ExternalLink, RefreshCw, Search, Users, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, UserPlus, Filter, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { validateEmail } from '@/lib/validations/auth';
 import { validatePhoneNumber } from '@/lib/validations/contact';
-import { COUNTRY_CODES } from '@/lib/constants/countries';
+import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -1112,6 +1112,9 @@ export default function DieticianClientsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Create New Client</DialogTitle>
+            <DialogDescription>
+              Add basic client details to create a new profile.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1139,7 +1142,7 @@ export default function DieticianClientsPage() {
                     <SelectValue placeholder="Code" />
                   </SelectTrigger>
                   <SelectContent className="max-h-60">
-                    {COUNTRY_CODES.map((country) => (
+                    {COUNTRY_CODE_OPTIONS.map((country) => (
                       <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
                         {country.flag} {country.code}
                       </SelectItem>

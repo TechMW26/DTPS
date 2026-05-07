@@ -37,7 +37,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ExternalLink, RefreshCw, Search, Users, Plus, UserPlus, XCircle } from 'lucide-react';
 import { validateEmail } from '@/lib/validations/auth';
 import { validatePhoneNumber } from '@/lib/validations/contact';
-import { COUNTRY_CODES } from '@/lib/constants/countries';
+import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -885,7 +885,7 @@ export default function HealthCounselorClientsPage() {
                     <SelectValue placeholder="Code" />
                   </SelectTrigger>
                   <SelectContent className="max-h-60">
-                    {COUNTRY_CODES.map((country) => (
+                    {COUNTRY_CODE_OPTIONS.map((country) => (
                       <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
                         {country.flag} {country.code}
                       </SelectItem>

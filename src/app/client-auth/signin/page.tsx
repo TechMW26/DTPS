@@ -14,7 +14,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Eye, EyeOff, Mail, Lock, ArrowLeft, Leaf, Phone, MessageSquare } from 'lucide-react';
 import { signInSchema, SignInInput } from '@/lib/validations/auth';
 import { validatePhoneNumber } from '@/lib/validations/contact';
-import { COUNTRY_CODES } from '@/lib/constants/countries';
+import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 import Image from 'next/image';
 
 type LoginMode = 'otp' | 'email';
@@ -374,7 +374,7 @@ export default function ClientSignInPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="max-h-60">
-                          {COUNTRY_CODES.map((country) => (
+                          {COUNTRY_CODE_OPTIONS.map((country) => (
                             <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
                               <span className="flex items-center gap-2">
                                 <span>{country.flag}</span>

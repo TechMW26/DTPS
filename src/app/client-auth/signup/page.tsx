@@ -14,7 +14,7 @@ import {
     Phone
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { COUNTRY_CODES } from '@/lib/constants/countries';
+import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 import { validateOptionalEmail, validatePhoneNumber } from '@/lib/validations/contact';
 
 export default function ClientSignUpPage() {
@@ -306,7 +306,7 @@ export default function ClientSignUpPage() {
                                         </SelectTrigger>
 
                                         <SelectContent className="max-h-60">
-                                            {COUNTRY_CODES.map((country) => (
+                                            {COUNTRY_CODE_OPTIONS.map((country) => (
                                                 <SelectItem
                                                     key={`${country.code}-${country.country}`}
                                                     value={country.code}

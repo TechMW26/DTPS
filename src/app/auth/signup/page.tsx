@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Heart, Eye, EyeOff, HeartPulse, Stethoscope } from 'lucide-react';
 import { signUpSchema, SignUpInput } from '@/lib/validations/auth';
 import { UserRole } from '@/types';
-import { COUNTRY_CODES } from '@/lib/constants/countries';
+import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -199,7 +199,7 @@ export default function SignUpPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
-                      {COUNTRY_CODES.map((country, index) => (
+                      {COUNTRY_CODE_OPTIONS.map((country, index) => (
                         <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
                           <span className="flex items-center gap-2">
                             <span>{country.flag}</span>

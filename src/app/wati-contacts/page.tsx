@@ -1,7 +1,7 @@
 import React from 'react';
 import { headers } from 'next/headers';
 import PerPageSelect from '@/components/wati/PerPageSelect';
-import { COUNTRY_CODES } from '@/lib/constants/countries';
+import { COUNTRY_CODES, COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 
 async function fetchContacts(search: string, limit: number, skip: number) {
   const hdrs = await headers();
@@ -38,7 +38,7 @@ export default async function WatiContactsPage({ searchParams }: { searchParams:
       <form className="mb-4 md:flex md:items-center md:w-[30%] md:mx-auto gap-2 sm:gap-3 justify-center " action="/wati-contacts" method="get">
         <div className="flex items-center border rounded w-full  sm:max-w-lg md:max-w-xl">
           <select name="code" defaultValue={selectedCode} className="px-2 py-1.5 text-xs text-gray-500 bg-transparent border-r outline-none">
-            {COUNTRY_CODES.map((country) => (
+            {COUNTRY_CODE_OPTIONS.map((country) => (
               <option key={`${country.code}-${country.country}`} value={country.code}>
                 {country.flag} {country.code}
               </option>

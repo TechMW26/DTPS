@@ -1,4 +1,10 @@
-export const COUNTRY_CODES = [
+export type CountryCodeEntry = {
+  code: string;
+  flag: string;
+  country: string;
+};
+
+export const COUNTRY_CODES: CountryCodeEntry[] = [
   { code: '+93', flag: '🇦🇫', country: 'Afghanistan' },
   { code: '+355', flag: '🇦🇱', country: 'Albania' },
   { code: '+213', flag: '🇩🇿', country: 'Algeria' },
@@ -24,7 +30,7 @@ export const COUNTRY_CODES = [
   { code: '+1', flag: '🇧🇲', country: 'Bermuda' },
   { code: '+975', flag: '🇧🇹', country: 'Bhutan' },
   { code: '+591', flag: '🇧🇴', country: 'Bolivia' },
-  
+
   { code: '+387', flag: '🇧🇦', country: 'Bosnia and Herzegovina' },
   { code: '+267', flag: '🇧🇼', country: 'Botswana' },
   { code: '+55', flag: '🇧🇷', country: 'Brazil' },
@@ -237,3 +243,17 @@ export const COUNTRY_CODES = [
   { code: '+260', flag: '🇿🇲', country: 'Zambia' },
   { code: '+263', flag: '🇿🇼', country: 'Zimbabwe' },
 ];
+
+// UI dropdown-safe list: one entry per dial code to avoid duplicate SelectItem values/keys.
+// Keep the last occurrence so common modern mappings (e.g. +1 -> United States, +44 -> United Kingdom)
+// win when there are shared regional codes.
+const countryCodeByDialCode = COUNTRY_CODES.reduce<Record<string, CountryCodeEntry>>((acc, entry) => {
+  acc[entry.code] = entry;
+  return acc;
+}, {});
+
+export const COUNTRY_CODE_OPTIONS: CountryCodeEntry[] = Object.values(countryCodeByDialCode).sort((a, b) => {
+  const codeA = Number(a.code.replace('+', ''));
+  const codeB = Number(b.code.replace('+', ''));
+  return codeA - codeB;
+});

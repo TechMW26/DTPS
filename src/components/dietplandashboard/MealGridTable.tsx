@@ -1879,7 +1879,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                 {/* Food Options */}
                                 {meal.foodOptions.map((option, optionIndex) => (
                                   <div
-                                    key={option.id}
+                                    key={`${actualDayIndex}-${mealType}-${option.id || 'option'}-${optionIndex}`}
                                     className={`food-box border rounded-md p-3.5 space-y-2.5 ${option.food ? 'cursor-move' : ''} ${option.isAlternative ? 'border-orange-300 bg-orange-50/50' : 'border-gray-300 bg-slate-50/50'}`}
                                     draggable={!!option.food}
                                     onDragStart={(e) => handleDragStart(e, actualDayIndex, mealType, optionIndex, !!option.food)}
@@ -1950,7 +1950,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                     {option.foods && option.foods.length > 0 ? (
                                       <div className="space-y-3">
                                         {option.foods.map((foodItem, foodIndex) => (
-                                          <div key={foodItem.id} className={`bg-white border rounded-lg p-3 space-y-2 shadow-sm ${option.isAlternative ? 'border-orange-300 bg-orange-50' : 'border-gray-300'}`}>
+                                          <div key={`${actualDayIndex}-${mealType}-${option.id || optionIndex}-food-${foodItem.id || 'item'}-${foodIndex}`} className={`bg-white border rounded-lg p-3 space-y-2 shadow-sm ${option.isAlternative ? 'border-orange-300 bg-orange-50' : 'border-gray-300'}`}>
                                             {/* Food Name Row with Badge */}
                                             <div className="flex items-start justify-between gap-2">
                                               <div className="flex-1 space-y-1">

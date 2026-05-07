@@ -17,8 +17,10 @@ import { UserRole, UserStatus } from "@/types";
 import { Copy, Eye, AlertCircle, CheckCircle, Clock, User, Briefcase, Settings, Key, Mail, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { formatUserId } from "@/lib/utils";
-import { COUNTRY_CODES } from "@/lib/constants/countries";
+import { COUNTRY_CODE_OPTIONS } from "@/lib/constants/countries";
 import { validateOptionalEmail, validatePhoneNumber } from "@/lib/validations/contact";
+
+const SORTED_COUNTRY_CODE_OPTIONS = [...COUNTRY_CODE_OPTIONS].sort((a, b) => b.code.length - a.code.length);
 
 interface AdminUser {
   _id: string;
@@ -303,10 +305,12 @@ export default function AdminUsersPage() {
     let phoneNumber = u.phone || "";
     if (phoneNumber.startsWith("+")) {
       // Try to find matching country code
-      const matchedCountry = COUNTRY_CODES.find(c => phoneNumber.startsWith(c.code));
-      if (matchedCountry) {
-        countryCode = matchedCountry.code;
-        phoneNumber = phoneNumber.substring(matchedCountry.code.length);
+      for (const option of SORTED_COUNTRY_CODE_OPTIONS) {
+        if (phoneNumber.startsWith(option.code)) {
+          countryCode = option.code;
+          phoneNumber = phoneNumber.substring(option.code.length);
+          break;
+        }
       }
     }
     setForm({
@@ -999,8 +1003,8 @@ export default function AdminUsersPage() {
                           <SelectValue placeholder="Code" />
                         </SelectTrigger>
                         <SelectContent>
-                          {COUNTRY_CODES.map((c) => (
-                            <SelectItem key={c.code} value={c.code}>
+                          {COUNTRY_CODE_OPTIONS.map((c) => (
+                            <SelectItem key={`${c.code}-${c.country}`} value={c.code}>
                               {c.code} {c.country}
                             </SelectItem>
                           ))}

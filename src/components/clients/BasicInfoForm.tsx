@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Save } from 'lucide-react';
-import { COUNTRY_CODES } from '@/lib/constants/countries';
+import { COUNTRY_CODES, COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 
 // Goal category interface for dynamic loading
 interface GoalCategory {
@@ -259,7 +259,7 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
                 <SelectValue placeholder="Code" />
               </SelectTrigger>
               <SelectContent>
-                {COUNTRY_CODES.map((country) => (
+                {COUNTRY_CODE_OPTIONS.map((country) => (
                   <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
                     {country.flag} {country.code}
                   </SelectItem>
@@ -325,7 +325,7 @@ export function BasicInfoForm({ firstName, lastName, email, phone, dateOfBirth, 
                   <SelectValue placeholder="Code" />
                 </SelectTrigger>
                 <SelectContent>
-                  {COUNTRY_CODES.map((country) => (
+                  {COUNTRY_CODE_OPTIONS.map((country) => (
                     <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
                       {country.flag} {country.code}
                     </SelectItem>
