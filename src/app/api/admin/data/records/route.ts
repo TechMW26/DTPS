@@ -50,6 +50,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Ensure model has necessary properties
+    if (!registeredModel.model || !registeredModel.fields) {
+      console.error('Invalid model configuration:', { modelName, hasModel: !!registeredModel.model, hasFields: !!registeredModel.fields });
+      return NextResponse.json(
+        { success: false, error: 'Model configuration invalid' },
+        { status: 500 }
+      );
+    }
+
     // If specific record ID provided, fetch that record with related data
     if (recordId) {
       const record = await registeredModel.model.findById(recordId).lean();
@@ -113,6 +122,30 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       const normalizedSearch = search.trim();
+
+      if (normalizedSearch.length === 0) {
+        return NextResponse.json({
+          success: true,
+          modelName,
+          displayName: registeredModel.displayName,
+          records: [],
+          pagination: { page, limit, total: 0, totalPages: 0 },
+          fields: registeredModel.fields.filter(f => !f.path.startsWith('_')).map(f => ({
+            path: f.path,
+            type: f.type,
+            required: f.required
+          }))
+        });
+      }
+
+      // Helper function to safely escape regex for MongoDB
+      const escapeRegex = (str: string): string => {
+        // Escape special regex characters
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      };
+
+      const escapedSearch = escapeRegex(normalizedSearch);
+
       // Search across multiple string fields
       const searchableFields = registeredModel.fields
         .filter(f => f.type === 'String' && !f.path.startsWith('_'))
@@ -120,10 +153,14 @@ export async function GET(request: NextRequest) {
 
       const orConditions: any[] = [];
 
+      // Add string field searches - use simple case-insensitive regex
       if (searchableFields.length > 0) {
-        orConditions.push(...searchableFields.map(field => ({
-          [field]: { $regex: search, $options: 'i' }
-        })));
+        searchableFields.forEach(field => {
+          // Use simple regex without complex options
+          orConditions.push({
+            [field]: new RegExp(escapedSearch, 'i')
+          });
+        });
       }
 
       // Allow direct lookup by Mongo ObjectId
@@ -142,34 +179,106 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Universal clientId search - check if model has clientId field
+      const hasClientIdField = registeredModel.fields.some(f => f.path === 'clientId');
+      const hasNameField = registeredModel.fields.some(f => f.path === 'name');
+
+      if (hasClientIdField) {
+        // Try ObjectId search if valid
+        if (mongoose.Types.ObjectId.isValid(normalizedSearch)) {
+          try {
+            orConditions.push({
+              clientId: new mongoose.Types.ObjectId(normalizedSearch)
+            });
+          } catch {
+            // Fallback to regex if ObjectId creation fails
+            orConditions.push({
+              clientId: new RegExp(escapedSearch, 'i')
+            });
+          }
+        } else {
+          // If not valid ObjectId, try regex search
+          orConditions.push({
+            clientId: new RegExp(escapedSearch, 'i')
+          });
+        }
+      }
+
+      if (hasNameField) {
+        orConditions.push({
+          name: new RegExp(escapedSearch, 'i')
+        });
+      }
+
       // UnifiedPayment: support search by client ID (cId/clientId) and client name
       if (modelName === 'UnifiedPayment') {
-        const UserModel = mongoose.models.User || require('@/lib/db/models/User').default;
-        const matchedUsers = await UserModel.find({
-          $or: [
-            { clientId: { $regex: normalizedSearch, $options: 'i' } },
-            { dtps_id: { $regex: normalizedSearch, $options: 'i' } },
-            { firstName: { $regex: normalizedSearch, $options: 'i' } },
-            { lastName: { $regex: normalizedSearch, $options: 'i' } },
-            { email: { $regex: normalizedSearch, $options: 'i' } }
-          ]
-        })
-          .select('_id')
-          .limit(200)
-          .lean();
+        try {
+          const UserModel = mongoose.models.User || require('@/lib/db/models/User').default;
 
-        if (matchedUsers.length > 0) {
-          orConditions.push({ client: { $in: matchedUsers.map((u: any) => u._id) } });
+          // Build user search conditions - try both ObjectId and regex
+          const userSearchConditions: any[] = [
+            { dtps_id: new RegExp(escapedSearch, 'i') },
+            { firstName: new RegExp(escapedSearch, 'i') },
+            { lastName: new RegExp(escapedSearch, 'i') },
+            { email: new RegExp(escapedSearch, 'i') }
+          ];
+
+          // Add clientId search - try both ObjectId and regex
+          if (mongoose.Types.ObjectId.isValid(normalizedSearch)) {
+            try {
+              userSearchConditions.push({ clientId: new mongoose.Types.ObjectId(normalizedSearch) });
+            } catch {
+              userSearchConditions.push({ clientId: new RegExp(escapedSearch, 'i') });
+            }
+          } else {
+            userSearchConditions.push({ clientId: new RegExp(escapedSearch, 'i') });
+          }
+
+          const matchedUsers = await UserModel.find({ $or: userSearchConditions })
+            .select('_id')
+            .limit(200)
+            .lean();
+
+          if (matchedUsers.length > 0) {
+            orConditions.push({ client: { $in: matchedUsers.map((u: any) => u._id) } });
+          }
+        } catch (userSearchError) {
+          console.warn('UnifiedPayment user search error:', userSearchError);
+          // Continue with other search conditions if user search fails
         }
       }
 
       if (orConditions.length > 0) {
         query.$or = orConditions;
       }
+
+      // Log search details for debugging
+      if (search) {
+        console.log('Search query built successfully:', {
+          search: normalizedSearch,
+          modelName,
+          orConditionsCount: orConditions.length,
+          hasClientIdField,
+          hasNameField
+        });
+      }
     }
 
     // Get total count
-    const total = await registeredModel.model.countDocuments(query);
+    let total = 0;
+    try {
+      total = await registeredModel.model.countDocuments(query);
+    } catch (countError: any) {
+      console.error('Count query error:', countError);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Count query failed',
+          message: countError.message
+        },
+        { status: 500 }
+      );
+    }
 
     const allowPostEnrichmentSort = modelName === 'UnifiedPayment' && ['clientName', 'clientDisplayId', 'cId'].includes(sortBy);
     const canSortBySchemaField = sortBy === '_id' || !!registeredModel.model.schema.path(sortBy);
@@ -185,12 +294,26 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch paginated results
-    const records = await registeredModel.model
-      .find(query)
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .sort(databaseSort)
-      .lean();
+    let records: any[] = [];
+    try {
+      records = await registeredModel.model
+        .find(query)
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .sort(databaseSort)
+        .lean();
+    } catch (findError: any) {
+      console.error('Find query error:', findError);
+      console.error('Query being executed:', JSON.stringify(query, null, 2));
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Search query failed',
+          message: findError.message
+        },
+        { status: 500 }
+      );
+    }
 
     // UnifiedPayment list enrichment for admin table display
     let enrichedRecords: any[] = records;
@@ -266,11 +389,14 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Data search error:', error);
+    console.error('Search parameters:', { modelName, search, page, sortBy });
+    console.error('Error stack:', error.stack);
     return NextResponse.json(
       {
         success: false,
         error: 'Server error',
-        message: error.message
+        message: error.message || 'Unknown error occurred',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       },
       { status: 500 }
     );

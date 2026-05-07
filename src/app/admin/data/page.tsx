@@ -547,11 +547,18 @@ export default function DataManagementPage() {
         setRecordFields(data.fields);
         // Lazy loading will auto-detect visible rows on render
       } else {
-        toast.error('Search failed');
+        const errorMessage = data.message || data.error || 'Search failed';
+        console.error('API search error:', data);
+        toast.error(`Search failed: ${errorMessage}`);
+        setSearchResults([]);
+        setPagination({ page: 1, limit: 20, total: 0, totalPages: 0 });
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
-        toast.error('Error searching records');
+        console.error('Search request error:', error);
+        toast.error(`Error searching records: ${error.message || 'Unknown error'}`);
+        setSearchResults([]);
+        setPagination({ page: 1, limit: 20, total: 0, totalPages: 0 });
       }
     } finally {
       setLoading(false);
@@ -1797,8 +1804,8 @@ export default function DataManagementPage() {
                 <input
                   type="text"
                   placeholder={isUnifiedPaymentModel
-                    ? 'Search by _id, cId/clientId, client name, email, planName, or field...'
-                    : 'Search by any name, email, phone, planName, or field...'}
+                    ? 'Search by _id, clientId, client name, email, planName, or any field...'
+                    : 'Search by _id, name, clientId, email, phone, or any field...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-[#3AB1A0] focus:ring-2 focus:ring-teal-500/20 transition-all"

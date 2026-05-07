@@ -270,11 +270,6 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
         originalDayIndex: initialMeals[i]?.originalDayIndex,
         wasHeld: initialMeals[i]?.wasHeld,
         resumedDate: initialMeals[i]?.resumedDate,
-        // Preserve freeze-related fields so frozen days stay blurred and recovery labels remain visible
-        isFrozen: initialMeals[i]?.isFrozen,
-        isFreezeRecovery: initialMeals[i]?.isFreezeRecovery,
-        originalFreezeDate: initialMeals[i]?.originalFreezeDate,
-        originalFreezeDateLabel: initialMeals[i]?.originalFreezeDateLabel,
         // Override with recalculated values from buildDays to fix date mismatch
         day: d.day, // Use newly calculated day label with correct date
         date: d.date, // Use newly calculated date
@@ -302,11 +297,6 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
           originalDayIndex: prev[i]?.originalDayIndex,
           wasHeld: prev[i]?.wasHeld,
           resumedDate: prev[i]?.resumedDate,
-          // Preserve freeze-related fields during duration-driven rebuilds
-          isFrozen: prev[i]?.isFrozen,
-          isFreezeRecovery: prev[i]?.isFreezeRecovery,
-          originalFreezeDate: prev[i]?.originalFreezeDate,
-          originalFreezeDateLabel: prev[i]?.originalFreezeDateLabel,
           // Override with recalculated values from buildDays to fix date mismatch
           day: d.day, // Use newly calculated day label with correct date
           date: d.date, // Use newly calculated date
@@ -342,11 +332,6 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
         originalDayIndex: initialMeals[i]?.originalDayIndex,
         wasHeld: initialMeals[i]?.wasHeld,
         resumedDate: initialMeals[i]?.resumedDate,
-        // Preserve freeze-related fields so UI can show blur and recovery source correctly
-        isFrozen: initialMeals[i]?.isFrozen,
-        isFreezeRecovery: initialMeals[i]?.isFreezeRecovery,
-        originalFreezeDate: initialMeals[i]?.originalFreezeDate,
-        originalFreezeDateLabel: initialMeals[i]?.originalFreezeDateLabel,
         // Override with recalculated values from buildDays to fix date mismatch
         day: d.day, // Use newly calculated day label with correct date
         date: d.date, // Use newly calculated date
