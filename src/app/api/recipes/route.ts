@@ -86,6 +86,9 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search');
+    const normalizedSearch = (search || '').trim();
+    const effectiveSearch = normalizedSearch;
+    const normalizedSearchLower = effectiveSearch.toLowerCase();
     const category = searchParams.get('category');
     const cuisine = searchParams.get('cuisine');
     const difficulty = searchParams.get('difficulty');
@@ -97,25 +100,35 @@ export async function GET(request: NextRequest) {
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? parseInt(limitParam) : 0; // 0 means no limit
     const page = parseInt(searchParams.get('page') || '1');
+    const view = searchParams.get('view') || '';
+    const isFoodDatabaseView = view === 'food-database';
+    const searchMode = searchParams.get('searchMode') || '';
+    const isTypingSearchFastPath = isFoodDatabaseView && searchMode === 'typing' && !!effectiveSearch;
+    const includeTotal = searchParams.get('includeTotal') === 'true';
 
     // Build query
     let query: any = {};
+    let foodDbRelevanceFallbackOr: any[] | null = null;
 
-    // Search by name, description, ingredients, recipe ID, or UUID
-    if (search) {
+    // Search by name, description, ingredients, recipe ID, or UUID.
+    // Food-database view uses text index first, then falls back to partial regex.
+    if (effectiveSearch) {
+      const escapedSearch = effectiveSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const namePrefixRegex = new RegExp(`^${escapedSearch}`, 'i');
+      const nameContainsRegex = new RegExp(escapedSearch, 'i');
       const searchConditions: any[] = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { 'ingredients.name': { $regex: search, $options: 'i' } }
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { description: { $regex: escapedSearch, $options: 'i' } },
+        { 'ingredients.name': { $regex: escapedSearch, $options: 'i' } }
       ];
 
       // Only add uuid search if it looks like it could be a uuid (numeric or alphanumeric)
-      if (/^[a-zA-Z0-9]+$/.test(search.trim())) {
-        searchConditions.push({ uuid: search.trim() });
+      if (/^[a-zA-Z0-9]+$/.test(effectiveSearch)) {
+        searchConditions.push({ uuid: effectiveSearch });
       }
 
       // Check if search term looks like a MongoDB ObjectId (hex characters)
-      const cleanSearch = search.trim().toLowerCase();
+      const cleanSearch = normalizedSearchLower;
       if (/^[a-f0-9]+$/.test(cleanSearch)) {
         // If it's a valid hex string, try to match by ID
         if (cleanSearch.length === 24 && mongoose.Types.ObjectId.isValid(cleanSearch)) {
@@ -128,7 +141,21 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      query.$or = searchConditions;
+      if (isTypingSearchFastPath) {
+        const typingConditions: any[] = [
+          { name: { $regex: namePrefixRegex } },
+          { name: { $regex: nameContainsRegex } },
+        ];
+        if (/^[a-zA-Z0-9]+$/.test(effectiveSearch)) {
+          typingConditions.push({ uuid: { $regex: `^${escapedSearch}`, $options: 'i' } });
+        }
+        query.$or = typingConditions;
+      } else if (isFoodDatabaseView && sortBy === 'relevance') {
+        query.$text = { $search: effectiveSearch };
+        foodDbRelevanceFallbackOr = searchConditions;
+      } else {
+        query.$or = searchConditions;
+      }
     }
 
     // Filter by category (tags)
@@ -230,6 +257,20 @@ export async function GET(request: NextRequest) {
       query.$and.push({ allergens: { $nin: allergenVariants } });
     }
 
+    const excludeMedicalConditions = searchParams.get('excludeMedicalConditions');
+    if (excludeMedicalConditions) {
+      const conditions = excludeMedicalConditions.split(',').map(c => c.trim()).filter(Boolean);
+      if (conditions.length > 0) {
+        const conditionVariants = conditions.flatMap(condition => [
+          condition,
+          condition.toLowerCase(),
+          condition.charAt(0).toUpperCase() + condition.slice(1).toLowerCase()
+        ]);
+        query.$and = query.$and || [];
+        query.$and.push({ medicalContraindications: { $nin: conditionVariants } });
+      }
+    }
+
     // Filter by max calories
     if (maxCalories) {
       query['nutrition.calories'] = { $lte: parseInt(maxCalories) };
@@ -280,9 +321,11 @@ export async function GET(request: NextRequest) {
       case 'relevance':
         // For relevance sorting, we use MongoDB text search scoring if available,
         // otherwise we'll do post-processing relevance scoring
-        if (search) {
+        if (effectiveSearch && !isTypingSearchFastPath) {
           isRelevanceSort = true;
-          sortOptions = { _id: 1 }; // Initial sort, will be re-sorted after fetch
+          sortOptions = isFoodDatabaseView
+            ? { score: { $meta: 'textScore' }, _id: 1 }
+            : { _id: 1 }; // Initial sort, will be re-sorted after fetch
         } else {
           sortOptions = { name: 1, _id: 1 };
         }
@@ -292,17 +335,95 @@ export async function GET(request: NextRequest) {
     }
 
     // Generate cache key based on query params
-    const cacheKey = `recipes:${search || ''}:${category || ''}:${cuisine || ''}:${difficulty || ''}:${sortBy}:${page}:${limit}`;
+    const cacheKey = `recipes:${view}:${searchMode}:${normalizedSearchLower}:${category || ''}:${cuisine || ''}:${difficulty || ''}:${dietaryRestrictions || ''}:${excludeDietaryRestrictions || ''}:${excludeAllergens || ''}:${excludeMedicalConditions || ''}:${sortBy}:${page}:${limit}:${includeTotal}`;
+    const foodTotalCacheKey = `recipes:food-total:${searchMode}:${normalizedSearchLower}:${category || ''}:${cuisine || ''}:${difficulty || ''}:${dietaryRestrictions || ''}:${excludeDietaryRestrictions || ''}:${excludeAllergens || ''}:${excludeMedicalConditions || ''}`;
 
     let recipes: any[] = [];
     let total = 0;
     let cuisines: string[] = [];
     let tags: string[] = [];
+    let hasNext = false;
 
     try {
       const cachedResult = await withCache(
         cacheKey,
         async () => {
+          if (isFoodDatabaseView) {
+            const compactLimit = limit > 0 ? Math.min(limit, 50) : 12;
+            const compactSkip = (page - 1) * compactLimit;
+            const compactProjection = {
+              uuid: 1,
+              name: 1,
+              servings: 1,
+              servingSize: 1,
+              calories: 1,
+              protein: 1,
+              carbs: 1,
+              fat: 1,
+            };
+            if (effectiveSearch && sortBy === 'relevance') {
+              compactProjection.score = { $meta: 'textScore' };
+            }
+
+            const compactRecipesRaw = await Recipe.find(query, compactProjection)
+              .sort(sortOptions)
+              .limit(compactLimit + 1)
+              .skip(compactSkip)
+              .lean();
+
+            let compactFinalRaw = compactRecipesRaw;
+            if (
+              compactRecipesRaw.length === 0
+              && effectiveSearch
+              && sortBy === 'relevance'
+              && !isTypingSearchFastPath
+              && foodDbRelevanceFallbackOr
+            ) {
+              const fallbackQuery: any = { ...query };
+              delete fallbackQuery.$text;
+              fallbackQuery.$or = foodDbRelevanceFallbackOr;
+
+              const fallbackProjection = {
+                uuid: 1,
+                name: 1,
+                servings: 1,
+                servingSize: 1,
+                calories: 1,
+                protein: 1,
+                carbs: 1,
+                fat: 1,
+              };
+
+              compactFinalRaw = await Recipe.find(fallbackQuery, fallbackProjection)
+                .sort({ name: 1, _id: 1 })
+                .limit(compactLimit + 1)
+                .skip(compactSkip)
+                .lean();
+            }
+
+            const compactHasNext = compactFinalRaw.length > compactLimit;
+            const compactRecipes = compactHasNext
+              ? compactFinalRaw.slice(0, compactLimit)
+              : compactFinalRaw;
+
+            let compactTotal: number | null = null;
+            if (includeTotal) {
+              compactTotal = await withCache(
+                foodTotalCacheKey,
+                async () => Recipe.countDocuments(query),
+                { ttl: 300000, tags: ['recipes'] }
+              );
+            }
+
+            return {
+              recipes: compactRecipes,
+              total: compactTotal,
+              hasNext: compactHasNext,
+              cuisines: [],
+              tags: []
+            };
+          }
+
           // First fetch recipes without populate to avoid ObjectId cast errors
           let recipesQuery = Recipe.find(query).sort(sortOptions);
 
@@ -369,8 +490,8 @@ export async function GET(request: NextRequest) {
 
           // Relevance-based sorting for search results
           // Prioritizes: exact match > starts with > contains in name > contains in description > contains in ingredients
-          if (isRelevanceSort && search) {
-            const searchLower = search.toLowerCase().trim();
+          if (isRelevanceSort && effectiveSearch) {
+            const searchLower = normalizedSearchLower;
             const searchTerms = searchLower.split(/\s+/).filter(t => t.length > 0);
 
             recipesData = recipesData.map((recipe: any) => {
@@ -458,41 +579,77 @@ export async function GET(request: NextRequest) {
       );
 
       recipes = cachedResult.recipes || [];
-      total = cachedResult.total || 0;
+      total = typeof cachedResult.total === 'number' ? cachedResult.total : 0;
+      hasNext = !!cachedResult.hasNext;
       cuisines = cachedResult.cuisines || [];
       tags = cachedResult.tags || [];
     } catch (cacheError: any) {
       console.error('Cache/Query error, fetching directly:', cacheError?.message);
 
-      // Fallback: fetch directly without cache
-      let recipesQuery = Recipe.find(query)
-        .populate({
-          path: 'createdBy',
-          select: 'firstName lastName',
-          options: { strictPopulate: false }
-        })
-        .sort(sortOptions);
+      if (isFoodDatabaseView) {
+        const compactLimit = limit > 0 ? Math.min(limit, 50) : 12;
+        const compactSkip = (page - 1) * compactLimit;
+        const compactProjection = {
+          uuid: 1,
+          name: 1,
+          servings: 1,
+          servingSize: 1,
+          calories: 1,
+          protein: 1,
+          carbs: 1,
+          fat: 1,
+        };
+        if (effectiveSearch && sortBy === 'relevance') {
+          compactProjection.score = { $meta: 'textScore' };
+        }
 
-      if (limit > 0) {
-        recipesQuery = recipesQuery.limit(limit).skip((page - 1) * limit);
+        const compactRecipesRaw = await Recipe.find(query, compactProjection)
+          .sort(sortOptions)
+          .limit(compactLimit + 1)
+          .skip(compactSkip)
+          .lean();
+
+        hasNext = compactRecipesRaw.length > compactLimit;
+        recipes = hasNext ? compactRecipesRaw.slice(0, compactLimit) : compactRecipesRaw;
+        if (includeTotal) {
+          total = await Recipe.countDocuments(query);
+        } else {
+          total = 0;
+        }
+        cuisines = [];
+        tags = [];
+      } else {
+
+        // Fallback: fetch directly without cache
+        let recipesQuery = Recipe.find(query)
+          .populate({
+            path: 'createdBy',
+            select: 'firstName lastName',
+            options: { strictPopulate: false }
+          })
+          .sort(sortOptions);
+
+        if (limit > 0) {
+          recipesQuery = recipesQuery.limit(limit).skip((page - 1) * limit);
+        }
+
+        const recipesRaw = await recipesQuery.lean();
+
+        recipes = recipesRaw.map((recipe: any) => ({
+          ...recipe,
+          flatNutrition: {
+            calories: recipe.calories || 0,
+            protein: recipe.protein || 0,
+            carbs: recipe.carbs || 0,
+            fat: recipe.fat || 0
+          },
+          createdBy: recipe.createdBy || { firstName: 'Unknown', lastName: 'User' }
+        }));
+
+        total = await Recipe.countDocuments(query);
+        cuisines = await Recipe.distinct('cuisine');
+        tags = await Recipe.distinct('tags');
       }
-
-      const recipesRaw = await recipesQuery.lean();
-
-      recipes = recipesRaw.map((recipe: any) => ({
-        ...recipe,
-        flatNutrition: {
-          calories: recipe.calories || 0,
-          protein: recipe.protein || 0,
-          carbs: recipe.carbs || 0,
-          fat: recipe.fat || 0
-        },
-        createdBy: recipe.createdBy || { firstName: 'Unknown', lastName: 'User' }
-      }));
-
-      total = await Recipe.countDocuments(query);
-      cuisines = await Recipe.distinct('cuisine');
-      tags = await Recipe.distinct('tags');
     }
 
     return NextResponse.json({
@@ -501,8 +658,9 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         limit,
-        total,
-        pages: limit > 0 ? Math.ceil(total / limit) : 1
+        total: includeTotal ? total : null,
+        pages: includeTotal && limit > 0 ? Math.ceil(total / limit) : null,
+        hasNext
       },
       cuisines,
       tags,

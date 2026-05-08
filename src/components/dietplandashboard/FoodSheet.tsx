@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   X,
   Search,
@@ -33,6 +33,43 @@ function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay]);
 
   return debouncedValue;
+}
+
+// Throttle hook to limit how frequently request-driving state changes are emitted.
+function useThrottle<T>(value: T, delay: number): T {
+  const [throttledValue, setThrottledValue] = useState<T>(value);
+  const lastExecutedRef = useRef(0);
+  const trailingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const now = Date.now();
+    const elapsed = now - lastExecutedRef.current;
+
+    if (elapsed >= delay) {
+      lastExecutedRef.current = now;
+      setThrottledValue(value);
+      return;
+    }
+
+    if (trailingTimerRef.current) {
+      clearTimeout(trailingTimerRef.current);
+    }
+
+    trailingTimerRef.current = setTimeout(() => {
+      lastExecutedRef.current = Date.now();
+      setThrottledValue(value);
+      trailingTimerRef.current = null;
+    }, delay - elapsed);
+
+    return () => {
+      if (trailingTimerRef.current) {
+        clearTimeout(trailingTimerRef.current);
+        trailingTimerRef.current = null;
+      }
+    };
+  }, [value, delay]);
+
+  return throttledValue;
 }
 
 type FoodItem = {
@@ -71,135 +108,50 @@ export function FoodDatabasePanel({
   const clientMedicalArr = clientMedicalConditions.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   const clientAllergyArr = clientAllergies.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
-  // Debug: Log dietary restrictions when component opens
-  console.log('[FoodDatabasePanel] Filtering with:', {
-    dietaryRestrictions: clientDietaryArr,
-    medicalConditions: clientMedicalArr,
-    allergies: clientAllergyArr
-  });
-
-  const [allRecipes, setAllRecipes] = useState<FoodItem[]>([]); // Store all recipes
   const [foodData, setFoodData] = useState<FoodItem[]>([]);
+  const [selectedFoods, setSelectedFoods] = useState<Record<string, FoodItem>>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [totalRecipes, setTotalRecipes] = useState<number | null>(null);
+  const itemsPerPage = 12;
+  const selectedFoodsRef = useRef<Record<string, FoodItem>>({});
+  const requestCacheRef = useRef<Record<string, { items: FoodItem[]; hasNext: boolean; total: number | null }>>({});
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const latestRequestIdRef = useRef(0);
 
   // Debounce search query for optimization
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const throttledSearchQuery = useThrottle(debouncedSearchQuery, 250);
 
-  const normalizeSearchText = useCallback((value: string): string => {
-    return value
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }, []);
+  useEffect(() => {
+    selectedFoodsRef.current = selectedFoods;
+  }, [selectedFoods]);
 
-  const escapeRegExp = useCallback((value: string): string => {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }, []);
-
-  // Rank search results by relevance: exact phrase > prefix > word-boundary phrase > all-words > partial.
-  const searchAndRankRecipes = useCallback((recipes: FoodItem[], query: string): FoodItem[] => {
-    const normalizedQuery = normalizeSearchText(query);
-    if (!normalizedQuery) return recipes;
-
-    const queryWords = normalizedQuery.split(' ').filter(Boolean);
-    const queryWordSet = new Set(queryWords);
-    const queryPhraseRegex = new RegExp(`\\b${escapeRegExp(normalizedQuery)}\\b`, 'i');
-
-    const scoredRecipes = recipes.map((recipe, index) => {
-      const normalizedName = normalizeSearchText(recipe.menu || '');
-      const nameWords = normalizedName.split(' ').filter(Boolean);
-
-      if (!normalizedName) {
-        return {
-          recipe,
-          score: 0,
-          matchedWords: 0,
-          position: Number.MAX_SAFE_INTEGER,
-          lengthDiff: Number.MAX_SAFE_INTEGER,
-          index,
-        };
-      }
-
-      const startsWithPhrase = normalizedName.startsWith(normalizedQuery);
-      const exactPhrase = normalizedName === normalizedQuery;
-      const containsPhrase = normalizedName.includes(normalizedQuery);
-      const phraseBoundaryMatch = queryPhraseRegex.test(normalizedName);
-
-      const matchedWords = queryWords.filter((word) => normalizedName.includes(word)).length;
-      const allWordsPresent = queryWords.length > 0 && matchedWords === queryWords.length;
-
-      // Consecutive token match (e.g. query: "ragi idli", name: "healthy ragi idli breakfast")
-      let consecutiveMatch = false;
-      if (queryWords.length <= nameWords.length) {
-        for (let i = 0; i <= nameWords.length - queryWords.length; i += 1) {
-          const windowWords = nameWords.slice(i, i + queryWords.length);
-          if (windowWords.join(' ') === normalizedQuery) {
-            consecutiveMatch = true;
-            break;
-          }
-        }
-      }
-
-      let score = 0;
-      if (exactPhrase) score += 1200;
-      if (startsWithPhrase) score += 850;
-      if (phraseBoundaryMatch) score += 650;
-      if (consecutiveMatch) score += 500;
-      if (containsPhrase) score += 350;
-      if (allWordsPresent) score += 250;
-
-      if (!allWordsPresent && matchedWords > 0) {
-        // Reward high overlap for partial queries while keeping full matches above.
-        score += Math.round((matchedWords / Math.max(queryWords.length, 1)) * 180);
-      }
-
-      // Bonus when more words overlap exactly.
-      const exactWordOverlap = nameWords.filter((word) => queryWordSet.has(word)).length;
-      score += exactWordOverlap * 30;
-
-      const position = normalizedName.indexOf(normalizedQuery);
-      const lengthDiff = Math.abs(normalizedName.length - normalizedQuery.length);
-
-      return {
-        recipe,
-        score,
-        matchedWords,
-        position: position === -1 ? Number.MAX_SAFE_INTEGER : position,
-        lengthDiff,
-        index,
-      };
-    });
-
-    return scoredRecipes
-      .filter((item) => item.score > 0)
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        if (b.matchedWords !== a.matchedWords) return b.matchedWords - a.matchedWords;
-        if (a.position !== b.position) return a.position - b.position;
-        if (a.lengthDiff !== b.lengthDiff) return a.lengthDiff - b.lengthDiff;
-        return a.index - b.index;
-      })
-      .map((item) => item.recipe);
-  }, [normalizeSearchText, escapeRegExp]);
-
-  // Fetch recipes from the database (with server-side filtering for dietary restrictions)
+  // Fetch only the visible page from the database using server-side search/filtering.
   useEffect(() => {
     const fetchRecipes = async () => {
       if (!isOpen) return;
 
       try {
         setLoading(true);
+        const effectiveSearch = throttledSearchQuery.trim();
+        const canUseSearch = effectiveSearch.length >= 1;
         const params = new URLSearchParams();
-        params.append('limit', '0'); // Fetch ALL recipes (0 = no limit)
+        params.append('view', 'food-database');
+        params.append('limit', String(itemsPerPage));
+        params.append('page', String(currentPage));
+        params.append('includeTotal', 'true');
+        params.append('sortBy', canUseSearch ? 'name' : 'name');
         if (categoryFilter && categoryFilter !== 'all') {
           params.append('category', categoryFilter);
+        }
+        if (canUseSearch) {
+          params.append('search', effectiveSearch);
+          params.append('searchMode', 'typing');
         }
 
         // Pass dietary restrictions to API for server-side filtering
@@ -212,197 +164,39 @@ export function FoodDatabasePanel({
           params.append('excludeAllergens', clientAllergyArr.join(','));
         }
 
-        const response = await fetch(`/api/recipes?${params.toString()}`);
+        if (clientMedicalArr.length > 0) {
+          params.append('excludeMedicalConditions', clientMedicalArr.join(','));
+        }
+
+        const requestKey = `${refreshKey}:${params.toString()}`;
+        const cachedResult = requestCacheRef.current[requestKey];
+        if (cachedResult) {
+          setFoodData(cachedResult.items);
+          setHasNextPage(cachedResult.hasNext);
+          setTotalRecipes(cachedResult.total);
+          setLoading(false);
+          return;
+        }
+
+        if (activeRequestRef.current) {
+          activeRequestRef.current.abort();
+        }
+        const controller = new AbortController();
+        activeRequestRef.current = controller;
+        const requestId = latestRequestIdRef.current + 1;
+        latestRequestIdRef.current = requestId;
+
+        const response = await fetch(`/api/recipes?${params.toString()}`, {
+          signal: controller.signal,
+        });
         if (response.ok) {
           const data = await response.json();
+          // Ignore stale responses when a newer request is already in flight/completed.
+          if (requestId !== latestRequestIdRef.current) {
+            return;
+          }
           const recipes = data.recipes || [];
-
-          // Helper to ensure value is an array
-          const toArray = (val: any): any[] => {
-            if (Array.isArray(val)) return val;
-            if (typeof val === 'string' && val.trim()) return [val];
-            return [];
-          };
-          // Additional client-side filtering for edge cases not handled by API
-          const filteredRecipes = recipes.filter((recipe: any) => {
-            const recipeAllergens: string[] = toArray(recipe.allergens).map((a: string) => String(a).toLowerCase().trim());
-            const recipeDietary: string[] = toArray(recipe.dietaryRestrictions).map((d: string) => String(d).toLowerCase().trim());
-            const recipeMedical: string[] = toArray(recipe.medicalContraindications).map((m: string) => String(m).toLowerCase().trim());
-            const recipeIngredients: string[] = toArray(recipe.ingredients).map((ing: any) => (ing?.name || String(ing) || '').toLowerCase().trim());
-
-            // ===== ALLERGEN CHECKS =====
-            // Exclude if recipe contains any allergen the client is allergic to
-            const hasClientAllergen = clientAllergyArr.some(allergy =>
-              recipeAllergens.some((ra: string) => ra.includes(allergy) || allergy.includes(ra)) ||
-              recipe.name?.toLowerCase().includes(allergy) ||
-              recipeIngredients.some((ing: string) => ing.includes(allergy))
-            );
-            if (hasClientAllergen) {
-              return false;
-            }
-
-            // ===== DIETARY RESTRICTIONS FILTER =====
-            // Filter recipes based on selected dietary restrictions
-            // Recipes should be COMPATIBLE with the selected restrictions
-            if (clientDietaryArr.length > 0) {
-              // VEGETARIAN restriction: hide recipes with eggs, chicken, meat, fish
-              if (clientDietaryArr.includes('vegetarian')) {
-                // Exclude non-vegetarian tagged recipes
-                if (recipeDietary.includes('non-vegetarian') || recipeDietary.includes('nonvegetarian')) {
-                  return false;
-                }
-                // Exclude recipes with egg allergen
-                if (recipeAllergens.includes('egg') || recipeAllergens.includes('eggs')) {
-                  return false;
-                }
-                // Exclude recipes with egg/chicken/meat/fish in name or ingredients
-                const nonVegKeywords = ['egg', 'chicken', 'mutton', 'fish', 'meat', 'prawn', 'shrimp', 'crab', 'lobster', 'lamb', 'pork', 'beef', 'bacon', 'ham', 'sausage', 'keema', 'biryani chicken', 'tandoori chicken'];
-                const recipeName = (recipe.name || '').toLowerCase();
-                if (nonVegKeywords.some(keyword => recipeName.includes(keyword))) {
-                  return false;
-                }
-                if (recipeIngredients.some((ing: string) => nonVegKeywords.some(keyword => ing.includes(keyword)))) {
-                  return false;
-                }
-              }
-
-              // NON-VEGETARIAN restriction: no filtering needed (they can eat everything)
-
-              // VEGAN restriction: exclude non-vegan recipes (those with dairy, eggs, meat, fish, honey)
-              if (clientDietaryArr.includes('vegan')) {
-                // Exclude non-vegetarian tagged recipes
-                if (recipeDietary.includes('non-vegetarian') || recipeDietary.includes('nonvegetarian')) {
-                  return false;
-                }
-                // Exclude recipes with non-vegan allergens
-                const nonVeganAllergens = ['dairy', 'egg', 'eggs', 'milk', 'cheese', 'meat', 'fish', 'seafood', 'honey'];
-                if (nonVeganAllergens.some(allergen => recipeAllergens.some((ra: string) => ra.includes(allergen)))) {
-                  return false;
-                }
-                // Exclude recipes with non-vegan keywords in name or ingredients
-                const nonVeganKeywords = ['egg', 'chicken', 'mutton', 'fish', 'meat', 'prawn', 'shrimp', 'crab', 'lobster', 'lamb', 'pork', 'beef', 'bacon', 'ham', 'sausage', 'milk', 'cheese', 'paneer', 'curd', 'yogurt', 'butter', 'ghee', 'cream', 'honey', 'raita'];
-                const recipeName = (recipe.name || '').toLowerCase();
-                if (nonVeganKeywords.some(keyword => recipeName.includes(keyword))) {
-                  return false;
-                }
-                if (recipeIngredients.some((ing: string) => nonVeganKeywords.some(keyword => ing.includes(keyword)))) {
-                  return false;
-                }
-              }
-            }
-
-            // ===== EXCLUSION-BASED DIETARY RESTRICTIONS =====
-
-            // If client is Gluten-Free, exclude recipes with gluten
-            if (clientDietaryArr.includes('gluten-free') || clientDietaryArr.includes('gluten free')) {
-              const hasGluten = recipeAllergens.includes('gluten') ||
-                recipeAllergens.includes('wheat') ||
-                recipeDietary.some((d: string) => d.includes('gluten') && !d.includes('gluten-free') && !d.includes('gluten free'));
-              if (hasGluten) {
-                return false;
-              }
-            }
-
-            // If client is Dairy-Free, exclude recipes with dairy
-            if (clientDietaryArr.includes('dairy-free') || clientDietaryArr.includes('dairy free')) {
-              const hasDairy = recipeAllergens.includes('dairy') ||
-                recipeAllergens.includes('milk') ||
-                recipeAllergens.includes('lactose');
-              if (hasDairy) {
-                return false;
-              }
-            }
-
-            // If client is Egg-Free, exclude recipes with eggs
-            if (clientDietaryArr.includes('egg-free') || clientDietaryArr.includes('egg free')) {
-              const hasEgg = recipeAllergens.includes('egg') || recipeAllergens.includes('eggs');
-              if (hasEgg) {
-                return false;
-              }
-            }
-
-            // If client is Nut-Free, exclude recipes with nuts
-            if (clientDietaryArr.includes('nut-free') || clientDietaryArr.includes('nut free')) {
-              const nutAllergens = ['nut', 'nuts', 'peanut', 'peanuts', 'almond', 'almonds', 'cashew', 'cashews', 'walnut', 'walnuts', 'pistachio', 'hazelnut'];
-              const hasNuts = nutAllergens.some(nut =>
-                recipeAllergens.some((ra: string) => ra.includes(nut)) ||
-                recipeIngredients.some((ing: string) => ing.includes(nut))
-              );
-              if (hasNuts) {
-                return false;
-              }
-            }
-
-            // If client is Soy-Free, exclude recipes with soy
-            if (clientDietaryArr.includes('soy-free') || clientDietaryArr.includes('soy free')) {
-              const hasSoy = recipeAllergens.includes('soy') || recipeAllergens.includes('soya');
-              if (hasSoy) {
-                return false;
-              }
-            }
-
-            // If client has Diabetic Friendly restriction, exclude high-sugar recipes
-            if (clientDietaryArr.includes('diabetic friendly') || clientDietaryArr.includes('diabetic-friendly')) {
-              // Check if recipe has medical contraindication for diabetes
-              const contraindicatedForDiabetes = recipeMedical.some((m: string) =>
-                m.includes('diabetes') || m.includes('diabetic') || m.includes('high sugar')
-              );
-              if (contraindicatedForDiabetes) {
-                return false;
-              }
-            }
-
-            // If client has Low-Carb restriction
-            if (clientDietaryArr.includes('low-carb') || clientDietaryArr.includes('low carb')) {
-              // Could check carbs value if available, for now rely on tags
-            }
-
-            // If client has Paleo restriction, exclude non-paleo foods
-            if (clientDietaryArr.includes('paleo')) {
-              const nonPaleoAllergens = ['dairy', 'grain', 'grains', 'legume', 'legumes', 'refined sugar'];
-              const hasNonPaleo = nonPaleoAllergens.some(item =>
-                recipeAllergens.some((ra: string) => ra.includes(item))
-              );
-              if (hasNonPaleo) {
-                return false;
-              }
-            }
-
-            // If client has Keto restriction
-            if (clientDietaryArr.includes('keto')) {
-              // For Keto, we could check carb content but for now rely on tags
-            }
-
-            // If client has Lactose Intolerance (from medical), exclude dairy recipes
-            if (clientMedicalArr.includes('lactose intolerance') && recipeAllergens.includes('dairy')) {
-              return false;
-            }
-
-            // If client has Celiac Disease (from medical), exclude gluten recipes
-            if (clientMedicalArr.includes('celiac disease') && recipeAllergens.includes('gluten')) {
-              return false;
-            }
-
-            // ===== MEDICAL CONTRAINDICATIONS CHECK =====
-            // Exclude recipes that have medical contraindications matching client's conditions
-            const hasMedicalConflict = clientMedicalArr.some(clientCondition =>
-              recipeMedical.some((recipeContra: string) => {
-                // Case-insensitive partial matching
-                const match = recipeContra.includes(clientCondition) || clientCondition.includes(recipeContra);
-                return match;
-              })
-            );
-
-            if (hasMedicalConflict) {
-              return false;
-            }
-
-            // All checks passed - recipe is suitable for client
-            return true;
-          });
-
-          // Transform filtered recipes to FoodItem format
-          const transformedData: FoodItem[] = filteredRecipes.map((recipe: any) => {
+          const transformedData: FoodItem[] = recipes.map((recipe: any) => {
             // Format serving size - use servingSize if available, otherwise show servings count
             const servingSizeDisplay = recipe.servingSize || recipe.portionSize;
             const servingsCount = recipe.servings || 1;
@@ -427,19 +221,27 @@ export function FoodDatabasePanel({
               carbs: carbsVal,
               protein: proteinVal,
               fats: fatsVal,
-              selected: false,
+              selected: !!selectedFoodsRef.current[String(recipe._id)],
               recipeUuid: recipe.uuid || undefined,
             };
           });
-
-          // Debug: Log filtering results
-          console.log(`[FoodDatabasePanel] Fetched ${recipes.length} recipes, after filtering: ${transformedData.length}`);
-
-          // Store all recipes for local filtering
-          setAllRecipes(transformedData);
           setFoodData(transformedData);
+          setHasNextPage(Boolean(data.pagination?.hasNext));
+          const nextTotal = typeof data.pagination?.total === 'number' ? data.pagination.total : null;
+          setTotalRecipes(nextTotal);
+          // Avoid pinning transient empty-search misses in cache.
+          if (transformedData.length > 0 || !canUseSearch) {
+            requestCacheRef.current[requestKey] = {
+              items: transformedData,
+              hasNext: Boolean(data.pagination?.hasNext),
+              total: nextTotal,
+            };
+          }
         }
       } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          return;
+        }
         console.error('Error fetching recipes:', error);
       } finally {
         setLoading(false);
@@ -447,45 +249,55 @@ export function FoodDatabasePanel({
     };
 
     fetchRecipes();
-  }, [isOpen, categoryFilter, clientDietaryArr.join(','), clientMedicalArr.join(','), clientAllergyArr.join(','), refreshKey]);
+  }, [
+    isOpen,
+    categoryFilter,
+    clientDietaryArr.join(','),
+    clientMedicalArr.join(','),
+    clientAllergyArr.join(','),
+    refreshKey,
+    currentPage,
+    throttledSearchQuery,
+    itemsPerPage,
+  ]);
 
-  // Apply local search filtering with ranking when search query changes
   useEffect(() => {
-    if (!allRecipes.length) return;
-
-    if (debouncedSearchQuery.trim()) {
-      const rankedResults = searchAndRankRecipes(allRecipes, debouncedSearchQuery);
-      setFoodData(rankedResults);
-      setCurrentPage(1); // Reset to first page on search
-    } else {
-      setFoodData(allRecipes);
-    }
-  }, [debouncedSearchQuery, allRecipes, searchAndRankRecipes]);
+    setCurrentPage(1);
+  }, [categoryFilter, throttledSearchQuery]);
 
   const handleRefresh = () => {
+    requestCacheRef.current = {};
+    if (activeRequestRef.current) {
+      activeRequestRef.current.abort();
+      activeRequestRef.current = null;
+    }
     setCurrentPage(1);
     setSearchQuery("");
+    setSelectedFoods({});
+    setTotalRecipes(null);
     setRefreshKey(prev => prev + 1);
   };
 
-  const itemsPerPage = 12;
-
-  const totalPages = Math.ceil(foodData.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = foodData.slice(startIndex, startIndex + itemsPerPage);
-
   const toggleSelection = (id: string) => {
-    // Update both foodData and allRecipes to maintain selection state
-    setFoodData((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, selected: !item.selected } : item
-      )
-    );
-    setAllRecipes((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, selected: !item.selected } : item
-      )
-    );
+    setFoodData((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (!target) return prev;
+
+      const nextSelected = !target.selected;
+      setSelectedFoods((current) => {
+        const next = { ...current };
+        if (nextSelected) {
+          next[id] = { ...target, selected: true };
+        } else {
+          delete next[id];
+        }
+        return next;
+      });
+
+      return prev.map((item) =>
+        item.id === id ? { ...item, selected: nextSelected } : item
+      );
+    });
   };
 
   const updateFoodItem = (id: string, field: keyof FoodItem, value: any) => {
@@ -497,13 +309,11 @@ export function FoodDatabasePanel({
   };
 
   const handleAddSelected = () => {
-    // Get selected items from allRecipes to include all selections
-    const selectedItems = allRecipes.filter((item) => item.selected);
+    const selectedItems = Object.values(selectedFoods);
     if (selectedItems.length > 0) {
       onSelectFood(selectedItems);
-      // Clear selections from both arrays
       setFoodData(prev => prev.map(item => ({ ...item, selected: false })));
-      setAllRecipes(prev => prev.map(item => ({ ...item, selected: false })));
+      setSelectedFoods({});
       onClose();
     }
   };
@@ -605,7 +415,7 @@ export function FoodDatabasePanel({
               onClick={handleAddSelected}
               style={{ backgroundColor: '#00A63E', color: 'white' }}
               className="hover:opacity-90 font-medium h-10"
-              disabled={!foodData.some((item) => item.selected)}
+              disabled={Object.keys(selectedFoods).length === 0}
             >
               <Plus className="w-4 h-4 mr-2" />
               Add
@@ -657,7 +467,7 @@ export function FoodDatabasePanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedData.map((item) => (
+                  {foodData.map((item) => (
                     <tr
                       key={item.id}
                       onClick={() => toggleSelection(item.id)}
@@ -713,46 +523,23 @@ export function FoodDatabasePanel({
         {/* Footer with Pagination */}
         <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50">
           <div className="text-sm text-gray-600">
-            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, foodData.length)} of {foodData.length} recipes
+            Showing page {currentPage}{typeof totalRecipes === 'number' ? ` | Total recipes: ${totalRecipes}` : ''}
           </div>
           <div className="flex items-center gap-2">
-            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-              if (totalPages <= 7) {
-                return i + 1;
-              } else if (i === 3) {
-                return "...";
-              } else if (i < 3) {
-                return i + 1;
-              } else {
-                return totalPages - (6 - i);
-              }
-            }).map((page, i) => (
-              <Button
-                key={i}
-                variant={currentPage === page ? "default" : "outline"}
-                size="sm"
-                onClick={() =>
-                  typeof page === "number" && setCurrentPage(page)
-                }
-                disabled={page === "..."}
-                style={currentPage === page ? { backgroundColor: '#00A63E', color: 'white', borderColor: '#00A63E' } : {}}
-                className={`w-9 h-9 p-0 ${currentPage === page
-                  ? "hover:opacity-90"
-                  : "border-gray-300"
-                  }`}
-              >
-                {page}
-              </Button>
-            ))}
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                setCurrentPage((prev) =>
-                  Math.min(prev + 1, totalPages)
-                )
-              }
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="w-9 h-9 p-0 border-gray-300"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((prev) => prev + 1)}
+              disabled={!hasNextPage}
               className="w-9 h-9 p-0 border-gray-300"
             >
               <ChevronRight className="w-4 h-4" />
