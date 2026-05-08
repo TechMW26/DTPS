@@ -200,7 +200,7 @@ function convertToCSV(data: any[], fields: string[]): string {
   // Generate clean header names from field paths
   const fieldMappings = fields.map(field => ({
     field,
-    header: generateHeaderFromField(field) || field
+    header: field === '_id' ? '_id' : (generateHeaderFromField(field) || field)
   }));
 
   // Header row with clean names
@@ -238,7 +238,7 @@ function convertToCSVFromFlattened(flattenedData: Record<string, any>[], fields:
   // Generate clean header names from field paths
   const fieldMappings = fields.map(field => ({
     field,
-    header: generateHeaderFromField(field) || field
+    header: field === '_id' ? '_id' : (generateHeaderFromField(field) || field)
   }));
 
   // Header row with clean names
