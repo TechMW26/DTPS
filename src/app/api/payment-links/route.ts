@@ -73,6 +73,60 @@ const createPaymentLinkSchema = z.object({
   showToClient: z.boolean().default(true),
 });
 
+async function syncVisiblePaymentLinksWithRazorpay(paymentLinks: any[]): Promise<boolean> {
+  if (!razorpay || paymentLinks.length === 0) return false;
+
+  let updated = false;
+
+  await Promise.all(
+    paymentLinks.map(async (paymentLink) => {
+      if (!paymentLink?.razorpayPaymentLinkId) return;
+      if (paymentLink.status === 'paid') return;
+
+      try {
+        const razorpayLink: any = await razorpay.paymentLink.fetch(paymentLink.razorpayPaymentLinkId);
+        if (razorpayLink.status !== 'paid') return;
+
+        paymentLink.status = 'paid';
+        paymentLink.paidAt = razorpayLink.paid_at
+          ? new Date(razorpayLink.paid_at * 1000)
+          : (paymentLink.paidAt || new Date());
+
+        if (Array.isArray(razorpayLink.payments) && razorpayLink.payments.length > 0) {
+          const latestPayment = razorpayLink.payments[razorpayLink.payments.length - 1];
+          if (latestPayment?.payment_id) {
+            paymentLink.razorpayPaymentId = latestPayment.payment_id;
+            paymentLink.transactionId = paymentLink.transactionId || latestPayment.payment_id;
+          }
+        }
+
+        await paymentLink.save();
+        updated = true;
+      } catch (error) {
+        console.error('Error auto-syncing payment link from Razorpay:', paymentLink?._id, error);
+      }
+    })
+  );
+
+  return updated;
+}
+
+function getPostPaymentRedirectPath(role: string | undefined, clientId: string): string {
+  if (role === UserRole.HEALTH_COUNSELOR) {
+    return `/health-counselor/clients/${clientId}`;
+  }
+
+  if (role === UserRole.DIETITIAN) {
+    return `/dietician/clients/${clientId}`;
+  }
+
+  if (role === UserRole.ADMIN) {
+    return `/admin/clients/${clientId}`;
+  }
+
+  return `/user?payment_success=true`;
+}
+
 // GET /api/payment-links - Get payment links
 export async function GET(request: NextRequest) {
   try {
@@ -266,6 +320,14 @@ export async function GET(request: NextRequest) {
         { ttl: 120000, tags: ['payment_links'] }
       );
 
+    const razorpayStatusesUpdated = clientId
+      ? await syncVisiblePaymentLinksWithRazorpay(paymentLinks as any[])
+      : false;
+
+    if (razorpayStatusesUpdated) {
+      clearCacheByTag('payment_links');
+    }
+
     const total = await PaymentLink.countDocuments(query);
 
     const response = NextResponse.json({
@@ -363,6 +425,11 @@ export async function POST(request: NextRequest) {
 
       const today = new Date();
       const paymentDate = `${today.getDate()}-${today.getMonth() + 1}-${today.getFullYear()}`;
+      const redirectTo = getPostPaymentRedirectPath(session.user.role, validatedData.clientId);
+      const callbackParams = new URLSearchParams({
+        clientId: validatedData.clientId,
+        redirectTo,
+      });
 
       const razorpayPaymentLinkOptions: any = {
         amount: Math.round(validatedData.finalAmount * 100), // Amount in paise
@@ -394,7 +461,7 @@ export async function POST(request: NextRequest) {
           paymentDate: paymentDate,
           createdAt: today.toISOString(),
         },
-        callback_url: getPaymentCallbackUrl('/user?payment_success=true'),
+        callback_url: getPaymentCallbackUrl(`/payment/success?${callbackParams.toString()}`),
         callback_method: 'get'
       };
 

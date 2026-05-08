@@ -1,11 +1,11 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateIST } from '@/lib/utils/formatDateIST';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Receipt, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
 interface PaymentDetails {
@@ -15,6 +15,10 @@ interface PaymentDetails {
   planName?: string;
   status: string;
   paidAt?: string;
+  razorpayPaymentId?: string;
+  razorpayPaymentLinkId?: string;
+  razorpaySignature?: string;
+  transactionId?: string;
   client?: {
     firstName: string;
     lastName: string;
@@ -22,10 +26,14 @@ interface PaymentDetails {
 }
 
 function PaymentSuccessContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(10);
+
+  const redirectTo = searchParams.get('redirectTo') || '/health-counselor/clients';
 
   useEffect(() => {
     const verifyPayment = async () => {
@@ -69,6 +77,24 @@ function PaymentSuccessContent() {
     verifyPayment();
   }, [searchParams]);
 
+  useEffect(() => {
+    if (loading || error || !paymentDetails) return;
+
+    const timer = window.setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer);
+          router.push(redirectTo);
+          return 0;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loading, error, paymentDetails, redirectTo, router]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -108,53 +134,100 @@ function PaymentSuccessContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-center text-green-600">
-            <CheckCircle className="h-16 w-16 mx-auto mb-4" />
-            Payment Successful!
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
+    <div className="min-h-screen bg-[#f6f7fb] flex items-center justify-center px-4 py-10">
+      <div className="w-full max-w-4xl grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <Card className="border-0 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-2xl text-slate-900">Payment Request Completed</CardTitle>
+            <p className="text-sm text-slate-500">The payment has been captured successfully and the receipt is ready.</p>
+          </CardHeader>
+          <CardContent>
             {paymentDetails && (
-              <>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <span className="text-gray-500">Amount Paid:</span>
-                    <span className="font-semibold text-right">₹{paymentDetails.finalAmount?.toLocaleString()}</span>
-
-                    {paymentDetails.planName && (
-                      <>
-                        <span className="text-gray-500">Plan:</span>
-                        <span className="font-medium text-right">{paymentDetails.planName}</span>
-                      </>
-                    )}
-
-                    {paymentDetails.paidAt && (
-                      <>
-                        <span className="text-gray-500">Date:</span>
-                        <span className="text-right">{formatDateIST(paymentDetails.paidAt)}</span>
-                      </>
-                    )}
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <p className="text-slate-400">Payment For</p>
+                      <p className="font-semibold text-slate-900">{paymentDetails.planName || 'Service Plan'}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">Amount Paid</p>
+                      <p className="font-semibold text-slate-900">INR {paymentDetails.finalAmount?.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">Paid At</p>
+                      <p className="font-medium text-slate-900">{paymentDetails.paidAt ? formatDateIST(paymentDetails.paidAt) : '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400">Status</p>
+                      <p className="font-medium capitalize text-emerald-600">{paymentDetails.status}</p>
+                    </div>
                   </div>
                 </div>
 
-                <p className="text-center text-gray-600">
-                  Thank you for your payment! A confirmation has been sent to your email.
-                </p>
-              </>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div className="mb-4 flex items-center gap-2 text-slate-900">
+                    <Receipt className="h-4 w-4" />
+                    <span className="font-semibold">Transaction Details</span>
+                  </div>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-slate-500">Transaction ID</span>
+                      <span className="break-all text-right font-mono text-slate-900">{paymentDetails.transactionId || paymentDetails.razorpayPaymentId || paymentDetails._id}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-slate-500">Razorpay Payment ID</span>
+                      <span className="break-all text-right font-mono text-slate-900">{paymentDetails.razorpayPaymentId || '-'}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-slate-500">Payment Link ID</span>
+                      <span className="break-all text-right font-mono text-slate-900">{paymentDetails.razorpayPaymentLinkId || '-'}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-slate-500">Signature</span>
+                      <span className="break-all text-right font-mono text-slate-900">{paymentDetails.razorpaySignature || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
+          </CardContent>
+        </Card>
 
-            <div className="text-center pt-4">
-              <Link href="/dashboard">
-                <Button>Go to Dashboard</Button>
-              </Link>
+        <div className="rounded-[28px] bg-[#09a15a] p-6 text-white shadow-[0_24px_80px_rgba(9,161,90,0.28)]">
+          <p className="text-center text-sm text-white/80">You will be redirected in {countdown} seconds</p>
+          <h1 className="mt-2 text-center text-3xl font-bold">Payment Successful</h1>
+
+          <div className="mx-auto mt-8 flex h-40 w-40 items-center justify-center rounded-full bg-[#8ae234]/20 ring-8 ring-[#8ae234]/20">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#8ae234]">
+              <CheckCircle className="h-12 w-12 text-white" />
             </div>
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="mt-8 rounded-2xl bg-white p-4 text-slate-900">
+            <p className="truncate text-sm font-semibold">{paymentDetails?.planName || 'DTPS Payment'}</p>
+            <p className="mt-2 text-xs text-slate-500">{paymentDetails?.paidAt ? formatDateIST(paymentDetails.paidAt) : 'Payment captured'}</p>
+            <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+              <span className="text-slate-500">Amount</span>
+              <span className="font-semibold">INR {paymentDetails?.finalAmount?.toLocaleString() || '0'}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+              <span className="text-slate-500">Txn</span>
+              <span className="max-w-45 truncate font-mono">{paymentDetails?.razorpayPaymentId || paymentDetails?.transactionId || '-'}</span>
+            </div>
+          </div>
+
+          <Button
+            className="mt-6 w-full bg-white text-[#067a45] hover:bg-white/90"
+            onClick={() => router.push(redirectTo)}
+          >
+            Go To Client Dashboard
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+
+          <p className="mt-4 text-center text-xs text-white/80">After 10 seconds you will be redirected automatically.</p>
+        </div>
+      </div>
     </div>
   );
 }

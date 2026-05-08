@@ -25,8 +25,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Only dietitians and admins can sync payment status
-    if (session.user.role !== UserRole.DIETITIAN && session.user.role !== UserRole.ADMIN) {
+    // Dietitians, health counselors, and admins can sync payment status.
+    // Health counselors create and monitor payment links from the client detail page,
+    // so blocking them here leaves successful Razorpay payments stuck in pending.
+    if (
+      session.user.role !== UserRole.DIETITIAN &&
+      session.user.role !== UserRole.HEALTH_COUNSELOR &&
+      session.user.role !== UserRole.ADMIN
+    ) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -45,8 +51,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Payment link not found' }, { status: 404 });
     }
 
-    // Check permissions
-    if (session.user.role === UserRole.DIETITIAN && paymentLink.dietitian.toString() !== session.user.id) {
+    // Check permissions for non-admin staff
+    if (
+      (session.user.role === UserRole.DIETITIAN || session.user.role === UserRole.HEALTH_COUNSELOR) &&
+      paymentLink.dietitian.toString() !== session.user.id
+    ) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

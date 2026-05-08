@@ -114,6 +114,10 @@ export async function POST(request: NextRequest) {
       paymentLink.status = 'paid';
       paymentLink.paidAt = new Date();
       paymentLink.razorpayPaymentId = paymentId;
+      paymentLink.transactionId = paymentId;
+      if (signature) {
+        paymentLink.razorpaySignature = signature;
+      }
       await paymentLink.save();
 
       // Create/Update UnifiedPayment record (UPDATE existing, NO DUPLICATES)
