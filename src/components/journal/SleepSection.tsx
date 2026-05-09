@@ -209,6 +209,7 @@ export default function SleepSection({ clientId, selectedDate }: SleepSectionPro
         setSummary(data.summary || summary);
         setNewEntry({ hours: 0, minutes: 0, quality: '' });
         toast.success('Sleep record added successfully');
+        window.dispatchEvent(new CustomEvent('user-data-changed', { detail: { dataType: 'sleep' } }));
         // Re-fetch to update assigned status
         fetchSleep();
         fetchAssignedSleep();
@@ -236,6 +237,7 @@ export default function SleepSection({ clientId, selectedDate }: SleepSectionPro
         setEntries(data.entries || []);
         setSummary(data.summary || summary);
         toast.success('Entry deleted');
+        window.dispatchEvent(new CustomEvent('user-data-changed', { detail: { dataType: 'sleep' } }));
         // Re-fetch to update assigned status
         fetchSleep();
         fetchAssignedSleep();

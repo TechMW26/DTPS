@@ -4,23 +4,14 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import JournalTracking from '@/lib/db/models/JournalTracking';
 import { format } from 'date-fns';
-import { UserRole } from '@/types';
 import { logHistoryServer } from '@/lib/server/history';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
-
-// Helper to get date without time
-const getDateOnly = (date: Date | string): Date => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
-
-// Helper to check if user can access client data
-const canAccessClientData = (session: { user: { id: string; role: string } }, clientId: string): boolean => {
-  if (session.user.id === clientId) return true;
-  const allowedRoles = [UserRole.ADMIN, UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR, 'health_counselor', 'admin', 'dietitian']; if (allowedRoles.includes(session.user.role as any)) return true;
-  return false;
-};
+import {
+  buildJournalCacheKey,
+  canAccessClientData,
+  getDateOnly,
+  summarizeActivities,
+} from '../_utils';
 
 // GET /api/journal/activity - Get activity entries for a date
 export async function GET(request: NextRequest) {
@@ -30,44 +21,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
     const clientId = searchParams.get('clientId') || session.user.id;
-    
+
     // Check access permission
     if (!canAccessClientData(session as { user: { id: string; role: string } }, clientId)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
-    
+
     const date = dateParam ? getDateOnly(dateParam) : getDateOnly(new Date());
 
+    await connectDB();
+
     const journal = await withCache(
-      `journal:activity:${JSON.stringify({
-      client: clientId,
-      date: date
-    })}`,
+      buildJournalCacheKey('activity', clientId, date),
       async () => await JournalTracking.findOne({
-      client: clientId,
-      date: date
-    }),
+        client: clientId,
+        date,
+      }),
       { ttl: 120000, tags: ['journal'] }
     );
 
     const activities = journal?.activities || [];
-    const totalDuration = activities.reduce((sum: number, a: { duration: number }) => sum + a.duration, 0);
-    const totalSets = activities.reduce((sum: number, a: { sets: number }) => sum + a.sets, 0);
+    const summary = summarizeActivities(activities, journal?.targets?.activityMinutes || 60);
 
     return NextResponse.json({
       success: true,
       activities,
-      summary: {
-        totalDuration,
-        totalSets,
-        target: journal?.targets?.activityMinutes || 60,
-        percentage: Math.min(Math.round((totalDuration / (journal?.targets?.activityMinutes || 60)) * 100), 100)
-      }
+      summary,
     });
 
   } catch (error) {
@@ -87,8 +69,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { name, sets, reps, duration, date, clientId, videoLink } = await request.json();
     const userId = clientId || session.user.id;
 
@@ -100,6 +80,8 @@ export async function POST(request: NextRequest) {
     if (!name) {
       return NextResponse.json({ error: 'Activity name is required' }, { status: 400 });
     }
+
+    await connectDB();
 
     const journalDate = date ? getDateOnly(date) : getDateOnly(new Date());
 
@@ -176,8 +158,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { searchParams } = new URL(request.url);
     const entryId = searchParams.get('entryId');
     const dateParam = searchParams.get('date');
@@ -191,6 +171,8 @@ export async function DELETE(request: NextRequest) {
     if (!entryId) {
       return NextResponse.json({ error: 'Entry ID is required' }, { status: 400 });
     }
+
+    await connectDB();
 
     const journalDate = dateParam ? getDateOnly(dateParam) : getDateOnly(new Date());
 
@@ -226,9 +208,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
-    const { entryId, completed, date, clientId } = await request.json();
+    const { entryId, completed, date, clientId, name, sets, reps, duration, videoLink } = await request.json();
     const userId = clientId || session.user.id;
 
     // Check access permission
@@ -240,20 +220,40 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Entry ID is required' }, { status: 400 });
     }
 
+    await connectDB();
+
     const journalDate = date ? getDateOnly(date) : getDateOnly(new Date());
 
+    const setUpdates: Record<string, any> = {};
+
+    if (name !== undefined) setUpdates['activities.$.name'] = name;
+    if (sets !== undefined) setUpdates['activities.$.sets'] = sets;
+    if (reps !== undefined) setUpdates['activities.$.reps'] = reps;
+    if (duration !== undefined) setUpdates['activities.$.duration'] = duration;
+    if (videoLink !== undefined) setUpdates['activities.$.videoLink'] = videoLink;
+
+    if (completed !== undefined) {
+      setUpdates['activities.$.completed'] = completed !== false;
+      if (completed !== false) {
+        setUpdates['activities.$.completedAt'] = new Date();
+      }
+    }
+
+    const updateQuery: Record<string, any> = {};
+    if (Object.keys(setUpdates).length > 0) {
+      updateQuery.$set = setUpdates;
+    }
+    if (completed === false) {
+      updateQuery.$unset = { 'activities.$.completedAt': '' };
+    }
+
     const journal = await JournalTracking.findOneAndUpdate(
-      { 
-        client: userId, 
+      {
+        client: userId,
         date: journalDate,
-        'activities._id': entryId 
+        'activities._id': entryId
       },
-      { 
-        $set: { 
-          'activities.$.completed': completed !== false,
-          'activities.$.completedAt': completed !== false ? new Date() : undefined
-        } 
-      },
+      updateQuery,
       { new: true }
     );
 

@@ -1,17 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="6" failures="0" errors="0" time="1.333">
-  <testsuite name="tests/integration/template-loading.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-02T12:05:42" time="1.202" tests="6">
-    <testcase classname="template loading integration" name="should deep clone meal data when applying template mapping" time="0.039">
+<testsuites name="jest tests" tests="4" failures="4" errors="0" time="41.368">
+  <testsuite name="tests/integration/journal-api-fast-fail.integration.test.ts" errors="0" failures="4" skipped="0" timestamp="2026-05-09T12:09:05" time="41.237" tests="4">
+    <testcase classname="journal API fast-fail smoke tests" name="rejects invalid activity payloads before the database is touched" time="10.014">
+      <failure>MongooseError: Operation `users.deleteMany()` buffering timed out after 10000ms
+    at Timeout.&lt;anonymous&gt; (/Users/lokeshdhote/Desktop/DTPS/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
+    at listOnTimeout (node:internal/timers:605:17)
+    at processTimers (node:internal/timers:541:7)</failure>
     </testcase>
-    <testcase classname="template loading integration" name="should normalize meal keys from canonical form to display names" time="0.002">
+    <testcase classname="journal API fast-fail smoke tests" name="rejects invalid steps payloads before the database is touched" time="10.004">
+      <failure>MongooseError: Operation `users.deleteMany()` buffering timed out after 10000ms
+    at Timeout.&lt;anonymous&gt; (/Users/lokeshdhote/Desktop/DTPS/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
+    at listOnTimeout (node:internal/timers:605:17)
+    at processTimers (node:internal/timers:541:7)</failure>
     </testcase>
-    <testcase classname="template loading integration" name="should update editingPlan.meals when loading template in edit mode" time="0.002">
+    <testcase classname="journal API fast-fail smoke tests" name="rejects invalid sleep payloads before the database is touched" time="10.005">
+      <failure>MongooseError: Operation `users.deleteMany()` buffering timed out after 10000ms
+    at Timeout.&lt;anonymous&gt; (/Users/lokeshdhote/Desktop/DTPS/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
+    at listOnTimeout (node:internal/timers:605:17)
+    at processTimers (node:internal/timers:541:7)</failure>
     </testcase>
-    <testcase classname="template loading integration" name="should map template meals to correct days based on day mapping" time="0.001">
-    </testcase>
-    <testcase classname="template loading integration" name="should merge template meals with existing meals without overwriting" time="0.001">
-    </testcase>
-    <testcase classname="template loading integration" name="should keep legacy meal types visible when only nested foods exist" time="0.001">
+    <testcase classname="journal API fast-fail smoke tests" name="rejects invalid water payloads before the database is touched" time="10.004">
+      <failure>MongooseError: Operation `users.deleteMany()` buffering timed out after 10000ms
+    at Timeout.&lt;anonymous&gt; (/Users/lokeshdhote/Desktop/DTPS/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
+    at listOnTimeout (node:internal/timers:605:17)
+    at processTimers (node:internal/timers:541:7)</failure>
     </testcase>
   </testsuite>
 </testsuites>

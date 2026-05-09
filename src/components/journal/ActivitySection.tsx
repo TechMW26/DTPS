@@ -241,6 +241,7 @@ export default function ActivitySection({ clientId, selectedDate, isClient = fal
         setActivities(data.activities || []);
         setNewActivity({ name: '', sets: 0, reps: 0, duration: 0, videoLink: '' });
         toast.success('Activity added successfully');
+        window.dispatchEvent(new CustomEvent('user-data-changed', { detail: { dataType: 'activity' } }));
         fetchActivities(); // Refresh to get updated summary
       } else {
         toast.error(data.error || 'Failed to add activity');
@@ -265,6 +266,7 @@ export default function ActivitySection({ clientId, selectedDate, isClient = fal
       if (data.success) {
         setActivities(data.activities || []);
         toast.success('Activity deleted');
+        window.dispatchEvent(new CustomEvent('user-data-changed', { detail: { dataType: 'activity' } }));
         fetchActivities(); // Refresh to get updated summary
       } else {
         toast.error(data.error || 'Failed to delete activity');
@@ -294,6 +296,7 @@ export default function ActivitySection({ clientId, selectedDate, isClient = fal
       if (data.success) {
         setActivities(data.activities || []);
         toast.success(completed ? 'Marked as incomplete' : 'Marked as completed!');
+        window.dispatchEvent(new CustomEvent('user-data-changed', { detail: { dataType: 'activity' } }));
         // Re-fetch to get updated summary and assigned status
         fetchActivities();
         fetchAssignedActivities();
@@ -414,9 +417,9 @@ export default function ActivitySection({ clientId, selectedDate, isClient = fal
               </div>
             ) : (
               <div className="space-y-3">
-               
 
-               
+
+
 
                 {/* Activity Input Form */}
                 <div className="space-y-3 p-3 bg-white rounded-lg border border-orange-100">
@@ -559,16 +562,15 @@ export default function ActivitySection({ clientId, selectedDate, isClient = fal
                     </Badge>
                   </div>
                 </div>
-                
+
                 {/* All Activities */}
                 {activities.map((activity) => (
                   <div
                     key={activity._id}
-                    className={`flex items-center justify-between p-3 rounded-lg border ${
-                      activity.completed 
-                        ? 'bg-green-50 border-green-100' 
+                    className={`flex items-center justify-between p-3 rounded-lg border ${activity.completed
+                        ? 'bg-green-50 border-green-100'
                         : 'bg-gray-50 border-gray-100'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-3">
                       {activity.completed ? (

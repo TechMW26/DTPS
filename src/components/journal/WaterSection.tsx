@@ -210,6 +210,7 @@ export default function WaterSection({ clientId, selectedDate }: WaterSectionPro
         setSummary(data.summary || summary);
         setNewEntry({ amount: 0, unit: 'Glass (250ml)' });
         toast.success('Water intake added successfully');
+        window.dispatchEvent(new CustomEvent('user-data-changed', { detail: { dataType: 'water' } }));
         // Re-fetch to update assigned status
         fetchWater();
         fetchAssignedWater();
@@ -237,6 +238,7 @@ export default function WaterSection({ clientId, selectedDate }: WaterSectionPro
         setEntries(data.entries || []);
         setSummary(data.summary || summary);
         toast.success('Entry deleted');
+        window.dispatchEvent(new CustomEvent('user-data-changed', { detail: { dataType: 'water' } }));
         // Re-fetch to update assigned status
         fetchWater();
         fetchAssignedWater();

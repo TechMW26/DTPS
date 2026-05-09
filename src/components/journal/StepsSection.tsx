@@ -203,6 +203,7 @@ export default function StepsSection({ clientId, selectedDate }: StepsSectionPro
         setSummary(data.summary || summary);
         setNewEntry({ steps: 0, distance: 0, calories: 0 });
         toast.success('Steps added successfully');
+        window.dispatchEvent(new CustomEvent('user-data-changed', { detail: { dataType: 'steps' } }));
         // Re-fetch to update assigned status
         fetchSteps();
         fetchAssignedSteps();
@@ -230,6 +231,7 @@ export default function StepsSection({ clientId, selectedDate }: StepsSectionPro
         setEntries(data.entries || []);
         setSummary(data.summary || summary);
         toast.success('Entry deleted');
+        window.dispatchEvent(new CustomEvent('user-data-changed', { detail: { dataType: 'steps' } }));
         // Re-fetch to update assigned status
         fetchSteps();
         fetchAssignedSteps();

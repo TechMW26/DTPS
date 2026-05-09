@@ -4,23 +4,14 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import JournalTracking from '@/lib/db/models/JournalTracking';
 import { format } from 'date-fns';
-import { UserRole } from '@/types';
 import { logHistoryServer } from '@/lib/server/history';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
-
-// Helper to get date without time
-const getDateOnly = (date: Date | string): Date => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
-
-// Helper to check if user can access client data
-const canAccessClientData = (session: { user: { id: string; role: string } }, clientId: string): boolean => {
-  if (session.user.id === clientId) return true;
-  const allowedRoles = [UserRole.ADMIN, UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR, 'health_counselor', 'admin', 'dietitian']; if (allowedRoles.includes(session.user.role as any)) return true;
-  return false;
-};
+import {
+  buildJournalCacheKey,
+  canAccessClientData,
+  getDateOnly,
+  summarizeSleep,
+} from '../_utils';
 
 // GET /api/journal/sleep - Get sleep entries for a date
 export async function GET(request: NextRequest) {
@@ -30,51 +21,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
     const clientId = searchParams.get('clientId') || session.user.id;
-    
+
     // Check access permission
     if (!canAccessClientData(session as { user: { id: string; role: string } }, clientId)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
-    
+
     const date = dateParam ? getDateOnly(dateParam) : getDateOnly(new Date());
 
+    await connectDB();
+
     const journal = await withCache(
-      `journal:sleep:${JSON.stringify({
-      client: clientId,
-      date: date
-    })}`,
+      buildJournalCacheKey('sleep', clientId, date),
       async () => await JournalTracking.findOne({
-      client: clientId,
-      date: date
-    }),
+        client: clientId,
+        date,
+      }),
       { ttl: 120000, tags: ['journal'] }
     );
 
     const sleep = journal?.sleep || [];
-    const totalMinutes = sleep.reduce((sum: number, e: { hours: number; minutes: number }) => {
-      return sum + (e.hours * 60) + e.minutes;
-    }, 0);
-    const totalHours = Math.floor(totalMinutes / 60);
-    const remainingMinutes = totalMinutes % 60;
-    const targetHours = journal?.targets?.sleep || 8;
-    const targetMinutes = targetHours * 60;
+    const summary = summarizeSleep(sleep, journal?.targets?.sleep || 8);
 
     return NextResponse.json({
       success: true,
       entries: sleep,
-      summary: {
-        totalMinutes,
-        totalHours,
-        remainingMinutes,
-        displayTime: `${totalHours}h ${remainingMinutes}m`,
-        target: targetHours,
-        percentage: Math.min(Math.round((totalMinutes / targetMinutes) * 100), 100)
-      }
+      summary,
     });
 
   } catch (error) {
@@ -94,8 +69,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { hours, minutes, quality, date, clientId } = body;
+    const { hours, minutes, quality, date, clientId } = await request.json();
     const userId = clientId || session.user.id;
 
     // Check access permission
@@ -103,11 +77,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    await connectDB();
-
     if (hours === undefined && minutes === undefined) {
       return NextResponse.json({ error: 'Hours or minutes are required' }, { status: 400 });
     }
+
+    await connectDB();
 
     const journalDate = date ? getDateOnly(date) : getDateOnly(new Date());
 
@@ -148,12 +122,12 @@ export async function POST(request: NextRequest) {
     };
 
     journal.sleep.push(newEntry);
-    
+
     // Check if assigned sleep target is met and mark as completed
     const totalMinutesAfterAdd = journal.sleep.reduce((sum: number, e: { hours: number; minutes: number }) => {
       return sum + (e.hours * 60) + e.minutes;
     }, 0);
-    
+
     if (journal.assignedSleep && !journal.assignedSleep.isCompleted) {
       const targetMinutes = (journal.assignedSleep.targetHours || 0) * 60 + (journal.assignedSleep.targetMinutes || 0);
       if (totalMinutesAfterAdd >= targetMinutes) {
@@ -161,7 +135,7 @@ export async function POST(request: NextRequest) {
         journal.assignedSleep.completedAt = new Date();
       }
     }
-    
+
     await journal.save();
 
     // Log history for sleep entry
@@ -218,8 +192,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { searchParams } = new URL(request.url);
     const entryId = searchParams.get('entryId');
     const dateParam = searchParams.get('date');
@@ -233,6 +205,8 @@ export async function DELETE(request: NextRequest) {
     if (!entryId) {
       return NextResponse.json({ error: 'Entry ID is required' }, { status: 400 });
     }
+
+    await connectDB();
 
     const journalDate = dateParam ? getDateOnly(dateParam) : getDateOnly(new Date());
 
@@ -270,6 +244,61 @@ export async function DELETE(request: NextRequest) {
     console.error('Error deleting sleep entry:', error);
     return NextResponse.json(
       { error: 'Failed to delete sleep entry' },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH /api/journal/sleep - Update sleep entry
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { entryId, hours, minutes, quality, date, clientId } = await request.json();
+    const userId = clientId || session.user.id;
+
+    if (!canAccessClientData(session as { user: { id: string; role: string } }, userId)) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    if (!entryId) {
+      return NextResponse.json({ error: 'Entry ID is required' }, { status: 400 });
+    }
+
+    await connectDB();
+
+    const journalDate = date ? getDateOnly(date) : getDateOnly(new Date());
+    const setUpdates: Record<string, any> = {};
+
+    if (hours !== undefined) setUpdates['sleep.$.hours'] = hours;
+    if (minutes !== undefined) setUpdates['sleep.$.minutes'] = minutes;
+    if (quality !== undefined) setUpdates['sleep.$.quality'] = quality;
+
+    const journal = await JournalTracking.findOneAndUpdate(
+      { client: userId, date: journalDate, 'sleep._id': entryId },
+      { $set: setUpdates },
+      { new: true }
+    );
+
+    if (!journal) {
+      return NextResponse.json({ error: 'Journal entry not found' }, { status: 404 });
+    }
+
+    const summary = summarizeSleep(journal.sleep, journal.targets?.sleep || 8);
+
+    return NextResponse.json({
+      success: true,
+      entries: journal.sleep,
+      summary,
+    });
+
+  } catch (error) {
+    console.error('Error updating sleep:', error);
+    return NextResponse.json(
+      { error: 'Failed to update sleep entry' },
       { status: 500 }
     );
   }

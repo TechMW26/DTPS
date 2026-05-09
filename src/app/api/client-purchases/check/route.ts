@@ -461,9 +461,10 @@ export async function GET(request: NextRequest) {
       }
 
       // Future scheduled purchases should not consume allocation until they start.
-      // If no linked meal plan usage exists yet, stale copied counters must be ignored.
+      // Only normalize to zero when we do not have authoritative stored counters.
       if (
         typeof linkedDaysUsed !== 'number' &&
+        !hasStoredCounters &&
         purchase?.expectedStartDate &&
         new Date(purchase.expectedStartDate).getTime() > now.getTime()
       ) {
@@ -471,9 +472,10 @@ export async function GET(request: NextRequest) {
       }
 
       // Unstarted purchase should not be blocked by stale daysUsed.
-      // For records with no linked plan usage yet, keep usage at zero.
+      // Keep stored counters when they already exist; otherwise fall back to zero.
       if (
         typeof linkedDaysUsed !== 'number' &&
+        !hasStoredCounters &&
         purchase?.mealPlanCreated !== true
       ) {
         effectiveDaysUsed = 0;
