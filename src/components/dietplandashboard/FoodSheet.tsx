@@ -140,12 +140,13 @@ export function FoodDatabasePanel({
         setLoading(true);
         const effectiveSearch = throttledSearchQuery.trim();
         const canUseSearch = effectiveSearch.length >= 1;
+        const shouldIncludeTotal = currentPage === 1 || totalRecipes === null;
         const params = new URLSearchParams();
         params.append('view', 'food-database');
         params.append('limit', String(itemsPerPage));
         params.append('page', String(currentPage));
-        params.append('includeTotal', 'true');
-        params.append('sortBy', canUseSearch ? 'name' : 'name');
+        params.append('includeTotal', shouldIncludeTotal ? 'true' : 'false');
+        params.append('sortBy', canUseSearch ? 'relevance' : 'name');
         if (categoryFilter && categoryFilter !== 'all') {
           params.append('category', categoryFilter);
         }
@@ -173,7 +174,7 @@ export function FoodDatabasePanel({
         if (cachedResult) {
           setFoodData(cachedResult.items);
           setHasNextPage(cachedResult.hasNext);
-          setTotalRecipes(cachedResult.total);
+          setTotalRecipes((prev) => cachedResult.total ?? prev);
           setLoading(false);
           return;
         }
@@ -228,7 +229,7 @@ export function FoodDatabasePanel({
           setFoodData(transformedData);
           setHasNextPage(Boolean(data.pagination?.hasNext));
           const nextTotal = typeof data.pagination?.total === 'number' ? data.pagination.total : null;
-          setTotalRecipes(nextTotal);
+          setTotalRecipes((prev) => nextTotal ?? prev);
           // Avoid pinning transient empty-search misses in cache.
           if (transformedData.length > 0 || !canUseSearch) {
             requestCacheRef.current[requestKey] = {
@@ -263,7 +264,7 @@ export function FoodDatabasePanel({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [categoryFilter, throttledSearchQuery]);
+  }, [categoryFilter]);
 
   const handleRefresh = () => {
     requestCacheRef.current = {};
@@ -366,7 +367,10 @@ export function FoodDatabasePanel({
               <Search className="w-4 h-4 text-gray-400" />
               <Input
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setCurrentPage(1);
+                  setSearchQuery(e.target.value);
+                }}
                 placeholder="Search recipes..."
                 className="h-10 bg-gray-50 border-gray-300 flex-1"
               />

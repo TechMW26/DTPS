@@ -112,6 +112,7 @@ export async function GET(request: NextRequest) {
 
     // Search by name, description, ingredients, recipe ID, or UUID.
     // Food-database view uses text index first, then falls back to partial regex.
+    const escapedSearchLower = normalizedSearchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (effectiveSearch) {
       const escapedSearch = effectiveSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const namePrefixRegex = new RegExp(`^${escapedSearch}`, 'i');
@@ -195,52 +196,37 @@ export async function GET(request: NextRequest) {
         excludeConditions.push({ name: { $not: { $regex: /egg|chicken|mutton|fish|meat|prawn|shrimp|crab|lobster|lamb|pork|beef|bacon|ham|sausage/i } } });
       }
 
-      // Non-Vegetarian: no exclusion needed (they can eat everything)
-
       // Vegan: exclude non-vegan (dairy, eggs, meat, fish, honey)
       if (excludeRestrictions.includes('vegan')) {
         excludeConditions.push({ dietaryRestrictions: { $nin: ['Non-Vegetarian', 'non-vegetarian', 'Non Vegetarian'] } });
         excludeConditions.push({ allergens: { $nin: ['dairy', 'Dairy', 'egg', 'Egg', 'eggs', 'Eggs', 'milk', 'Milk', 'honey', 'Honey'] } });
-        // Exclude by name too
         excludeConditions.push({ name: { $not: { $regex: /egg|chicken|mutton|fish|meat|prawn|shrimp|crab|lobster|lamb|pork|beef|bacon|ham|sausage|milk|cheese|paneer|curd|yogurt|butter|ghee|cream|honey/i } } });
       }
 
-      // Gluten-Free: exclude recipes with gluten
       if (excludeRestrictions.includes('gluten-free') || excludeRestrictions.includes('gluten free')) {
         excludeConditions.push({ allergens: { $nin: ['gluten', 'Gluten', 'wheat', 'Wheat'] } });
       }
 
-      // Dairy-Free: exclude recipes with dairy
       if (excludeRestrictions.includes('dairy-free') || excludeRestrictions.includes('dairy free')) {
         excludeConditions.push({ allergens: { $nin: ['dairy', 'Dairy', 'milk', 'Milk', 'lactose', 'Lactose'] } });
       }
 
-      // Egg-Free: exclude recipes with eggs
       if (excludeRestrictions.includes('egg-free') || excludeRestrictions.includes('egg free')) {
         excludeConditions.push({ allergens: { $nin: ['egg', 'Egg', 'eggs', 'Eggs'] } });
       }
 
-      // Nut-Free: exclude recipes with nuts
       if (excludeRestrictions.includes('nut-free') || excludeRestrictions.includes('nut free')) {
         excludeConditions.push({ allergens: { $nin: ['nut', 'Nut', 'nuts', 'Nuts', 'peanut', 'Peanut', 'almond', 'Almond', 'cashew', 'Cashew', 'walnut', 'Walnut'] } });
       }
 
-      // Soy-Free: exclude recipes with soy
       if (excludeRestrictions.includes('soy-free') || excludeRestrictions.includes('soy free')) {
         excludeConditions.push({ allergens: { $nin: ['soy', 'Soy', 'soya', 'Soya'] } });
       }
 
-      // Keto: exclude high-carb recipes (rely on tags/restrictions for now)
-      if (excludeRestrictions.includes('keto')) {
-        // Could add: excludeConditions.push({ 'nutrition.carbs': { $lte: 20 } });
-      }
-
-      // Diabetic Friendly: exclude recipes contraindicated for diabetes
       if (excludeRestrictions.includes('diabetic friendly') || excludeRestrictions.includes('diabetic-friendly')) {
         excludeConditions.push({ medicalContraindications: { $nin: ['diabetes', 'Diabetes', 'diabetic', 'Diabetic', 'high sugar', 'High Sugar'] } });
       }
 
-      // Apply all exclusion conditions
       if (excludeConditions.length > 0) {
         query.$and = query.$and || [];
         query.$and.push(...excludeConditions);
@@ -351,6 +337,13 @@ export async function GET(request: NextRequest) {
           if (isFoodDatabaseView) {
             const compactLimit = limit > 0 ? Math.min(limit, 50) : 12;
             const compactSkip = (page - 1) * compactLimit;
+            const compactTotalPromise: Promise<number | null> = includeTotal
+              ? withCache(
+                foodTotalCacheKey,
+                async () => Recipe.countDocuments(query),
+                { ttl: 300000, tags: ['recipes'] }
+              )
+              : Promise.resolve(null);
             const compactProjection = {
               uuid: 1,
               name: 1,
@@ -361,15 +354,89 @@ export async function GET(request: NextRequest) {
               carbs: 1,
               fat: 1,
             };
-            if (effectiveSearch && sortBy === 'relevance') {
+            if (effectiveSearch && sortBy === 'relevance' && !isTypingSearchFastPath && !!query.$text) {
               compactProjection.score = { $meta: 'textScore' };
             }
 
-            const compactRecipesRaw = await Recipe.find(query, compactProjection)
-              .sort(sortOptions)
-              .limit(compactLimit + 1)
-              .skip(compactSkip)
-              .lean();
+            const compactRecipesRaw = isTypingSearchFastPath
+              ? await (async () => {
+                try {
+                  return await Recipe.aggregate([
+                    { $match: query },
+                    {
+                      $addFields: {
+                        __nameLower: {
+                          $toLower: {
+                            $toString: { $ifNull: ['$name', ''] },
+                          },
+                        },
+                        __uuidLower: {
+                          $toLower: {
+                            $toString: { $ifNull: ['$uuid', ''] },
+                          },
+                        },
+                      },
+                    },
+                    {
+                      $addFields: {
+                        __typingRank: {
+                          $switch: {
+                            branches: [
+                              { case: { $eq: ['$__nameLower', normalizedSearchLower] }, then: 0 },
+                              { case: { $eq: ['$__uuidLower', normalizedSearchLower] }, then: 0 },
+                              { case: { $regexMatch: { input: '$__nameLower', regex: `^${escapedSearchLower}` } }, then: 1 },
+                              { case: { $regexMatch: { input: '$__uuidLower', regex: `^${escapedSearchLower}` } }, then: 1 },
+                              { case: { $regexMatch: { input: '$__nameLower', regex: escapedSearchLower } }, then: 2 },
+                            ],
+                            default: 3,
+                          },
+                        },
+                        __typingPos: { $indexOfCP: ['$__nameLower', normalizedSearchLower] },
+                        __typingLenDiff: {
+                          $abs: {
+                            $subtract: [{ $strLenCP: '$__nameLower' }, effectiveSearch.length],
+                          },
+                        },
+                        __typingPopularity: { $ifNull: ['$usageCount', 0] },
+                      },
+                    },
+                    {
+                      $addFields: {
+                        __typingPos: {
+                          $cond: [{ $gte: ['$__typingPos', 0] }, '$__typingPos', 9999],
+                        },
+                      },
+                    },
+                    { $sort: { __typingRank: 1, __typingPos: 1, __typingLenDiff: 1, __typingPopularity: -1, name: 1, _id: 1 } },
+                    { $skip: compactSkip },
+                    { $limit: compactLimit + 1 },
+                    {
+                      $project: {
+                        uuid: 1,
+                        name: 1,
+                        servings: 1,
+                        servingSize: 1,
+                        calories: 1,
+                        protein: 1,
+                        carbs: 1,
+                        fat: 1,
+                      },
+                    },
+                  ]);
+                } catch (typingAggError) {
+                  console.error('Typing search aggregation failed, using fallback find sort:', typingAggError);
+                  return await Recipe.find(query, compactProjection)
+                    .sort({ name: 1, _id: 1 })
+                    .limit(compactLimit + 1)
+                    .skip(compactSkip)
+                    .lean();
+                }
+              })()
+              : await Recipe.find(query, compactProjection)
+                .sort(sortOptions)
+                .limit(compactLimit + 1)
+                .skip(compactSkip)
+                .lean();
 
             let compactFinalRaw = compactRecipesRaw;
             if (
@@ -405,15 +472,7 @@ export async function GET(request: NextRequest) {
             const compactRecipes = compactHasNext
               ? compactFinalRaw.slice(0, compactLimit)
               : compactFinalRaw;
-
-            let compactTotal: number | null = null;
-            if (includeTotal) {
-              compactTotal = await withCache(
-                foodTotalCacheKey,
-                async () => Recipe.countDocuments(query),
-                { ttl: 300000, tags: ['recipes'] }
-              );
-            }
+            const compactTotal = await compactTotalPromise;
 
             return {
               recipes: compactRecipes,
@@ -599,7 +658,7 @@ export async function GET(request: NextRequest) {
           carbs: 1,
           fat: 1,
         };
-        if (effectiveSearch && sortBy === 'relevance') {
+        if (effectiveSearch && sortBy === 'relevance' && !isTypingSearchFastPath && !!query.$text) {
           compactProjection.score = { $meta: 'textScore' };
         }
 
