@@ -91,7 +91,8 @@ export default function ClientSignUpPage() {
             setError('Last name is required.');
             return;
         }
-        const rawPhone = phone.replace(/\D/g, '');
+        // Strip non-digits and leading zeros (e.g. UK local 07911... → 7911...)
+        const rawPhone = phone.replace(/\D/g, '').replace(/^0+/, '');
         const fullPhone = `${countryCode}${rawPhone}`;
         const phoneValidation = validatePhoneNumber(fullPhone, countryCode);
         if (!phoneValidation.isValid) {
@@ -151,7 +152,7 @@ export default function ClientSignUpPage() {
             return;
         }
 
-        const phoneValidation = validatePhoneNumber(`${countryCode}${phone.replace(/\D/g, '')}`, countryCode);
+        const phoneValidation = validatePhoneNumber(`${countryCode}${phone.replace(/\D/g, '').replace(/^0+/, '')}`, countryCode);
         if (!phoneValidation.isValid) {
             setError(phoneValidation.error || 'Please enter a valid phone number.');
             return;

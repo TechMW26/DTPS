@@ -48,17 +48,23 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Extract raw 10-digit phone number for search
-        // DB stores phones in mixed formats (10-digit, +91, 91)
-        let rawPhone = normalizedPhone.replace(/^\+91/, '').replace(/^91/, '');
+        // Extract digits without leading + for DB search
+        // DB stores phones in mixed formats (10-digit, +91, 91, +44...)
+        const normalizedDigits = normalizedPhone.replace(/^\+/, ''); // e.g. '919876543210' or '447911123456'
 
-        // Create phone variations to search (different formats in DB)
-        const phoneVariations = [
-            rawPhone,                           // 9876543210 (most common in DB)
-            normalizedPhone,                    // +919876543210
-            normalizedPhone.replace('+', ''),   // 919876543210
-            '+91' + rawPhone,                   // +919876543210
+        // Create phone variations to search (handles different storage formats in DB)
+        const phoneVariations: string[] = [
+            normalizedPhone,                    // +919876543210 or +447911123456
+            normalizedDigits,                   // 919876543210 or 447911123456
         ];
+
+        // For Indian numbers, also add bare 10-digit format (most common in DB for legacy records)
+        if (normalizedPhone.startsWith('+91')) {
+            const tenDigit = normalizedDigits.replace(/^91/, '');
+            if (tenDigit.length === 10) {
+                phoneVariations.push(tenDigit);  // 9876543210
+            }
+        }
 
         let userName = 'User';
         let userId: string | undefined;

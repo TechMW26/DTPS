@@ -126,7 +126,9 @@ export default function ClientSignInPage() {
 
   // Send OTP
   const handleSendOtp = async () => {
-    const phoneValidation = validatePhoneNumber(`${countryCode}${phoneNumber}`, countryCode);
+    // Strip non-digits and remove leading zeros (e.g. UK local 07911... → 7911...)
+    const localDigits = phoneNumber.replace(/\D/g, '').replace(/^0+/, '');
+    const phoneValidation = validatePhoneNumber(`${countryCode}${localDigits}`, countryCode);
     if (!phoneValidation.isValid) {
       setError(phoneValidation.error || 'Please enter a valid phone number');
       return;
@@ -169,7 +171,8 @@ export default function ClientSignInPage() {
       return;
     }
 
-    const phoneValidation = validatePhoneNumber(`${countryCode}${phoneNumber}`, countryCode);
+    const localDigitsVerify = phoneNumber.replace(/\D/g, '').replace(/^0+/, '');
+    const phoneValidation = validatePhoneNumber(`${countryCode}${localDigitsVerify}`, countryCode);
     if (!phoneValidation.isValid) {
       setError(phoneValidation.error || 'Please enter a valid phone number');
       return;

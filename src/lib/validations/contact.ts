@@ -51,11 +51,10 @@ export function normalizePhoneNumber(phone: string, defaultCountryCode: string =
     const digitsOnly = raw.replace(/\D/g, '');
     if (!digitsOnly) return '';
 
-    // Common India-friendly handling (legacy DB compatibility)
-    // Handle local numbers entered with leading 0 (e.g. 09876543210).
-    // These should map to +91 + 10-digit mobile number.
-    if (defaultCountryCode === '+91' && digitsOnly.length === 11 && digitsOnly.startsWith('0')) {
-        return `${defaultCountryCode}${digitsOnly.slice(1)}`;
+    // Strip leading zeros from local number — applies for all country codes.
+    // e.g. UK 07911123456 with +44 → +447911123456; India 09876543210 with +91 → +919876543210
+    if (digitsOnly.startsWith('0')) {
+        return `${defaultCountryCode}${digitsOnly.replace(/^0+/, '')}`;
     }
     if (digitsOnly.length === 10) {
         return `${defaultCountryCode}${digitsOnly}`;

@@ -128,7 +128,21 @@ const buildTemplateMealSchedule = (
     });
   });
 
-  return Array.from(schedule.entries()).map(([name, time]) => ({ name, time }));
+  // Sort by canonical sortOrder so columns always render in chronological order
+  // (guards against previously-saved templates that stored mealTypes in wrong order)
+  const sortedEntries = Array.from(schedule.entries()).sort(([aName, aTime], [bName, bTime]) => {
+    const aKey = normalizeMealType(aName);
+    const bKey = normalizeMealType(bName);
+    const aOrder = aKey ? MEAL_TYPES[aKey].sortOrder : 99;
+    const bOrder = bKey ? MEAL_TYPES[bKey].sortOrder : 99;
+    // For custom meal types (sortOrder 99), secondary-sort by time
+    if (aOrder === bOrder && aOrder === 99) {
+      return (aTime || '').localeCompare(bTime || '');
+    }
+    return aOrder - bOrder;
+  });
+
+  return sortedEntries.map(([name, time]) => ({ name, time }));
 };
 
 const syncMealsWithSchedule = (
