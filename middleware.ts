@@ -19,12 +19,14 @@ const onboardingExemptRoutes = [
   '/user/onboarding',
   '/api/client/onboarding',
   '/api/auth', // Auth routes must be exempt
+  '/api/internal/runtime-alert',
 ];
 
 // Routes exempt from maintenance mode (always accessible)
 const maintenanceExemptRoutes = [
   '/maintenance',
   '/api/auth',
+  '/api/internal/runtime-alert',
   '/auth',
   '/_next',
   '/favicon.ico',
@@ -251,6 +253,7 @@ export default withAuth(
           '/auth/signup',
           '/auth/error',
           '/api/auth',
+          '/api/internal/runtime-alert',
           '/api/user/forget-password',
           '/api/user/reset-password',
           '/client-login',

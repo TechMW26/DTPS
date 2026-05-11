@@ -35,6 +35,9 @@ type RuntimeRecord = {
     priority: string;
     category: string;
     status: string;
+    method?: string;
+    statusCode?: number;
+    durationMs?: number;
     section: string;
     apiEndpoint: string;
     actor: {
@@ -53,6 +56,7 @@ type ApiResponse = {
     summary?: {
         critical: number;
         new: number;
+        slow: number;
     };
     pagination: {
         page: number;
@@ -113,7 +117,7 @@ export default function RealTimeApiErrorsPage() {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
-    const [summary, setSummary] = useState<{ critical: number; new: number }>({ critical: 0, new: 0 });
+    const [summary, setSummary] = useState<{ critical: number; new: number; slow: number }>({ critical: 0, new: 0, slow: 0 });
 
     const [search, setSearch] = useState('');
     const [sourceFilter, setSourceFilter] = useState('all');
@@ -150,6 +154,7 @@ export default function RealTimeApiErrorsPage() {
             setSummary({
                 critical: data.summary?.critical || 0,
                 new: data.summary?.new || 0,
+                slow: data.summary?.slow || 0,
             });
         } catch (error) {
             console.error('Failed to fetch runtime errors:', error);
@@ -175,6 +180,8 @@ export default function RealTimeApiErrorsPage() {
 
     const newCount = useMemo(() => summary.new, [summary.new]);
 
+    const slowCount = useMemo(() => summary.slow, [summary.slow]);
+
     if (session?.user?.role !== UserRole.ADMIN) {
         return (
             <DashboardLayout>
@@ -195,9 +202,9 @@ export default function RealTimeApiErrorsPage() {
             <div className="space-y-6 p-4 sm:p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h1 className="text-2xl font-semibold text-gray-900">Real-Time API Runtime Errors</h1>
+                        <h1 className="text-2xl font-semibold text-gray-900">Real-Time API Runtime Monitor</h1>
                         <p className="text-sm text-gray-600">
-                            Admin-only live error stream with section, API, actor role, and actor name.
+                            Admin-only live stream for runtime errors and slow APIs with section, endpoint, timing, and actor details.
                         </p>
                     </div>
                     <Button onClick={fetchRecords} variant="outline" size="sm" disabled={loading}>
@@ -206,10 +213,10 @@ export default function RealTimeApiErrorsPage() {
                     </Button>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     <Card>
                         <CardContent className="p-4">
-                            <p className="text-sm text-gray-500">Total Runtime Errors</p>
+                            <p className="text-sm text-gray-500">Total Runtime Alerts</p>
                             <p className="mt-1 text-2xl font-semibold text-gray-900">{total}</p>
                         </CardContent>
                     </Card>
@@ -225,12 +232,18 @@ export default function RealTimeApiErrorsPage() {
                             <p className="mt-1 text-2xl font-semibold text-orange-700">{newCount}</p>
                         </CardContent>
                     </Card>
+                    <Card>
+                        <CardContent className="p-4">
+                            <p className="text-sm text-gray-500">Slow APIs</p>
+                            <p className="mt-1 text-2xl font-semibold text-amber-700">{slowCount}</p>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Filter Runtime Errors</CardTitle>
-                        <CardDescription>Filter by role, section, source, status, and keyword.</CardDescription>
+                        <CardTitle>Filter Runtime Alerts</CardTitle>
+                        <CardDescription>Filter by role, section, source, status, endpoint, actor, or timing.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
@@ -305,9 +318,9 @@ export default function RealTimeApiErrorsPage() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Runtime Error List</CardTitle>
+                        <CardTitle>Runtime Alert List</CardTitle>
                         <CardDescription>
-                            Proper list with section, error, API, and actor details.
+                            Proper list with section, endpoint, API method, timing, status code, and actor details.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -318,7 +331,7 @@ export default function RealTimeApiErrorsPage() {
                         ) : records.length === 0 ? (
                             <div className="py-12 text-center">
                                 <ServerCrash className="mx-auto h-10 w-10 text-gray-300" />
-                                <p className="mt-3 text-sm text-gray-600">No runtime errors found.</p>
+                                <p className="mt-3 text-sm text-gray-600">No runtime alerts found.</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
@@ -327,10 +340,17 @@ export default function RealTimeApiErrorsPage() {
                                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                             <div className="space-y-2">
                                                 <div className="flex flex-wrap items-center gap-2">
-                                                    <AlertCircle className="h-4 w-4 text-red-600" />
+                                                    {record.category === 'performance' ? (
+                                                        <Clock3 className="h-4 w-4 text-amber-600" />
+                                                    ) : (
+                                                        <AlertCircle className="h-4 w-4 text-red-600" />
+                                                    )}
                                                     <h3 className="font-medium text-gray-900">{record.title}</h3>
                                                     <Badge className={priorityBadgeClass(record.priority)}>{record.priority}</Badge>
                                                     <Badge className={statusBadgeClass(record.status)}>{record.status}</Badge>
+                                                    {record.method ? <Badge variant="outline">{record.method}</Badge> : null}
+                                                    {record.statusCode ? <Badge variant="outline">HTTP {record.statusCode}</Badge> : null}
+                                                    {typeof record.durationMs === 'number' ? <Badge variant="outline">{record.durationMs} ms</Badge> : null}
                                                 </div>
                                                 <p className="text-sm text-gray-700">{record.message}</p>
                                                 {record.apiEndpoint !== 'unknown' && (
@@ -353,7 +373,7 @@ export default function RealTimeApiErrorsPage() {
                                             </Button>
                                         </div>
 
-                                        <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-4">
+                                        <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-5">
                                             <div className="rounded-md bg-slate-50 p-2">
                                                 <p className="font-medium text-gray-800">Section</p>
                                                 <p>{sectionLabel(record.section)}</p>
@@ -363,7 +383,7 @@ export default function RealTimeApiErrorsPage() {
                                                 <code className="text-[11px] font-mono text-indigo-700 break-all">{record.apiEndpoint}</code>
                                             </div>
                                             <div className="rounded-md bg-slate-50 p-2 space-y-1">
-                                                <p className="font-medium text-gray-800">Actor</p>
+                                                <p className="font-medium text-gray-800">Client / Actor</p>
                                                 <div className="flex items-center gap-1.5">
                                                     <UserCircle2 className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                                                     <p className="font-semibold text-gray-900 truncate">{record.actor.name}</p>
@@ -374,6 +394,11 @@ export default function RealTimeApiErrorsPage() {
                                                 {record.actor.email && (
                                                     <p className="text-[10px] text-gray-500 truncate">{record.actor.email}</p>
                                                 )}
+                                            </div>
+                                            <div className="rounded-md bg-slate-50 p-2">
+                                                <p className="font-medium text-gray-800">API Stats</p>
+                                                <p>{record.method || 'GET'} {record.statusCode ? `· HTTP ${record.statusCode}` : ''}</p>
+                                                <p>{typeof record.durationMs === 'number' ? `${record.durationMs} ms` : 'Time unavailable'}</p>
                                             </div>
                                             <div className="rounded-md bg-slate-50 p-2">
                                                 <p className="font-medium text-gray-800">Occurred</p>
@@ -415,7 +440,7 @@ export default function RealTimeApiErrorsPage() {
                 <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
                     <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
                         <DialogHeader>
-                            <DialogTitle>Runtime Error Details</DialogTitle>
+                            <DialogTitle>Runtime Alert Details</DialogTitle>
                         </DialogHeader>
 
                         {selectedRecord && (
@@ -429,6 +454,14 @@ export default function RealTimeApiErrorsPage() {
                                         <p className="text-xs text-gray-500">Error Type</p>
                                         <p className="font-medium">{selectedRecord.type}</p>
                                     </div>
+                                    <div className="rounded-md border p-3">
+                                        <p className="text-xs text-gray-500">Method / Status</p>
+                                        <p className="font-medium">{selectedRecord.method || 'GET'}{selectedRecord.statusCode ? ` · HTTP ${selectedRecord.statusCode}` : ''}</p>
+                                    </div>
+                                    <div className="rounded-md border p-3">
+                                        <p className="text-xs text-gray-500">Duration</p>
+                                        <p className="font-medium">{typeof selectedRecord.durationMs === 'number' ? `${selectedRecord.durationMs} ms` : 'Not available'}</p>
+                                    </div>
                                     <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3">
                                         <p className="text-xs text-indigo-600">API Endpoint</p>
                                         <code className="break-all font-mono text-sm font-semibold text-indigo-800">{selectedRecord.apiEndpoint}</code>
@@ -440,7 +473,7 @@ export default function RealTimeApiErrorsPage() {
                                 </div>
 
                                 <div className="rounded-md border p-3 space-y-2">
-                                    <p className="text-xs text-gray-500 font-medium">Actor</p>
+                                    <p className="text-xs text-gray-500 font-medium">Client / Actor</p>
                                     <div className="flex items-center gap-3">
                                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100">
                                             <UserCircle2 className="h-5 w-5 text-slate-500" />

@@ -15,6 +15,9 @@ type RuntimeErrorRecord = {
     priority: string;
     category: string;
     status: string;
+    method?: string;
+    statusCode?: number;
+    durationMs?: number;
     section: string;
     apiEndpoint: string;
     actor: {
@@ -51,6 +54,23 @@ const firstNonEmptyString = (...values: unknown[]): string | undefined => {
             return value.trim();
         }
     }
+    return undefined;
+};
+
+const firstFiniteNumber = (...values: unknown[]): number | undefined => {
+    for (const value of values) {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return value;
+        }
+
+        if (typeof value === 'string' && value.trim()) {
+            const parsed = Number(value.trim());
+            if (Number.isFinite(parsed)) {
+                return parsed;
+            }
+        }
+    }
+
     return undefined;
 };
 
@@ -169,10 +189,19 @@ export async function GET(request: NextRequest) {
                 const actorDoc = actorId ? actorMap.get(String(actorId)) : undefined;
 
                 const actorNameFromDetails = firstNonEmptyString(
+                    details.clientName,
                     details.userName,
                     details.actorName,
                     details.performedByName,
                     details.targetUserName
+                );
+
+                const actorEmailFromDetails = firstNonEmptyString(
+                    details.clientEmail,
+                    details.userEmail,
+                    details.actorEmail,
+                    details.performedByEmail,
+                    details.targetUserEmail
                 );
 
                 const actorNameFromDb = actorDoc
@@ -202,6 +231,10 @@ export async function GET(request: NextRequest) {
                     endpointToSection(apiEndpoint, actorRole)
                 ));
 
+                const method = firstNonEmptyString(details.method, details.httpMethod, details.requestMethod) || 'GET';
+                const statusCode = firstFiniteNumber(details.statusCode, details.httpStatus, details.responseStatus);
+                const durationMs = firstFiniteNumber(details.durationMs, details.responseTimeMs, details.executionTimeMs);
+
                 return {
                     id: String(alert._id),
                     title: alert.title || 'Runtime Error',
@@ -211,12 +244,15 @@ export async function GET(request: NextRequest) {
                     priority: alert.priority || 'medium',
                     category: alert.category || 'other',
                     status: alert.status || 'new',
+                    method,
+                    statusCode,
+                    durationMs,
                     section: sectionValue,
                     apiEndpoint,
                     actor: {
                         id: actorId,
                         name: actorNameFromDb || actorNameFromDetails || 'Unknown user',
-                        email: actorDoc?.email || undefined,
+                        email: actorDoc?.email || actorEmailFromDetails || undefined,
                         role: actorRole
                     },
                     createdAt: alert.createdAt,
@@ -225,18 +261,38 @@ export async function GET(request: NextRequest) {
                 };
             })
             .filter((record) => (role === 'all' ? true : record.actor.role === normalizeRole(role)))
-            .filter((record) => (section === 'all' ? true : record.section === normalizeSection(section)));
+            .filter((record) => (section === 'all' ? true : record.section === normalizeSection(section)))
+            .filter((record) => {
+                if (!search) return true;
+                const searchValue = search.toLowerCase();
+                return [
+                    record.title,
+                    record.message,
+                    record.apiEndpoint,
+                    record.actor.name,
+                    record.actor.email,
+                    record.actor.role,
+                    record.section,
+                    record.method,
+                    record.source,
+                    record.category,
+                    record.statusCode?.toString(),
+                    record.durationMs?.toString(),
+                ].some((value) => String(value || '').toLowerCase().includes(searchValue));
+            });
 
         const total = filteredRecords.length;
         const records = filteredRecords.slice(skip, skip + limit);
         const critical = filteredRecords.filter((record) => record.priority === 'critical' || record.type === 'critical').length;
         const fresh = filteredRecords.filter((record) => record.status === 'new').length;
+        const slow = filteredRecords.filter((record) => record.category === 'performance' || ((record.durationMs || 0) >= 4000)).length;
 
         const response = NextResponse.json({
             records,
             summary: {
                 critical,
-                new: fresh
+                new: fresh,
+                slow
             },
             pagination: {
                 page,
