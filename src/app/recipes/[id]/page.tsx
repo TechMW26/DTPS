@@ -202,10 +202,16 @@ export default function RecipeViewPage() {
       }
 
       const data = await response.json();
-      if (data.success && data.recipe && String(data.recipe._id) === String(targetRecipeId)) {
+      if (data.success && data.recipe) {
         setRecipe(data.recipe);
+
+        // Normalize legacy UUID routes (e.g. /recipes/2453) to canonical ObjectId routes.
+        const resolvedId = String(data.recipe._id || '');
+        if (resolvedId && resolvedId !== String(targetRecipeId)) {
+          router.replace(`/recipes/${resolvedId}`);
+        }
       } else {
-        setError('Recipe data mismatch. Please refresh and try again.');
+        setError('Failed to load recipe');
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {

@@ -83,7 +83,8 @@ type FoodItem = {
   protein: number;
   fats: number;
   selected: boolean;
-  recipeUuid?: string; // UUID of the recipe
+  recipeId?: string;   // Mongo _id
+  recipeUuid?: string; // Legacy UUID
 };
 
 type FoodDatabasePanelProps = {
@@ -223,6 +224,7 @@ export function FoodDatabasePanel({
               protein: proteinVal,
               fats: fatsVal,
               selected: !!selectedFoodsRef.current[String(recipe._id)],
+              recipeId: recipe._id || undefined,
               recipeUuid: recipe.uuid || undefined,
             };
           });

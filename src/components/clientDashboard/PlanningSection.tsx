@@ -1150,6 +1150,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       toast.error(`Duration cannot exceed ${effectiveRemainingForValidation} days (remaining in client's plan)`);
       return;
     }
+    const validationPurchase = selectedPurchase || paymentCheck?.purchase;
+    if (!isEditMode && (validationPurchase?.mealPlanCreated || paymentCheck?.purchase?.mealPlanCreated)) {
+      toast.error('This purchase already has a meal plan. Purchase a new plan before creating another.');
+      return;
+    }
     // Warn if no paid plan (but allow for editing existing plans)
     if (!isEditMode && !paymentCheck?.hasPaidPlan) {
       toast.error('Client needs to purchase a plan first');
@@ -1159,10 +1164,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     // Validate start date is within expected range if set (only for new plans, not when editing)
     const validationExpectedStart = selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate;
     const validationExpectedEnd = selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate;
+    if (!isEditMode && (!validationExpectedStart || !validationExpectedEnd)) {
+      toast.error('Set the expected start and end dates in the Payment section before creating a meal plan');
+      return;
+    }
     if (!isEditMode && validationExpectedStart && validationExpectedEnd) {
       const expectedStart = new Date(validationExpectedStart);
       const expectedEnd = new Date(validationExpectedEnd);
       const planStartDate = new Date(startDate);
+      const planEndDate = new Date(endDate);
 
       if (planStartDate < expectedStart) {
         toast.error(`Start date must be on or after expected start date (${format(expectedStart, 'dd MMM yyyy')})`);
@@ -1172,7 +1182,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         toast.error(`Start date must be on or before expected end date (${format(expectedEnd, 'dd MMM yyyy')})`);
         return;
       }
-      // Note: End date CAN be outside expected dates - no restriction
+      if (planEndDate > expectedEnd) {
+        toast.error(`End date must be on or before expected end date (${format(expectedEnd, 'dd MMM yyyy')})`);
+        return;
+      }
     }
 
     // Check for overlapping meal plans (exclude current plan if editing)
@@ -1237,6 +1250,30 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       const actualEndDate = actualDuration > 0
         ? format(addDays(new Date(startDate), actualDuration - 1), 'yyyy-MM-dd')
         : endDate;
+
+      if (!isEditMode) {
+        const purchaseExpectedStartDate = selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate;
+        const purchaseExpectedEndDate = selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate;
+
+        if (!purchaseExpectedStartDate || !purchaseExpectedEndDate) {
+          toast.error('Set the expected start and end dates in the Payment section before creating a meal plan');
+          return;
+        }
+
+        const expectedStart = new Date(purchaseExpectedStartDate);
+        const expectedEnd = new Date(purchaseExpectedEndDate);
+        const planStartDate = new Date(startDate);
+        const planFinalEndDate = new Date(actualEndDate);
+
+        if (planStartDate < expectedStart || planStartDate > expectedEnd) {
+          toast.error(`Meal plan must start within the expected window (${format(expectedStart, 'dd MMM yyyy')} - ${format(expectedEnd, 'dd MMM yyyy')})`);
+          return;
+        }
+        if (planFinalEndDate > expectedEnd) {
+          toast.error(`Meal plan must end on or before the expected end date (${format(expectedEnd, 'dd MMM yyyy')})`);
+          return;
+        }
+      }
 
       console.log('[Publish Plan] Saving with actualDuration:', actualDuration, 'meals:', mealsWithDates.length);
 
@@ -4376,7 +4413,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
                   <p className="text-xs text-green-600 mt-2">
                     {(selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated)
-                      ? '✓ Meal plan has been created. You can create additional plans with remaining days.'
+                      ? '✓ Meal plan has been created for this purchase.'
                       : '✓ Ready to create meal plan. Click "Create New Plan" button below.'}
                   </p>
                 </div>
@@ -4462,13 +4499,17 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
               {/* Create New Plan Button - Hidden in viewOnly mode (health counselor) */}
               {!viewOnly && (
                 <Button
-                  className={`${paymentCheck?.hasPaidPlan && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) > 0
+                  className={`${paymentCheck?.hasPaidPlan && !(selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated) && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) > 0
                     ? 'bg-blue-600 hover:bg-blue-700'
                     : 'bg-gray-400 cursor-not-allowed'
                     }`}
                   onClick={async () => {
                     if (!paymentCheck?.hasPaidPlan) {
                       toast.error('Client needs to purchase a plan first before creating a meal plan');
+                      return;
+                    }
+                    if (selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated) {
+                      toast.error('This purchase already has a meal plan. Purchase a new plan before creating another.');
                       return;
                     }
                     const effectiveRemaining = selectedPurchase?.remainingDays ?? paymentCheck.remainingDays;
@@ -4478,7 +4519,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     }
                     const purchase = selectedPurchase || paymentCheck.purchase;
                     if (!purchase?.expectedStartDate || !purchase?.expectedEndDate) {
-                      toast.info('Expected dates are not set yet. Creating plan from the next available start date.');
+                      toast.error('Set the expected start and end dates in the Payment section before creating a meal plan.');
+                      return;
                     }
                     // Clear any stale state before creating new plan
                     setEditingPlan(null);
@@ -4491,15 +4533,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     setSelectedTemplate(null);
                     setPlanKey(prev => prev + 1);
 
-                    // Set duration based on selected purchase remaining days
+                    // Set duration based on the selected purchase allocation
                     if (effectiveRemaining > 0) {
-                      setDuration(Math.min(effectiveRemaining, 30)); // Max 30 days at a time
+                      setDuration(effectiveRemaining);
                     }
                     // Initialize start date based on latest plan
                     await initializeStartDate();
                     setStep('form');
                   }}
-                  disabled={!paymentCheck?.hasPaidPlan || (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) <= 0}
+                  disabled={!paymentCheck?.hasPaidPlan || (selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated) || (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) <= 0}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Create New Plan
@@ -4509,7 +4551,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           </div>
           {paymentCheck?.hasPaidPlan && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) > 0 && (
             <p className="text-sm text-gray-500 mt-1">
-              {selectedPurchase?.remainingDays ?? paymentCheck.remainingDays} days available • You can split into multiple plans (e.g., 7+7 days)
+              {selectedPurchase?.remainingDays ?? paymentCheck.remainingDays} days available • This purchase supports one meal plan within the expected window
             </p>
           )}
           {paymentCheck?.hasPaidPlan && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) <= 0 && (
@@ -4975,7 +5017,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                   <span className="font-semibold">{createdPlanInfo.remainingDays} days</span> remaining in the purchased plan
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
-                  You can create more meal plans with the remaining days
+                  This purchase is now tied to a single meal plan
                 </p>
               </div>
             ) : createdPlanInfo && createdPlanInfo.remainingDays <= 0 ? (

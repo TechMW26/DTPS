@@ -417,6 +417,7 @@ export async function GET(request: NextRequest) {
     }).select('purchaseId duration startDate endDate status');
 
     const usedDaysByPurchase = new Map<string, number>();
+    const mealPlansByPurchase = new Map<string, number>();
     for (const plan of linkedMealPlans) {
       const purchaseKey = String((plan as any).purchaseId);
       const planDuration = getMealPlanDurationDays(plan);
@@ -428,12 +429,17 @@ export async function GET(request: NextRequest) {
         purchaseKey,
         (usedDaysByPurchase.get(purchaseKey) || 0) + planDuration
       );
+      mealPlansByPurchase.set(
+        purchaseKey,
+        (mealPlansByPurchase.get(purchaseKey) || 0) + 1
+      );
     }
 
     const computedPaidPurchases = dedupedPaidPurchases.map((purchase: any) => {
       const purchaseId = purchase?._id?.toString?.() || String(purchase?._id || '');
       const durationDays = getEffectiveDurationDays(purchase);
       const linkedDaysUsed = usedDaysByPurchase.get(purchaseId);
+      const linkedMealPlanCount = mealPlansByPurchase.get(purchaseId) || 0;
       const storedDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
       const storedRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
 
@@ -442,6 +448,8 @@ export async function GET(request: NextRequest) {
       const hasStoredCounters =
         purchase?.daysUsed !== undefined ||
         purchase?.remainingDays !== undefined;
+
+      const hasMealPlanAlready = purchase?.mealPlanCreated === true || linkedMealPlanCount > 0;
 
       const countersExceedDuration =
         storedDaysUsed > durationDays ||
@@ -458,6 +466,10 @@ export async function GET(request: NextRequest) {
           effectiveDaysUsed = linkedDaysUsed;
         }
         effectiveDaysUsed = Math.min(durationDays, Math.max(0, effectiveDaysUsed));
+      }
+
+      if (hasMealPlanAlready) {
+        effectiveDaysUsed = durationDays;
       }
 
       // Future scheduled purchases should not consume allocation until they start.
@@ -483,7 +495,7 @@ export async function GET(request: NextRequest) {
 
       // Keep stored counters by default, but normalize inconsistent values.
       const effectiveRemainingDays = (hasStoredCounters && !countersExceedDuration)
-        ? storedRemainingDays
+        ? (hasMealPlanAlready ? 0 : storedRemainingDays)
         : Math.max(0, durationDays - effectiveDaysUsed);
 
       (purchase as any).__effectiveDurationDays = durationDays;

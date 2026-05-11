@@ -65,8 +65,14 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
       });
       if (response.ok) {
         const data = await response.json();
-        if (data?.recipe && String(data.recipe._id) === String(targetRecipeId)) {
+        if (data?.recipe) {
           setRecipe(data.recipe);
+
+          // Normalize legacy UUID routes (e.g. /recipes/2453) to canonical ObjectId routes.
+          const resolvedId = String(data.recipe._id || '');
+          if (resolvedId && resolvedId !== String(targetRecipeId)) {
+            router.replace(`/recipes/${resolvedId}`);
+          }
         }
       }
     } catch (error) {

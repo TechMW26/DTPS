@@ -98,6 +98,18 @@ const dateKey = (value: unknown): string | null => {
   return format(startOfDay(date), 'yyyy-MM-dd');
 };
 
+const toStartOfDayDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return startOfDay(date);
+};
+
+const isDateWithinInclusiveWindow = (value: Date, start: Date, end: Date): boolean => {
+  const target = startOfDay(value).getTime();
+  return target >= startOfDay(start).getTime() && target <= startOfDay(end).getTime();
+};
+
 const applyFrozenFlagsFromFreezedDays = (plan: any) => {
   const meals = Array.isArray(plan?.meals) ? plan.meals : [];
   const freezedDays = Array.isArray(plan?.freezedDays) ? plan.freezedDays : [];
@@ -499,6 +511,55 @@ export async function POST(request: NextRequest) {
         if (!anyPayment) {
           paymentWarning = 'No paid payment record found for this client. The plan has been created but is not linked to any payment. Please ensure a payment is created for proper billing tracking.';
         }
+      }
+    }
+
+    if (!isDraft && linkedPaymentId) {
+      const purchase = await UnifiedPayment.findById(linkedPaymentId)
+        .select('expectedStartDate expectedEndDate startDate endDate mealPlanCreated')
+        .lean() as any;
+
+      if (!purchase) {
+        return NextResponse.json({
+          error: 'Invalid purchase',
+          message: 'The linked purchase record could not be found'
+        }, { status: 400 });
+      }
+
+      const existingMealPlan = await ClientMealPlan.exists({
+        purchaseId: linkedPaymentId,
+        status: { $ne: 'draft' }
+      });
+
+      if (existingMealPlan || purchase.mealPlanCreated === true) {
+        return NextResponse.json({
+          error: 'Meal plan already created',
+          message: 'This purchase already has a meal plan. Create a new purchase before assigning another plan.'
+        }, { status: 409 });
+      }
+
+      const expectedStart = toStartOfDayDate(purchase.expectedStartDate || purchase.startDate);
+      const expectedEnd = toStartOfDayDate(purchase.expectedEndDate || purchase.endDate);
+
+      if (!expectedStart || !expectedEnd) {
+        return NextResponse.json({
+          error: 'Expected dates required',
+          message: 'Expected start and end dates must be set on the purchase before creating a meal plan.'
+        }, { status: 400 });
+      }
+
+      if (!isDateWithinInclusiveWindow(startDate, expectedStart, expectedEnd)) {
+        return NextResponse.json({
+          error: 'Start date outside purchase window',
+          message: 'Meal plan start date must fall within the purchase expected start and end dates.'
+        }, { status: 400 });
+      }
+
+      if (!isDateWithinInclusiveWindow(endDate, expectedStart, expectedEnd)) {
+        return NextResponse.json({
+          error: 'End date outside purchase window',
+          message: 'Meal plan end date must fall within the purchase expected start and end dates.'
+        }, { status: 400 });
       }
     }
 

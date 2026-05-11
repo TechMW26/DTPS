@@ -14,6 +14,10 @@ function jsonNoStore(body: unknown, init?: ResponseInit) {
   return response;
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Parse servings string to extract numeric value
  * Examples:
@@ -55,10 +59,7 @@ export async function GET(
     // Strip any extra quotes from the ID (handles malformed URLs)
     id = id.replace(/^["']+|["']+$/g, '').trim();
 
-    // Validate ObjectId format
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return jsonNoStore({ error: 'Invalid recipe ID format' }, { status: 400 });
-    }
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
 
     const [session] = await Promise.all([
       getServerSession(authOptions),
@@ -66,10 +67,42 @@ export async function GET(
     ]);
     if (!session) return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
 
-    // Fetch recipe with populated creator in a single query
-    let recipe = await Recipe.findById(id)
-      .populate('createdBy', 'firstName lastName')
-      .lean();
+    const numericId = Number(id);
+    let recipe: Record<string, unknown> | null = null;
+
+    if (isObjectId) {
+      recipe = await Recipe.findById(id)
+        .populate('createdBy', 'firstName lastName')
+        .lean();
+    } else {
+      // IMPORTANT: Use raw collection query to avoid Mongoose schema casting `uuid`
+      // to string, because legacy rows may store uuid as numbers.
+      const normalizedNoLeadingZeros = id.replace(/^0+/, '') || '0';
+      const escapedOriginal = escapeRegex(id);
+      const escapedNormalized = escapeRegex(normalizedNoLeadingZeros);
+
+      const uuidOrConditions: Array<Record<string, unknown>> = [
+        { uuid: id },
+        { uuid: normalizedNoLeadingZeros },
+        { uuid: { $regex: `^0*${escapedOriginal}$`, $options: 'i' } },
+        { uuid: { $regex: `^0*${escapedNormalized}$`, $options: 'i' } }
+      ];
+
+      if (!Number.isNaN(numericId)) {
+        uuidOrConditions.push({ uuid: numericId });
+      }
+
+      const rawRecipe = await Recipe.collection.findOne(
+        { $or: uuidOrConditions },
+        { projection: { _id: 1 } }
+      );
+
+      if (rawRecipe?._id) {
+        recipe = await Recipe.findById(rawRecipe._id)
+          .populate('createdBy', 'firstName lastName')
+          .lean();
+      }
+    }
 
     if (!recipe)
       return jsonNoStore({ error: 'Not found' }, { status: 404 });
@@ -107,7 +140,7 @@ export async function GET(
     recipeData.allergens = normalizeToArray(recipeData.allergens);
     recipeData.tags = normalizeToArray(recipeData.tags);
 
-    await Recipe.findByIdAndUpdate(id, { $inc: { views: 1 } });
+    await Recipe.findByIdAndUpdate((recipeData._id as mongoose.Types.ObjectId | string).toString(), { $inc: { views: 1 } });
 
     return jsonNoStore({ success: true, recipe: recipeData });
   } catch (error: any) {

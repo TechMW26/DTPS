@@ -639,7 +639,9 @@ export async function PATCH(request: NextRequest) {
         ]
       });
 
-      // Get ALL active/completed meal plans for this client
+      // Fetch all meal plans for this client once, then group by purchaseId.
+      // Each purchase is only fixed based on its own explicitly linked plans —
+      // never a cross-purchase fallback.
       const allMealPlans = await ClientMealPlan.find({
         clientId: clientId,
         status: { $in: ['active', 'completed'] }
@@ -650,15 +652,10 @@ export async function PATCH(request: NextRequest) {
       // Manual "Fix Days" must reflect actual meal plans, even when stored counters exist.
       let updatedCount = 0;
       for (const purchase of allPurchases) {
-        const purchaseMealPlans = allMealPlans.filter(
+        // Only count plans that explicitly belong to this purchase.
+        const effectiveMealPlans = allMealPlans.filter(
           (plan) => plan.purchaseId?.toString() === purchase._id.toString()
         );
-
-        const effectiveMealPlans = purchaseMealPlans.length > 0
-          ? purchaseMealPlans
-          : allPurchases.length === 1
-            ? allMealPlans
-            : [];
 
         const counterState = applyPurchaseCounters({
           purchase,
@@ -707,20 +704,13 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
     }
 
-    // First, try to find meal plans linked to this specific purchaseId
-    let mealPlans = await ClientMealPlan.find({
+    // Only count meal plans explicitly linked to this purchase by purchaseId.
+    // Do NOT fall back to all client plans — that would incorrectly count
+    // days from previous purchases/phases and inflate the counter.
+    const mealPlans = await ClientMealPlan.find({
       purchaseId: purchaseId,
       status: { $in: ['active', 'completed'] }
     });
-
-    // If no purchaseId-linked meal plans found, get ALL active/completed meal plans for this client
-    // This handles legacy plans that don't have purchaseId set
-    if (mealPlans.length === 0 && purchase.client) {
-      mealPlans = await ClientMealPlan.find({
-        clientId: purchase.client,
-        status: { $in: ['active', 'completed'] }
-      });
-    }
 
     const totalDaysUsed = getLinkedMealPlanDaysUsed(mealPlans);
     const counterState = applyPurchaseCounters({

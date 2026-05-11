@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Plus, X, Minus, Copy, ChevronLeft, ChevronRight, Check, Maximize2, Minimize2, Trash2, Download } from 'lucide-react';
+import { Plus, X, Minus, Copy, ChevronLeft, ChevronRight, Check, Maximize2, Minimize2, Trash2, Download, Eye } from 'lucide-react';
 import { DayPlan, Meal, FoodOption, FoodItem as MealFoodItem } from './DietPlanDashboard';
 import { DEFAULT_MEAL_TYPES_LIST, MEAL_TYPES, MEAL_TYPE_KEYS, normalizeMealType } from '@/lib/mealConfig';
 import { FoodDatabasePanel } from './FoodSheet';
@@ -21,7 +21,8 @@ type FoodDatabaseItem = {
   protein: number;
   fats: number;
   selected: boolean;
-  recipeUuid?: string; // UUID of the recipe
+  recipeId?: string;   // Mongo _id
+  recipeUuid?: string; // Legacy UUID
 };
 import { DatePicker } from './DatePicker';
 import { useState, useRef, useEffect } from 'react';
@@ -396,6 +397,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const isDayFrozen = (dayIndex: number): boolean => {
     const day = weekPlan[dayIndex];
     return day && (day as any).isFrozen === true;
+  };
+
+  const openRecipeInNewTab = (recipeIdentifier?: string) => {
+    if (!recipeIdentifier) return;
+    // Backend recipe detail endpoint supports both Mongo _id and legacy uuid.
+    window.open(`/recipes/${encodeURIComponent(recipeIdentifier)}`, '_blank', 'noopener,noreferrer');
   };
 
   /**
@@ -1898,6 +1905,16 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                         )}
                                       </div>
                                       <div className="flex space-x-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => openRecipeInNewTab(option.recipeUuid)}
+                                          className={`h-7 w-7 p-0 disabled:opacity-50 ${option.isAlternative ? 'text-orange-600 hover:text-orange-700 hover:bg-orange-50' : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'}`}
+                                          title={option.recipeUuid ? 'View recipe in new tab' : 'No linked recipe'}
+                                          disabled={isFrozenDay || !option.recipeUuid}
+                                        >
+                                          <Eye className="w-4 h-4" />
+                                        </Button>
                                         {/* Copy entire option button */}
                                         <Button
                                           variant="ghost"
@@ -1999,6 +2016,16 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 </div>
                                               </div>
                                               <div className="flex gap-1">
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => openRecipeInNewTab(foodItem.recipeUuid)}
+                                                  className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                                                  title={foodItem.recipeUuid ? 'View recipe in new tab' : 'No linked recipe'}
+                                                  disabled={isFrozenDay || !foodItem.recipeUuid}
+                                                >
+                                                  <Eye className="w-4 h-4" />
+                                                </Button>
                                                 <Button
                                                   variant="ghost"
                                                   size="sm"
@@ -3215,7 +3242,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                   carbs: formatNum(food.carbs),
                   fats: formatNum(food.fats),
                   protein: formatNum(food.protein),
-                  recipeUuid: food.recipeUuid,
+                  recipeUuid: food.recipeId || food.recipeUuid,
                   isAlternative: preserveIsAlternative // Preserve alternative status
                 }));
 
