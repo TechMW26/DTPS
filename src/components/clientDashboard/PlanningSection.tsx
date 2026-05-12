@@ -332,12 +332,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     return purchases.find((purchase) => purchase._id === paymentCheck.purchase?._id) || purchases[0] || null;
   }, [paymentCheck, selectedPurchaseId]);
 
-  // Check if the current active purchase (daysUsed > 0) blocks switching
-  const currentActivePurchaseBlocks = useMemo(() => {
-    if (!selectedPurchase && !paymentCheck?.purchase) return false;
-    const purchaseForLock = selectedPurchase || paymentCheck?.purchase;
-    return ((purchaseForLock as any)?.daysUsed || 0) > 0;
-  }, [paymentCheck, selectedPurchase]);
+  // Multi-phase support: switching/creation should not be blocked by daysUsed > 0.
+  const currentActivePurchaseBlocks = false;
 
   // Success dialog state
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
@@ -1151,10 +1147,6 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       return;
     }
     const validationPurchase = selectedPurchase || paymentCheck?.purchase;
-    if (!isEditMode && (validationPurchase?.mealPlanCreated || paymentCheck?.purchase?.mealPlanCreated)) {
-      toast.error('This purchase already has a meal plan. Purchase a new plan before creating another.');
-      return;
-    }
     // Warn if no paid plan (but allow for editing existing plans)
     if (!isEditMode && !paymentCheck?.hasPaidPlan) {
       toast.error('Client needs to purchase a plan first');
@@ -4499,17 +4491,13 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
               {/* Create New Plan Button - Hidden in viewOnly mode (health counselor) */}
               {!viewOnly && (
                 <Button
-                  className={`${paymentCheck?.hasPaidPlan && !(selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated) && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) > 0
+                  className={`${paymentCheck?.hasPaidPlan && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) > 0
                     ? 'bg-blue-600 hover:bg-blue-700'
                     : 'bg-gray-400 cursor-not-allowed'
                     }`}
                   onClick={async () => {
                     if (!paymentCheck?.hasPaidPlan) {
                       toast.error('Client needs to purchase a plan first before creating a meal plan');
-                      return;
-                    }
-                    if (selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated) {
-                      toast.error('This purchase already has a meal plan. Purchase a new plan before creating another.');
                       return;
                     }
                     const effectiveRemaining = selectedPurchase?.remainingDays ?? paymentCheck.remainingDays;
@@ -4541,7 +4529,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     await initializeStartDate();
                     setStep('form');
                   }}
-                  disabled={!paymentCheck?.hasPaidPlan || (selectedPurchase?.mealPlanCreated ?? paymentCheck.purchase?.mealPlanCreated) || (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) <= 0}
+                  disabled={!paymentCheck?.hasPaidPlan || (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) <= 0}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Create New Plan
@@ -4551,7 +4539,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           </div>
           {paymentCheck?.hasPaidPlan && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) > 0 && (
             <p className="text-sm text-gray-500 mt-1">
-              {selectedPurchase?.remainingDays ?? paymentCheck.remainingDays} days available • This purchase supports one meal plan within the expected window
+              {selectedPurchase?.remainingDays ?? paymentCheck.remainingDays} days available • Create next phase within the expected window
             </p>
           )}
           {paymentCheck?.hasPaidPlan && (selectedPurchase?.remainingDays ?? paymentCheck.remainingDays) <= 0 && (
