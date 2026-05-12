@@ -449,8 +449,6 @@ export async function GET(request: NextRequest) {
         purchase?.daysUsed !== undefined ||
         purchase?.remainingDays !== undefined;
 
-      const hasMealPlanAlready = purchase?.mealPlanCreated === true || linkedMealPlanCount > 0;
-
       const countersExceedDuration =
         storedDaysUsed > durationDays ||
         (storedDaysUsed + storedRemainingDays) > durationDays;
@@ -468,9 +466,8 @@ export async function GET(request: NextRequest) {
         effectiveDaysUsed = Math.min(durationDays, Math.max(0, effectiveDaysUsed));
       }
 
-      if (hasMealPlanAlready) {
-        effectiveDaysUsed = durationDays;
-      }
+      // Do not auto-consume full duration just because a meal plan exists.
+      // Multi-phase plans under a single purchase must continue to use real counters.
 
       // Future scheduled purchases should not consume allocation until they start.
       // Only normalize to zero when we do not have authoritative stored counters.
@@ -495,7 +492,7 @@ export async function GET(request: NextRequest) {
 
       // Keep stored counters by default, but normalize inconsistent values.
       const effectiveRemainingDays = (hasStoredCounters && !countersExceedDuration)
-        ? (hasMealPlanAlready ? 0 : storedRemainingDays)
+        ? storedRemainingDays
         : Math.max(0, durationDays - effectiveDaysUsed);
 
       (purchase as any).__effectiveDurationDays = durationDays;

@@ -492,7 +492,7 @@ export async function POST(request: NextRequest) {
           { paymentStatus: 'paid' },
           { status: 'completed' }
         ],
-        mealPlanCreated: { $ne: true }
+        remainingDays: { $gt: 0 }
       }).sort({ paidAt: -1, createdAt: -1 }).lean() as any;
 
       if (recentPaidPayment) {
@@ -516,7 +516,7 @@ export async function POST(request: NextRequest) {
 
     if (!isDraft && linkedPaymentId) {
       const purchase = await UnifiedPayment.findById(linkedPaymentId)
-        .select('expectedStartDate expectedEndDate startDate endDate mealPlanCreated')
+        .select('expectedStartDate expectedEndDate startDate endDate mealPlanCreated remainingDays')
         .lean() as any;
 
       if (!purchase) {
@@ -526,15 +526,11 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
-      const existingMealPlan = await ClientMealPlan.exists({
-        purchaseId: linkedPaymentId,
-        status: { $ne: 'draft' }
-      });
-
-      if (existingMealPlan || purchase.mealPlanCreated === true) {
+      const normalizedRemainingDays = Math.max(0, Number(purchase.remainingDays || 0));
+      if (normalizedRemainingDays <= 0) {
         return NextResponse.json({
-          error: 'Meal plan already created',
-          message: 'This purchase already has a meal plan. Create a new purchase before assigning another plan.'
+          error: 'No remaining plan days',
+          message: 'This purchase has no remaining days. Please create a new purchase before assigning another plan.'
         }, { status: 409 });
       }
 
