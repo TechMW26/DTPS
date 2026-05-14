@@ -16,6 +16,8 @@ export interface Conversation {
     lastName: string;
     avatar?: string;
     role: string;
+    phone?: string;
+    clientId?: string;
   };
   lastMessage: {
     content: string;
@@ -49,11 +51,18 @@ export function ConversationList({
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter conversations based on search query
-  const filteredConversations = conversations.filter(conversation =>
-    `${conversation.participant.firstName} ${conversation.participant.lastName}`
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase())
-  );
+  const filteredConversations = conversations.filter(conversation => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    const fullName = `${conversation.participant.firstName} ${conversation.participant.lastName}`.toLowerCase();
+    const phone = (conversation.participant.phone || '').replace(/\D/g, '');
+    const clientId = (conversation.participant.clientId || '').toLowerCase();
+    return (
+      fullName.includes(q) ||
+      phone.includes(q.replace(/\D/g, '')) ||
+      clientId.includes(q)
+    );
+  });
 
   const formatLastMessageTime = (timestamp: string) => {
     try {
@@ -75,15 +84,15 @@ export function ConversationList({
 
   const getLastMessagePreview = (message: Conversation['lastMessage']) => {
     if (!message) return 'No messages yet';
-    
+
     switch (message.type) {
       case 'image':
         return '📷 Photo';
       case 'file':
         return '📎 File';
       default:
-        return message.content.length > 50 
-          ? `${message.content.substring(0, 50)}...` 
+        return message.content.length > 50
+          ? `${message.content.substring(0, 50)}...`
           : message.content;
     }
   };
@@ -123,7 +132,7 @@ export function ConversationList({
               const isSelected = conversation._id === selectedConversationId;
               const isOnline = isUserOnline(conversation.participant._id);
               const isTyping = isUserTyping(conversation.participant._id);
-              
+
               return (
                 <div
                   key={conversation._id}
@@ -142,7 +151,7 @@ export function ConversationList({
                         {conversation.participant.lastName[0]}
                       </AvatarFallback>
                     </Avatar>
-                    
+
                     {/* Online indicator */}
                     {isOnline && (
                       <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full" />
@@ -155,7 +164,7 @@ export function ConversationList({
                       <h3 className="text-sm font-medium text-gray-900 truncate">
                         {conversation.participant.firstName} {conversation.participant.lastName}
                       </h3>
-                      
+
                       {conversation.lastMessage && (
                         <span className="text-xs text-gray-500 shrink-0">
                           {formatLastMessageTime(conversation.lastMessage.createdAt)}
@@ -170,8 +179,8 @@ export function ConversationList({
                         ) : (
                           <p className={cn(
                             "text-sm truncate",
-                            conversation.unreadCount > 0 
-                              ? "text-gray-900 font-medium" 
+                            conversation.unreadCount > 0
+                              ? "text-gray-900 font-medium"
                               : "text-gray-500"
                           )}>
                             {getLastMessagePreview(conversation.lastMessage)}
@@ -189,8 +198,8 @@ export function ConversationList({
 
                     {/* Role badge */}
                     <div className="mt-1">
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className="text-xs capitalize"
                       >
                         {conversation.participant.role}

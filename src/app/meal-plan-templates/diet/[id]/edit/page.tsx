@@ -439,6 +439,17 @@ export default function EditDietTemplatePage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
+                    <Label>Duration (days) *</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={duration}
+                      onChange={e => setDuration(e.target.value)}
+                      placeholder="e.g., 7"
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <Label>Difficulty</Label>
                     <Select value={difficulty} onValueChange={setDifficulty}>
                       <SelectTrigger><SelectValue /></SelectTrigger>

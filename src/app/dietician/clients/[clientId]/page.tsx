@@ -1406,9 +1406,10 @@ export default function ClientDetailPage() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     try {
       setSavingForm(true);
+      const failedSections: string[] = [];
       // 1. Save basic user data (now includes physical measurements)
       const basicUserData = {
         firstName: basicInfo?.firstName,
@@ -1448,7 +1449,7 @@ export default function ClientDetailPage() {
         const errorData = await response.json().catch(() => ({}));
         console.error('Failed to update basic info:', response.status, errorData);
         toast.error(errorData?.error || 'Failed to update basic info');
-        return;
+        return false;
       }
 
       // 2. Save lifestyle data to separate endpoint (food preferences only)
@@ -1492,7 +1493,7 @@ export default function ClientDetailPage() {
       if (!lifestyleResponse.ok) {
         const lifestyleError = await lifestyleResponse.json().catch(() => ({}));
         console.error('Failed to save lifestyle data:', lifestyleError);
-        // Continue with other saves, don't block
+        failedSections.push('Lifestyle');
       }
 
       // 3. Save medical data to separate endpoint
@@ -1524,7 +1525,7 @@ export default function ClientDetailPage() {
       if (!medicalResponse.ok) {
         const medicalError = await medicalResponse.json().catch(() => ({}));
         console.error('Failed to save medical data:', medicalError);
-        // Continue with other saves, don't block
+        failedSections.push('Medical');
       } else {
         // Immediately update client state with new medical data so PlanningSection has latest data
         setClient(prev => prev ? ({
@@ -1556,8 +1557,13 @@ export default function ClientDetailPage() {
         if (!recallResponse.ok) {
           const recallError = await recallResponse.json().catch(() => ({}));
           console.error('Failed to save dietary recall entries:', recallError);
-          // Continue, don't block
+          failedSections.push('Recall');
         }
+      }
+
+      if (failedSections.length > 0) {
+        toast.error(`Could not save: ${failedSections.join(', ')}. Please fix and try again.`);
+        return false;
       }
 
       // Log history for profile update
@@ -1603,9 +1609,11 @@ export default function ClientDetailPage() {
       // Await fetchClientDetails to ensure data is refreshed before UI updates
       await fetchClientDetails(true);
       setIsEditing(false);
+      return true;
     } catch (error) {
       console.error('Error updating client:', error);
       toast.error('Error updating client');
+      return false;
     } finally {
       setSavingForm(false);
     }

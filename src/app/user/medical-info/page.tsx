@@ -205,8 +205,14 @@ export default function MedicalInfoPage() {
   };
 
   const addCustomAllergy = () => {
-    if (customAllergy.trim() && !data.allergies.includes(customAllergy.trim())) {
-      setData({ ...data, allergies: [...data.allergies, customAllergy.trim()] });
+    if (customAllergy.trim()) {
+      const newItems = customAllergy
+        .split(",")
+        .map(s => s.trim())
+        .filter(s => s.length > 0 && !data.allergies.includes(s));
+      if (newItems.length > 0) {
+        setData({ ...data, allergies: [...data.allergies, ...newItems] });
+      }
       setCustomAllergy("");
     }
   };
@@ -454,7 +460,7 @@ export default function MedicalInfoPage() {
                 type="text"
                 value={customAllergy}
                 onChange={(e) => setCustomAllergy(e.target.value)}
-                placeholder="Add other allergy..."
+                placeholder="Add allergy or multiple e.g. Soy, Gluten, Corn"
                 className={isDarkMode
                   ? "flex-1 px-4 py-2.5 bg-[#111] border border-[#2a2a2a] rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500"
                   : "flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500"}

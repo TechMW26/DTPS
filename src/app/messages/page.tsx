@@ -956,9 +956,18 @@ function ClientMessagesUI() {
     return `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
   };
 
-  const filteredConversations = conversations.filter(conv =>
-    `${conv.user.firstName} ${conv.user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredConversations = conversations.filter(conv => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    const fullName = `${conv.user.firstName} ${conv.user.lastName}`.toLowerCase();
+    const phone = (conv.user.phone || '').replace(/\D/g, '');
+    const clientId = (conv.user.clientId || '').toLowerCase();
+    return (
+      fullName.includes(q) ||
+      phone.includes(q.replace(/\D/g, '')) ||
+      clientId.includes(q)
+    );
+  });
 
   if (status === 'loading' || loading) {
     return (

@@ -26,7 +26,7 @@ interface FormsSectionProps {
   setMedicalData: (data: MedicalData | ((prev: MedicalData) => MedicalData)) => void;
   setLifestyleData: (data: LifestyleData | ((prev: LifestyleData) => LifestyleData)) => void;
   setRecallEntries: (entries: RecallEntry[]) => void;
-  handleSave: () => Promise<void>;
+  handleSave: () => Promise<boolean | void>;
   handleSaveRecallEntry?: (entry: RecallEntry) => Promise<void>;
   handleDeleteRecallEntry?: (entryId: string) => Promise<void>;
   loading: boolean;
@@ -89,12 +89,14 @@ export default function FormsSection({
   };
 
   // Handle save with unfilled form check
-  const handleSaveWithCheck = async () => {
+  const handleSaveWithCheck = async (): Promise<boolean> => {
     const unfilled = getUnfilledForms();
     if (unfilled.length > 0) {
       setShowUnfilledPopup(true);
+      return false;
     } else {
-      await handleSave();
+      const result = await handleSave();
+      return result !== false;
     }
   };
 
@@ -200,8 +202,10 @@ export default function FormsSection({
               {...basicInfo}
               onChange={(field, value) => setBasicInfo(prev => ({ ...prev, [field]: value }))}
               onSave={async () => {
-                await handleSaveWithCheck();
-                setEditingTab(prev => ({ ...prev, 'basic-details': false }));
+                const saved = await handleSaveWithCheck();
+                if (saved) {
+                  setEditingTab(prev => ({ ...prev, 'basic-details': false }));
+                }
               }}
               loading={loading}
               disableEmail={userRole === 'client'}
@@ -223,8 +227,10 @@ export default function FormsSection({
               {...medicalData}
               onChange={(field, value) => setMedicalData(prev => ({ ...prev, [field]: value }))}
               onSave={async () => {
-                await handleSaveWithCheck();
-                setEditingTab(prev => ({ ...prev, 'medical-info': false }));
+                const saved = await handleSaveWithCheck();
+                if (saved) {
+                  setEditingTab(prev => ({ ...prev, 'medical-info': false }));
+                }
               }}
               loading={loading}
               clientGender={basicInfo.gender}
@@ -242,8 +248,10 @@ export default function FormsSection({
               {...lifestyleData}
               onChange={(field, value) => setLifestyleData(prev => ({ ...prev, [field]: value }))}
               onSave={async () => {
-                await handleSaveWithCheck();
-                setEditingTab(prev => ({ ...prev, 'lifestyle': false }));
+                const saved = await handleSaveWithCheck();
+                if (saved) {
+                  setEditingTab(prev => ({ ...prev, 'lifestyle': false }));
+                }
               }}
               loading={loading}
             />
