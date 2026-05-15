@@ -1,0 +1,238 @@
+
+🔥 API Benchmark — http://localhost:3000 — 1 measured run(s), 0 warmup run(s) per endpoint
+
+  [1/212] GET /api/activity-assignments                                          [2/212] GET /api/activity-logs                                          [3/212] GET /api/admin/appointment-config                                          [4/212] GET /api/admin/audit-logs                                          [5/212] GET /api/admin/audit-logs/smart-people                                          [6/212] GET /api/admin/blogs/test-id                                          [7/212] GET /api/admin/blogs                                          [8/212] GET /api/admin/clients/test-id/assign-activities                                          [9/212] GET /api/admin/clients/test-id/assign-sleep                                          [10/212] GET /api/admin/clients/test-id/assign-steps                                          [11/212] GET /api/admin/clients/test-id/assign-water                                          [12/212] GET /api/admin/clients/test-id/assign                                          [13/212] GET /api/admin/clients/test-id/dietary-recall                                          [14/212] GET /api/admin/clients/test-id/documents                                          [15/212] GET /api/admin/clients/test-id/lifestyle-info                                          [16/212] GET /api/admin/clients/test-id/measurements                                          [17/212] GET /api/admin/clients/test-id/medical-info                                          [18/212] GET /api/admin/clients/test-id/profile                                          [19/212] GET /api/admin/clients/test-id                                          [20/212] GET /api/admin/clients                                          [21/212] GET /api/admin/data/export                                          [22/212] GET /api/admin/data/records                                          [23/212] GET /api/admin/dietitians/test-id                                          [24/212] GET /api/admin/dietitians                                          [25/212] GET /api/admin/duration-presets                                          [26/212] GET /api/admin/ecommerce/blogs/test-id                                          [27/212] GET /api/admin/ecommerce/blogs                                          [28/212] GET /api/admin/ecommerce/orders/test-id                                          [29/212] GET /api/admin/ecommerce/orders                                          [30/212] GET /api/admin/ecommerce/orders/sync                                          [31/212] GET /api/admin/ecommerce/payments/test-id                                          [32/212] GET /api/admin/ecommerce/payments                                          [33/212] GET /api/admin/ecommerce/payments/sync                                          [34/212] GET /api/admin/ecommerce/plans/test-id                                          [35/212] GET /api/admin/ecommerce/plans                                          [36/212] GET /api/admin/ecommerce/ratings/test-id                                          [37/212] GET /api/admin/ecommerce/ratings                                          [38/212] GET /api/admin/ecommerce/transformations/test-id                                          [39/212] GET /api/admin/ecommerce/transformations                                          [40/212] GET /api/admin/goal-categories/test-id                                          [41/212] GET /api/admin/goal-categories                                          [42/212] GET /api/admin/health-counselors/test-id                                          [43/212] GET /api/admin/health-counselors                                          [44/212] GET /api/admin/import/export                                          [45/212] GET /api/admin/import/models                                          [46/212] GET /api/admin/import/session                                          [47/212] GET /api/admin/leads/test-id                                          [48/212] GET /api/admin/leads                                          [49/212] GET /api/admin/migrate-client-status                                          [50/212] GET /api/admin/notifications/metrics                                          [51/212] GET /api/admin/payments                                          [52/212] GET /api/admin/payments/sync-status                                          [53/212] GET /api/admin/permissions/check                                          [54/212] GET /api/admin/permissions                                          [55/212] GET /api/admin/recent-activity                                          [56/212] GET /api/admin/service-plans                                          [57/212] GET /api/admin/subscription-plans                                          [58/212] GET /api/admin/system-alerts                                          [59/212] GET /api/admin/tags/test-id                                          [60/212] GET /api/admin/tags                                          [61/212] GET /api/admin/top-dietitians                                          [62/212] GET /api/admin/transformations/test-id                                          [63/212] GET /api/admin/transformations                                          [64/212] GET /api/admin/users/test-id/activity                                          [65/212] GET /api/analytics/stats                                          [66/212] GET /api/appointments/test-id                                          [67/212] GET /api/appointments/available-slots                                          [68/212] GET /api/appointments/provider-availability                                          [69/212] GET /api/appointments                                          [70/212] GET /api/auth/google-calendar/callback                                          [71/212] GET /api/auth/google-calendar                                          [72/212] GET /api/client-meal-plans/test-id/freeze                                          [73/212] GET /api/client-meal-plans/test-id                                          [74/212] GET /api/client-meal-plans                                          [75/212] GET /api/client-purchases/check                                          [76/212] GET /api/client-purchases                                          [77/212] GET /api/client/activity                                          [78/212] GET /api/client/appointments                                          [79/212] GET /api/client/billing                                          [80/212] GET /api/client/blogs/test-id                                          [81/212] GET /api/client/blogs                                          [82/212] GET /api/client/bmi                                          [83/212] GET /api/client/dashboard-summary                                          [84/212] GET /api/client/dietary-recall                                          [85/212] GET /api/client/hydration                                          [86/212] GET /api/client/lifestyle-info                                          [87/212] GET /api/client/meal-plan                                          [88/212] GET /api/client/medical-info                                          [89/212] DELETE /api/client/messages/test-id                                          [90/212] GET /api/client/messages/conversations                                          [91/212] GET /api/client/messages                                          [92/212] GET /api/client/messages/unread-count                                          [93/212] GET /api/client/notifications                                          [94/212] GET /api/client/notifications/unread-count                                          [95/212] GET /api/client/onboarding                                          [96/212] GET /api/client/payment-receipt                                          [97/212] GET /api/client/profile                                          [98/212] GET /api/client/progress                                          [99/212] GET /api/client/service-plans                                          [100/212] GET /api/client/service-plans/verify-link                                          [101/212] GET /api/client/settings                                          [102/212] GET /api/client/sleep                                          [103/212] GET /api/client/steps                                          [104/212] GET /api/client/subscriptions                                          [105/212] GET /api/client/tasks                                          [106/212] GET /api/client/transformations                                          [107/212] GET /api/client/unread-counts/refresh                                          [108/212] GET /api/clients/test-id/assign                                          [109/212] GET /api/clients/test-id/phase-history                                          [110/212] GET /api/clients/test-id/tasks/test-task                                          [111/212] GET /api/clients/test-id/tasks                                          [112/212] GET /api/clients/woocommerce                                          [113/212] GET /api/dashboard/admin-stats                                          [114/212] GET /api/dashboard/client-stats                                          [115/212] GET /api/dashboard/dietitian-stats                                          [116/212] GET /api/dashboard/health-counselor-stats                                          [117/212] GET /api/dashboard/pending-plans                                          [118/212] GET /api/debug/check-dietitian                                          [119/212] GET /api/diet-templates/test-id                                          [120/212] GET /api/diet-templates                                          [121/212] GET /api/dietitian-panel/clients/test-id/dietary-recall                                          [122/212] GET /api/dietitian-panel/clients/test-id/documents                                          [123/212] GET /api/dietitian-panel/clients/test-id/lifestyle-info                                          [124/212] GET /api/dietitian-panel/clients/test-id/medical-info                                          [125/212] GET /api/dietitian-panel/clients/test-id/profile                                          [126/212] GET /api/drafts                                          [127/212] GET /api/duration-presets                                          [128/212] GET /api/ecommerce/blogs                                          [129/212] GET /api/ecommerce/plans                                          [130/212] GET /api/ecommerce/ratings                                          [131/212] GET /api/ecommerce/transformations                                          [132/212] GET /api/files/test-id                                          [133/212] GET /api/firebase-config                                          [134/212] GET /api/fitness                                          [135/212] GET /api/food-logs                                          [136/212] GET /api/health                                          [137/212] GET /api/invoices/test-id                                          [138/212] GET /api/journal/activity                                          [139/212] GET /api/journal/bca                                          [140/212] GET /api/journal/compliance                                          [141/212] GET /api/journal/meals                                          [142/212] GET /api/journal/measurements                                          [143/212] GET /api/journal/progress                                          [144/212] GET /api/journal                                          [145/212] GET /api/journal/sleep                                          [146/212] GET /api/journal/steps                                          [147/212] GET /api/journal/water                                          [148/212] GET /api/leads                                          [149/212] GET /api/meal-plan-templates/test-id                                          [150/212] GET /api/meal-plan-templates                                          [151/212] GET /api/meals/test-id                                          [152/212] GET /api/meals                                          [153/212] GET /api/messages/test-id                                          [154/212] GET /api/messages/conversations                                          [155/212] GET /api/messages/groups/test-id/messages                                          [156/212] GET /api/messages/groups/test-id                                          [157/212] GET /api/messages/groups                                          [158/212] GET /api/messages                                          [159/212] GET /api/other-platform-payments/test-id                                          [160/212] GET /api/other-platform-payments                                          [161/212] GET /api/payment-links/public/test-id                                          [162/212] GET /api/payment-links                                          [163/212] GET /api/payments                                          [164/212] GET /api/progress/photos                                          [165/212] GET /api/progress                                          [166/212] GET /api/realtime/status                                          [167/212] GET /api/receipts/test-id                                          [168/212] GET /api/recipes/test-id                                          [169/212] GET /api/recipes                                          [170/212] GET /api/reports/test-id                                          [171/212] GET /api/sentry-example-api                                          [172/212] GET /api/service-plans/test-id                                          [173/212] GET /api/service-plans                                          [174/212] GET /api/staff/unread-counts/refresh                                          [175/212] GET /api/subscription-plans                                          [176/212] GET /api/subscriptions/test-id                                          [177/212] GET /api/subscriptions                                          [178/212] GET /api/system-alerts/test-id                                          [179/212] GET /api/system-alerts                                          [180/212] GET /api/tags/test-id                                          [181/212] GET /api/tags                                          [182/212] GET /api/tracking/sleep                                          [183/212] GET /api/tracking/steps                                          [184/212] GET /api/tracking/water                                          [185/212] GET /api/tracking/weight                                          [186/212] GET /api/users/test-id/documents                                          [187/212] GET /api/users/test-id/history                                          [188/212] GET /api/users/test-id/lifestyle                                          [189/212] GET /api/users/test-id/medical                                          [190/212] GET /api/users/test-id/notes/test-note                                          [191/212] GET /api/users/test-id/notes                                          [192/212] GET /api/users/test-id/recall/test-recall                                          [193/212] GET /api/users/test-id/recall                                          [194/212] GET /api/users/test-id                                          [195/212] GET /api/users/test-id/tasks/test-task                                          [196/212] GET /api/users/test-id/tasks                                          [197/212] GET /api/users/available-for-chat                                          [198/212] GET /api/users/available                                          [199/212] GET /api/users/clients                                          [200/212] GET /api/users/dietitian/availability                                          [201/212] GET /api/users/dietitian                                          [202/212] GET /api/users/dietitians                                          [203/212] GET /api/users/health-counselors                                          [204/212] GET /api/users                                          [205/212] GET /api/watch/data                                          [206/212] GET /api/watch/flashlight                                          [207/212] GET /api/watch/oauth/callback                                          [208/212] GET /api/watch/settings                                          [209/212] GET /api/wati-contacts                                          [210/212] GET /api/webhooks/endpoints                                          [211/212] GET /api/woocommerce/from-db                                          [212/212] GET /api/woocommerce/orders                                                                                                                                            -------------------------------------------------------------------------------------------------------------------------
+| Method  | API Path                                                     |  Status |   Avg (ms) |   Min (ms) |   Max (ms) |
+-------------------------------------------------------------------------------------------------------------------------
+| GET     | /api/appointments/test-id                                    |     401 |     3196.2 |     3196.2 |     3196.2 |
+| GET     | /api/admin/blogs/test-id                                     |     401 |     1316.3 |     1316.3 |     1316.3 |
+| GET     | /api/admin/clients/test-id/measurements                      |     401 |     1268.6 |     1268.6 |     1268.6 |
+| GET     | /api/admin/transformations/test-id                           |     401 |      972.8 |      972.8 |      972.8 |
+| GET     | /api/dietitian-panel/clients/test-id/documents               |     401 |      850.0 |      850.0 |      850.0 |
+| GET     | /api/users/test-id/medical                                   |     401 |      830.1 |      830.1 |      830.1 |
+| GET     | /api/clients/test-id/assign                                  |     401 |      809.8 |      809.8 |      809.8 |
+| GET     | /api/users/test-id                                           |     401 |      772.2 |      772.2 |      772.2 |
+| GET     | /api/users/test-id/lifestyle                                 |     401 |      764.3 |      764.3 |      764.3 |
+| GET     | /api/dietitian-panel/clients/test-id/dietary-recall          |     401 |      759.4 |      759.4 |      759.4 |
+| GET     | /api/meal-plan-templates/test-id                             |     400 |      741.2 |      741.2 |      741.2 |
+| GET     | /api/invoices/test-id                                        |     401 |      736.9 |      736.9 |      736.9 |
+| GET     | /api/client/blogs/test-id                                    |     404 |      736.1 |      736.1 |      736.1 |
+| GET     | /api/clients/test-id/phase-history                           |     401 |      733.2 |      733.2 |      733.2 |
+| GET     | /api/admin/clients/test-id/assign                            |     405 |      709.5 |      709.5 |      709.5 |
+| DELETE  | /api/client/messages/test-id                                 |     401 |      706.3 |      706.3 |      706.3 |
+| GET     | /api/admin/clients/test-id/assign-activities                 |     401 |      704.8 |      704.8 |      704.8 |
+| GET     | /api/users/test-id/notes                                     |     401 |      702.4 |      702.4 |      702.4 |
+| GET     | /api/users/test-id/notes/test-note                           |     405 |      700.8 |      700.8 |      700.8 |
+| GET     | /api/client-meal-plans/test-id                               |     401 |      697.9 |      697.9 |      697.9 |
+| GET     | /api/payment-links/public/test-id                            |     404 |      696.6 |      696.6 |      696.6 |
+| GET     | /api/dietitian-panel/clients/test-id/profile                 |     401 |      687.3 |      687.3 |      687.3 |
+| GET     | /api/files/test-id                                           |     400 |      687.3 |      687.3 |      687.3 |
+| GET     | /api/users/test-id/history                                   |     401 |      685.3 |      685.3 |      685.3 |
+| GET     | /api/admin/clients/test-id/assign-water                      |     401 |      683.2 |      683.2 |      683.2 |
+| GET     | /api/client-meal-plans/test-id/freeze                        |     401 |      681.5 |      681.5 |      681.5 |
+| GET     | /api/system-alerts/test-id                                   |     403 |      680.9 |      680.9 |      680.9 |
+| GET     | /api/meals/test-id                                           |     401 |      678.9 |      678.9 |      678.9 |
+| GET     | /api/diet-templates/test-id                                  |     400 |      678.6 |      678.6 |      678.6 |
+| GET     | /api/messages/test-id                                        |     405 |      677.7 |      677.7 |      677.7 |
+| GET     | /api/users/test-id/tasks                                     |     401 |      675.5 |      675.5 |      675.5 |
+| GET     | /api/receipts/test-id                                        |     401 |      675.0 |      675.0 |      675.0 |
+| GET     | /api/reports/test-id                                         |     400 |      674.8 |      674.8 |      674.8 |
+| GET     | /api/dietitian-panel/clients/test-id/lifestyle-info          |     401 |      671.7 |      671.7 |      671.7 |
+| GET     | /api/service-plans/test-id                                   |     400 |      671.4 |      671.4 |      671.4 |
+| GET     | /api/users/test-id/recall                                    |     401 |      670.8 |      670.8 |      670.8 |
+| GET     | /api/other-platform-payments/test-id                         |     401 |      670.8 |      670.8 |      670.8 |
+| GET     | /api/users/test-id/documents                                 |     401 |      669.3 |      669.3 |      669.3 |
+| GET     | /api/tags/test-id                                            |     401 |      668.9 |      668.9 |      668.9 |
+| GET     | /api/users/test-id/tasks/test-task                           |     401 |      666.5 |      666.5 |      666.5 |
+| GET     | /api/recipes/test-id                                         |     401 |      663.2 |      663.2 |      663.2 |
+| GET     | /api/clients/test-id/tasks                                   |     401 |      662.7 |      662.7 |      662.7 |
+| GET     | /api/subscriptions/test-id                                   |     401 |      661.7 |      661.7 |      661.7 |
+| GET     | /api/users/test-id/recall/test-recall                        |     405 |      661.1 |      661.1 |      661.1 |
+| GET     | /api/admin/clients/test-id                                   |     401 |      658.5 |      658.5 |      658.5 |
+| GET     | /api/admin/clients/test-id/assign-steps                      |     401 |      654.8 |      654.8 |      654.8 |
+| GET     | /api/admin/dietitians/test-id                                |     401 |      651.6 |      651.6 |      651.6 |
+| GET     | /api/admin/clients/test-id/profile                           |     401 |      645.0 |      645.0 |      645.0 |
+| GET     | /api/admin/leads/test-id                                     |     401 |      644.4 |      644.4 |      644.4 |
+| GET     | /api/admin/ecommerce/transformations/test-id                 |     401 |      644.0 |      644.0 |      644.0 |
+| GET     | /api/admin/clients/test-id/lifestyle-info                    |     401 |      642.5 |      642.5 |      642.5 |
+| GET     | /api/dietitian-panel/clients/test-id/medical-info            |     401 |      641.9 |      641.9 |      641.9 |
+| GET     | /api/admin/ecommerce/payments/test-id                        |     401 |      640.1 |      640.1 |      640.1 |
+| GET     | /api/admin/clients/test-id/dietary-recall                    |     401 |      639.7 |      639.7 |      639.7 |
+| GET     | /api/admin/ecommerce/ratings/test-id                         |     401 |      639.1 |      639.1 |      639.1 |
+| GET     | /api/admin/users/test-id/activity                            |     403 |      638.8 |      638.8 |      638.8 |
+| GET     | /api/admin/ecommerce/orders/test-id                          |     401 |      638.6 |      638.6 |      638.6 |
+| GET     | /api/admin/clients/test-id/documents                         |     405 |      638.5 |      638.5 |      638.5 |
+| GET     | /api/admin/ecommerce/blogs/test-id                           |     401 |      638.2 |      638.2 |      638.2 |
+| GET     | /api/admin/clients/test-id/medical-info                      |     401 |      636.7 |      636.7 |      636.7 |
+| GET     | /api/admin/clients/test-id/assign-sleep                      |     401 |      635.8 |      635.8 |      635.8 |
+| GET     | /api/admin/tags/test-id                                      |     403 |      635.7 |      635.7 |      635.7 |
+| GET     | /api/clients/test-id/tasks/test-task                         |     401 |      635.6 |      635.6 |      635.6 |
+| GET     | /api/admin/health-counselors/test-id                         |     401 |      617.5 |      617.5 |      617.5 |
+| GET     | /api/admin/ecommerce/plans/test-id                           |     401 |      614.8 |      614.8 |      614.8 |
+| GET     | /api/admin/data/export                                       |     401 |      604.8 |      604.8 |      604.8 |
+| GET     | /api/admin/goal-categories/test-id                           |     400 |      602.1 |      602.1 |      602.1 |
+| GET     | /api/payment-links                                           |     401 |      495.5 |      495.5 |      495.5 |
+| GET     | /api/payments                                                |     401 |      484.4 |      484.4 |      484.4 |
+| GET     | /api/messages/groups/test-id                                 |     403 |      477.6 |      477.6 |      477.6 |
+| GET     | /api/activity-assignments                                    |     401 |      470.1 |      470.1 |      470.1 |
+| GET     | /api/messages/groups/test-id/messages                        |     403 |      458.0 |      458.0 |      458.0 |
+| GET     | /api/client-purchases/check                                  |     401 |      450.6 |      450.6 |      450.6 |
+| GET     | /api/admin/permissions/check                                 |     401 |      388.3 |      388.3 |      388.3 |
+| GET     | /api/progress                                                |     401 |      373.3 |      373.3 |      373.3 |
+| GET     | /api/admin/appointment-config                                |     401 |      270.0 |      270.0 |      270.0 |
+| GET     | /api/diet-templates                                          |     200 |      252.8 |      252.8 |      252.8 |
+| GET     | /api/journal/sleep                                           |     401 |      232.8 |      232.8 |      232.8 |
+| GET     | /api/meal-plan-templates                                     |     200 |      231.4 |      231.4 |      231.4 |
+| GET     | /api/tags                                                    |     401 |      215.6 |      215.6 |      215.6 |
+| GET     | /api/progress/photos                                         |     401 |      194.3 |      194.3 |      194.3 |
+| GET     | /api/admin/top-dietitians                                    |     401 |      193.8 |      193.8 |      193.8 |
+| GET     | /api/appointments                                            |     401 |      178.2 |      178.2 |      178.2 |
+| GET     | /api/service-plans                                           |     200 |      175.8 |      175.8 |      175.8 |
+| GET     | /api/staff/unread-counts/refresh                             |     405 |      175.1 |      175.1 |      175.1 |
+| GET     | /api/wati-contacts                                           |     200 |      161.0 |      161.0 |      161.0 |
+| GET     | /api/woocommerce/orders                                      |     401 |      158.9 |      158.9 |      158.9 |
+| GET     | /api/client/blogs                                            |     200 |      154.4 |      154.4 |      154.4 |
+| GET     | /api/woocommerce/from-db                                     |     401 |      148.3 |      148.3 |      148.3 |
+| GET     | /api/recipes                                                 |     401 |      142.7 |      142.7 |      142.7 |
+| GET     | /api/admin/tags                                              |     403 |      136.3 |      136.3 |      136.3 |
+| GET     | /api/appointments/available-slots                            |     401 |      133.7 |      133.7 |      133.7 |
+| GET     | /api/auth/google-calendar/callback                           |     307 |      129.9 |      129.9 |      129.9 |
+| GET     | /api/messages                                                |     401 |      128.6 |      128.6 |      128.6 |
+| GET     | /api/messages/conversations                                  |     401 |      119.8 |      119.8 |      119.8 |
+| GET     | /api/other-platform-payments                                 |     401 |      117.6 |      117.6 |      117.6 |
+| GET     | /api/subscription-plans                                      |     200 |      111.0 |      111.0 |      111.0 |
+| GET     | /api/auth/google-calendar                                    |     405 |      109.5 |      109.5 |      109.5 |
+| GET     | /api/client-meal-plans                                       |     401 |      107.0 |      107.0 |      107.0 |
+| GET     | /api/clients/woocommerce                                     |     401 |      106.6 |      106.6 |      106.6 |
+| GET     | /api/admin/goal-categories                                   |     200 |      104.6 |      104.6 |      104.6 |
+| GET     | /api/admin/import/models                                     |     401 |      104.4 |      104.4 |      104.4 |
+| GET     | /api/dashboard/admin-stats                                   |     401 |      103.3 |      103.3 |      103.3 |
+| GET     | /api/client-purchases                                        |     401 |      102.0 |      102.0 |      102.0 |
+| GET     | /api/activity-logs                                           |     401 |      100.3 |      100.3 |      100.3 |
+| GET     | /api/journal/activity                                        |     401 |       99.1 |       99.1 |       99.1 |
+| GET     | /api/users/clients                                           |     401 |       98.6 |       98.6 |       98.6 |
+| GET     | /api/client/billing                                          |     401 |       98.0 |       98.0 |       98.0 |
+| GET     | /api/journal/water                                           |     401 |       97.7 |       97.7 |       97.7 |
+| GET     | /api/realtime/status                                         |     401 |       96.0 |       96.0 |       96.0 |
+| GET     | /api/client/transformations                                  |     200 |       94.1 |       94.1 |       94.1 |
+| GET     | /api/users                                                   |     401 |       93.3 |       93.3 |       93.3 |
+| GET     | /api/admin/dietitians                                        |     401 |       91.1 |       91.1 |       91.1 |
+| GET     | /api/system-alerts                                           |     401 |       90.7 |       90.7 |       90.7 |
+| GET     | /api/duration-presets                                        |     200 |       89.6 |       89.6 |       89.6 |
+| GET     | /api/client/hydration                                        |     401 |       89.4 |       89.4 |       89.4 |
+| GET     | /api/dashboard/dietitian-stats                               |     401 |       88.2 |       88.2 |       88.2 |
+| GET     | /api/users/dietitians                                        |     401 |       86.6 |       86.6 |       86.6 |
+| GET     | /api/admin/audit-logs                                        |     401 |       85.0 |       85.0 |       85.0 |
+| GET     | /api/tracking/sleep                                          |     401 |       84.2 |       84.2 |       84.2 |
+| GET     | /api/client/notifications/unread-count                       |     401 |       83.9 |       83.9 |       83.9 |
+| GET     | /api/ecommerce/blogs                                         |     200 |       83.7 |       83.7 |       83.7 |
+| GET     | /api/watch/settings                                          |     401 |       83.6 |       83.6 |       83.6 |
+| GET     | /api/watch/data                                              |     401 |       83.1 |       83.1 |       83.1 |
+| GET     | /api/client/appointments                                     |     401 |       82.1 |       82.1 |       82.1 |
+| GET     | /api/webhooks/endpoints                                      |     401 |       81.9 |       81.9 |       81.9 |
+| GET     | /api/admin/health-counselors                                 |     401 |       80.8 |       80.8 |       80.8 |
+| GET     | /api/ecommerce/transformations                               |     200 |       80.6 |       80.6 |       80.6 |
+| GET     | /api/client/dietary-recall                                   |     401 |       80.6 |       80.6 |       80.6 |
+| GET     | /api/leads                                                   |     405 |       80.5 |       80.5 |       80.5 |
+| GET     | /api/client/messages                                         |     401 |       80.2 |       80.2 |       80.2 |
+| GET     | /api/journal/progress                                        |     401 |       79.9 |       79.9 |       79.9 |
+| GET     | /api/ecommerce/ratings                                       |     200 |       79.6 |       79.6 |       79.6 |
+| GET     | /api/appointments/provider-availability                      |     401 |       77.9 |       77.9 |       77.9 |
+| GET     | /api/subscriptions                                           |     401 |       76.9 |       76.9 |       76.9 |
+| GET     | /api/admin/recent-activity                                   |     401 |       76.5 |       76.5 |       76.5 |
+| GET     | /api/users/dietitian/availability                            |     401 |       76.5 |       76.5 |       76.5 |
+| GET     | /api/client/activity                                         |     401 |       75.9 |       75.9 |       75.9 |
+| GET     | /api/dashboard/pending-plans                                 |     401 |       75.9 |       75.9 |       75.9 |
+| GET     | /api/ecommerce/plans                                         |     200 |       75.0 |       75.0 |       75.0 |
+| GET     | /api/journal/steps                                           |     401 |       73.5 |       73.5 |       73.5 |
+| GET     | /api/client/messages/unread-count                            |     401 |       73.3 |       73.3 |       73.3 |
+| GET     | /api/watch/flashlight                                        |     401 |       72.3 |       72.3 |       72.3 |
+| GET     | /api/fitness                                                 |     401 |       72.3 |       72.3 |       72.3 |
+| GET     | /api/admin/audit-logs/smart-people                           |     401 |       72.0 |       72.0 |       72.0 |
+| GET     | /api/client/notifications                                    |     401 |       72.0 |       72.0 |       72.0 |
+| GET     | /api/users/available-for-chat                                |     401 |       71.7 |       71.7 |       71.7 |
+| GET     | /api/food-logs                                               |     401 |       71.5 |       71.5 |       71.5 |
+| GET     | /api/admin/clients                                           |     401 |       71.4 |       71.4 |       71.4 |
+| GET     | /api/admin/system-alerts                                     |     401 |       71.0 |       71.0 |       71.0 |
+| GET     | /api/tracking/steps                                          |     401 |       70.9 |       70.9 |       70.9 |
+| GET     | /api/admin/blogs                                             |     401 |       70.4 |       70.4 |       70.4 |
+| GET     | /api/client/meal-plan                                        |     401 |       69.6 |       69.6 |       69.6 |
+| GET     | /api/client/dashboard-summary                                |     401 |       69.5 |       69.5 |       69.5 |
+| GET     | /api/meals                                                   |     401 |       68.9 |       68.9 |       68.9 |
+| GET     | /api/dashboard/client-stats                                  |     401 |       67.5 |       67.5 |       67.5 |
+| GET     | /api/admin/import/export                                     |     401 |       67.4 |       67.4 |       67.4 |
+| GET     | /api/users/dietitian                                         |     401 |       66.9 |       66.9 |       66.9 |
+| GET     | /api/client/service-plans                                    |     401 |       66.8 |       66.8 |       66.8 |
+| GET     | /api/client/lifestyle-info                                   |     401 |       66.2 |       66.2 |       66.2 |
+| GET     | /api/admin/data/records                                      |     401 |       66.1 |       66.1 |       66.1 |
+| GET     | /api/users/available                                         |     401 |       65.9 |       65.9 |       65.9 |
+| GET     | /api/dashboard/health-counselor-stats                        |     401 |       65.9 |       65.9 |       65.9 |
+| GET     | /api/admin/import/session                                    |     401 |       65.6 |       65.6 |       65.6 |
+| GET     | /api/client/bmi                                              |     401 |       64.8 |       64.8 |       64.8 |
+| GET     | /api/client/profile                                          |     401 |       64.7 |       64.7 |       64.7 |
+| GET     | /api/client/onboarding                                       |     401 |       64.2 |       64.2 |       64.2 |
+| GET     | /api/client/service-plans/verify-link                        |     405 |       64.0 |       64.0 |       64.0 |
+| GET     | /api/client/messages/conversations                           |     401 |       63.7 |       63.7 |       63.7 |
+| GET     | /api/tracking/weight                                         |     401 |       63.7 |       63.7 |       63.7 |
+| GET     | /api/journal/measurements                                    |     401 |       63.5 |       63.5 |       63.5 |
+| GET     | /api/tracking/water                                          |     401 |       63.5 |       63.5 |       63.5 |
+| GET     | /api/journal/bca                                             |     401 |       63.3 |       63.3 |       63.3 |
+| GET     | /api/users/health-counselors                                 |     401 |       63.0 |       63.0 |       63.0 |
+| GET     | /api/client/progress                                         |     401 |       63.0 |       63.0 |       63.0 |
+| GET     | /api/watch/oauth/callback                                    |     307 |       62.5 |       62.5 |       62.5 |
+| GET     | /api/client/subscriptions                                    |     401 |       62.5 |       62.5 |       62.5 |
+| GET     | /api/client/unread-counts/refresh                            |     405 |       62.4 |       62.4 |       62.4 |
+| GET     | /api/journal/compliance                                      |     401 |       61.3 |       61.3 |       61.3 |
+| GET     | /api/drafts                                                  |     401 |       60.4 |       60.4 |       60.4 |
+| GET     | /api/journal/meals                                           |     401 |       60.3 |       60.3 |       60.3 |
+| GET     | /api/client/tasks                                            |     401 |       60.1 |       60.1 |       60.1 |
+| GET     | /api/client/medical-info                                     |     401 |       59.1 |       59.1 |       59.1 |
+| GET     | /api/journal                                                 |     401 |       59.1 |       59.1 |       59.1 |
+| GET     | /api/admin/duration-presets                                  |     401 |       57.9 |       57.9 |       57.9 |
+| GET     | /api/admin/subscription-plans                                |     401 |       57.7 |       57.7 |       57.7 |
+| GET     | /api/client/steps                                            |     401 |       57.6 |       57.6 |       57.6 |
+| GET     | /api/analytics/stats                                         |     401 |       57.2 |       57.2 |       57.2 |
+| GET     | /api/client/payment-receipt                                  |     401 |       56.6 |       56.6 |       56.6 |
+| GET     | /api/client/sleep                                            |     401 |       56.0 |       56.0 |       56.0 |
+| GET     | /api/admin/transformations                                   |     401 |       54.9 |       54.9 |       54.9 |
+| GET     | /api/admin/service-plans                                     |     401 |       54.6 |       54.6 |       54.6 |
+| GET     | /api/admin/leads                                             |     401 |       53.9 |       53.9 |       53.9 |
+| GET     | /api/admin/payments/sync-status                              |     405 |       53.4 |       53.4 |       53.4 |
+| GET     | /api/admin/ecommerce/orders                                  |     401 |       53.3 |       53.3 |       53.3 |
+| GET     | /api/admin/ecommerce/plans                                   |     401 |       52.5 |       52.5 |       52.5 |
+| GET     | /api/admin/permissions                                       |     401 |       52.2 |       52.2 |       52.2 |
+| GET     | /api/admin/notifications/metrics                             |     401 |       51.8 |       51.8 |       51.8 |
+| GET     | /api/client/settings                                         |     401 |       51.7 |       51.7 |       51.7 |
+| GET     | /api/admin/payments                                          |     401 |       51.3 |       51.3 |       51.3 |
+| GET     | /api/admin/ecommerce/blogs                                   |     401 |       50.6 |       50.6 |       50.6 |
+| GET     | /api/admin/ecommerce/payments                                |     401 |       50.0 |       50.0 |       50.0 |
+| GET     | /api/admin/ecommerce/ratings                                 |     401 |       49.9 |       49.9 |       49.9 |
+| GET     | /api/admin/ecommerce/transformations                         |     401 |       48.0 |       48.0 |       48.0 |
+| GET     | /api/admin/ecommerce/orders/sync                             |     405 |       46.9 |       46.9 |       46.9 |
+| GET     | /api/admin/ecommerce/payments/sync                           |     405 |       46.2 |       46.2 |       46.2 |
+| GET     | /api/health                                                  |     200 |       43.3 |       43.3 |       43.3 |
+| GET     | /api/messages/groups                                         |     403 |       40.7 |       40.7 |       40.7 |
+| GET     | /api/sentry-example-api                                      |     410 |       37.6 |       37.6 |       37.6 |
+| GET     | /api/firebase-config                                         |     200 |       33.1 |       33.1 |       33.1 |
+| GET     | /api/debug/check-dietitian                                   |     410 |       28.1 |       28.1 |       28.1 |
+| GET     | /api/admin/migrate-client-status                             |     405 |       27.9 |       27.9 |       27.9 |
+-------------------------------------------------------------------------------------------------------------------------
+
+📊 Summary:
+   Total endpoints tested: 212
+   Global avg: 306.7 ms
+   Global min: 27.9 ms
+   Global max: 3196.2 ms
+   Slowest: GET /api/appointments/test-id (avg 3196.2 ms)
+   Fastest: GET /api/admin/migrate-client-status (avg 27.9 ms)
+
+📋 Status code breakdown:
+   200: 15 endpoints
+   307: 2 endpoints
+   400: 6 endpoints
+   401: 164 endpoints
+   403: 7 endpoints
+   404: 2 endpoints
+   405: 14 endpoints
+   410: 2 endpoints
+

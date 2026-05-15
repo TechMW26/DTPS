@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/db/connect';
 import OtherPlatformPayment from '@/lib/db/models/OtherPlatformPayment';
-import PaymentLink from '@/lib/db/models/PaymentLink';
 import { UserRole } from '@/types';
 import User from '@/lib/db/models/User';
 import { getImageKit } from '@/lib/imagekit';
@@ -14,12 +13,14 @@ import { socketManager } from '@/lib/realtime/socket-manager';
 // GET - List other platform payments
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const sessionPromise = getServerSession(authOptions);
+    const dbPromise = dbConnect();
+    const session = await sessionPromise;
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await dbConnect();
+    await dbPromise;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -43,14 +44,16 @@ export async function GET(request: NextRequest) {
       filter.status = status;
     }
 
+    const cacheScope = `${session.user.role}:${session.user.id || 'unknown'}`;
     const payments = await withCache(
-      `other-platform-payments:${JSON.stringify(filter)}`,
+      `other-platform-payments:${cacheScope}:${JSON.stringify(filter)}`,
       async () => await OtherPlatformPayment.find(filter)
-      .populate('client', 'firstName lastName email phone profilePicture')
-      .populate('dietitian', 'firstName lastName email phone')
-      .populate('paymentLink', 'planName planCategory durationDays amount finalAmount')
-      .populate('reviewedBy', 'firstName lastName email')
-      .sort({ createdAt: -1 }),
+        .populate('client', 'firstName lastName email phone profilePicture')
+        .populate('dietitian', 'firstName lastName email phone')
+        .populate('paymentLink', 'planName planCategory durationDays amount finalAmount')
+        .populate('reviewedBy', 'firstName lastName email')
+        .sort({ createdAt: -1 })
+        .lean(),
       { ttl: 120000, tags: ['other_platform_payments'] }
     );
 
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest) {
     await dbConnect();
 
     const formData = await request.formData();
-    
+
     const clientId = formData.get('clientId') as string;
     const platform = formData.get('platform') as string;
     const customPlatform = formData.get('customPlatform') as string;
@@ -165,8 +168,8 @@ export async function POST(request: NextRequest) {
     const populatedPayment = await withCache(
       `other-platform-payments:${JSON.stringify(otherPlatformPayment._id)}`,
       async () => await OtherPlatformPayment.findById(otherPlatformPayment._id)
-      .populate('client', 'firstName lastName email phone')
-      .populate('paymentLink', 'planName planCategory durationDays amount finalAmount'),
+        .populate('client', 'firstName lastName email phone')
+        .populate('paymentLink', 'planName planCategory durationDays amount finalAmount'),
       { ttl: 120000, tags: ['other_platform_payments'] }
     );
 
@@ -186,8 +189,8 @@ export async function POST(request: NextRequest) {
       console.warn('Failed to emit SSE other_platform_payment_updated (create):', e);
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       payment: populatedPayment,
       message: 'Payment submitted for admin approval'
     });

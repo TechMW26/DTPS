@@ -5,17 +5,29 @@ import connectDB from '@/lib/db/connection';
 import ProgressEntry from '@/lib/db/models/ProgressEntry';
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { withCache } from '@/lib/api/utils';
+import { type FilterQuery, Types } from 'mongoose';
+
+type ProgressQuery = {
+  user?: string;
+  recordedAt?: {
+    $gte: Date;
+    $lte: Date;
+  };
+  type?: string;
+};
 
 // GET /api/progress - Get progress entries
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const sessionPromise = getServerSession(authOptions);
+    const dbPromise = connectDB();
+    const session = await sessionPromise;
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
+    await dbPromise;
 
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId');
@@ -26,22 +38,31 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
 
     // Build query based on user role
-    let query: any = {};
-    
+    const query: FilterQuery<ProgressQuery> = {};
+
+    if (clientId && !Types.ObjectId.isValid(clientId)) {
+      return NextResponse.json(
+        { error: 'Invalid client ID' },
+        { status: 400 }
+      );
+    }
+
     if (session.user.role === UserRole.CLIENT) {
       query.user = session.user.id;
     } else if (session.user.role === UserRole.DIETITIAN) {
       if (clientId) {
         // Verify the dietitian is assigned to this client
         const client = await withCache(
-      `progress:${JSON.stringify(clientId)}`,
-      async () => await User.findById(clientId).select('assignedDietitian assignedDietitians'),
-      { ttl: 120000, tags: ['progress'] }
-    );
-        const isAssigned = 
+          `progress:client-assignment:${clientId}`,
+          async () => await User.findById(clientId)
+            .select('assignedDietitian assignedDietitians')
+            .lean(),
+          { ttl: 120000, tags: ['progress'] }
+        );
+        const isAssigned =
           client?.assignedDietitian?.toString() === session.user.id ||
-          client?.assignedDietitians?.some((d: any) => d.toString() === session.user.id);
-        
+          client?.assignedDietitians?.some((d) => String(d) === session.user.id);
+
         if (!isAssigned) {
           return NextResponse.json(
             { error: 'You are not assigned to this client' },
@@ -75,42 +96,59 @@ export async function GET(request: NextRequest) {
       query.type = type;
     }
 
-    const progressEntries = await withCache(
-      `progress:${JSON.stringify(query)}:page=${page}:limit=${limit}`,
-      async () => await ProgressEntry.find(query)
-      .populate('user', 'firstName lastName')
-      .sort({ recordedAt: -1 })
-      .limit(limit)
-      .skip((page - 1) * limit),
-      { ttl: 120000, tags: ['progress'] }
-    );
+    const skip = (page - 1) * limit;
+    const cacheScope = `${session.user.role}:${session.user.id || 'unknown'}`;
 
-    const total = await ProgressEntry.countDocuments(query);
+    const [progressEntries, total, latestEntries] = await Promise.all([
+      withCache(
+        `progress:entries:${cacheScope}:${JSON.stringify(query)}:page=${page}:limit=${limit}`,
+        async () => await ProgressEntry.find(query)
+          .populate('user', 'firstName lastName')
+          .sort({ recordedAt: -1 })
+          .limit(limit)
+          .skip(skip)
+          .lean(),
+        { ttl: 120000, tags: ['progress'] }
+      ),
+      withCache(
+        `progress:count:${cacheScope}:${JSON.stringify(query)}`,
+        async () => await ProgressEntry.countDocuments(query),
+        { ttl: 120000, tags: ['progress'] }
+      ),
+      withCache(
+        `progress:latest:${cacheScope}:${JSON.stringify(query)}`,
+        async () => {
+          if (type) {
+            const latest = await ProgressEntry.findOne(query)
+              .sort({ recordedAt: -1 })
+              .lean();
 
-    // Get latest entry for each type for summary
-    const latestEntries = await withCache(
-      `progress:${JSON.stringify([
-      { $match: query },
-      { $sort: { recordedAt: -1 } },
-      {
-        $group: {
-          _id: '$type',
-          latestEntry: { $first: '$$ROOT' }
-        }
-      }
-    ])}`,
-      async () => await ProgressEntry.aggregate([
-      { $match: query },
-      { $sort: { recordedAt: -1 } },
-      {
-        $group: {
-          _id: '$type',
-          latestEntry: { $first: '$$ROOT' }
-        }
-      }
-    ]),
-      { ttl: 120000, tags: ['progress'] }
-    );
+            if (!latest) {
+              return [];
+            }
+
+            return [
+              {
+                _id: String(type),
+                latestEntry: latest,
+              },
+            ];
+          }
+
+          return ProgressEntry.aggregate([
+            { $match: query },
+            { $sort: { recordedAt: -1 } },
+            {
+              $group: {
+                _id: '$type',
+                latestEntry: { $first: '$$ROOT' }
+              }
+            }
+          ]);
+        },
+        { ttl: 120000, tags: ['progress'] }
+      )
+    ]);
 
     return NextResponse.json({
       progressEntries,

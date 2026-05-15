@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/db/connect';
-import DietTemplate from '@/lib/db/models/DietTemplate';
+import DietTemplate, { type IDietTemplate } from '@/lib/db/models/DietTemplate';
 import { UserRole } from '@/types';
 import { z } from 'zod';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { type FilterQuery, type SortOrder } from 'mongoose';
 import {
   MEAL_TYPES,
-  MEAL_TYPE_KEYS,
-  type MealTypeKey
+  MEAL_TYPE_KEYS
 } from '@/lib/mealConfig';
 
 // Get default meal types from canonical config
@@ -82,9 +82,11 @@ export async function GET(request: NextRequest) {
     // Avoid session lookup cost for anonymous/public requests.
     const hasAuthCookie = request.headers.get('cookie')?.includes('next-auth.session-token') ||
       request.headers.get('cookie')?.includes('__Secure-next-auth.session-token');
-    const session = hasAuthCookie ? await getServerSession(authOptions) : null;
+    const sessionPromise = hasAuthCookie ? getServerSession(authOptions) : Promise.resolve(null);
+    const dbPromise = connectDB();
+    const session = await sessionPromise;
 
-    await connectDB();
+    await dbPromise;
 
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
@@ -104,7 +106,7 @@ export async function GET(request: NextRequest) {
     const primaryGoal = searchParams.get('primaryGoal');
 
     // Build query
-    const query: any = {};
+    const query: FilterQuery<IDietTemplate> = {};
 
     if (session?.user) {
       const isAdmin = session.user.role === UserRole.ADMIN;
@@ -185,7 +187,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Sort options
-    let sortOptions: any = {};
+    let sortOptions: Record<string, SortOrder> = {};
     switch (sortBy) {
       case 'rating':
         sortOptions = { averageRating: -1 };

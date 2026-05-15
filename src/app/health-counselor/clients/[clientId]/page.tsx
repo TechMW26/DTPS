@@ -851,7 +851,8 @@ export default function HealthCounselorClientDetailPage() {
       });
 
       if (!lifestyleResponse.ok) {
-        console.error('Failed to save lifestyle data');
+        toast.error('Failed to save lifestyle data');
+        return;
       }
 
       const medicalPayload = {
@@ -879,18 +880,18 @@ export default function HealthCounselorClientDetailPage() {
       });
 
       if (!medicalResponse.ok) {
-        console.error('Failed to save medical data');
+        toast.error('Failed to save medical data');
+        return;
       }
 
       toast.success('Client data saved successfully');
 
-      // Emit form data updated event for real-time sync
+      // Refresh data first, then emit so other components see consistent state
+      await fetchClientDetails();
       emitDataChange(DataEventTypes.FORM_DATA_UPDATED, {
         clientId: params.clientId,
         updatedFields: ['basic', 'lifestyle', 'medical']
       });
-
-      fetchClientDetails();
     } catch (error) {
       console.error('Error saving client data:', error);
       toast.error('Error saving client data');

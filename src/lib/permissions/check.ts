@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import Permission, { PermissionKey } from '@/lib/db/models/Permission';
+import { withCache } from '@/lib/api/utils';
 import { UserRole } from '@/types';
 import { Types } from 'mongoose';
 
@@ -36,7 +37,11 @@ export async function checkPermission(
 
     await connectDB();
 
-    const permission = await Permission.findOne({ key: permissionKey, isActive: true });
+    const permission = await withCache(
+        `permissions:key:${permissionKey}`,
+        async () => Permission.findOne({ key: permissionKey, isActive: true }).lean(),
+        { ttl: 30000, tags: ['permissions'] }
+    );
 
     if (!permission) {
         return { hasPermission: false, reason: 'Permission not found or inactive' };
@@ -101,22 +106,28 @@ export async function getUserPermissions(
 
     await connectDB();
 
-    const userObjectId = new Types.ObjectId(userId);
+    return withCache(
+        `permissions:user:${userId}:role:${userRole}`,
+        async () => {
+            const userObjectId = new Types.ObjectId(userId);
 
-    // Find all permissions where:
-    // 1. User's role is in allowedRoles, OR
-    // 2. User is in allowedUsers
-    // AND user is NOT in deniedUsers
-    const permissions = await Permission.find({
-        isActive: true,
-        deniedUsers: { $ne: userObjectId },
-        $or: [
-            { allowedRoles: userRole },
-            { allowedUsers: userObjectId },
-        ],
-    });
+            // Find all permissions where:
+            // 1. User's role is in allowedRoles, OR
+            // 2. User is in allowedUsers
+            // AND user is NOT in deniedUsers
+            const permissions = await Permission.find({
+                isActive: true,
+                deniedUsers: { $ne: userObjectId },
+                $or: [
+                    { allowedRoles: userRole },
+                    { allowedUsers: userObjectId },
+                ],
+            }).select('key').lean();
 
-    return permissions.map((p) => p.key as PermissionKey);
+            return permissions.map((p) => p.key as PermissionKey);
+        },
+        { ttl: 30000, tags: ['permissions'] }
+    );
 }
 
 /**
@@ -138,11 +149,11 @@ export async function getSessionUserPermissions(): Promise<PermissionKey[]> {
  * @param permissionKey - Required permission
  * @param handler - The API route handler
  */
-export function withPermission(
+export function withPermission<TContext = unknown>(
     permissionKey: PermissionKey,
-    handler: (req: Request, context?: any) => Promise<Response>
+    handler: (req: Request, context?: TContext) => Promise<Response>
 ) {
-    return async (req: Request, context?: any): Promise<Response> => {
+    return async (req: Request, context?: TContext): Promise<Response> => {
         const result = await checkSessionPermission(permissionKey);
 
         if (!result.hasPermission) {

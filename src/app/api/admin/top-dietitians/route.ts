@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import { User, Appointment } from '@/lib/db/models';
+import { Types } from 'mongoose';
 import { UserRole } from '@/types';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { withCache } from '@/lib/api/utils';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user || session.user.role !== UserRole.ADMIN) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -24,36 +25,113 @@ export async function GET(request: NextRequest) {
     // Get all dietitians with their client counts and appointment stats
     const dietitians = await withCache(
       `admin:top-dietitians:${JSON.stringify({
-      role: { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
-      status: 'active'
-    })}`,
+        role: { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
+        status: 'active'
+      })}`,
       async () => await User.find({
-      role: { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
-      status: 'active'
-    }).select('firstName lastName email avatar createdAt'),
+        role: { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
+        status: 'active'
+      }).select('firstName lastName email avatar createdAt').lean(),
       { ttl: 120000, tags: ['admin'] }
+    );
+
+    const dietitianIds = dietitians.map((dietitian) => new Types.ObjectId(String(dietitian._id)));
+    const now = new Date();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const [clientCounts, appointmentStats, recentClientCounts] = await Promise.all([
+      dietitianIds.length > 0
+        ? User.aggregate<{ _id: Types.ObjectId; count: number }>([
+          {
+            $match: {
+              role: UserRole.CLIENT,
+              assignedDietitian: { $in: dietitianIds },
+            },
+          },
+          {
+            $group: {
+              _id: '$assignedDietitian',
+              count: { $sum: 1 },
+            },
+          },
+        ])
+        : Promise.resolve([]),
+      dietitianIds.length > 0
+        ? Appointment.aggregate<{
+          _id: Types.ObjectId;
+          totalAppointments: number;
+          completedAppointments: number;
+        }>([
+          {
+            $match: {
+              dietitian: { $in: dietitianIds },
+            },
+          },
+          {
+            $group: {
+              _id: '$dietitian',
+              totalAppointments: { $sum: 1 },
+              completedAppointments: {
+                $sum: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ['$status', 'confirmed'] },
+                        { $lt: ['$scheduledAt', now] },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ])
+        : Promise.resolve([]),
+      dietitianIds.length > 0
+        ? User.aggregate<{ _id: Types.ObjectId; count: number }>([
+          {
+            $match: {
+              role: UserRole.CLIENT,
+              assignedDietitian: { $in: dietitianIds },
+              updatedAt: { $gte: thirtyDaysAgo },
+            },
+          },
+          {
+            $group: {
+              _id: '$assignedDietitian',
+              count: { $sum: 1 },
+            },
+          },
+        ])
+        : Promise.resolve([]),
+    ]);
+
+    const clientCountByDietitian = new Map(
+      clientCounts.map((entry) => [String(entry._id), entry.count])
+    );
+    const appointmentStatsByDietitian = new Map(
+      appointmentStats.map((entry) => [
+        String(entry._id),
+        {
+          totalAppointments: entry.totalAppointments,
+          completedAppointments: entry.completedAppointments,
+        },
+      ])
+    );
+    const recentClientCountByDietitian = new Map(
+      recentClientCounts.map((entry) => [String(entry._id), entry.count])
     );
 
     const topDietitians = [];
 
     for (const dietitian of dietitians) {
-      // Count clients assigned to this dietitian
-      const clientCount = await User.countDocuments({
-        role: 'client',
-        assignedDietitian: dietitian._id
-      });
-
-      // Count completed appointments for this dietitian
-      const completedAppointments = await Appointment.countDocuments({
-        dietitian: dietitian._id,
-        status: 'confirmed',
-        scheduledAt: { $lt: new Date() }
-      });
-
-      // Count total appointments for this dietitian
-      const totalAppointments = await Appointment.countDocuments({
-        dietitian: dietitian._id
-      });
+      const dietitianId = String(dietitian._id);
+      const clientCount = clientCountByDietitian.get(dietitianId) || 0;
+      const stats = appointmentStatsByDietitian.get(dietitianId);
+      const completedAppointments = stats?.completedAppointments || 0;
+      const totalAppointments = stats?.totalAppointments || 0;
 
       // Calculate estimated revenue (₹500 per appointment)
       const estimatedRevenue = completedAppointments * 500;
@@ -61,23 +139,7 @@ export async function GET(request: NextRequest) {
       // Calculate rating based on completion rate and client count
       const completionRate = totalAppointments > 0 ? completedAppointments / totalAppointments : 0;
       const rating = Math.min(4.9, 3.5 + (completionRate * 1.4) + (Math.min(clientCount, 50) / 100));
-
-      // Get recent client activity
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const recentClients = await withCache(
-        `admin:top-dietitians:recent-clients:${String(dietitian._id)}:${JSON.stringify({
-          role: 'client',
-          assignedDietitian: dietitian._id,
-          updatedAtGte: thirtyDaysAgo.toISOString(),
-        })}`,
-        async () =>
-          await User.countDocuments({
-            role: 'client',
-            assignedDietitian: dietitian._id,
-            updatedAt: { $gte: thirtyDaysAgo },
-          }),
-        { ttl: 120000, tags: ['admin'] }
-      );
+      const recentClients = recentClientCountByDietitian.get(dietitianId) || 0;
 
       topDietitians.push({
         id: dietitian._id,

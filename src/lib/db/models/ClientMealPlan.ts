@@ -374,7 +374,12 @@ ClientMealPlanSchema.pre('save', function (next) {
 });
 
 ClientMealPlanSchema.pre('findOneAndUpdate', function (next) {
-  const update = this.getUpdate() as any;
+  const update = this.getUpdate() as {
+    $set?: {
+      startDate?: string | Date;
+      endDate?: string | Date;
+    };
+  };
   if (update.$set && update.$set.startDate && update.$set.endDate) {
     if (new Date(update.$set.startDate) > new Date(update.$set.endDate)) {
       next(new Error('Start date cannot be after end date'));
@@ -392,6 +397,7 @@ ClientMealPlanSchema.index({ dietitianId: 1, status: 1 });
 ClientMealPlanSchema.index({ startDate: 1, endDate: 1 });
 ClientMealPlanSchema.index({ 'progress.date': 1 });
 ClientMealPlanSchema.index({ 'mealCompletions.date': 1 });
+ClientMealPlanSchema.index({ clientId: 1, 'mealCompletions.imagePath': 1 });
 ClientMealPlanSchema.index({ clientId: 1, phaseNumber: 1 });  // Phase tracking index
 ClientMealPlanSchema.index({ purchaseId: 1 });  // Payment-linked index
 

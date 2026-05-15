@@ -1600,14 +1600,12 @@ export default function ClientDetailPage() {
         setFirstWeightKg(updatedBaselineWeight);
       }
 
-      // Emit form data updated event for real-time sync
+      // Refresh data first, then emit so other components see consistent state
+      await fetchClientDetails(true);
       emitDataChange(DataEventTypes.FORM_DATA_UPDATED, {
         clientId: params.clientId,
         updatedFields: ['basic', 'lifestyle', 'medical', 'recall']
       });
-
-      // Await fetchClientDetails to ensure data is refreshed before UI updates
-      await fetchClientDetails(true);
       setIsEditing(false);
       return true;
     } catch (error) {

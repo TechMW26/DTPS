@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/db/connection';
@@ -9,9 +9,11 @@ import { broadcastStaffUnreadCounts } from '@/lib/realtime/broadcast-counts';
  * POST /api/staff/unread-counts/refresh
  * Triggers a refresh of unread message counts for staff and broadcasts to all SSE connections
  */
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
-    const session = await getServerSession(authOptions);
+    const sessionPromise = getServerSession(authOptions);
+    const dbPromise = connectDB();
+    const session = await sessionPromise;
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -19,18 +21,7 @@ export async function POST(request: NextRequest) {
 
     const userId = session.user.id;
 
-    // Connect to DB with proper timeout handling
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const dbConnectPromise = connectDB();
-      const timeoutPromise = new Promise<void>((resolve, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('DB connection timeout')), 5000);
-      });
-
-      await Promise.race([dbConnectPromise, timeoutPromise]);
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-    }
+    await dbPromise;
 
     // Get fresh message counts
     const messageCount = await Message.countDocuments({

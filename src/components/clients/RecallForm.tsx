@@ -38,7 +38,7 @@ export function RecallForm({ entries, onChange, onSave, onSaveEntry, onDeleteEnt
     { mealType: 'Mid Evening', hour: '4', minute: '00', meridian: 'PM' },
     { mealType: 'Evening', hour: '7', minute: '00', meridian: 'PM' },
     { mealType: 'Dinner', hour: '7', minute: '00', meridian: 'PM' },
-    { mealType: 'Past Dinner', hour: '9', minute: '00', meridian: 'PM' },
+    { mealType: 'Post Dinner', hour: '9', minute: '00', meridian: 'PM' },
   ];
 
   // For dietitian: show single save button at bottom
@@ -96,7 +96,7 @@ export function RecallForm({ entries, onChange, onSave, onSaveEntry, onDeleteEnt
                     <SelectItem value="Mid Evening">Mid Evening</SelectItem>
                     <SelectItem value="Evening">Evening</SelectItem>
                     <SelectItem value="Dinner">Dinner</SelectItem>
-                    <SelectItem value="Past Dinner">Past Dinner</SelectItem>
+                    <SelectItem value="Post Dinner">Post Dinner</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="flex items-center gap-1.5 bg-gray-100 rounded-lg p-2">

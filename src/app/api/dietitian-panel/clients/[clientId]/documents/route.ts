@@ -8,8 +8,63 @@ import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { UserRole } from '@/types';
 import { withCache } from '@/lib/api/utils';
 import { getImageKit } from '@/lib/imagekit';
+import { Types } from 'mongoose';
 
 export const dynamic = 'force-dynamic';
+
+type ClientAssignedRef = { toString: () => string } | string;
+
+type UserDocument = {
+    id?: string;
+    _id?: { toString: () => string };
+    type?: string;
+    fileName?: string;
+    filePath?: string;
+    url?: string;
+    uploadedAt?: string | Date;
+    createdAt?: string | Date;
+};
+
+type ClientUserLite = {
+    _id: unknown;
+    firstName?: string;
+    lastName?: string;
+    documents?: UserDocument[];
+    assignedDietitian?: ClientAssignedRef;
+    assignedDietitians?: ClientAssignedRef[];
+};
+
+type MedicalReport = {
+    id?: string;
+    fileName?: string;
+    url?: string;
+    uploadedOn?: string | Date;
+    category?: string;
+};
+
+type MedicalInfoLite = {
+    reports?: MedicalReport[];
+};
+
+type MealCompletion = {
+    imagePath?: string;
+    date?: string | Date;
+    mealType?: string;
+    notes?: string;
+};
+
+type MealPlanLite = {
+    _id: unknown;
+    name?: string;
+    mealCompletions?: MealCompletion[];
+};
+
+type ImageKitFileLite = {
+    fileId?: string;
+    name?: string;
+    createdAt?: string;
+    url?: string;
+};
 
 // Known meal type patterns → Display names
 // ImageKit appends random suffixes to filenames (e.g., EARLY_MORNING_N85xmNZhk)
@@ -58,18 +113,28 @@ function extractMealType(raw: string): string {
         .join(' ') || 'Complete Meal';
 }
 
-// Helper function to check if dietitian is assigned to client
-async function isDietitianAssigned(dietitianId: string, clientId: string): Promise<boolean> {
-    const client = await withCache(
-        `dietitian-panel:clients:${clientId}:documents:check`,
-        async () => await User.findById(clientId).select('assignedDietitian assignedDietitians'),
-        { ttl: 120000, tags: ['dietitian_panel'] }
-    );
-    if (!client) return false;
-
-    return (
-        client.assignedDietitian?.toString() === dietitianId ||
-        client.assignedDietitians?.some((d: any) => d.toString() === dietitianId)
+async function listImageKitFilesForClient(path: string, clientId: string) {
+    return withCache<ImageKitFileLite[]>(
+        `dietitian-panel:documents:imagekit:${path}:${clientId}`,
+        async () => {
+            const ik = getImageKit();
+            try {
+                const result = await ik.listFiles({
+                    path,
+                    searchQuery: `name : "${clientId}"`,
+                    limit: 100
+                });
+                return Array.isArray(result)
+                    ? (result as ImageKitFileLite[]).filter((file) => file.name?.startsWith(clientId))
+                    : [];
+            } catch {
+                const fallbackResult = await ik.listFiles({ path, limit: 500 });
+                return Array.isArray(fallbackResult)
+                    ? (fallbackResult as ImageKitFileLite[]).filter((file) => file.name?.startsWith(clientId))
+                    : [];
+            }
+        },
+        { ttl: 60000, tags: ['dietitian_panel'] }
     );
 }
 
@@ -91,23 +156,35 @@ export async function GET(
         }
 
         const { clientId } = await params;
+        if (!Types.ObjectId.isValid(clientId)) {
+            return NextResponse.json({ error: 'Invalid client ID' }, { status: 400 });
+        }
+
         await connectDB();
+
+        // Fetch client once and reuse for assignment + response payload + manual docs.
+        const user = await withCache<ClientUserLite | null>(
+            `dietitian-panel:clients:${clientId}:documents:client`,
+            async () => await User.findById(clientId)
+                .select('documents firstName lastName assignedDietitian assignedDietitians')
+                .lean<ClientUserLite | null>(),
+            { ttl: 120000, tags: ['dietitian_panel'] }
+        );
+        if (!user) {
+            return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+        }
 
         // For dietitians, verify assignment; admins can access any client
         if (session.user.role === UserRole.DIETITIAN) {
-            const isAssigned = await isDietitianAssigned(session.user.id, clientId);
+            const isAssigned =
+                user.assignedDietitian?.toString() === session.user.id ||
+                user.assignedDietitians?.some((d) => d.toString() === session.user.id);
             if (!isAssigned) {
                 return NextResponse.json({ error: 'You are not assigned to this client' }, { status: 403 });
             }
         }
 
-        // 1. Fetch user-uploaded documents (manual uploads from client.documents)
-        const user = await User.findById(clientId).select('documents firstName lastName');
-        if (!user) {
-            return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-        }
-
-        const manualDocuments = (user.documents || []).map((doc: any) => ({
+        const manualDocuments = (user.documents || []).map((doc) => ({
             id: doc.id || doc._id?.toString() || `manual-${Date.now()}`,
             type: doc.type || 'medical-report',
             fileName: doc.fileName || 'Document',
@@ -118,232 +195,202 @@ export async function GET(
                 doc.type === 'transformation' ? 'Transformation' : 'Manual Upload'
         }));
 
-        // 2. Fetch medical reports from MedicalInfo collection
-        const medicalInfo = await MedicalInfo.findOne({ userId: clientId });
-        const medicalReports = (medicalInfo?.reports || []).map((report: any) => ({
-            id: report.id || `medical-${Date.now()}`,
-            type: 'medical-report' as const,
-            fileName: report.fileName || 'Medical Report',
-            filePath: report.url || '',
-            uploadedAt: report.uploadedOn || new Date().toISOString(),
-            source: 'medical-info',
-            tag: report.category || 'Medical Report',
-            category: report.category || 'Medical Report'
-        }));
+        const assembled = await withCache(
+            `dietitian-panel:clients:${clientId}:documents:assembled`,
+            async () => {
+                // Fetch remaining data sources in parallel to reduce tail latency.
+                const [medicalInfo, mealPlans, transformationFiles, completeMealFiles] = await Promise.all([
+                    MedicalInfo.findOne({ userId: clientId }).lean<MedicalInfoLite | null>(),
+                    ClientMealPlan.find({
+                        clientId,
+                        'mealCompletions.imagePath': { $exists: true, $ne: '' }
+                    }).select('mealCompletions name').lean<MealPlanLite[]>(),
+                    listImageKitFilesForClient('/transformation', clientId),
+                    listImageKitFilesForClient('/complete-meal', clientId),
+                ]);
 
-        // 3. Fetch meal completion images from ClientMealPlan
-        const mealPlans = await ClientMealPlan.find({
-            clientId: clientId,
-            'mealCompletions.imagePath': { $exists: true, $ne: '' }
-        }).select('mealCompletions name');
+                // 2. Fetch medical reports from MedicalInfo collection
+                const medicalReports = (medicalInfo?.reports || []).map((report) => ({
+                    id: report.id || `medical-${Date.now()}`,
+                    type: 'medical-report' as const,
+                    fileName: report.fileName || 'Medical Report',
+                    filePath: report.url || '',
+                    uploadedAt: report.uploadedOn || new Date().toISOString(),
+                    source: 'medical-info',
+                    tag: report.category || 'Medical Report',
+                    category: report.category || 'Medical Report'
+                }));
 
-        const mealCompletionImages: any[] = [];
+                const mealCompletionImages: Array<Record<string, unknown>> = [];
 
-        mealPlans.forEach((plan: any) => {
-            const completions = plan.mealCompletions || [];
-            completions.forEach((completion: any) => {
-                if (completion.imagePath) {
-                    const completionDate = new Date(completion.date);
-                    const formattedDate = completionDate.toLocaleDateString('en-IN', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        timeZone: 'Asia/Kolkata'
+                mealPlans.forEach((plan) => {
+                    const completions = plan.mealCompletions || [];
+                    completions.forEach((completion) => {
+                        if (completion.imagePath) {
+                            const completionDate = new Date(completion.date);
+                            const formattedDate = completionDate.toLocaleDateString('en-IN', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                timeZone: 'Asia/Kolkata'
+                            });
+                            const formattedTime = completionDate.toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+
+                            const mealTypeDisplay = (completion.mealType || 'Meal')
+                                .split('_')
+                                .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                                .join(' ');
+
+                            mealCompletionImages.push({
+                                id: `meal-${plan._id}-${completion.date}-${completion.mealType}`,
+                                type: 'meal-picture' as const,
+                                fileName: `${mealTypeDisplay} - ${formattedDate} ${formattedTime}`,
+                                filePath: completion.imagePath,
+                                uploadedAt: completion.date || new Date().toISOString(),
+                                source: 'meal-completion',
+                                tag: mealTypeDisplay,
+                                mealType: completion.mealType,
+                                date: completion.date,
+                                notes: completion.notes,
+                                planName: plan.name
+                            });
+                        }
                     });
-                    const formattedTime = completionDate.toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });
+                });
 
-                    // Convert meal type for display (e.g., EARLY_MORNING -> Early Morning)
-                    const mealTypeDisplay = (completion.mealType || 'Meal')
-                        .split('_')
-                        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                        .join(' ');
+                let transformationImages: Array<Record<string, unknown>> = [];
+                let imagekitMealPictures: Array<Record<string, unknown>> = [];
 
-                    mealCompletionImages.push({
-                        id: `meal-${plan._id}-${completion.date}-${completion.mealType}`,
-                        type: 'meal-picture' as const,
-                        fileName: `${mealTypeDisplay} - ${formattedDate} ${formattedTime}`,
-                        filePath: completion.imagePath,
-                        uploadedAt: completion.date || new Date().toISOString(),
-                        source: 'meal-completion',
-                        tag: mealTypeDisplay,
-                        mealType: completion.mealType,
-                        date: completion.date,
-                        notes: completion.notes,
-                        planName: plan.name
-                    });
+                try {
+                    if (transformationFiles.length > 0) {
+                        const clientTransformationFiles = transformationFiles.filter((file) =>
+                            file.name?.startsWith(clientId)
+                        );
+
+                        transformationImages = clientTransformationFiles.map((file) => {
+                            const nameParts = file.name?.split('-') || [];
+                            let extractedDate = file.createdAt || new Date().toISOString();
+
+                            if (nameParts.length >= 2) {
+                                const timestampPart = nameParts[1]?.split('.')[0];
+                                if (timestampPart && !isNaN(Number(timestampPart))) {
+                                    extractedDate = new Date(Number(timestampPart)).toISOString();
+                                }
+                            }
+
+                            const dateObj = new Date(extractedDate);
+                            const formattedDate = dateObj.toLocaleDateString('en-IN', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                timeZone: 'Asia/Kolkata'
+                            });
+                            const formattedTime = dateObj.toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+
+                            return {
+                                id: file.fileId || `transformation-${Date.now()}-${Math.random()}`,
+                                type: 'transformation' as const,
+                                fileName: `Transformation`,
+                                filePath: file.url || '',
+                                uploadedAt: extractedDate,
+                                source: 'imagekit-transformation',
+                                tag: 'Transformation',
+                                date: `${formattedDate} ${formattedTime}`,
+                                category: 'Transformation'
+                            };
+                        });
+                    }
+
+                    if (completeMealFiles.length > 0) {
+                        const clientMealFiles = completeMealFiles.filter((file) =>
+                            file.name?.startsWith(clientId)
+                        );
+
+                        imagekitMealPictures = clientMealFiles.map((file) => {
+                            const fileName = file.name || '';
+                            let mealTypeDisplay = 'Complete Meal';
+                            let extractedDate = file.createdAt || new Date().toISOString();
+
+                            const afterClientId = fileName.startsWith(clientId)
+                                ? fileName.substring(clientId.length + 1)
+                                : fileName;
+                            const remainingParts = afterClientId.split('-');
+
+                            if (remainingParts.length >= 1) {
+                                const timestampPart = remainingParts[0];
+                                if (timestampPart && !isNaN(Number(timestampPart))) {
+                                    extractedDate = new Date(Number(timestampPart)).toISOString();
+                                }
+
+                                if (remainingParts.length >= 2) {
+                                    const mealTypeRaw = remainingParts.slice(1).join('-');
+                                    mealTypeDisplay = extractMealType(mealTypeRaw);
+                                }
+                            }
+
+                            const dateObj = new Date(extractedDate);
+                            const formattedDate = dateObj.toLocaleDateString('en-IN', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                timeZone: 'Asia/Kolkata'
+                            });
+                            const formattedTime = dateObj.toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+
+                            return {
+                                id: file.fileId || `ik-meal-${Date.now()}-${Math.random()}`,
+                                type: 'meal-picture' as const,
+                                fileName: `${mealTypeDisplay}`,
+                                filePath: file.url || '',
+                                uploadedAt: extractedDate,
+                                source: 'imagekit-meal',
+                                tag: mealTypeDisplay,
+                                date: `${formattedDate} ${formattedTime}`,
+                                category: 'Complete Meal'
+                            };
+                        });
+                    }
+                } catch (imagekitError) {
+                    console.error('Error fetching from ImageKit:', imagekitError);
                 }
-            });
-        });
 
-        // 4. Fetch transformation images and meal pictures from ImageKit folders
-        let transformationImages: any[] = [];
-        let imagekitMealPictures: any[] = [];
-
-        try {
-            const ik = getImageKit();
-
-            // Fetch transformation images for this client from ImageKit
-            // Files are named with clientId prefix (e.g., clientId-timestamp.jpg)
-            // Use searchQuery to filter server-side by clientId in filename
-            let transformationFiles: any[] = [];
-            try {
-                const tfResult = await ik.listFiles({
-                    path: '/transformation',
-                    searchQuery: `name : "${clientId}"`,
-                    limit: 100
-                });
-                transformationFiles = Array.isArray(tfResult) ? tfResult : [];
-            } catch {
-                // Fallback: fetch all and filter client-side
-                const allTfFiles = await ik.listFiles({ path: '/transformation', limit: 500 });
-                transformationFiles = Array.isArray(allTfFiles)
-                    ? allTfFiles.filter((f: any) => f.name?.startsWith(clientId))
-                    : [];
-            }
-
-            if (transformationFiles.length > 0) {
-                // Extra safety: ensure only this client's files
-                const clientTransformationFiles = transformationFiles.filter((file: any) =>
-                    file.name?.startsWith(clientId)
-                );
-
-                transformationImages = clientTransformationFiles.map((file: any) => {
-                    // Try to extract timestamp from filename (format: clientId-timestamp.jpg)
-                    const nameParts = file.name?.split('-') || [];
-                    let extractedDate = file.createdAt || new Date().toISOString();
-
-                    if (nameParts.length >= 2) {
-                        const timestampPart = nameParts[1]?.split('.')[0];
-                        if (timestampPart && !isNaN(Number(timestampPart))) {
-                            extractedDate = new Date(Number(timestampPart)).toISOString();
-                        }
-                    }
-
-                    // Format date for display
-                    const dateObj = new Date(extractedDate);
-                    const formattedDate = dateObj.toLocaleDateString('en-IN', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        timeZone: 'Asia/Kolkata'
-                    });
-                    const formattedTime = dateObj.toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });
-
-                    return {
-                        id: file.fileId || `transformation-${Date.now()}-${Math.random()}`,
-                        type: 'transformation' as const,
-                        fileName: `Transformation`,
-                        filePath: file.url || '',
-                        uploadedAt: extractedDate,
-                        source: 'imagekit-transformation',
-                        tag: 'Transformation',
-                        date: `${formattedDate} ${formattedTime}`,
-                        category: 'Transformation'
-                    };
-                });
-            }
-
-            // Fetch complete-meal images for this client from ImageKit
-            // Use searchQuery to filter server-side by clientId in filename
-            let completeMealFiles: any[] = [];
-            try {
-                const cmResult = await ik.listFiles({
-                    path: '/complete-meal',
-                    searchQuery: `name : "${clientId}"`,
-                    limit: 100
-                });
-                completeMealFiles = Array.isArray(cmResult) ? cmResult : [];
-            } catch {
-                // Fallback: fetch all and filter client-side
-                const allCmFiles = await ik.listFiles({ path: '/complete-meal', limit: 500 });
-                completeMealFiles = Array.isArray(allCmFiles)
-                    ? allCmFiles.filter((f: any) => f.name?.startsWith(clientId))
-                    : [];
-            }
-
-            if (completeMealFiles.length > 0) {
-                // Extra safety: ensure only this client's files
-                const clientMealFiles = completeMealFiles.filter((file: any) =>
-                    file.name?.startsWith(clientId)
-                );
-
-                imagekitMealPictures = clientMealFiles.map((file: any) => {
-                    // Extract parts from filename: clientId-timestamp-MEAL_TYPE_imagekitSuffix.jpg
-                    // The filename after removing clientId prefix and timestamp gives us the meal type
-                    const fileName = file.name || '';
-                    let mealTypeDisplay = 'Complete Meal';
-                    let extractedDate = file.createdAt || new Date().toISOString();
-
-                    // Remove clientId prefix and split remaining by '-'
-                    const afterClientId = fileName.startsWith(clientId)
-                        ? fileName.substring(clientId.length + 1) // +1 for the dash
-                        : fileName;
-                    const remainingParts = afterClientId.split('-');
-
-                    if (remainingParts.length >= 1) {
-                        // First part is the timestamp
-                        const timestampPart = remainingParts[0];
-                        if (timestampPart && !isNaN(Number(timestampPart))) {
-                            extractedDate = new Date(Number(timestampPart)).toISOString();
-                        }
-
-                        // Everything after timestamp is meal type (may include ImageKit suffix)
-                        if (remainingParts.length >= 2) {
-                            const mealTypeRaw = remainingParts.slice(1).join('-');
-                            mealTypeDisplay = extractMealType(mealTypeRaw);
-                        }
-                    }
-
-                    // Format date for display
-                    const dateObj = new Date(extractedDate);
-                    const formattedDate = dateObj.toLocaleDateString('en-IN', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        timeZone: 'Asia/Kolkata'
-                    });
-                    const formattedTime = dateObj.toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });
-
-                    return {
-                        id: file.fileId || `ik-meal-${Date.now()}-${Math.random()}`,
-                        type: 'meal-picture' as const,
-                        fileName: `${mealTypeDisplay}`,
-                        filePath: file.url || '',
-                        uploadedAt: extractedDate,
-                        source: 'imagekit-meal',
-                        tag: mealTypeDisplay,
-                        date: `${formattedDate} ${formattedTime}`,
-                        category: 'Complete Meal'
-                    };
-                });
-            }
-        } catch (imagekitError) {
-            // Log but don't fail if ImageKit fetch fails
-            console.error('Error fetching from ImageKit:', imagekitError);
-        }
+                return {
+                    medicalReports,
+                    mealCompletionImages,
+                    transformationImages,
+                    imagekitMealPictures,
+                };
+            },
+            { ttl: 60000, tags: ['dietitian_panel'] }
+        );
 
         // Combine all documents and sort by upload date (most recent first)
         const allDocuments = [
             ...manualDocuments,
-            ...medicalReports,
-            ...mealCompletionImages,
-            ...transformationImages,
-            ...imagekitMealPictures
+            ...assembled.medicalReports,
+            ...assembled.mealCompletionImages,
+            ...assembled.transformationImages,
+            ...assembled.imagekitMealPictures
         ].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
 
-        // Remove duplicates (same filePath)
-        const uniqueDocuments = allDocuments.filter((doc, index, self) =>
-            index === self.findIndex((d) => d.filePath === doc.filePath)
-        );
+        // Remove duplicates by filePath while preserving sort order.
+        const seenPaths = new Set<string>();
+        const uniqueDocuments = allDocuments.filter((doc) => {
+            const key = String(doc.filePath || '');
+            if (!key) return true;
+            if (seenPaths.has(key)) return false;
+            seenPaths.add(key);
+            return true;
+        });
 
         // Count by type from unique documents
         const mealPicturesCount = uniqueDocuments.filter(d => d.type === 'meal-picture').length;

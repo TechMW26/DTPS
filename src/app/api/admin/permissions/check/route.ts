@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
+import User from '@/lib/db/models/User';
 import { getUserPermissions } from '@/lib/permissions/check';
 import { PermissionKey } from '@/lib/db/models/Permission';
+import { withCache } from '@/lib/api/utils';
 import { UserRole } from '@/types';
 
 // GET - Check permissions for current user or specific user
@@ -23,17 +25,21 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        await connectDB();
-
         // Get user's role if checking another user
         let userRole = session.user.role as UserRole;
         if (userId !== session.user.id) {
-            const User = (await import('@/lib/db/models/User')).default;
-            const user = await User.findById(userId).select('role');
+            await connectDB();
+            const user = await withCache<{ role: UserRole } | null>(
+                `permissions:user-role:${userId}`,
+                async () => User.findById(userId)
+                    .select('role')
+                    .lean<{ role: UserRole } | null>(),
+                { ttl: 30000, tags: ['permissions'] }
+            );
             if (!user) {
                 return NextResponse.json({ error: 'User not found' }, { status: 404 });
             }
-            userRole = user.role;
+            userRole = user.role as UserRole;
         }
 
         // If checking a specific permission
