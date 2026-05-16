@@ -36,51 +36,62 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { id: userId } = await params;
 
     // Verify user exists
     const user = await withCache(
       `users:id:recall:${JSON.stringify(userId)}`,
-      async () => await User.findById(userId),
+      async () => {
+        await connectDB();
+        return await User.findById(userId).select('_id').lean();
+      },
       { ttl: 120000, tags: ['users'] }
     );
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Fetch the latest dietary recall document for this user (or create default)
-    const recall: any = await DietaryRecall.findOne({ userId }).sort({ date: -1 }).lean();
+    const recallPayload = await withCache(
+      `users:id:recall:payload:${JSON.stringify(userId)}`,
+      async () => {
+        await connectDB();
 
-    // If no recall exists, return empty meals array
-    if (!recall) {
-      return NextResponse.json({
-        success: true,
-        meals: [],
-        entries: [],
-        recallId: null
-      }, { status: 200 });
-    }
+        // Fetch the latest dietary recall document for this user (or create default)
+        const recall: any = await DietaryRecall.findOne({ userId }).sort({ date: -1 }).lean();
 
-    // Map meals to include id for frontend
-    const entriesWithId = (recall.meals || []).map((meal: any, index: number) => ({
-      id: meal._id?.toString() || `meal-${index}`,
-      _id: meal._id?.toString(),
-      mealType: meal.mealType,
-      hour: meal.hour,
-      minute: meal.minute,
-      meridian: meal.meridian,
-      food: meal.food || ''
-    }));
+        // If no recall exists, return empty meals array
+        if (!recall) {
+          return {
+            success: true,
+            meals: [],
+            entries: [],
+            recallId: null
+          };
+        }
 
-    return NextResponse.json({
-      success: true,
-      meals: recall.meals || [],
-      entries: entriesWithId,
-      recallId: recall._id,
-      date: recall.date
-    }, { status: 200 });
+        // Map meals to include id for frontend
+        const entriesWithId = (recall.meals || []).map((meal: any, index: number) => ({
+          id: meal._id?.toString() || `meal-${index}`,
+          _id: meal._id?.toString(),
+          mealType: meal.mealType,
+          hour: meal.hour,
+          minute: meal.minute,
+          meridian: meal.meridian,
+          food: meal.food || ''
+        }));
+
+        return {
+          success: true,
+          meals: recall.meals || [],
+          entries: entriesWithId,
+          recallId: recall._id,
+          date: recall.date
+        };
+      },
+      { ttl: 120000, tags: ['users', `users:id:${userId}`, `users:id:recall:${userId}`] }
+    );
+
+    return NextResponse.json(recallPayload, { status: 200 });
   } catch (error) {
     // console.error('Error fetching dietary recall:', error);
     return NextResponse.json(
@@ -106,9 +117,6 @@ export async function POST(
     const { id: userId } = await params;
     const body = await request.json();
 
-    // console.log('Saving dietary recall for user:', userId);
-    // console.log('Request body:', body);
-
     // Handle both full-array payloads and single-entry payloads
     const mealsData = Array.isArray(body.meals)
       ? body.meals
@@ -116,16 +124,6 @@ export async function POST(
         ? body.entries
         : [];
     const hasSingleEntryPayload = !mealsData.length && typeof body.mealType === 'string';
-
-    // Verify user exists
-    const user = await withCache(
-      `users:id:recall:${JSON.stringify(userId)}`,
-      async () => await User.findById(userId),
-      { ttl: 120000, tags: ['users'] }
-    );
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
 
     // Default times for each meal type (canonical 8 types)
     const defaultTimes: { [key: string]: { hour: string; minute: string; meridian: 'AM' | 'PM' } } = {
@@ -184,79 +182,49 @@ export async function POST(
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    let recall = await DietaryRecall.findOne({
-      userId,
-      date: { $gte: today }
-    });
+    let recall: any;
 
-    if (recall) {
-      if (hasSingleEntryPayload) {
-        const singleMeal = mapMeal(body);
-        if (!singleMeal) {
-          return NextResponse.json(
-            { error: 'Invalid meal type in recall entry' },
-            { status: 400 }
-          );
-        }
-
-        const existingMealIndex = recall.meals.findIndex(
-          (meal: any) => meal.mealType?.toLowerCase() === singleMeal.mealType.toLowerCase()
-        );
-
-        if (existingMealIndex >= 0) {
-          recall.meals[existingMealIndex] = singleMeal;
-        } else {
-          recall.meals.push(singleMeal);
-        }
-      } else {
-        // Full-array replace path
-        recall.meals = mealsWithDefaults;
-      }
-
-      await recall.save();
-
-      await logHistoryServer({
-        userId,
-        action: 'update',
-        category: 'diet',
-        description: `${session.user.role} updated dietary recall with ${mealsWithDefaults.length} meals`,
-        performedById: session.user.id,
-        metadata: {
-          recallId: recall._id,
-          mealCount: recall.meals.length,
-          date: recall.date,
-        },
-      });
-    } else {
-      const mealsToPersist = hasSingleEntryPayload ? [mapMeal(body)].filter(Boolean) : mealsWithDefaults;
-      if (!mealsToPersist.length) {
+    if (hasSingleEntryPayload) {
+      // Single-entry path: update or push one meal into today's recall
+      const singleMeal = mapMeal(body);
+      if (!singleMeal) {
         return NextResponse.json(
           { error: 'Invalid meal type in recall entry' },
           { status: 400 }
         );
       }
-
-      // Create new recall
-      recall = new DietaryRecall({
-        userId,
-        date: new Date(),
-        meals: mealsToPersist
-      });
-      await recall.save();
-
-      await logHistoryServer({
-        userId,
-        action: 'create',
-        category: 'diet',
-        description: `${session.user.role} logged dietary recall with ${mealsWithDefaults.length} meals`,
-        performedById: session.user.id,
-        metadata: {
-          recallId: recall._id,
-          mealCount: mealsToPersist.length,
-          date: recall.date,
-        },
-      });
+      // Try to update existing meal first; if none matches, push it in
+      recall = await DietaryRecall.findOneAndUpdate(
+        { userId, date: { $gte: today }, 'meals.mealType': new RegExp(`^${singleMeal.mealType}$`, 'i') },
+        { $set: { 'meals.$': singleMeal } },
+        { new: true, runValidators: false }
+      );
+      if (!recall) {
+        recall = await DietaryRecall.findOneAndUpdate(
+          { userId, date: { $gte: today } },
+          { $push: { meals: singleMeal }, $setOnInsert: { userId, date: new Date() } },
+          { upsert: true, new: true, runValidators: false }
+        );
+      }
+    } else {
+      // Full-array replace path: single upsert, no prior findOne needed
+      const mealsToPersist = mealsWithDefaults;
+      recall = await DietaryRecall.findOneAndUpdate(
+        { userId, date: { $gte: today } },
+        { $set: { meals: mealsToPersist }, $setOnInsert: { userId, date: new Date() } },
+        { upsert: true, new: true, runValidators: false }
+      );
     }
+
+    // Fire-and-forget history log — do not block the response
+    logHistoryServer({
+      userId,
+      action: recall ? 'update' : 'create',
+      category: 'diet',
+      description: `${session.user.role} saved dietary recall`,
+      performedById: session.user.id,
+      metadata: { recallId: recall?._id, mealCount: recall?.meals?.length ?? 0, date: recall?.date },
+    }).catch(() => { });
 
     // Clear caches for real-time sync
     await clearCacheByTag('users');
@@ -264,6 +232,7 @@ export async function POST(
     await clearCacheByTag(`users:id:${JSON.stringify(userId)}`);
     await clearCacheByTag(`users:id:recall:${userId}`);
     await clearCacheByTag(`users:id:recall:${JSON.stringify(userId)}`);
+    await clearCacheByTag(`users:id:recall:payload:${JSON.stringify(userId)}`);
     await clearCacheByTag('client');
     await clearCacheByTag(`client:dietary-recall:${userId}`);
     await clearCacheByTag(`client:${userId}`);

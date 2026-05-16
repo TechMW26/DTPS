@@ -6,6 +6,41 @@ import { LifestyleInfo } from '@/lib/db/models';
 import { UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
+const SLEEP_PATTERN_MAP: Record<string, string> = {
+  regular: 'regular-sleep',
+  irregular: 'irregular-sleep',
+  insomnia: 'insomnia-diagnosed',
+  difficulty: 'difficulty-falling-asleep',
+};
+
+const STRESS_LEVEL_MAP: Record<string, string> = {
+  low: 'rarely-stressed',
+  mild: 'mild-occasional-stress',
+  medium: 'moderate-stress',
+  moderate: 'moderate-stress',
+  high: 'frequent-stress',
+};
+
+function normalizeLifestylePayload(body: Record<string, any>): Record<string, any> {
+  const normalized = { ...body };
+
+  if (typeof normalized.sleepPattern === 'string') {
+    const key = normalized.sleepPattern.trim().toLowerCase();
+    if (SLEEP_PATTERN_MAP[key]) {
+      normalized.sleepPattern = SLEEP_PATTERN_MAP[key];
+    }
+  }
+
+  if (typeof normalized.stressLevel === 'string') {
+    const key = normalized.stressLevel.trim().toLowerCase();
+    if (STRESS_LEVEL_MAP[key]) {
+      normalized.stressLevel = STRESS_LEVEL_MAP[key];
+    }
+  }
+
+  return normalized;
+}
+
 // GET /api/users/[id]/lifestyle - Get lifestyle info for user
 export async function GET(
   request: NextRequest,
@@ -17,12 +52,16 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
     const { id } = await params;
 
     const lifestyleInfo = await withCache(
       `users:id:lifestyle:${JSON.stringify({ userId: id })}`,
-      async () => await LifestyleInfo.findOne({ userId: id }),
+      async () => {
+        await connectDB();
+        return await LifestyleInfo.findOne({ userId: id })
+          .select('foodPreference preferredCuisine allergiesFood fastDays nonVegExemptDays foodLikes foodDislikes eatOutFrequency smokingFrequency alcoholFrequency activityRate cookingOil monthlyOilConsumption cookingSalt carbonatedBeverageFrequency cravingType sleepPattern stressLevel heightFeet heightInch heightCm weightKg targetWeightKg idealWeightKg bmi userId updatedAt')
+          .lean();
+      },
       { ttl: 120000, tags: ['users', `users:id:${id}`, `users:id:lifestyle:${id}`] }
     );
 
@@ -54,10 +93,11 @@ export async function POST(
     await connectDB();
     const { id } = await params;
     const body = await request.json();
+    const normalizedBody = normalizeLifestylePayload(body);
 
     const lifestyleInfo = await LifestyleInfo.findOneAndUpdate(
       { userId: id },
-      { $set: { ...body, userId: id } },
+      { $set: { ...normalizedBody, userId: id } },
       { upsert: true, new: true, runValidators: true }
     );
 

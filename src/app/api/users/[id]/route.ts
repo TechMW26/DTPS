@@ -60,7 +60,6 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
     const { id } = await params;
 
     // Validate ObjectId format
@@ -73,18 +72,21 @@ export async function GET(
 
     const user = await withCache(
       `users:id:${JSON.stringify(id)}`,
-      async () => await User.findById(id)
-        .select('-password')
-        .populate('assignedDietitian', 'firstName lastName email avatar')
-        .populate('assignedDietitians', 'firstName lastName email avatar')
-        .populate('assignedHealthCounselor', 'firstName lastName email avatar')
-        .populate('assignedHealthCounselors', 'firstName lastName email avatar')
-        .populate('tags', 'name description color icon')
-        .populate({
-          path: 'createdBy.userId',
-          select: 'firstName lastName role',
-          strictPopulate: false
-        }),
+      async () => {
+        await connectDB();
+        return await User.findById(id)
+          .select('-password')
+          .populate('assignedDietitian', 'firstName lastName email avatar')
+          .populate('assignedDietitians', 'firstName lastName email avatar')
+          .populate('assignedHealthCounselor', 'firstName lastName email avatar')
+          .populate('assignedHealthCounselors', 'firstName lastName email avatar')
+          .populate('tags', 'name description color icon')
+          .populate({
+            path: 'createdBy.userId',
+            select: 'firstName lastName role',
+            strictPopulate: false
+          });
+      },
       { ttl: 120000, tags: ['users'] }
     );
 
@@ -365,6 +367,49 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
     await connectDB();
+
+    // ─── FAST PATH: client self-edit with no weight change ───────────────────
+    // Skip the extra findById round-trip when a client updates their own profile
+    // and the payload does not contain weight fields (no locking logic needed).
+    const normalizedRoleFast = normalizeRole(session.user.role);
+    const isClientSelfEdit =
+      session.user.id === id && normalizedRoleFast === UserRole.CLIENT;
+    const payloadHasWeight = body.weightKg !== undefined || body.weight !== undefined;
+
+    if (isClientSelfEdit && !payloadHasWeight) {
+      const fastAllowedFields = [
+        "firstName", "lastName", "avatar", "bio", "dateOfBirth", "gender",
+        "alternativePhone", "alternativeEmail", "anniversary", "source", "referralSource",
+        "maritalStatus", "occupation", "targetWeightBucket", "sharePhotoConsent",
+        "generalGoal", "healthGoals", "heightFeet", "heightInch", "heightCm",
+        "targetWeightKg", "activityLevel", "activityRate", "bmr", "bodyFat",
+        "idealWeight", "targetBmi", "bmiCategory", "tags",
+      ];
+      const fastUpdateData: Record<string, any> = {};
+      for (const key of fastAllowedFields) {
+        if (body[key] !== undefined && body[key] !== '' && body[key] !== null) {
+          fastUpdateData[key] = body[key];
+        }
+      }
+      if (Object.keys(fastUpdateData).length > 0) {
+        const updated = await User.findOneAndUpdate(
+          { _id: id },
+          { $set: fastUpdateData },
+          { new: true, runValidators: true }
+        ).select('-password');
+        if (!updated) {
+          return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
+        clearCacheByTag('users');
+        clearCacheByTag(`users:id:${id}`);
+        clearCacheByTag(`users:id:${JSON.stringify(id)}`);
+        clearCacheByTag('client');
+        clearCacheByTag(`client:${id}`);
+        const updatedUser = updated.toJSON();
+        return NextResponse.json({ user: updatedUser, message: "User updated successfully" });
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Fetch target user BEFORE permission check
     const targetUser = await User.findById(id);

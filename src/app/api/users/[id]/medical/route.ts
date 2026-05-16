@@ -17,12 +17,16 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
     const { id } = await params;
 
     const medicalInfo = await withCache(
       `users:id:medical:${JSON.stringify({ userId: id })}`,
-      async () => await MedicalInfo.findOne({ userId: id }),
+      async () => {
+        await connectDB();
+        return await MedicalInfo.findOne({ userId: id })
+          .select('medicalConditions allergies dietaryRestrictions notes diseaseHistory medicalHistory familyHistory medication bloodGroup gutIssues reports isPregnant isLactating menstrualCycle bloodFlow userId updatedAt')
+          .lean();
+      },
       { ttl: 120000, tags: ['users', `users:id:${id}`, `users:id:medical:${id}`] }
     );
 

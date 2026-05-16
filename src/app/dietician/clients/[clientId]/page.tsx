@@ -497,6 +497,34 @@ export default function ClientDetailPage() {
   const [firstWeightKg, setFirstWeightKg] = useState<number | null>(null);
   const [weightLog, setWeightLog] = useState<ClientWeightLogEntry[]>([]);
 
+  const fetchWithRetry = useCallback(async (input: RequestInfo | URL, init: RequestInit = {}, retries = 1) => {
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const response = await fetch(input, {
+          ...init,
+          signal: controller.signal,
+          cache: init.cache || 'no-store',
+        });
+        window.clearTimeout(timeoutId);
+        return response;
+      } catch (error) {
+        window.clearTimeout(timeoutId);
+        lastError = error;
+        if (attempt < retries) {
+          await new Promise(resolve => window.setTimeout(resolve, 250 * (attempt + 1)));
+          continue;
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Request failed');
+  }, []);
+
   useEffect(() => {
     if (params.clientId) {
       fetchClientDetails();
@@ -678,9 +706,7 @@ export default function ClientDetailPage() {
 
   const fetchClientWeightLog = async (silent = false) => {
     try {
-      const response = await fetch(`/api/progress?clientId=${params.clientId}&type=weight&limit=365&page=1`, {
-        cache: 'no-store'
-      });
+      const response = await fetchWithRetry(`/api/progress?clientId=${params.clientId}&type=weight&limit=365&page=1`);
       if (!response.ok) return;
 
       const data = await response.json();
@@ -728,7 +754,7 @@ export default function ClientDetailPage() {
     try {
       // First fetch purchase data to get expected dates
       let purchaseData: any = null;
-      const purchaseRes = await fetch(`/api/client-purchases/check?clientId=${params.clientId}`);
+      const purchaseRes = await fetchWithRetry(`/api/client-purchases/check?clientId=${params.clientId}`);
       if (purchaseRes.ok) {
         purchaseData = await purchaseRes.json();
         // Use backend-computed status as single source of truth
@@ -738,7 +764,7 @@ export default function ClientDetailPage() {
       }
 
       // Fetch meal plans for this client
-      const mealPlanRes = await fetch(`/api/client-meal-plans?clientId=${params.clientId}`);
+      const mealPlanRes = await fetchWithRetry(`/api/client-meal-plans?clientId=${params.clientId}`);
       if (mealPlanRes.ok) {
         const data = await mealPlanRes.json();
         // API returns { success: true, mealPlans: [...] }
@@ -880,7 +906,7 @@ export default function ClientDetailPage() {
   // Fetch client notes
   const fetchClientNotes = async () => {
     try {
-      const response = await fetch(`/api/users/${params.clientId}/notes`, { cache: 'no-store' });
+      const response = await fetchWithRetry(`/api/users/${params.clientId}/notes`);
       if (response.ok) {
         const data = await response.json();
         setClientNotes(sortNotesByCreatedAt(data?.notes || []));
@@ -918,7 +944,7 @@ export default function ClientDetailPage() {
           : newNote.content
       };
 
-      const response = await fetch(`/api/users/${params.clientId}/notes`, {
+      const response = await fetchWithRetry(`/api/users/${params.clientId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(noteToSave)
@@ -968,7 +994,7 @@ export default function ClientDetailPage() {
       formData.append('file', file);
       formData.append('type', 'note-attachment');
 
-      const response = await fetch('/api/upload', {
+      const response = await fetchWithRetry('/api/upload', {
         method: 'POST',
         body: formData
       });
@@ -1033,7 +1059,7 @@ export default function ClientDetailPage() {
   // Delete note
   const handleDeleteNote = async (noteId: string) => {
     try {
-      const response = await fetch(`/api/users/${params.clientId}/notes/${noteId}`, {
+      const response = await fetchWithRetry(`/api/users/${params.clientId}/notes/${noteId}`, {
         method: 'DELETE'
       });
 
@@ -1061,7 +1087,7 @@ export default function ClientDetailPage() {
   // Toggle note visibility to client
   const handleToggleNoteVisibility = async (noteId: string, showToClient: boolean) => {
     try {
-      const response = await fetch(`/api/users/${params.clientId}/notes/${noteId}`, {
+      const response = await fetchWithRetry(`/api/users/${params.clientId}/notes/${noteId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ showToClient })
@@ -1121,7 +1147,7 @@ export default function ClientDetailPage() {
 
     try {
       setSavingNote(true);
-      const response = await fetch(`/api/users/${params.clientId}/notes/${selectedNote._id}`, {
+      const response = await fetchWithRetry(`/api/users/${params.clientId}/notes/${selectedNote._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1188,8 +1214,13 @@ export default function ClientDetailPage() {
           setClientTagIds(tagIds);
         }
 
-        // Fetch lifestyle data from separate API first to get physical measurements
-        const lifestyleResponse = await fetch(`/api/users/${params.clientId}/lifestyle`, { cache: 'no-store' });
+        // Fetch the form sections in parallel so slow networks do not serialize the wait.
+        const [lifestyleResponse, medicalResponse, recallResponse] = await Promise.all([
+          fetchWithRetry(`/api/users/${params.clientId}/lifestyle`),
+          fetchWithRetry(`/api/users/${params.clientId}/medical`),
+          fetchWithRetry(`/api/users/${params.clientId}/recall`),
+        ]);
+
         let lifestyleInfo = null;
         if (lifestyleResponse.ok) {
           const lifestyleData = await lifestyleResponse.json();
@@ -1297,8 +1328,6 @@ export default function ClientDetailPage() {
           stressLevel: lifestyleInfo?.stressLevel || data?.user?.stressLevel || ''
         });
 
-        // Fetch medical data from separate API
-        const medicalResponse = await fetch(`/api/users/${params.clientId}/medical`, { cache: 'no-store' });
         let medicalInfo = null;
         if (medicalResponse.ok) {
           const medicalData = await medicalResponse.json();
@@ -1338,8 +1367,6 @@ export default function ClientDetailPage() {
           bloodFlow: medicalInfo?.bloodFlow || data?.user?.bloodFlow || ''
         });
 
-        // Load dietary recall entries from separate API
-        const recallResponse = await fetch(`/api/users/${params.clientId}/recall`, { cache: 'no-store' });
         if (recallResponse.ok) {
           const recallData = await recallResponse.json();
           // Use entries from API response (already formatted with id)
@@ -1439,18 +1466,11 @@ export default function ClientDetailPage() {
         weightKg: basicInfo?.weightKg || undefined, // Important: API uses this for first weight updates
       };
 
-      const response = await fetch(`/api/users/${params.clientId}`, {
+      const basicRequest = fetchWithRetry(`/api/users/${params.clientId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(basicUserData)
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Failed to update basic info:', response.status, errorData);
-        toast.error(errorData?.error || 'Failed to update basic info');
-        return false;
-      }
 
       // 2. Save lifestyle data to separate endpoint (food preferences only)
       const lifestylePayload = {
@@ -1484,17 +1504,12 @@ export default function ClientDetailPage() {
         stressLevel: lifestyleData?.stressLevel,
       };
 
-      const lifestyleResponse = await fetch(`/api/users/${params.clientId}/lifestyle`, {
+      const lifestyleRequest = fetchWithRetry(`/api/users/${params.clientId}/lifestyle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(lifestylePayload)
       });
 
-      if (!lifestyleResponse.ok) {
-        const lifestyleError = await lifestyleResponse.json().catch(() => ({}));
-        console.error('Failed to save lifestyle data:', lifestyleError);
-        failedSections.push('Lifestyle');
-      }
 
       // 3. Save medical data to separate endpoint
       const medicalPayload = {
@@ -1516,25 +1531,12 @@ export default function ClientDetailPage() {
         bloodFlow: medicalData?.bloodFlow,
       };
 
-      const medicalResponse = await fetch(`/api/users/${params.clientId}/medical`, {
+      const medicalRequest = fetchWithRetry(`/api/users/${params.clientId}/medical`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(medicalPayload)
       });
 
-      if (!medicalResponse.ok) {
-        const medicalError = await medicalResponse.json().catch(() => ({}));
-        console.error('Failed to save medical data:', medicalError);
-        failedSections.push('Medical');
-      } else {
-        // Immediately update client state with new medical data so PlanningSection has latest data
-        setClient(prev => prev ? ({
-          ...prev,
-          medicalConditions: medicalPayload.medicalConditions,
-          allergies: medicalPayload.allergies,
-          dietaryRestrictions: medicalPayload.dietaryRestrictions
-        } as ClientData) : null);
-      }
 
       // 4. Save dietary recall entries separately
       if (recallEntries && recallEntries.length > 0) {
@@ -1548,16 +1550,124 @@ export default function ClientDetailPage() {
 
         }));
 
-        const recallResponse = await fetch(`/api/users/${params.clientId}/recall`, {
+        const recallRequest = fetchWithRetry(`/api/users/${params.clientId}/recall`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ meals: mealsToSave })
         });
 
-        if (!recallResponse.ok) {
-          const recallError = await recallResponse.json().catch(() => ({}));
-          console.error('Failed to save dietary recall entries:', recallError);
+        const [basicResponse, lifestyleResponse, medicalResponse, recallResponse] = await Promise.allSettled([
+          basicRequest,
+          lifestyleRequest,
+          medicalRequest,
+          recallRequest,
+        ]);
+
+        if (basicResponse.status === 'fulfilled') {
+          if (!basicResponse.value.ok) {
+            const errorData = await basicResponse.value.json().catch(() => ({}));
+            console.error('Failed to update basic info:', basicResponse.value.status, errorData);
+            failedSections.push('Basic Details');
+          }
+        } else {
+          console.error('Failed to update basic info:', basicResponse.reason);
+          failedSections.push('Basic Details');
+        }
+
+        if (lifestyleResponse.status === 'fulfilled') {
+          if (!lifestyleResponse.value.ok) {
+            const lifestyleError = await lifestyleResponse.value.json().catch(() => ({}));
+            console.error('Failed to save lifestyle data:', lifestyleError);
+            failedSections.push('Lifestyle');
+          }
+        } else {
+          console.error('Failed to save lifestyle data:', lifestyleResponse.reason);
+          failedSections.push('Lifestyle');
+        }
+
+        if (medicalResponse.status === 'fulfilled') {
+          if (!medicalResponse.value.ok) {
+            const medicalError = await medicalResponse.value.json().catch(() => ({}));
+            console.error('Failed to save medical data:', medicalError);
+            failedSections.push('Medical');
+          } else {
+            // Immediately update client state with new medical data so PlanningSection has latest data
+            setClient(prev => prev ? ({
+              ...prev,
+              medicalConditions: medicalPayload.medicalConditions,
+              allergies: medicalPayload.allergies,
+              dietaryRestrictions: medicalPayload.dietaryRestrictions
+            } as ClientData) : null);
+          }
+        } else {
+          console.error('Failed to save medical data:', medicalResponse.reason);
+          failedSections.push('Medical');
+        }
+
+        if (recallResponse.status === 'fulfilled') {
+          if (!recallResponse.value.ok) {
+            const recallError = await recallResponse.value.json().catch(() => ({}));
+            console.error('Failed to save dietary recall entries:', recallError);
+            failedSections.push('Recall');
+          }
+        } else {
+          console.error('Failed to save dietary recall entries:', recallResponse.reason);
           failedSections.push('Recall');
+        }
+
+      } else {
+        const [basicResponse, lifestyleResponse, medicalResponse] = await Promise.allSettled([
+          basicRequest,
+          fetchWithRetry(`/api/users/${params.clientId}/lifestyle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lifestylePayload)
+          }),
+          fetchWithRetry(`/api/users/${params.clientId}/medical`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(medicalPayload)
+          })
+        ]);
+
+        if (basicResponse.status === 'fulfilled') {
+          if (!basicResponse.value.ok) {
+            const errorData = await basicResponse.value.json().catch(() => ({}));
+            console.error('Failed to update basic info:', basicResponse.value.status, errorData);
+            failedSections.push('Basic Details');
+          }
+        } else {
+          console.error('Failed to update basic info:', basicResponse.reason);
+          failedSections.push('Basic Details');
+        }
+
+        if (lifestyleResponse.status === 'fulfilled') {
+          if (!lifestyleResponse.value.ok) {
+            const lifestyleError = await lifestyleResponse.value.json().catch(() => ({}));
+            console.error('Failed to save lifestyle data:', lifestyleError);
+            failedSections.push('Lifestyle');
+          }
+        } else {
+          console.error('Failed to save lifestyle data:', lifestyleResponse.reason);
+          failedSections.push('Lifestyle');
+        }
+
+        if (medicalResponse.status === 'fulfilled') {
+          if (!medicalResponse.value.ok) {
+            const medicalError = await medicalResponse.value.json().catch(() => ({}));
+            console.error('Failed to save medical data:', medicalError);
+            failedSections.push('Medical');
+          } else {
+            setClient(prev => prev ? ({
+              ...prev,
+              medicalConditions: medicalPayload.medicalConditions,
+              allergies: medicalPayload.allergies,
+              dietaryRestrictions: medicalPayload.dietaryRestrictions
+            } as ClientData) : null);
+          }
+        } else {
+          console.error('Failed to save medical data:', medicalResponse.reason);
+          failedSections.push('Medical');
         }
       }
 
