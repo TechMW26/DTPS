@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Plus, X, Minus, Copy, ChevronLeft, ChevronRight, Check, Maximize2, Minimize2, Trash2, Download, Eye } from 'lucide-react';
+import { Plus, X, Minus, Copy, ChevronLeft, ChevronRight, Check, Maximize2, Minimize2, Trash2, Download, Eye, GripVertical } from 'lucide-react';
 import { DayPlan, Meal, FoodOption, FoodItem as MealFoodItem } from './DietPlanDashboard';
 import { DEFAULT_MEAL_TYPES_LIST, MEAL_TYPES, MEAL_TYPE_KEYS, normalizeMealType } from '@/lib/mealConfig';
 import { FoodDatabasePanel } from './FoodSheet';
@@ -259,6 +259,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   // Bulk meal-type editor state
   const [bulkTimeEditorOpen, setBulkTimeEditorOpen] = useState(false);
   const [mealTypeEditsForBulk, setMealTypeEditsForBulk] = useState<BulkMealTypeEdit[]>([]);
+  const [bulkDragSourceIndex, setBulkDragSourceIndex] = useState<number | null>(null);
+  const [bulkDragOverIndex, setBulkDragOverIndex] = useState<number | null>(null);
   // Remove meal type confirmation state
   const [removeMealTypeDialogOpen, setRemoveMealTypeDialogOpen] = useState(false);
   const [mealTypeToRemove, setMealTypeToRemove] = useState<string | null>(null);
@@ -1429,6 +1431,47 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       ...edit,
       time: defaults[edit.previousName] || defaults[edit.name] || edit.time
     })));
+  };
+
+  const reorderBulkMealTypeEdits = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setMealTypeEditsForBulk(prev => {
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const handleBulkMealTypeDragStart = (e: React.DragEvent<HTMLButtonElement>, index: number) => {
+    setBulkDragSourceIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+  };
+
+  const handleBulkMealTypeDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setBulkDragOverIndex(index);
+  };
+
+  const handleBulkMealTypeDrop = (e: React.DragEvent<HTMLDivElement>, dropIndex: number) => {
+    e.preventDefault();
+    const dataIndex = Number(e.dataTransfer.getData('text/plain'));
+    const fromIndex = Number.isNaN(dataIndex) ? bulkDragSourceIndex : dataIndex;
+    if (fromIndex !== null) {
+      reorderBulkMealTypeEdits(fromIndex, dropIndex);
+    }
+    setBulkDragSourceIndex(null);
+    setBulkDragOverIndex(null);
+  };
+
+  const handleBulkMealTypeDragEnd = () => {
+    setBulkDragSourceIndex(null);
+    setBulkDragOverIndex(null);
   };
 
   // Helper to clear labels on options
@@ -2751,13 +2794,30 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
             <DialogHeader className="px-6 pt-6 pb-3 border-b border-slate-100">
               <DialogTitle className="text-slate-900 font-semibold">Edit Meal Types</DialogTitle>
               <DialogDescription className="text-slate-600">
-                Update meal type names and times across all days at once. Click "Apply Defaults" to use standard times.
+                Drag to reorder meal types, and update names and times across all days at once. Click "Apply Defaults" to use standard times.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 px-6 py-4 overflow-y-auto flex-1 min-h-0">
               <div className="space-y-3">
                 {mealTypeEditsForBulk.map((mealTypeEdit, index) => (
-                  <div key={mealTypeEdit.previousName} className="grid grid-cols-[minmax(0,1fr)_140px] gap-3 items-center">
+                  <div
+                    key={mealTypeEdit.previousName}
+                    onDragOver={(e) => handleBulkMealTypeDragOver(e, index)}
+                    onDrop={(e) => handleBulkMealTypeDrop(e, index)}
+                    className={`grid grid-cols-[28px_minmax(0,1fr)_140px] gap-3 items-center rounded-md ${bulkDragOverIndex === index ? 'bg-slate-100' : ''
+                      }`}
+                  >
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(e) => handleBulkMealTypeDragStart(e, index)}
+                      onDragEnd={handleBulkMealTypeDragEnd}
+                      className="h-8 w-7 flex items-center justify-center text-slate-500 hover:text-slate-700 cursor-grab active:cursor-grabbing"
+                      title="Drag to reorder"
+                      aria-label={`Drag to reorder ${mealTypeEdit.name || mealTypeEdit.previousName}`}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
                     <div className="space-y-1">
                       <Label className="text-slate-700 font-medium text-sm">
                         Meal Type Name

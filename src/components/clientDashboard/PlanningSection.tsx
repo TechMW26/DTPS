@@ -1560,11 +1560,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     setInitialMealTypes(planMealTypes);
     latestMealDataRef.current = { meals: planMeals, mealTypes: planMealTypes };
     setPlanKey(prev => prev + 1); // Force re-mount
-    // If editing a draft, set draftPlanId so autosave works
-    if (plan.status === 'draft') {
-      draftPlanIdRef.current = plan._id;
-      setDraftPlanId(plan._id);
-    }
+    // Set planId for all plans (draft, active, etc.) so updates work correctly
+    // This allows editing any plan status, not just drafts
+    draftPlanIdRef.current = plan._id;
+    setDraftPlanId(plan._id);
     setStep('meals');
   };
 

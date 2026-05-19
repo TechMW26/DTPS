@@ -367,15 +367,8 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
           normalized.push({ ...meal, name: label, time });
         }
       }
-      // Sort by canonical sortOrder so columns always render in chronological order
-      // regardless of the order they were persisted to the DB
-      normalized.sort((a, b) => {
-        const aKey = toCanonicalMealKeyOnly(a.name);
-        const bKey = toCanonicalMealKeyOnly(b.name);
-        const aOrder = aKey ? MEAL_TYPES[aKey].sortOrder : 99;
-        const bOrder = bKey ? MEAL_TYPES[bKey].sortOrder : 99;
-        return aOrder - bOrder;
-      });
+      // Preserve persisted order from DB so manual reordering in "Edit Meal Types"
+      // is reflected exactly in both edit mode and read-only view mode.
       setMealTypeConfigs(normalized);
     }
   }, [initialMealTypes]);
