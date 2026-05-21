@@ -90,6 +90,24 @@ function getMealPlanDurationDays(plan: any): number {
   return 0;
 }
 
+function toValidDate(value: unknown): Date | null {
+  if (!value) return null;
+
+  const parsed = new Date(value as any);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function resolveLaterDate(primary?: unknown, fallback?: unknown): Date | null {
+  const primaryDate = toValidDate(primary);
+  const fallbackDate = toValidDate(fallback);
+
+  if (primaryDate && fallbackDate) {
+    return primaryDate.getTime() >= fallbackDate.getTime() ? primaryDate : fallbackDate;
+  }
+
+  return primaryDate || fallbackDate || null;
+}
+
 function getEffectiveDurationDays(purchase: any): number {
   if (typeof purchase?.__effectiveDurationDays === 'number') {
     return purchase.__effectiveDurationDays;
@@ -416,6 +434,20 @@ export async function GET(request: NextRequest) {
       status: { $in: ['active', 'completed', 'paused'] }
     }).select('purchaseId duration startDate endDate status');
 
+    const latestMealPlanEndDateByPurchase = new Map<string, Date>();
+    for (const plan of linkedMealPlans) {
+      const purchaseKey = String((plan as any).purchaseId);
+      const planEndDate = toValidDate((plan as any).endDate);
+      if (!purchaseKey || !planEndDate) {
+        continue;
+      }
+
+      const existingEndDate = latestMealPlanEndDateByPurchase.get(purchaseKey);
+      if (!existingEndDate || planEndDate.getTime() > existingEndDate.getTime()) {
+        latestMealPlanEndDateByPurchase.set(purchaseKey, planEndDate);
+      }
+    }
+
     const usedDaysByPurchase = new Map<string, number>();
     const mealPlansByPurchase = new Map<string, number>();
     for (const plan of linkedMealPlans) {
@@ -495,9 +527,13 @@ export async function GET(request: NextRequest) {
         ? storedRemainingDays
         : Math.max(0, durationDays - effectiveDaysUsed);
 
+      const linkedMealPlanEndDate = latestMealPlanEndDateByPurchase.get(purchaseId) || null;
+      const resolvedExpectedEndDate = resolveLaterDate(purchase?.expectedEndDate, linkedMealPlanEndDate);
+
       (purchase as any).__effectiveDurationDays = durationDays;
       (purchase as any).__effectiveDaysUsed = effectiveDaysUsed;
       (purchase as any).__effectiveRemainingDays = effectiveRemainingDays;
+      (purchase as any).__resolvedExpectedEndDate = resolvedExpectedEndDate;
 
       return purchase;
     });
@@ -510,7 +546,12 @@ export async function GET(request: NextRequest) {
       if (!purchase?.expectedStartDate) return false;
 
       const start = new Date(purchase.expectedStartDate);
-      const end = new Date(purchase.expectedEndDate || purchase.endDate || purchase.expectedStartDate);
+      const end = new Date(
+        purchase.__resolvedExpectedEndDate ||
+        purchase.expectedEndDate ||
+        purchase.endDate ||
+        purchase.expectedStartDate
+      );
 
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
 
@@ -640,7 +681,7 @@ export async function GET(request: NextRequest) {
           startDate: fallbackPurchase?.startDate,
           endDate: fallbackPurchase?.endDate,
           expectedStartDate: fallbackPurchase?.expectedStartDate || null,
-          expectedEndDate: fallbackPurchase?.expectedEndDate || null,
+          expectedEndDate: fallbackPurchase?.__resolvedExpectedEndDate || fallbackPurchase?.expectedEndDate || null,
           parentPurchaseId: fallbackPurchase?.parentPaymentId || null,
           mealPlanCreated: fallbackPurchase?.mealPlanCreated,
           daysUsed: getEffectiveDaysUsed(fallbackPurchase),
@@ -719,7 +760,7 @@ export async function GET(request: NextRequest) {
         startDate: activePurchase?.startDate,
         endDate: activePurchase?.endDate,
         expectedStartDate: activePurchase?.expectedStartDate || null,
-        expectedEndDate: activePurchase?.expectedEndDate || null,
+        expectedEndDate: activePurchase?.__resolvedExpectedEndDate || activePurchase?.expectedEndDate || null,
         parentPurchaseId: activePurchase?.parentPaymentId || null,
         mealPlanCreated: activePurchase?.mealPlanCreated,
         daysUsed: totalDaysUsed,
@@ -752,7 +793,7 @@ export async function GET(request: NextRequest) {
         startDate: p.startDate,
         endDate: p.endDate,
         expectedStartDate: p.expectedStartDate || null,
-        expectedEndDate: p.expectedEndDate || null,
+        expectedEndDate: p.__resolvedExpectedEndDate || p.expectedEndDate || null,
         parentPurchaseId: p.parentPaymentId || null,
         createdAt: p.createdAt
       })),

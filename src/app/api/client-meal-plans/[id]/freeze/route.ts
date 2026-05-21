@@ -111,6 +111,93 @@ async function getSharedFreezeInfo(purchaseId: string | null, currentPlanId: str
   return { totalFreezeCount, allFreezedDays, linkedPlanIds, totalDurationDays };
 }
 
+type PurchaseDateRecord = {
+  _id: string;
+  paymentLink?: string | null;
+  expectedEndDate?: Date | null;
+  endDate?: Date | null;
+  updatedAt?: Date;
+  createdAt?: Date;
+};
+
+async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<{
+  unifiedTargets: PurchaseDateRecord[];
+  legacyTargets: PurchaseDateRecord[];
+}> {
+  if (!purchaseId) {
+    return { unifiedTargets: [], legacyTargets: [] };
+  }
+
+  const selectFields = '_id paymentLink expectedEndDate endDate updatedAt createdAt';
+  const unifiedTargetsMap = new Map<string, PurchaseDateRecord>();
+  const legacyTargetsMap = new Map<string, PurchaseDateRecord>();
+
+  const registerTarget = (map: Map<string, PurchaseDateRecord>, record: any) => {
+    if (!record?._id) return;
+    map.set(String(record._id), record as PurchaseDateRecord);
+  };
+
+  const [primaryUnifiedPurchase, primaryLegacyPurchase] = await Promise.all([
+    UnifiedPayment.findById(purchaseId).select(selectFields).lean(),
+    ClientPurchase.findById(purchaseId).select(selectFields).lean()
+  ]);
+
+  registerTarget(unifiedTargetsMap, primaryUnifiedPurchase);
+  registerTarget(legacyTargetsMap, primaryLegacyPurchase);
+
+  let relatedPaymentLinkId =
+    primaryUnifiedPurchase?.paymentLink?.toString?.() ||
+    primaryLegacyPurchase?.paymentLink?.toString?.() ||
+    null;
+
+  if (relatedPaymentLinkId) {
+    const [linkedUnifiedTargets, linkedLegacyTargets] = await Promise.all([
+      UnifiedPayment.find({ paymentLink: relatedPaymentLinkId }).select(selectFields).lean(),
+      ClientPurchase.find({ paymentLink: relatedPaymentLinkId }).select(selectFields).lean()
+    ]);
+
+    linkedUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
+    linkedLegacyTargets.forEach((record: any) => registerTarget(legacyTargetsMap, record));
+  }
+
+  if (unifiedTargetsMap.size === 0 && legacyTargetsMap.size === 0) {
+    const [fallbackUnifiedTargets, fallbackLegacyTargets] = await Promise.all([
+      UnifiedPayment.find({ paymentLink: purchaseId }).select(selectFields).lean(),
+      ClientPurchase.find({ paymentLink: purchaseId }).select(selectFields).lean()
+    ]);
+
+    fallbackUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
+    fallbackLegacyTargets.forEach((record: any) => registerTarget(legacyTargetsMap, record));
+  }
+
+  return {
+    unifiedTargets: Array.from(unifiedTargetsMap.values()),
+    legacyTargets: Array.from(legacyTargetsMap.values())
+  };
+}
+
+function resolvePurchaseExpectedEndBaseline(records: PurchaseDateRecord[], fallbackDate: Date): Date {
+  if (records.length === 0) {
+    return fallbackDate;
+  }
+
+  const sortedByFreshness = [...records].sort((a, b) => {
+    const aTime = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
+    const bTime = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
+    return bTime - aTime;
+  });
+
+  for (const record of sortedByFreshness) {
+    if (record?.expectedEndDate) return new Date(record.expectedEndDate);
+  }
+
+  for (const record of sortedByFreshness) {
+    if (record?.endDate) return new Date(record.endDate);
+  }
+
+  return fallbackDate;
+}
+
 // GET - Get freeze information for a meal plan
 export async function GET(
   request: NextRequest,
@@ -438,24 +525,39 @@ export async function POST(
       { $set: { endDate: newEndDate } }
     );
 
-    // If this plan is linked to a purchase, also extend the purchase's expected end date
+    // If this plan is linked to a purchase, extend linked purchase expected/end dates too
     if (purchaseId) {
-      const purchase = await withCache(
-        `client-meal-plans:id:freeze:${JSON.stringify(purchaseId)}`,
-        async () => await UnifiedPayment.findById(purchaseId),
-        { ttl: 120000, tags: ['client_meal_plans'] }
+      const linkedPurchaseTargets = await withCache(
+        `client-meal-plans:id:freeze:linked-targets:${JSON.stringify(purchaseId)}`,
+        async () => await resolveLinkedPurchaseTargets(purchaseId),
+        { ttl: 120000, tags: ['client_meal_plans', 'client_purchases'] }
       );
-      if (purchase && purchase.expectedEndDate) {
-        const newExpectedEndDate = addDays(new Date(purchase.expectedEndDate), validFreezeDates.length);
-        await UnifiedPayment.updateOne(
-          { _id: purchaseId },
-          {
-            $set: {
-              expectedEndDate: newExpectedEndDate,
-              endDate: newExpectedEndDate // Also extend the purchase end date
-            }
-          }
-        );
+
+      const purchaseRecords = [
+        ...linkedPurchaseTargets.unifiedTargets,
+        ...linkedPurchaseTargets.legacyTargets
+      ];
+      const baselineExpectedEndDate = resolvePurchaseExpectedEndBaseline(purchaseRecords, endDate);
+      const newExpectedEndDate = addDays(baselineExpectedEndDate, validFreezeDates.length);
+      const purchaseUpdate = {
+        $set: {
+          expectedEndDate: newExpectedEndDate,
+          endDate: newExpectedEndDate
+        }
+      };
+
+      const unifiedTargetIds = linkedPurchaseTargets.unifiedTargets.map((record) => String(record._id));
+      const legacyTargetIds = linkedPurchaseTargets.legacyTargets.map((record) => String(record._id));
+      const updateOps: Promise<any>[] = [];
+
+      if (unifiedTargetIds.length > 0) {
+        updateOps.push(UnifiedPayment.updateMany({ _id: { $in: unifiedTargetIds } }, purchaseUpdate));
+      }
+      if (legacyTargetIds.length > 0) {
+        updateOps.push(ClientPurchase.updateMany({ _id: { $in: legacyTargetIds } }, purchaseUpdate));
+      }
+      if (updateOps.length > 0) {
+        await Promise.all(updateOps);
       }
     }
 
@@ -602,6 +704,43 @@ export async function DELETE(
       { mealPlan: mealPlan._id },
       { $set: { endDate: newEndDate } }
     );
+
+    // If linked to a purchase, roll back linked purchase expected/end dates as well
+    const purchaseId = mealPlan.purchaseId?.toString() || null;
+    if (purchaseId) {
+      const linkedPurchaseTargets = await withCache(
+        `client-meal-plans:id:freeze:linked-targets:${JSON.stringify(purchaseId)}`,
+        async () => await resolveLinkedPurchaseTargets(purchaseId),
+        { ttl: 120000, tags: ['client_meal_plans', 'client_purchases'] }
+      );
+
+      const purchaseRecords = [
+        ...linkedPurchaseTargets.unifiedTargets,
+        ...linkedPurchaseTargets.legacyTargets
+      ];
+      const baselineExpectedEndDate = resolvePurchaseExpectedEndBaseline(purchaseRecords, currentEndDate);
+      const newExpectedEndDate = addDays(baselineExpectedEndDate, -datesToUnfreeze.length);
+      const purchaseUpdate = {
+        $set: {
+          expectedEndDate: newExpectedEndDate,
+          endDate: newExpectedEndDate
+        }
+      };
+
+      const unifiedTargetIds = linkedPurchaseTargets.unifiedTargets.map((record) => String(record._id));
+      const legacyTargetIds = linkedPurchaseTargets.legacyTargets.map((record) => String(record._id));
+      const updateOps: Promise<any>[] = [];
+
+      if (unifiedTargetIds.length > 0) {
+        updateOps.push(UnifiedPayment.updateMany({ _id: { $in: unifiedTargetIds } }, purchaseUpdate));
+      }
+      if (legacyTargetIds.length > 0) {
+        updateOps.push(ClientPurchase.updateMany({ _id: { $in: legacyTargetIds } }, purchaseUpdate));
+      }
+      if (updateOps.length > 0) {
+        await Promise.all(updateOps);
+      }
+    }
 
     // Recalculate allowed freeze days based on original duration
     const startDate = startOfDay(new Date(mealPlan.startDate));

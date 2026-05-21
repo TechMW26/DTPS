@@ -18,6 +18,42 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+async function buildUniqueDuplicateName(baseName: string, userId: string): Promise<string> {
+  const trimmedBase = baseName.trim() || 'Untitled Recipe';
+  const escapedBase = escapeRegex(trimmedBase);
+  const copyNamePattern = new RegExp(`^${escapedBase}\\s*\\(Copy(?:\\s+(\\d+))?\\)$`, 'i');
+
+  const existingRecipes = await Recipe.find({
+    createdBy: userId,
+    $or: [
+      { name: trimmedBase },
+      { name: { $regex: copyNamePattern } }
+    ]
+  }).select('name').lean();
+
+  // First duplicate should be "(Copy)". If that exists, increment: "(Copy 2)", "(Copy 3)", etc.
+  let maxCopyNumber = 0;
+
+  for (const item of existingRecipes) {
+    const currentName = String(item?.name || '').trim();
+    if (currentName.toLowerCase() === trimmedBase.toLowerCase()) {
+      maxCopyNumber = Math.max(maxCopyNumber, 0);
+      continue;
+    }
+
+    const match = currentName.match(copyNamePattern);
+    if (!match) continue;
+
+    const parsed = match[1] ? parseInt(match[1], 10) : 1;
+    if (!Number.isNaN(parsed)) {
+      maxCopyNumber = Math.max(maxCopyNumber, parsed);
+    }
+  }
+
+  if (maxCopyNumber <= 0) return `${trimmedBase} (Copy)`;
+  return `${trimmedBase} (Copy ${maxCopyNumber + 1})`;
+}
+
 /**
  * Parse servings string to extract numeric value
  * Examples:
@@ -146,6 +182,90 @@ export async function GET(
   } catch (error: any) {
     console.error('Error fetching recipe:', error?.message || error);
     return jsonNoStore({ error: 'Failed to fetch recipe', details: error?.message }, { status: 500 });
+  }
+}
+
+/* -------- DUPLICATE -------- */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    let { id } = await params;
+
+    // Strip any extra quotes from the ID
+    id = id.replace(/^["']+|["']+$/g, '').trim();
+
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: 'Invalid recipe ID format' }, { status: 400 });
+    }
+
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Allow any dietitian, health counselor, or admin to duplicate recipes
+    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const canManageRecipes =
+      normalizedRole === 'dietitian' ||
+      normalizedRole === 'health_counselor' ||
+      normalizedRole.includes('admin');
+    if (!canManageRecipes) {
+      return NextResponse.json({ error: 'Forbidden', message: 'You do not have permission to duplicate recipes' }, { status: 403 });
+    }
+
+    const sourceRecipe = await Recipe.findById(id).lean();
+    if (!sourceRecipe) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    const duplicateName = await buildUniqueDuplicateName(String(sourceRecipe.name || ''), session.user.id);
+
+    const duplicateData: Record<string, any> = {
+      ...sourceRecipe,
+      name: duplicateName,
+      createdBy: session.user.id,
+      rating: 0,
+      ratingCount: 0,
+      usageCount: 0,
+      favoriteCount: 0,
+      isPublic: false,
+      isPremium: false,
+    };
+
+    delete duplicateData._id;
+    delete duplicateData.__v;
+    delete duplicateData.uuid;
+    delete duplicateData.createdAt;
+    delete duplicateData.updatedAt;
+
+    const duplicatedRecipe = await Recipe.create(duplicateData);
+    await duplicatedRecipe.populate('createdBy', 'firstName lastName');
+
+    clearCacheByTag('recipes');
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Recipe duplicated successfully',
+        recipe: duplicatedRecipe,
+      },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error('Error duplicating recipe:', error?.message || error);
+
+    if ((error as any).code === 11000) {
+      return NextResponse.json({
+        error: 'Duplicate recipe',
+        message: 'A recipe with this name already exists. Please try duplicating again.',
+      }, { status: 409 });
+    }
+
+    return NextResponse.json({ error: 'Failed to duplicate recipe', details: error?.message }, { status: 500 });
   }
 }
 

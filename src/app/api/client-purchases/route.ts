@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth/config';
 import dbConnect from '@/lib/db/connect';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import PaymentLink from '@/lib/db/models/PaymentLink';
+import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 const getPaidPurchaseQuery = () => ({
@@ -166,6 +167,23 @@ const getCalendarDaysUntilEndIST = (endDateValue: Date | string, referenceDate: 
   return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 };
 
+const toValidDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  const parsed = new Date(value as any);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const resolveLaterDate = (primary?: unknown, fallback?: unknown): Date | null => {
+  const primaryDate = toValidDate(primary);
+  const fallbackDate = toValidDate(fallback);
+
+  if (primaryDate && fallbackDate) {
+    return primaryDate.getTime() >= fallbackDate.getTime() ? primaryDate : fallbackDate;
+  }
+
+  return primaryDate || fallbackDate || null;
+};
+
 const isPurchaseActiveForPlanning = (purchase: any, now: Date): boolean => {
   const remainingDays = getEffectiveRemainingDays(purchase);
   if (remainingDays <= 0) return false;
@@ -315,19 +333,46 @@ export async function GET(request: NextRequest) {
         { ttl: 120000, tags: ['client_purchases'] }
       );
 
+    const purchaseIds = purchases
+      .map((purchase: any) => purchase?._id?.toString?.())
+      .filter((id: string | undefined): id is string => Boolean(id));
+
+    const latestMealPlanEndDateByPurchase = new Map<string, Date>();
+    if (purchaseIds.length > 0) {
+      const linkedMealPlans = await ClientMealPlan.find({
+        purchaseId: { $in: purchaseIds },
+        status: { $in: ['active', 'completed', 'paused'] }
+      }).select('purchaseId endDate');
+
+      for (const plan of linkedMealPlans) {
+        const purchaseKey = plan?.purchaseId ? String(plan.purchaseId) : '';
+        const planEndDate = toValidDate((plan as any)?.endDate);
+        if (!purchaseKey || !planEndDate) continue;
+
+        const existing = latestMealPlanEndDateByPurchase.get(purchaseKey);
+        if (!existing || planEndDate.getTime() > existing.getTime()) {
+          latestMealPlanEndDateByPurchase.set(purchaseKey, planEndDate);
+        }
+      }
+    }
+
     // Add remaining days to each purchase
     // remainingDays = durationDays - daysUsed (plan allocation remaining)
     // calendarDaysUntilEnd = days until endDate/expectedEndDate (for expiration tracking)
     const purchasesWithInfo = purchases.map(purchase => {
       const purchaseObj = purchase.toObject();
       const now = new Date();
+      const purchaseId = purchaseObj?._id?.toString?.() || '';
 
       const durationDays = getEffectiveDurationDays(purchaseObj);
       const daysUsed = getEffectiveDaysUsed(purchaseObj);
       const remainingDays = getEffectiveRemainingDays(purchaseObj);
 
+      const linkedMealPlanEndDate = latestMealPlanEndDateByPurchase.get(purchaseId) || null;
+      const resolvedExpectedEndDate = resolveLaterDate(purchaseObj.expectedEndDate, linkedMealPlanEndDate);
+
       // Calculate calendar days until end date (for expiration)
-      const endDate = purchaseObj.expectedEndDate || purchaseObj.endDate;
+      const endDate = resolvedExpectedEndDate || purchaseObj.endDate;
       const calendarDaysUntilEnd = endDate
         ? getCalendarDaysUntilEndIST(endDate, now)
         : remainingDays;
@@ -337,6 +382,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...purchaseObj,
+        expectedEndDate: resolvedExpectedEndDate || purchaseObj.expectedEndDate || null,
         durationDays,
         daysUsed,
         remainingDays,

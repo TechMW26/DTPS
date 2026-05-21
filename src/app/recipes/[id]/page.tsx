@@ -307,6 +307,38 @@ export default function RecipeViewPage() {
     });
   };
 
+  const handleDuplicateRecipe = async () => {
+    if (!recipe || !canEditRecipe()) return;
+
+    try {
+      toast.loading('Duplicating recipe...', { id: 'duplicate-recipe' });
+
+      const response = await fetch(`/api/recipes/${recipe._id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Failed to duplicate recipe');
+      }
+
+      toast.success('Recipe duplicated successfully', { id: 'duplicate-recipe' });
+
+      if (data?.recipe?._id) {
+        router.push(`/recipes/${data.recipe._id}`);
+      } else {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error('Error duplicating recipe:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to duplicate recipe', { id: 'duplicate-recipe' });
+    }
+  };
+
 
 
   if (loading) {
@@ -375,6 +407,13 @@ export default function RecipeViewPage() {
 
           {canEditRecipe() && (
             <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDuplicateRecipe}
+              >
+                Duplicate
+              </Button>
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/recipes/${recipe._id}/edit`}>
                   <Edit className="h-4 w-4 mr-2" />

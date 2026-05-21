@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { ArrowLeft, Clock, Users } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { toast } from 'sonner';
 
 interface Recipe {
   _id: string;
@@ -36,6 +38,7 @@ interface Recipe {
 
 export default function RecipeDetailMobile({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const { data: session } = useSession();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [recipeId, setRecipeId] = useState<string>('');
@@ -88,6 +91,40 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
     }
   };
 
+  const canEditRecipe = () => {
+    if (!session?.user) return false;
+    const normalizedRole = (session.user.role || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const isAdminRole = normalizedRole.includes('admin');
+    return isAdminRole || normalizedRole === 'dietitian' || normalizedRole === 'health_counselor';
+  };
+
+  const handleDuplicateRecipe = async () => {
+    if (!recipe || !canEditRecipe()) return;
+
+    try {
+      toast.loading('Duplicating recipe...', { id: 'duplicate-recipe-mobile' });
+      const response = await fetch(`/api/recipes/${recipe._id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Failed to duplicate recipe');
+      }
+
+      toast.success('Recipe duplicated successfully', { id: 'duplicate-recipe-mobile' });
+      if (data?.recipe?._id) {
+        router.replace(`/recipes/${data.recipe._id}`);
+      } else {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error('Error duplicating recipe:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to duplicate recipe', { id: 'duplicate-recipe-mobile' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -116,13 +153,21 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
     <div className="min-h-screen bg-white pb-20">
       {/* Header with Back Button */}
       <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-gray-100">
-        <div className="flex items-center p-4">
+        <div className="flex items-center justify-between p-4">
           <button
             onClick={() => router.back()}
             className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center active:scale-95 transition-transform"
           >
             <ArrowLeft className="h-5 w-5 text-gray-700" />
           </button>
+          {canEditRecipe() && (
+            <button
+              onClick={handleDuplicateRecipe}
+              className="px-4 h-10 rounded-full bg-gray-900 text-white text-sm font-medium active:scale-95 transition-transform"
+            >
+              Duplicate
+            </button>
+          )}
         </div>
       </div>
 
