@@ -101,6 +101,8 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
   const handleDuplicateRecipe = async () => {
     if (!recipe || !canEditRecipe()) return;
 
+    const createdTab = window.open('about:blank', '_blank');
+
     try {
       toast.loading('Duplicating recipe...', { id: 'duplicate-recipe-mobile' });
       const response = await fetch(`/api/recipes/${recipe._id}`, {
@@ -110,13 +112,24 @@ export default function RecipeDetailMobile({ params }: { params: Promise<{ id: s
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (createdTab && !createdTab.closed) {
+          createdTab.close();
+        }
         throw new Error(data.message || data.error || 'Failed to duplicate recipe');
       }
 
       toast.success('Recipe duplicated successfully', { id: 'duplicate-recipe-mobile' });
       if (data?.recipe?._id) {
-        router.replace(`/recipes/${data.recipe._id}`);
+        const destination = `/recipes/${data.recipe._id}`;
+        if (createdTab && !createdTab.closed) {
+          createdTab.location.href = destination;
+        } else {
+          window.open(destination, '_blank', 'noopener,noreferrer');
+        }
       } else {
+        if (createdTab && !createdTab.closed) {
+          createdTab.close();
+        }
         router.refresh();
       }
     } catch (error) {

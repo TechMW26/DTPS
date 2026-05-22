@@ -310,6 +310,8 @@ export default function RecipeViewPage() {
   const handleDuplicateRecipe = async () => {
     if (!recipe || !canEditRecipe()) return;
 
+    const createdTab = window.open('about:blank', '_blank');
+
     try {
       toast.loading('Duplicating recipe...', { id: 'duplicate-recipe' });
 
@@ -323,14 +325,25 @@ export default function RecipeViewPage() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
+        if (createdTab && !createdTab.closed) {
+          createdTab.close();
+        }
         throw new Error(data.message || data.error || 'Failed to duplicate recipe');
       }
 
       toast.success('Recipe duplicated successfully', { id: 'duplicate-recipe' });
 
       if (data?.recipe?._id) {
-        router.push(`/recipes/${data.recipe._id}`);
+        const destination = `/recipes/${data.recipe._id}`;
+        if (createdTab && !createdTab.closed) {
+          createdTab.location.href = destination;
+        } else {
+          window.open(destination, '_blank', 'noopener,noreferrer');
+        }
       } else {
+        if (createdTab && !createdTab.closed) {
+          createdTab.close();
+        }
         router.refresh();
       }
     } catch (error) {
