@@ -200,7 +200,17 @@ export async function PUT(
     if (description !== undefined) updateData.description = description;
     if (startDate !== undefined) updateData.startDate = new Date(startDate);
     if (endDate !== undefined) updateData.endDate = new Date(endDate);
-    if (duration !== undefined) updateData.duration = duration;
+    if (duration !== undefined) {
+      const existingDuration = typeof existingPlan.duration === 'number' ? existingPlan.duration : null;
+      const isDraftPlan = existingPlan.status === 'draft';
+
+      // Keep assigned duration immutable once plan is not draft.
+      if (!isDraftPlan && existingDuration && existingDuration > 0) {
+        updateData.duration = existingDuration;
+      } else {
+        updateData.duration = duration;
+      }
+    }
 
     // For meals: accept the full structured array as-is (preserves nested meal data)
     if (meals !== undefined && Array.isArray(meals)) {

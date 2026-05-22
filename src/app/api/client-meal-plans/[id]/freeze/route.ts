@@ -176,6 +176,26 @@ async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<
   };
 }
 
+async function resolveLatestLinkedMealPlanEndDate(purchaseId: string | null, fallbackDate: Date): Promise<Date> {
+  if (!purchaseId) {
+    return fallbackDate;
+  }
+
+  const linkedPlans = await ClientMealPlan.find({ purchaseId }).select('endDate updatedAt createdAt').lean();
+  let latestEndDate = fallbackDate;
+
+  for (const plan of linkedPlans) {
+    const planEndDate = plan?.endDate ? new Date(plan.endDate) : null;
+    if (!planEndDate || Number.isNaN(planEndDate.getTime())) continue;
+
+    if (planEndDate.getTime() > latestEndDate.getTime()) {
+      latestEndDate = planEndDate;
+    }
+  }
+
+  return latestEndDate;
+}
+
 function resolvePurchaseExpectedEndBaseline(records: PurchaseDateRecord[], fallbackDate: Date): Date {
   if (records.length === 0) {
     return fallbackDate;
@@ -401,6 +421,7 @@ export async function POST(
 
     // Get meals array
     const meals = mealPlan.meals || [];
+    const originalPhaseDuration = mealPlan.duration;
 
     // Sort freeze dates
     validFreezeDates.sort((a, b) => a.getTime() - b.getTime());
@@ -516,6 +537,7 @@ export async function POST(
     mealPlan.totalFreezeCount = thisPlanNewFreezeCount;
     mealPlan.meals = updatedMeals;
     mealPlan.endDate = newEndDate; // Extend end date by frozen days
+    mealPlan.duration = originalPhaseDuration; // Keep assigned phase duration immutable
 
     await mealPlan.save();
 
@@ -527,18 +549,13 @@ export async function POST(
 
     // If this plan is linked to a purchase, extend linked purchase expected/end dates too
     if (purchaseId) {
-      const linkedPurchaseTargets = await withCache(
-        `client-meal-plans:id:freeze:linked-targets:${JSON.stringify(purchaseId)}`,
-        async () => await resolveLinkedPurchaseTargets(purchaseId),
-        { ttl: 120000, tags: ['client_meal_plans', 'client_purchases'] }
-      );
+      const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(purchaseId);
 
       const purchaseRecords = [
         ...linkedPurchaseTargets.unifiedTargets,
         ...linkedPurchaseTargets.legacyTargets
       ];
-      const baselineExpectedEndDate = resolvePurchaseExpectedEndBaseline(purchaseRecords, endDate);
-      const newExpectedEndDate = addDays(baselineExpectedEndDate, validFreezeDates.length);
+      const newExpectedEndDate = await resolveLatestLinkedMealPlanEndDate(purchaseId, newEndDate);
       const purchaseUpdate = {
         $set: {
           expectedEndDate: newExpectedEndDate,
@@ -559,6 +576,9 @@ export async function POST(
       if (updateOps.length > 0) {
         await Promise.all(updateOps);
       }
+
+      clearCacheByTag('client_purchases');
+      clearCacheByTag('client_meal_plans');
     }
 
     // Calculate the new shared freeze count for the response
@@ -623,6 +643,7 @@ export async function DELETE(
     }
 
     const meals = mealPlan.meals || [];
+    const originalPhaseDuration = mealPlan.duration;
     const freezedDays = mealPlan.freezedDays || [];
     const currentFreezeCount = mealPlan.totalFreezeCount || 0;
 
@@ -682,9 +703,12 @@ export async function DELETE(
       return !unfreezeDateSet.has(freezeDateStr);
     });
 
-    // Calculate new end date (subtract the unfrozen days)
+    const startDate = startOfDay(new Date(mealPlan.startDate));
     const currentEndDate = startOfDay(new Date(mealPlan.endDate));
-    const newEndDate = addDays(currentEndDate, -datesToUnfreeze.length);
+    const lastUpdatedMeal = updatedMeals[updatedMeals.length - 1];
+    const newEndDate = lastUpdatedMeal?.date
+      ? startOfDay(parseISO(lastUpdatedMeal.date))
+      : addDays(startDate, (originalPhaseDuration || 0) - 1);
 
     // NOTE: totalFreezeCount does NOT change on unfreeze
     // The freeze days are still "used" even after unfreezing
@@ -696,6 +720,7 @@ export async function DELETE(
     mealPlan.freezedDays = updatedFreezedDays;
     // mealPlan.totalFreezeCount stays the same - freeze days are still "used"
     mealPlan.endDate = newEndDate;
+    mealPlan.duration = originalPhaseDuration; // Keep assigned phase duration immutable
 
     await mealPlan.save();
 
@@ -705,21 +730,16 @@ export async function DELETE(
       { $set: { endDate: newEndDate } }
     );
 
-    // If linked to a purchase, roll back linked purchase expected/end dates as well
+    // If linked to a purchase, keep linked expected/end dates aligned without decrementing
     const purchaseId = mealPlan.purchaseId?.toString() || null;
     if (purchaseId) {
-      const linkedPurchaseTargets = await withCache(
-        `client-meal-plans:id:freeze:linked-targets:${JSON.stringify(purchaseId)}`,
-        async () => await resolveLinkedPurchaseTargets(purchaseId),
-        { ttl: 120000, tags: ['client_meal_plans', 'client_purchases'] }
-      );
+      const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(purchaseId);
 
       const purchaseRecords = [
         ...linkedPurchaseTargets.unifiedTargets,
         ...linkedPurchaseTargets.legacyTargets
       ];
-      const baselineExpectedEndDate = resolvePurchaseExpectedEndBaseline(purchaseRecords, currentEndDate);
-      const newExpectedEndDate = addDays(baselineExpectedEndDate, -datesToUnfreeze.length);
+      const newExpectedEndDate = await resolveLatestLinkedMealPlanEndDate(purchaseId, newEndDate);
       const purchaseUpdate = {
         $set: {
           expectedEndDate: newExpectedEndDate,
@@ -740,15 +760,17 @@ export async function DELETE(
       if (updateOps.length > 0) {
         await Promise.all(updateOps);
       }
+
+      clearCacheByTag('client_purchases');
+      clearCacheByTag('client_meal_plans');
     }
 
     // Recalculate allowed freeze days based on original duration
-    const startDate = startOfDay(new Date(mealPlan.startDate));
     const allowedFreezeDays = calculateAllowedFreezeDaysFallback(mealPlan.duration || differenceInDays(newEndDate, startDate) + 1);
 
     return NextResponse.json({
       success: true,
-      message: `Successfully unfroze ${datesToUnfreeze.length} days. End date reverted to ${format(newEndDate, 'yyyy-MM-dd')}. Note: Freeze allowance remains unchanged.`,
+      message: `Successfully unfroze ${datesToUnfreeze.length} days. End date remains ${format(newEndDate, 'yyyy-MM-dd')} to preserve freeze-adjusted duration.`,
       data: {
         planId: mealPlan._id,
         previousEndDate: format(currentEndDate, 'yyyy-MM-dd'),

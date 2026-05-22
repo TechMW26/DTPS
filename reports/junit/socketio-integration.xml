@@ -1,29 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="4" failures="4" errors="0" time="41.368">
-  <testsuite name="tests/integration/journal-api-fast-fail.integration.test.ts" errors="0" failures="4" skipped="0" timestamp="2026-05-09T12:09:05" time="41.237" tests="4">
-    <testcase classname="journal API fast-fail smoke tests" name="rejects invalid activity payloads before the database is touched" time="10.014">
-      <failure>MongooseError: Operation `users.deleteMany()` buffering timed out after 10000ms
-    at Timeout.&lt;anonymous&gt; (/Users/lokeshdhote/Desktop/DTPS/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
-    at listOnTimeout (node:internal/timers:605:17)
-    at processTimers (node:internal/timers:541:7)</failure>
-    </testcase>
-    <testcase classname="journal API fast-fail smoke tests" name="rejects invalid steps payloads before the database is touched" time="10.004">
-      <failure>MongooseError: Operation `users.deleteMany()` buffering timed out after 10000ms
-    at Timeout.&lt;anonymous&gt; (/Users/lokeshdhote/Desktop/DTPS/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
-    at listOnTimeout (node:internal/timers:605:17)
-    at processTimers (node:internal/timers:541:7)</failure>
-    </testcase>
-    <testcase classname="journal API fast-fail smoke tests" name="rejects invalid sleep payloads before the database is touched" time="10.005">
-      <failure>MongooseError: Operation `users.deleteMany()` buffering timed out after 10000ms
-    at Timeout.&lt;anonymous&gt; (/Users/lokeshdhote/Desktop/DTPS/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
-    at listOnTimeout (node:internal/timers:605:17)
-    at processTimers (node:internal/timers:541:7)</failure>
-    </testcase>
-    <testcase classname="journal API fast-fail smoke tests" name="rejects invalid water payloads before the database is touched" time="10.004">
-      <failure>MongooseError: Operation `users.deleteMany()` buffering timed out after 10000ms
-    at Timeout.&lt;anonymous&gt; (/Users/lokeshdhote/Desktop/DTPS/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
-    at listOnTimeout (node:internal/timers:605:17)
-    at processTimers (node:internal/timers:541:7)</failure>
+<testsuites name="jest tests" tests="1" failures="0" errors="0" time="2.446">
+  <testsuite name="tests/integration/meal-plan-freeze-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-22T10:07:24" time="2.308" tests="1">
+    <testcase classname="meal plan freeze/unfreeze integrations (supertest + jest)" name="keeps phase duration from shrinking and preserves overall expected end extension across phases" time="1.009">
     </testcase>
   </testsuite>
 </testsuites>

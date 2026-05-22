@@ -839,18 +839,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     setDescription(template.description || '');
     setSelectedTemplate(template);
 
-    // CRITICAL FIX: Update duration to match template if it has meals
-    if (template.meals && template.meals.length > 0) {
-      const templateDaysCount = template.meals.length;
-      console.log('[Template Apply Direct] Setting duration to template meal count:', templateDaysCount);
-      setDuration(templateDaysCount);
-
-      // Also update endDate to match the new duration
-      if (startDate) {
-        const newEndDate = addDays(new Date(startDate), templateDaysCount - 1);
-        setEndDate(format(newEndDate, 'yyyy-MM-dd'));
-      }
-    }
+    // Keep the currently selected duration/end-date window intact.
+    // Template meals are applied within the plan duration, not vice versa.
 
     if (template.mealTypes && template.mealTypes.length > 0) {
       setInitialMealTypes(template.mealTypes);
@@ -1211,17 +1201,20 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         return;
       }
 
-      // CRITICAL VALIDATION: Ensure we're saving complete data
-      if (mealsData.length !== duration) {
-        console.warn('[Publish Plan] Mismatch: mealsData.length =', mealsData.length, 'but duration =', duration);
-        // Use the actual meals length to ensure complete save
+      // Keep publish duration fixed to selected plan duration.
+      const targetDuration = Math.max(1, duration || 1);
+      const mealsForDuration = Array.isArray(mealsData)
+        ? mealsData.slice(0, targetDuration)
+        : [];
+      if (mealsForDuration.length !== targetDuration) {
+        console.warn('[Publish Plan] Duration/meals mismatch:', { targetDuration, mealsCount: mealsForDuration.length });
       }
 
       // Calculate proper dates for each day based on startDate
-      const startDateObj = new Date(startDate);
+      const startDateObj = parseLocalDate(startDate);
       const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-      const mealsWithDates = mealsData.map((day, index) => {
+      const mealsWithDates = mealsForDuration.map((day, index) => {
         const dayDate = addDays(startDateObj, index);
         const dateOfMonth = dayDate.getDate();
         const dayName = fullDayNames[dayDate.getDay()];
@@ -1236,11 +1229,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
       const finalMealTypes = mealTypesData && mealTypesData.length > 0 ? mealTypesData : initialMealTypes;
 
-      // CRITICAL FIX: Use actual meals count for duration to ensure complete save
-      // This prevents partial saves when duration state doesn't match actual meal data
-      const actualDuration = mealsWithDates.length;
+      const actualDuration = targetDuration;
       const actualEndDate = actualDuration > 0
-        ? format(addDays(new Date(startDate), actualDuration - 1), 'yyyy-MM-dd')
+        ? format(addDays(parseLocalDate(startDate), actualDuration - 1), 'yyyy-MM-dd')
         : endDate;
 
       if (!isEditMode) {
@@ -1582,11 +1573,17 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         mealTypesCount: mealTypesData?.length
       });
 
+      // Keep update duration fixed to selected plan duration.
+      const targetDuration = Math.max(1, duration || 1);
+      const mealsForDuration = Array.isArray(mealsData)
+        ? mealsData.slice(0, targetDuration)
+        : [];
+
       // Calculate proper dates for each day based on startDate
-      const startDateObj = new Date(startDate);
+      const startDateObj = parseLocalDate(startDate);
       const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-      const mealsWithDates = mealsData.map((day, index) => {
+      const mealsWithDates = mealsForDuration.map((day, index) => {
         const dayDate = addDays(startDateObj, index);
         const dateOfMonth = dayDate.getDate();
         const dayName = fullDayNames[dayDate.getDay()];
@@ -1601,10 +1598,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
       const finalMealTypes = mealTypesData && mealTypesData.length > 0 ? mealTypesData : initialMealTypes;
 
-      // CRITICAL FIX: Use actual meals count for duration to ensure complete save
-      const actualDuration = mealsWithDates.length;
+      const actualDuration = targetDuration;
       const actualEndDate = actualDuration > 0
-        ? format(addDays(new Date(startDate), actualDuration - 1), 'yyyy-MM-dd')
+        ? format(addDays(parseLocalDate(startDate), actualDuration - 1), 'yyyy-MM-dd')
         : endDate;
 
       console.log('[Update Plan] Saving with actualDuration:', actualDuration, 'meals:', mealsWithDates.length);
