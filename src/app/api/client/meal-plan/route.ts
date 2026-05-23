@@ -425,7 +425,7 @@ function extractFoodItems(meal: any, planId: string, dayIndex: number, mealIndex
       carbs: Math.round((Number(food.carbs) || 0) * 100) / 100,
       fats: Math.round((Number(food.fats) || Number(food.fat) || 0) * 100) / 100,
       // Additional details for full view
-      notes: food.notes || food.dietitianNotes || food.remarks || '',
+      notes: food.note || food.notes || food.dietitianNotes || food.remarks || '',
       timing: food.timing || food.whenToEat || food.timeToEat || '',
       quantity: food.quantity || food.servingSize || food.amount || '',
       // Type indicator (recipe vs plain food)

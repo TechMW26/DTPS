@@ -23,6 +23,7 @@ interface IFoodOption {
   carbs: string;
   fats: string;
   protein: string;
+  note?: string;
   recipeUuid?: string; // UUID of the recipe if added from recipe database
 }
 // Meal interface (from DietPlanDashboard)
@@ -117,6 +118,7 @@ const FoodOptionSchema = new Schema({
   carbs: String,
   fats: String,
   protein: String,
+  note: String,
   recipeUuid: String, // UUID of the recipe if added from recipe database
   foods: { type: [FoodItemSchema], default: undefined }, // Multiple stacked foods in same slot
   isAlternative: { type: Boolean, default: false } // Mark as alternative food option

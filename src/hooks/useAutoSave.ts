@@ -61,7 +61,7 @@ function getStorageKey(type: string, id: string): string {
  */
 function saveToLocalStorage<T>(type: string, id: string, data: T): void {
   if (typeof window === 'undefined') return;
-  
+
   try {
     const draft: DraftData<T> = {
       id,
@@ -80,19 +80,19 @@ function saveToLocalStorage<T>(type: string, id: string, data: T): void {
  */
 function loadFromLocalStorage<T>(type: string, id: string): DraftData<T> | null {
   if (typeof window === 'undefined') return null;
-  
+
   try {
     const stored = localStorage.getItem(getStorageKey(type, id));
     if (!stored) return null;
-    
+
     const draft = JSON.parse(stored) as DraftData<T>;
-    
+
     // Check if draft is too old
     if (Date.now() - draft.lastSaved > MAX_DRAFT_AGE_MS) {
       localStorage.removeItem(getStorageKey(type, id));
       return null;
     }
-    
+
     return draft;
   } catch (error) {
     console.warn('Failed to load draft from localStorage:', error);
@@ -105,7 +105,7 @@ function loadFromLocalStorage<T>(type: string, id: string): DraftData<T> | null 
  */
 function removeFromLocalStorage(type: string, id: string): void {
   if (typeof window === 'undefined') return;
-  
+
   try {
     localStorage.removeItem(getStorageKey(type, id));
   } catch (error) {
@@ -129,7 +129,7 @@ export function useAutoSave<T>({
   const [status, setStatus] = useState<DraftStatus>('idle');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasDraft, setHasDraft] = useState(false);
-  
+
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializedRef = useRef(false);
   const previousDataRef = useRef<string>(JSON.stringify(initialData));
@@ -139,7 +139,7 @@ export function useAutoSave<T>({
    */
   const saveDraftToServer = useCallback(async (draftData: T): Promise<boolean> => {
     if (!serverPersist) return true;
-    
+
     try {
       const response = await apiPost('/api/drafts', {
         type,
@@ -150,7 +150,7 @@ export function useAutoSave<T>({
         showErrorToast: false,
         retries: 1,
       });
-      
+
       return response.success;
     } catch {
       return false;
@@ -180,10 +180,10 @@ export function useAutoSave<T>({
     saveTimeoutRef.current = setTimeout(async () => {
       // Save to local storage immediately (offline support)
       saveToLocalStorage(type, id, newData);
-      
+
       // Save to server
       const success = await saveDraftToServer(newData);
-      
+
       if (success) {
         setStatus('saved');
         setLastSaved(new Date());
@@ -193,7 +193,7 @@ export function useAutoSave<T>({
         // Still saved locally, so show partial success
         console.warn('Draft saved locally but server sync failed');
       }
-      
+
       // Reset status after a delay
       setTimeout(() => setStatus('idle'), 2000);
     }, debounceMs);
@@ -204,10 +204,10 @@ export function useAutoSave<T>({
    */
   const updateData = useCallback((newData: T | ((prev: T) => T)) => {
     setData(prevData => {
-      const updated = typeof newData === 'function' 
-        ? (newData as (prev: T) => T)(prevData) 
+      const updated = typeof newData === 'function'
+        ? (newData as (prev: T) => T)(prevData)
         : newData;
-      
+
       saveDraft(updated);
       return updated;
     });
@@ -238,7 +238,7 @@ export function useAutoSave<T>({
     setHasDraft(false);
     setLastSaved(null);
     setStatus('idle');
-    
+
     toast.success('Draft cleared');
   }, [type, id, initialData, serverPersist]);
 
@@ -255,7 +255,7 @@ export function useAutoSave<T>({
           `/api/drafts?type=${type}&id=${id}`,
           { showErrorToast: false }
         );
-        
+
         if (response.success && response.data?.draft) {
           setData(response.data.draft.data);
           previousDataRef.current = JSON.stringify(response.data.draft.data);
@@ -304,7 +304,7 @@ export function useAutoSave<T>({
           `/api/drafts/exists?type=${type}&id=${id}`,
           { showErrorToast: false }
         );
-        
+
         if (response.success && response.data?.exists) {
           setHasDraft(true);
           return true;
@@ -329,7 +329,7 @@ export function useAutoSave<T>({
     setStatus('saving');
     saveToLocalStorage(type, id, data);
     const success = await saveDraftToServer(data);
-    
+
     if (success) {
       setStatus('saved');
       setLastSaved(new Date());
@@ -339,7 +339,7 @@ export function useAutoSave<T>({
       setStatus('error');
       toast.error('Failed to save draft');
     }
-    
+
     setTimeout(() => setStatus('idle'), 2000);
   }, [type, id, data, saveDraftToServer]);
 
@@ -453,19 +453,19 @@ export function useRecipeAutoSave(
   // Debounced save
   useEffect(() => {
     if (!enabled) return;
-    
+
     const dataStr = JSON.stringify(data);
-    
+
     // Skip if data hasn't changed
     if (dataStr === previousDataRef.current) return;
-    
+
     // Skip if it's the initial empty data
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
       previousDataRef.current = dataStr;
       return;
     }
-    
+
     previousDataRef.current = dataStr;
 
     // Clear existing timeout
@@ -491,13 +491,13 @@ export function useRecipeAutoSave(
   // Restore draft from localStorage
   const restoreDraft = useCallback((): RecipeFormData | null => {
     if (typeof window === 'undefined') return null;
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (!stored) return null;
 
       const draft = JSON.parse(stored);
-      
+
       // Check if draft has expired (24 hours)
       if (draft.expiresAt && Date.now() > draft.expiresAt) {
         localStorage.removeItem(storageKey);
@@ -518,7 +518,7 @@ export function useRecipeAutoSave(
   // Clear draft
   const clearDraft = useCallback(() => {
     if (typeof window === 'undefined') return;
-    
+
     try {
       localStorage.removeItem(storageKey);
       setHasDraft(false);
@@ -533,17 +533,17 @@ export function useRecipeAutoSave(
   // Check if draft exists
   const checkDraft = useCallback((): boolean => {
     if (typeof window === 'undefined') return false;
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (!stored) return false;
-      
+
       const draft = JSON.parse(stored);
       if (draft.expiresAt && Date.now() > draft.expiresAt) {
         localStorage.removeItem(storageKey);
         return false;
       }
-      
+
       setHasDraft(true);
       return true;
     } catch {
@@ -567,7 +567,7 @@ export function useRecipeAutoSave(
     clearDraft,
     restoreDraft,
     checkDraft,
-    saveDraft: () => saveToStorage(data),
+    saveDraft: (overrideData?: T) => saveToStorage(overrideData ?? data),
   };
 }
 
@@ -615,7 +615,7 @@ export function useMealPlanAutoSave<T = MealPlanFormData>(
   // Save to localStorage
   const saveToStorage = useCallback((formData: T) => {
     if (typeof window === 'undefined') return;
-    
+
     try {
       const draft = {
         id,
@@ -637,10 +637,10 @@ export function useMealPlanAutoSave<T = MealPlanFormData>(
     if (!enabled) return;
 
     const currentDataStr = JSON.stringify(data);
-    
+
     // Skip if no changes
     if (previousDataRef.current === currentDataStr) return;
-    
+
     // Skip initial empty state
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
@@ -673,19 +673,19 @@ export function useMealPlanAutoSave<T = MealPlanFormData>(
   // Restore draft from localStorage
   const restoreDraft = useCallback((): T | null => {
     if (typeof window === 'undefined') return null;
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (!stored) return null;
-      
+
       const draft = JSON.parse(stored);
-      
+
       // Check if expired
       if (draft.expiresAt && Date.now() > draft.expiresAt) {
         localStorage.removeItem(storageKey);
         return null;
       }
-      
+
       setHasDraft(true);
       setLastSaved(draft.lastSaved ? new Date(draft.lastSaved) : null);
       previousDataRef.current = JSON.stringify(draft.data);
@@ -700,7 +700,7 @@ export function useMealPlanAutoSave<T = MealPlanFormData>(
   // Clear draft
   const clearDraft = useCallback(() => {
     if (typeof window === 'undefined') return;
-    
+
     try {
       localStorage.removeItem(storageKey);
       setHasDraft(false);
@@ -715,17 +715,17 @@ export function useMealPlanAutoSave<T = MealPlanFormData>(
   // Check if draft exists
   const checkDraft = useCallback((): boolean => {
     if (typeof window === 'undefined') return false;
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (!stored) return false;
-      
+
       const draft = JSON.parse(stored);
       if (draft.expiresAt && Date.now() > draft.expiresAt) {
         localStorage.removeItem(storageKey);
         return false;
       }
-      
+
       setHasDraft(true);
       return true;
     } catch {
@@ -781,7 +781,7 @@ export function useDietTemplateAutoSave<T = any>(
   // Save to localStorage
   const saveToStorage = useCallback((formData: T) => {
     if (typeof window === 'undefined') return;
-    
+
     try {
       const draft = {
         id,
@@ -803,10 +803,10 @@ export function useDietTemplateAutoSave<T = any>(
     if (!enabled) return;
 
     const currentDataStr = JSON.stringify(data);
-    
+
     // Skip if no changes
     if (previousDataRef.current === currentDataStr) return;
-    
+
     // Skip initial empty state
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
@@ -839,19 +839,19 @@ export function useDietTemplateAutoSave<T = any>(
   // Restore draft from localStorage
   const restoreDraft = useCallback((): T | null => {
     if (typeof window === 'undefined') return null;
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (!stored) return null;
-      
+
       const draft = JSON.parse(stored);
-      
+
       // Check if expired
       if (draft.expiresAt && Date.now() > draft.expiresAt) {
         localStorage.removeItem(storageKey);
         return null;
       }
-      
+
       setHasDraft(true);
       setLastSaved(draft.lastSaved ? new Date(draft.lastSaved) : null);
       previousDataRef.current = JSON.stringify(draft.data);
@@ -866,7 +866,7 @@ export function useDietTemplateAutoSave<T = any>(
   // Clear draft
   const clearDraft = useCallback(() => {
     if (typeof window === 'undefined') return;
-    
+
     try {
       localStorage.removeItem(storageKey);
       setHasDraft(false);
@@ -881,17 +881,17 @@ export function useDietTemplateAutoSave<T = any>(
   // Check if draft exists
   const checkDraft = useCallback((): boolean => {
     if (typeof window === 'undefined') return false;
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (!stored) return false;
-      
+
       const draft = JSON.parse(stored);
       if (draft.expiresAt && Date.now() > draft.expiresAt) {
         localStorage.removeItem(storageKey);
         return false;
       }
-      
+
       setHasDraft(true);
       return true;
     } catch {
@@ -948,7 +948,7 @@ export function useFormAutoSave<T = any>(
   // Save to localStorage
   const saveToStorage = useCallback((formData: T) => {
     if (typeof window === 'undefined') return;
-    
+
     try {
       const draft = {
         id,
@@ -970,10 +970,10 @@ export function useFormAutoSave<T = any>(
     if (!enabled) return;
 
     const currentDataStr = JSON.stringify(data);
-    
+
     // Skip if no changes
     if (previousDataRef.current === currentDataStr) return;
-    
+
     // Skip initial empty state
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
@@ -1006,19 +1006,19 @@ export function useFormAutoSave<T = any>(
   // Restore draft from localStorage
   const restoreDraft = useCallback((): T | null => {
     if (typeof window === 'undefined') return null;
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (!stored) return null;
-      
+
       const draft = JSON.parse(stored);
-      
+
       // Check if expired
       if (draft.expiresAt && Date.now() > draft.expiresAt) {
         localStorage.removeItem(storageKey);
         return null;
       }
-      
+
       setHasDraft(true);
       setLastSaved(draft.lastSaved ? new Date(draft.lastSaved) : null);
       previousDataRef.current = JSON.stringify(draft.data);
@@ -1033,7 +1033,7 @@ export function useFormAutoSave<T = any>(
   // Clear draft
   const clearDraft = useCallback(() => {
     if (typeof window === 'undefined') return;
-    
+
     try {
       localStorage.removeItem(storageKey);
       setHasDraft(false);
@@ -1048,17 +1048,17 @@ export function useFormAutoSave<T = any>(
   // Check if draft exists
   const checkDraft = useCallback((): boolean => {
     if (typeof window === 'undefined') return false;
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (!stored) return false;
-      
+
       const draft = JSON.parse(stored);
       if (draft.expiresAt && Date.now() > draft.expiresAt) {
         localStorage.removeItem(storageKey);
         return false;
       }
-      
+
       setHasDraft(true);
       return true;
     } catch {
@@ -1089,11 +1089,11 @@ export function useFormAutoSave<T = any>(
 /**
  * Auto-save status indicator component
  */
-export function AutoSaveIndicator({ 
-  status, 
-  lastSaved 
-}: { 
-  status: DraftStatus; 
+export function AutoSaveIndicator({
+  status,
+  lastSaved
+}: {
+  status: DraftStatus;
   lastSaved: Date | null;
 }) {
   const getStatusText = () => {

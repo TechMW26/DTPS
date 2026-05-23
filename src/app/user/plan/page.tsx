@@ -34,6 +34,7 @@ interface MealItem {
   name: string;
   portion: string;
   calories: number;
+  notes?: string;
   alternatives?: { name: string; portion: string; calories: number }[];
   isAlternative?: boolean; // Flag for alternative food items
   recipe?: {
@@ -1554,6 +1555,21 @@ export default function UserPlanPage() {
                       <p className="font-bold text-[#E06A26]">{formatNum(fullRecipeData?.nutrition?.calories || recipeModal.item.calories)} kcal</p>
                     </div>
                   </div>
+
+                  {/* Dietitian Note for this food item */}
+                  {recipeModal.item?.notes?.trim() && (
+                    <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#3AB1A0]/15 border-[#3AB1A0]/30' : 'bg-[#3AB1A0]/10 border-[#3AB1A0]/25'}`}>
+                      <p className={`text-xs font-semibold mb-1 ${isDarkMode ? 'text-[#7CE0D3]' : 'text-[#1F6F67]'}`}>📝 Note from Dietitian</p>
+                      <div className={`text-sm space-y-1 ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+                        {formatNotesWithLineBreaks(recipeModal.item.notes).map((line, idx) => (
+                          <p key={idx} className="flex items-start gap-1.5">
+                            <span className="text-black">•</span>
+                            <span>{line}</span>
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Prep & Cook Time removed */}
 

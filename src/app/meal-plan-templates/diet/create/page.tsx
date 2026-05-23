@@ -873,10 +873,19 @@ export default function CreateDietTemplatePage() {
                   // Sync both weekPlan and mealTypes changes to parent for draft auto-save
                   setWeekPlanData(weekPlan);
                   latestMealDataRef.current = weekPlan;
+                  const nextMealTypes = mealTypes || latestMealTypesRef.current;
                   if (mealTypes) {
                     setMealTypesData(mealTypes);
                     latestMealTypesRef.current = mealTypes;
                   }
+
+                  // Ensure latest meal-option notes are persisted in draft immediately.
+                  saveDraft({
+                    template,
+                    weekPlanData: weekPlan,
+                    mealTypesData: nextMealTypes,
+                    currentStep,
+                  });
                 }}
                 onSavePlan={(weekPlan, mealTypes) => {
                   setWeekPlanData(weekPlan);

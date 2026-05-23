@@ -243,6 +243,13 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [notesDialogDayIndex, setNotesDialogDayIndex] = useState<number | null>(null);
   const [notesDialogValue, setNotesDialogValue] = useState('');
+  const [mealNoteDialogOpen, setMealNoteDialogOpen] = useState(false);
+  const [mealNoteDialogValue, setMealNoteDialogValue] = useState('');
+  const [mealNoteContext, setMealNoteContext] = useState<{
+    dayIndex: number;
+    mealType: string;
+    optionIndex: number;
+  } | null>(null);
   // Recipe search state for Find & Replace
   const [recipes, setRecipes] = useState<{ _id: string; name: string; nutrition?: { calories: number; protein: number; carbs: number; fat: number }; servings?: string | number }[]>([]);
   const [findRecipeSearch, setFindRecipeSearch] = useState('');
@@ -567,6 +574,32 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     const newWeekPlan = cloneWeekPlan(weekPlan);
     newWeekPlan[dayIndex][field] = value;
     onUpdate(newWeekPlan);
+  };
+
+  const openMealNoteDialog = (dayIndex: number, mealType: string, optionIndex: number, existingNote?: string) => {
+    if (readOnly || isDayFrozen(dayIndex)) return;
+    setMealNoteContext({ dayIndex, mealType, optionIndex });
+    setMealNoteDialogValue(existingNote || '');
+    setMealNoteDialogOpen(true);
+  };
+
+  const saveMealNote = () => {
+    if (!mealNoteContext || readOnly || !onUpdate || isDayFrozen(mealNoteContext.dayIndex)) {
+      setMealNoteDialogOpen(false);
+      return;
+    }
+
+    const { dayIndex, mealType, optionIndex } = mealNoteContext;
+    const newWeekPlan = cloneWeekPlan(weekPlan);
+    const actualKey = resolveActualMealKey(newWeekPlan[dayIndex], mealType);
+    const meal = newWeekPlan[dayIndex]?.meals?.[actualKey];
+
+    if (meal?.foodOptions?.[optionIndex]) {
+      meal.foodOptions[optionIndex].note = mealNoteDialogValue.trim();
+      onUpdate(newWeekPlan);
+    }
+
+    setMealNoteDialogOpen(false);
   };
 
   const openCopyDialog = (dayIndex: number, mealType: string) => {
@@ -2223,6 +2256,26 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                 disabled={isFrozenDay}
                                               />
                                             </div>
+
+                                            <div className="space-y-2 w-full sm:w-65">
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 w-full px-2.5 text-xs bg-white border-gray-300 hover:border-slate-500 justify-start font-normal text-left rounded-md"
+                                                onClick={() => openMealNoteDialog(actualDayIndex, mealType, optionIndex, option.note)}
+                                                disabled={isFrozenDay}
+                                              >
+                                                {option.note ? 'Edit meal note' : 'Add meal note'}
+                                              </Button>
+                                              {option.note && (
+                                                <div className="w-full h-9 rounded-md border border-gray-300 bg-gray-50 px-2.5 text-xs text-slate-700 flex items-center overflow-hidden">
+                                                  <span className="block w-full truncate">
+                                                    {option.note.replace(/\s+/g, ' ').trim()}
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
                                           </div>
                                         ))}
                                       </div>
@@ -2280,6 +2333,25 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                             type="number"
                                             className="h-9 text-xs bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500 font-mono"
                                           />
+                                        </div>
+                                        <div className="space-y-2 w-full sm:w-65">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 w-full px-2.5 text-xs bg-white border-gray-300 hover:border-slate-500 justify-start font-normal text-left rounded-md"
+                                            onClick={() => openMealNoteDialog(actualDayIndex, mealType, optionIndex, option.note)}
+                                            disabled={isFrozenDay}
+                                          >
+                                            {option.note ? 'Edit meal note' : 'Add meal note'}
+                                          </Button>
+                                          {option.note && (
+                                            <div className="w-full h-9 rounded-md border border-gray-300 bg-gray-50 px-2.5 text-xs text-slate-700 flex items-center overflow-hidden">
+                                              <span className="block w-full truncate">
+                                                {option.note.replace(/\s+/g, ' ').trim()}
+                                              </span>
+                                            </div>
+                                          )}
                                         </div>
                                       </>
                                     )}
@@ -3361,6 +3433,42 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
               >
                 Save Notes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Meal Note Dialog */}
+        <Dialog open={mealNoteDialogOpen} onOpenChange={setMealNoteDialogOpen}>
+          <DialogContent className="w-[95vw] max-w-md rounded-lg overflow-hidden">
+            <DialogHeader>
+              <DialogTitle className="text-lg sm:text-xl font-semibold">Meal Note</DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
+                Add note for this meal option. Press Enter to create a new line.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              <Textarea
+                value={mealNoteDialogValue}
+                onChange={(e) => setMealNoteDialogValue(e.target.value)}
+                placeholder="Enter meal note..."
+                className="min-h-24 sm:min-h-28 max-h-44 w-full max-w-full resize-y px-2.5 py-2 text-xs sm:text-sm leading-snug whitespace-pre-wrap wrap-anywhere overflow-y-auto"
+                autoFocus
+              />
+            </div>
+            <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setMealNoteDialogOpen(false)}
+                className="w-full sm:w-auto"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={saveMealNote}
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
+              >
+                Save Note
               </Button>
             </DialogFooter>
           </DialogContent>
