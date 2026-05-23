@@ -123,6 +123,14 @@ export async function GET(request: NextRequest) {
     const messageQuery = Message.find(query)
       .populate('sender', 'firstName lastName avatar')
       .populate('receiver', 'firstName lastName avatar')
+      .populate({
+        path: 'replyTo',
+        select: 'content type attachments sender createdAt',
+        populate: {
+          path: 'sender',
+          select: 'firstName lastName avatar'
+        }
+      })
       .sort({ createdAt: 1 }); // Sort oldest first for proper chat order
 
     // Only apply limit if NOT viewing a specific conversation
@@ -279,6 +287,14 @@ export async function POST(request: NextRequest) {
     // Populate the created message
     await message.populate('sender', 'firstName lastName avatar');
     await message.populate('receiver', 'firstName lastName avatar');
+    await message.populate({
+      path: 'replyTo',
+      select: 'content type attachments sender createdAt',
+      populate: {
+        path: 'sender',
+        select: 'firstName lastName avatar'
+      }
+    });
 
     // Send real-time notification to BOTH sender and recipient
     const msgJson = message.toJSON();
