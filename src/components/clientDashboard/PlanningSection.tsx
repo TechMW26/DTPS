@@ -4831,14 +4831,6 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                   <div className="flex flex-col gap-2">
                                     {!planEnded && (
                                       <>
-                                        <PausePlanDialog
-                                          plan={plan}
-                                          onPause={handlePausePlan}
-                                          onResume={handleResumePlan}
-                                          showAsText={false}
-                                          showAsButton={true}
-                                        />
-
                                         <FreezePlanDialog
                                           plan={plan}
                                           onFreeze={fetchClientPlans}

@@ -61,7 +61,7 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     }
   };
 
-  // Helper: escape note text and render one sentence per line after a dot
+  // Helper: escape note text and render one bullet line per sentence.
   const formatNoteForExport = (noteText?: string): string => {
     if (!noteText) return '';
 
@@ -72,9 +72,15 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
-    return escaped
-      .replace(/\.\s+/g, '.<br/><span class="sentence-dot">●</span> ')
-      .replace(/\n/g, '<br/>');
+    const sentenceLines = (escaped.match(/[^.\n]+(?:\.)?/g) || [])
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (!sentenceLines.length) return '';
+
+    return sentenceLines
+      .map((line) => `<span class="sentence-dot">●</span> ${line}`)
+      .join('<br/>');
   };
 
   // Helper function to get meal time — prefer actual stored time from plan data
@@ -341,6 +347,18 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     td.c { text-align: center; color: #78716c; }
     td.cal { text-align: center; font-weight: 600; color: #44403c; }
     tbody tr + tr td { border-top: 1px solid #f5f5f4; }
+    .food-note-row td { border-top: none; }
+    td.food-note {
+      font-size: 11px;
+      line-height: 1.5;
+      color: #57534e;
+      background: #fafaf9;
+      padding-top: 6px;
+      padding-bottom: 10px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .food-note-label { font-weight: 600; color: #44403c; margin-right: 4px; }
 
     /* Alternatives */
     .alt-wrap { margin-top: 10px; border-radius: 8px; overflow: hidden; }
@@ -527,6 +545,11 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
                   <td class="c">${food.carbs || '0'}</td>
                   <td class="c">${food.fats || '0'}</td>
                 </tr>
+                ${food.note?.trim() ? `
+                <tr class="food-note-row">
+                  <td class="food-note" colspan="6"><span class="food-note-label">Note:</span>${formatNoteForExport(food.note)}</td>
+                </tr>
+                ` : ''}
                 `).join('')}
               </tbody>
             </table>
@@ -573,7 +596,7 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     <div class="notes">
       <hr class="notes-divider"/>
       <p class="notes-title">Day Notes</p>
-      <div class="note"><span class="note-dot"></span><p>${formatNoteForExport(day.note)}</p></div>
+      <div class="note"><p>${formatNoteForExport(day.note)}</p></div>
     </div>
     ` : ''}
     `;
