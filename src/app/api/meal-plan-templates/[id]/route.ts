@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/db/connect';
 import MealPlanTemplate from '@/lib/db/models/MealPlanTemplate';
 import { UserRole } from '@/types';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { withCache, clearCacheByTag, serverCache } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
 import mongoose from 'mongoose';
 
@@ -204,7 +204,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    // Resolve session and params in parallel
+    const [session, { id }] = await Promise.all([
+      getServerSession(authOptions),
+      params,
+    ]);
+
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
     }
@@ -213,36 +218,39 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 });
     }
 
-    const { id } = await params;
     if (!isValidObjectId(id)) {
       return NextResponse.json({ success: false, error: 'Invalid template id' }, { status: 400 });
     }
 
     await connectDB();
 
-    const existingTemplate = await withCache(
-      `meal-plan-templates:id:${JSON.stringify(id)}`,
-      async () => await MealPlanTemplate.findById(id),
-      { ttl: 120000, tags: ['meal_plan_templates'] }
+    // Single atomic operation — no cache read, ownership filter built into query
+    const filter = session.user.role === UserRole.ADMIN
+      ? { _id: id }
+      : { _id: id, createdBy: session.user.id };
+
+    const deleted = await MealPlanTemplate.findOneAndUpdate(
+      filter,
+      { $set: { isActive: false } },
+      { projection: { _id: 1, name: 1 } }
     );
-    if (!existingTemplate) {
+
+    if (!deleted) {
+      if (session.user.role !== UserRole.ADMIN) {
+        const exists = await MealPlanTemplate.exists({ _id: id });
+        if (exists) {
+          return NextResponse.json({ success: false, error: 'Not authorized to delete this template' }, { status: 403 });
+        }
+      }
       return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
     }
 
-    // Check ownership
-    if (existingTemplate.createdBy.toString() !== session.user.id && session.user.role !== UserRole.ADMIN) {
-      return NextResponse.json({ success: false, error: 'Not authorized to delete this template' }, { status: 403 });
-    }
-
-    // Soft delete by setting isActive to false
-    existingTemplate.isActive = false;
-    await existingTemplate.save();
-
-    // Clear cache
+    // Invalidate by prefix — reliable even after hot-reloads (tagToKeys resets, serverCache does not)
+    serverCache.invalidate('meal-plan-templates:');
     clearCacheByTag('meal-plan-templates');
     clearCacheByTag('meal_plan_templates');
 
-    // Log activity
+    // Fire-and-forget activity log — does not block response
     logActivity({
       userId: session.user.id,
       userRole: session.user.role as 'admin' | 'dietitian' | 'health_counselor' | 'client',
@@ -251,10 +259,10 @@ export async function DELETE(
       action: 'delete_meal_plan_template',
       actionType: 'delete',
       category: 'meal_plan',
-      description: `Deleted meal plan template: ${existingTemplate.name}`,
+      description: `Deleted meal plan template: ${deleted.name}`,
       resourceId: id,
       resourceType: 'MealPlanTemplate',
-      resourceName: existingTemplate.name,
+      resourceName: deleted.name,
       ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
       userAgent: request.headers.get('user-agent') || undefined,
     });

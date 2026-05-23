@@ -451,15 +451,15 @@ function RecipesPageContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4  ">
             {recipes && recipes.map((recipe) => (
               <Card key={recipe._id} className="hover:shadow-md transition-shadow border border-gray-200 flex flex-col h-full  ">
-                {/* Recipe Image - Fixed size */}
-                <div className="relative w-full h-38 bg-gray-100 overflow-hidden shrink-0">
+                {/* Recipe Image - Smaller front area, full image visible without stretching */}
+                <div className="relative w-full aspect-video bg-gray-100 overflow-hidden shrink-0 flex items-center justify-center">
                   {recipe.image ? (
                     <Image
                       src={recipe.image}
                       alt={recipe.name}
                       fill
                       sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                      className="object-cover w-full h-full"
+                      className="object-contain p-2"
                       loading="lazy"
                       onError={(e) => {
                         // Fallback to placeholder if image fails

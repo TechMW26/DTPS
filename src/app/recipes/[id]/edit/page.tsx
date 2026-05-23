@@ -541,6 +541,7 @@ export default function EditRecipePage() {
         prepTime: prepTimeNum,
         cookTime: cookTimeNum,
         servings: servings.trim(),
+        image: image?.trim() || '',
         isActive,
         nutrition: {
           calories: caloriesNum,

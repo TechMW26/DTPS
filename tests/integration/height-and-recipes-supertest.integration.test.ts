@@ -133,6 +133,7 @@ describe('height + recipe CRUD integrations (supertest)', () => {
                     .send({
                         name: 'Supertest Recipe Updated',
                         description: 'Updated from supertest integration test',
+                        image: 'https://ik.imagekit.io/test-bucket/recipes/supertest-updated.jpg',
                         prepTime: 7,
                         cookTime: 12,
                         servings: '2 TSP ( 10 gm/ml )',
@@ -154,6 +155,10 @@ describe('height + recipe CRUD integrations (supertest)', () => {
                 expect(updateResponse.status).toBe(200);
                 expect(updateResponse.body?.success).toBe(true);
                 expect(updateResponse.body?.recipe?.name).toBe('Supertest Recipe Updated');
+                expect(updateResponse.body?.recipe?.image).toBe('https://ik.imagekit.io/test-bucket/recipes/supertest-updated.jpg');
+
+                const updatedRecipe = await Recipe.findById(createdRecipeId).lean();
+                expect(updatedRecipe?.image).toBe('https://ik.imagekit.io/test-bucket/recipes/supertest-updated.jpg');
 
                 const deleteResponse = await request(updateDeleteServer)
                     .delete(`/api/recipes/${createdRecipeId}`);

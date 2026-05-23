@@ -85,6 +85,13 @@ function MealPlanTemplatesPageContent() {
   const [dietViewTab, setDietViewTab] = useState<'active' | 'archived'>('active');
   const [dietLoading, setDietLoading] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    templateId: string;
+    templateType: 'plan' | 'diet';
+    templateName: string;
+  }>({ open: false, templateId: '', templateType: 'plan', templateName: '' });
   const [duplicateDialog, setDuplicateDialog] = useState<{
     open: boolean;
     templateId: string;
@@ -170,19 +177,22 @@ function MealPlanTemplatesPageContent() {
   const formatCategoryName = (category: string) => category.split('-').map(word =>
     word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 
-  // Delete template
-  const handleDeleteTemplate = async (templateId: string, templateType: 'plan' | 'diet') => {
-    if (!confirm('Are you sure you want to delete this template?')) return;
+  // Delete template — opens confirmation dialog
+  const handleDeleteTemplate = (templateId: string, templateType: 'plan' | 'diet', templateName: string) => {
+    setDeleteDialog({ open: true, templateId, templateType, templateName });
+  };
 
+  // Execute confirmed delete
+  const executeDelete = async () => {
+    const { templateId, templateType } = deleteDialog;
+    setDeleteDialog(prev => ({ ...prev, open: false }));
+    setDeletingId(templateId);
     try {
-      // Use different API endpoints for plan and diet templates
       const apiUrl = templateType === 'diet'
         ? `/api/diet-templates/${templateId}`
         : `/api/meal-plan-templates/${templateId}`;
 
-      const response = await fetch(apiUrl, {
-        method: 'DELETE'
-      });
+      const response = await fetch(apiUrl, { method: 'DELETE' });
 
       if (response.ok) {
         toast.success('Template deleted successfully');
@@ -198,6 +208,8 @@ function MealPlanTemplatesPageContent() {
     } catch (error) {
       console.error('Error deleting template:', error);
       toast.error('Failed to delete template');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -538,14 +550,20 @@ function MealPlanTemplatesPageContent() {
                                     </Button>
                                   </>
                                 )}
-                                {session?.user?.role === UserRole.ADMIN && (
+                                {(session?.user?.role === UserRole.ADMIN || session?.user?.role === UserRole.DIETITIAN) && (
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => handleDeleteTemplate(t._id, 'plan')}
+                                    onClick={() => handleDeleteTemplate(t._id, 'plan', t.name)}
+                                    disabled={deletingId === t._id}
                                     title="Delete template"
+                                    className="border-red-200 hover:bg-red-50"
                                   >
-                                    <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                                    {deletingId === t._id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                                    )}
                                   </Button>
                                 )}
                               </div>
@@ -714,14 +732,20 @@ function MealPlanTemplatesPageContent() {
                                     </Button>
                                   </>
                                 )}
-                                {session?.user?.role === UserRole.ADMIN && dietViewTab !== 'archived' && t.isActive !== false && (
+                                {(session?.user?.role === UserRole.ADMIN || session?.user?.role === UserRole.DIETITIAN) && dietViewTab !== 'archived' && t.isActive !== false && (
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => handleDeleteTemplate(t._id, 'diet')}
+                                    onClick={() => handleDeleteTemplate(t._id, 'diet', t.name)}
+                                    disabled={deletingId === t._id}
                                     title="Delete template"
+                                    className="border-red-200 hover:bg-red-50"
                                   >
-                                    <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                                    {deletingId === t._id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                                    )}
                                   </Button>
                                 )}
                                 {session?.user?.role === UserRole.ADMIN && t.isActive === false && (
@@ -745,6 +769,40 @@ function MealPlanTemplatesPageContent() {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}>
+          <DialogContent className="max-w-sm w-full rounded-xl p-5">
+            <DialogHeader className="space-y-1">
+              <DialogTitle className="text-base flex items-center gap-2">
+                <Trash2 className="h-4 w-4 text-red-600" />
+                Delete Template
+              </DialogTitle>
+              <DialogDescription className="text-sm">
+                Are you sure you want to delete{' '}
+                <span className="font-semibold text-gray-900">&ldquo;{deleteDialog.templateName}&rdquo;</span>?
+                This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex justify-end gap-2 pt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDeleteDialog(prev => ({ ...prev, open: false }))}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={executeDelete}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Yes, Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Duplicate Template Dialog */}
         <Dialog open={duplicateDialog.open} onOpenChange={(open) => setDuplicateDialog(prev => ({ ...prev, open }))}>

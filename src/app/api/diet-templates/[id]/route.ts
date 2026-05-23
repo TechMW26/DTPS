@@ -6,7 +6,7 @@ import DietTemplate from '@/lib/db/models/DietTemplate';
 import { UserRole } from '@/types';
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { withCache, clearCacheByTag, serverCache } from '@/lib/api/utils';
 
 // Validation schema for meal type config
 const mealTypeConfigSchema = z.object({
@@ -221,9 +221,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    // Resolve session and params in parallel
+    const [session, { id }] = await Promise.all([
+      getServerSession(authOptions),
+      params,
+    ]);
 
-    const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
@@ -231,7 +234,6 @@ export async function DELETE(
       );
     }
 
-    // Check permissions
     if (session.user.role !== UserRole.ADMIN && session.user.role !== UserRole.DIETITIAN) {
       return NextResponse.json(
         { success: false, error: 'Insufficient permissions' },
@@ -248,29 +250,36 @@ export async function DELETE(
 
     await connectDB();
 
-    // First fetch the template to check ownership
-    const existingTemplate = await DietTemplate.findById(id);
+    // Single atomic operation: ownership filter built into query for dietitians
+    const filter = session.user.role === UserRole.ADMIN
+      ? { _id: id }
+      : { _id: id, createdBy: session.user.id };
 
-    if (!existingTemplate) {
+    const deleted = await DietTemplate.findOneAndUpdate(
+      filter,
+      { $set: { isActive: false } },
+      { projection: { _id: 1 } }
+    );
+
+    if (!deleted) {
+      // Distinguish 404 vs 403 for dietitian
+      if (session.user.role !== UserRole.ADMIN) {
+        const exists = await DietTemplate.exists({ _id: id });
+        if (exists) {
+          return NextResponse.json(
+            { success: false, error: 'Not authorized to delete this template' },
+            { status: 403 }
+          );
+        }
+      }
       return NextResponse.json(
         { success: false, error: 'Diet template not found' },
         { status: 404 }
       );
     }
 
-    // Check if user owns the template or is admin
-    if (existingTemplate.createdBy.toString() !== session.user.id && session.user.role !== UserRole.ADMIN) {
-      return NextResponse.json(
-        { success: false, error: 'Not authorized to delete this template' },
-        { status: 403 }
-      );
-    }
-
-    // Soft delete by setting isActive to false
-    existingTemplate.isActive = false;
-    await existingTemplate.save();
-
-    // Clear cached GET responses so deleted template disappears immediately
+    // Invalidate by prefix — reliable even after hot-reloads (tagToKeys resets, serverCache does not)
+    serverCache.invalidate('diet-templates:');
     clearCacheByTag('diet_templates');
 
     return NextResponse.json({

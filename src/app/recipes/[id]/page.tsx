@@ -922,15 +922,15 @@ export default function RecipeViewPage() {
             <X className="h-8 w-8" />
           </button>
           <div
-            className="relative max-w-4xl max-h-[90vh] w-full"
+            className="relative max-w-[95vw] max-h-[92vh] w-full flex items-center justify-center"
             onClick={(e) => e.stopPropagation()}
           >
             <img
               src={recipe.image}
               alt={recipe.name}
-              className="w-full h-full object-contain rounded-lg"
+              className="max-w-full max-h-[82vh] w-auto h-auto object-contain rounded-lg"
             />
-            <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/70 to-transparent p-4 rounded-b-lg">
+            <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/70 to-transparent p-4 rounded-b-lg pointer-events-none">
               <h3 className="text-white text-lg font-semibold">{recipe.name}</h3>
             </div>
           </div>
