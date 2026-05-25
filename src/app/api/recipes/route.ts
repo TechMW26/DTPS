@@ -106,6 +106,10 @@ export async function GET(request: NextRequest) {
     const isTypingSearchFastPath = isFoodDatabaseView && searchMode === 'typing' && !!effectiveSearch;
     const includeTotal = searchParams.get('includeTotal') === 'true';
 
+    const looksLikeUuidSearch = /^[a-zA-Z0-9]+$/.test(effectiveSearch);
+    const isNumericSearch = /^\d+$/.test(effectiveSearch);
+    const numericSearchValue = isNumericSearch ? parseInt(effectiveSearch, 10) : null;
+
     // Build query
     let query: any = {};
     let foodDbRelevanceFallbackOr: any[] | null = null;
@@ -123,9 +127,11 @@ export async function GET(request: NextRequest) {
         { 'ingredients.name': { $regex: escapedSearch, $options: 'i' } }
       ];
 
-      // Only add uuid search if it looks like it could be a uuid (numeric or alphanumeric)
-      if (/^[a-zA-Z0-9]+$/.test(effectiveSearch)) {
+      // Add exact + prefix + contains UUID matching when search resembles UUID format
+      if (looksLikeUuidSearch) {
         searchConditions.push({ uuid: effectiveSearch });
+        searchConditions.push({ uuid: { $regex: `^${escapedSearch}`, $options: 'i' } });
+        searchConditions.push({ uuid: { $regex: escapedSearch, $options: 'i' } });
       }
 
       // Check if search term looks like a MongoDB ObjectId (hex characters)
@@ -555,6 +561,9 @@ export async function GET(request: NextRequest) {
 
             recipesData = recipesData.map((recipe: any) => {
               const nameLower = (recipe.name || '').toLowerCase();
+              const uuidRaw = String(recipe.uuid || '');
+              const uuidLower = uuidRaw.toLowerCase();
+              const uuidNumeric = /^\d+$/.test(uuidRaw) ? parseInt(uuidRaw, 10) : null;
               const descLower = (recipe.description || '').toLowerCase();
               const ingredientsText = (recipe.ingredients || [])
                 .map((ing: any) => (ing.name || '').toLowerCase())
@@ -562,6 +571,23 @@ export async function GET(request: NextRequest) {
               const tagsText = (recipe.tags || []).join(' ').toLowerCase();
 
               let score = 0;
+
+              // UUID relevance: exact UUID match first, then prefix/contains,
+              // then nearest numeric UUIDs for numeric searches (1,2,3...).
+              if (looksLikeUuidSearch) {
+                if (uuidLower === searchLower) {
+                  score += 3000;
+                } else if (uuidLower.startsWith(searchLower)) {
+                  score += 2000;
+                } else if (uuidLower.includes(searchLower)) {
+                  score += 1200;
+                }
+
+                if (isNumericSearch && numericSearchValue !== null && uuidNumeric !== null) {
+                  const diff = Math.abs(uuidNumeric - numericSearchValue);
+                  score += Math.max(0, 900 - diff);
+                }
+              }
 
               // Exact name match (highest priority)
               if (nameLower === searchLower) {
@@ -582,7 +608,8 @@ export async function GET(request: NextRequest) {
                 if (nameLower.includes(term)) {
                   score += 100;
                   // Bonus for word boundary match
-                  if (new RegExp(`\\b${term}`, 'i').test(nameLower)) {
+                  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                  if (new RegExp(`\\b${escapedTerm}`, 'i').test(nameLower)) {
                     score += 50;
                   }
                 }

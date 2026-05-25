@@ -434,8 +434,7 @@ export async function POST(request: NextRequest) {
       baseAmount,
       discountPercent,
       taxPercent,
-      finalAmount,
-      startDate
+      finalAmount
     } = body;
 
     // Validate required fields
@@ -445,10 +444,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Calculate dates
-    const purchaseStartDate = startDate ? new Date(startDate) : new Date();
+    // Auto-window from payment day: start tomorrow, end inclusive by duration.
+    const paidAt = new Date();
+    const purchaseStartDate = new Date(paidAt);
+    purchaseStartDate.setHours(0, 0, 0, 0);
+    purchaseStartDate.setDate(purchaseStartDate.getDate() + 1);
+
     const purchaseEndDate = new Date(purchaseStartDate);
-    purchaseEndDate.setDate(purchaseEndDate.getDate() + durationDays);
+    purchaseEndDate.setDate(purchaseEndDate.getDate() + durationDays - 1);
 
     // Use syncRazorpayPayment to UPDATE existing or CREATE new (NO DUPLICATES)
     const purchase = await UnifiedPayment.syncRazorpayPayment(
@@ -470,9 +473,12 @@ export async function POST(request: NextRequest) {
         currency: 'INR',
         status: 'paid',
         paymentStatus: 'paid',
-        purchaseDate: new Date(),
+        purchaseDate: paidAt,
         startDate: purchaseStartDate,
         endDate: purchaseEndDate,
+        expectedStartDate: purchaseStartDate,
+        expectedEndDate: purchaseEndDate,
+        paidAt,
         mealPlanCreated: false,
         daysUsed: 0
       }

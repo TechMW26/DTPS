@@ -572,6 +572,21 @@ const getStartOfDayIST = (value: Date | string | number): Date => {
   return new Date(`${year}-${month}-${day}T00:00:00+05:30`);
 };
 
+const getNextDayPlanWindow = (anchorDate: Date, durationDays?: number): { startDate: Date; endDate: Date | null } => {
+  const startDate = getStartOfDayIST(anchorDate);
+  startDate.setDate(startDate.getDate() + 1);
+
+  if (!durationDays || durationDays <= 0) {
+    return { startDate, endDate: null };
+  }
+
+  const endDate = new Date(startDate);
+  // Inclusive window: 30-day plan from 26th ends on next 25th.
+  endDate.setDate(endDate.getDate() + durationDays - 1);
+
+  return { startDate, endDate };
+};
+
 // Get remaining days for the plan (based on allocation: durationDays - daysUsed)
 unifiedPaymentSchema.methods.getRemainingDays = function (this: IUnifiedPayment): number {
   // Plan allocation remaining = durationDays - daysUsed
@@ -668,11 +683,11 @@ unifiedPaymentSchema.methods.syncWithRazorpay = async function (this: IUnifiedPa
 
   // Calculate dates if not set
   if (!this.startDate) {
-    this.startDate = this.paidAt;
+    this.startDate = getNextDayPlanWindow(this.paidAt, this.durationDays).startDate;
   }
   if (!this.endDate && this.durationDays) {
     const endDate = new Date(this.startDate!);
-    endDate.setDate(endDate.getDate() + this.durationDays);
+    endDate.setDate(endDate.getDate() + this.durationDays - 1);
     this.endDate = endDate;
   }
 
@@ -955,6 +970,12 @@ unifiedPaymentSchema.statics.syncRazorpayPayment = async function (
       payment.durationLabel = razorpayData.durationLabel;
     }
 
+    // Honor explicit date fields when caller provides them.
+    if (razorpayData.startDate) payment.startDate = razorpayData.startDate;
+    if (razorpayData.endDate) payment.endDate = razorpayData.endDate;
+    if (razorpayData.expectedStartDate) payment.expectedStartDate = razorpayData.expectedStartDate;
+    if (razorpayData.expectedEndDate) payment.expectedEndDate = razorpayData.expectedEndDate;
+
     // Update status - IMPORTANT: Only change if payment is confirmed
     if (razorpayData.status) {
       // If current status is pending, allow update to any status
@@ -978,11 +999,11 @@ unifiedPaymentSchema.statics.syncRazorpayPayment = async function (
       payment.paidAt = razorpayData.paidAt;
       // Auto-set start and end dates on payment
       if (!payment.startDate) {
-        payment.startDate = razorpayData.paidAt;
+        payment.startDate = getNextDayPlanWindow(razorpayData.paidAt, payment.durationDays).startDate;
       }
       if (!payment.endDate && payment.durationDays) {
         const endDate = new Date(payment.startDate!);
-        endDate.setDate(endDate.getDate() + payment.durationDays);
+        endDate.setDate(endDate.getDate() + payment.durationDays - 1);
         payment.endDate = endDate;
       }
     }
@@ -1005,7 +1026,7 @@ unifiedPaymentSchema.statics.syncRazorpayPayment = async function (
           payment.expectedEndDate = payment.endDate;
         } else if (inferredStart && payment.durationDays) {
           const expectedEndDate = new Date(inferredStart);
-          expectedEndDate.setDate(expectedEndDate.getDate() + payment.durationDays);
+          expectedEndDate.setDate(expectedEndDate.getDate() + payment.durationDays - 1);
           payment.expectedEndDate = expectedEndDate;
         }
       }

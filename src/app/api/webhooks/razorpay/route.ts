@@ -122,6 +122,7 @@ async function handlePaymentSuccess(payload: any) {
 
     // Create/Update UnifiedPayment record (UPDATE existing, don't create duplicate)
     try {
+      const paidAt = new Date();
       await UnifiedPayment.syncRazorpayPayment(
         { orderId: orderId },
         {
@@ -136,7 +137,11 @@ async function handlePaymentSuccess(payload: any) {
           razorpayOrderId: orderId,
           razorpayPaymentId: payment.id,
           transactionId: payment.id,
-          paidAt: new Date(),
+          paidAt,
+          startDate: subscription.startDate,
+          endDate: subscription.endDate,
+          expectedStartDate: subscription.startDate,
+          expectedEndDate: subscription.endDate,
           description: `Subscription payment - Order: ${orderId}`
         }
       );
@@ -290,10 +295,15 @@ async function handlePaymentLinkCompleted(payload: any) {
       // Create/Update UnifiedPayment record (UPDATE existing, don't create duplicate)
       // This is the SINGLE source of truth for all payment data
       try {
-        const startDate = new Date();
-        const endDate = new Date();
-        if (paymentLink.durationDays) {
-          endDate.setDate(endDate.getDate() + paymentLink.durationDays);
+        const paidAt = new Date();
+        const startDate = new Date(paidAt);
+        startDate.setHours(0, 0, 0, 0);
+        startDate.setDate(startDate.getDate() + 1);
+
+        let endDate: Date | undefined;
+        if (paymentLink.durationDays && paymentLink.durationDays > 0) {
+          endDate = new Date(startDate);
+          endDate.setDate(endDate.getDate() + paymentLink.durationDays - 1);
         }
 
         await UnifiedPayment.syncRazorpayPayment(
@@ -321,10 +331,12 @@ async function handlePaymentLinkCompleted(payload: any) {
             transactionId: razorpayPaymentId,
             payerEmail: payerEmail,
             payerPhone: payerPhone,
-            purchaseDate: startDate,
+            purchaseDate: paidAt,
             startDate: startDate,
-            endDate: endDate,
-            paidAt: new Date(),
+            ...(endDate ? { endDate } : {}),
+            expectedStartDate: startDate,
+            ...(endDate ? { expectedEndDate: endDate } : {}),
+            paidAt,
             mealPlanCreated: false,
             daysUsed: 0,
             description: `Payment for ${paymentLink.planName || 'Service Plan'} - ${paymentLink.duration || paymentLink.durationDays + ' Days'} (${paymentLink.planCategory || 'general-wellness'})`
