@@ -152,6 +152,7 @@ function RecipesPageContent() {
       if (maxPrepTime) params.append('maxPrepTime', maxPrepTime);
       params.append('limit', String(RECIPES_PER_PAGE));
       params.append('page', String(pageNum));
+      params.append('includeTotal', 'true');
 
       const response = await fetch(`/api/recipes?${params.toString()}`, {
         signal: abortControllerRef.current.signal
@@ -175,7 +176,8 @@ function RecipesPageContent() {
         setRecipes(uniqueRecipes);
         setCategories(data.categories || data.tags || []);
         setTotalRecipes(total);
-        setTotalPages(Math.ceil(total / RECIPES_PER_PAGE));
+        const pagesFromApi = Number(data.pagination?.pages || 0);
+        setTotalPages(Math.max(1, pagesFromApi || Math.ceil(total / RECIPES_PER_PAGE)));
         isInitialLoad.current = false;
       } else {
         console.error('Failed to fetch recipes:', response.status, response.statusText);

@@ -75,6 +75,7 @@ export type FoodItem = {
   carbs: string;
   fats: string;
   protein: string;
+  recipeId?: string;
   recipeUuid?: string;
 };
 
@@ -88,6 +89,7 @@ export type FoodOption = {
   fats: string;
   protein: string;
   note?: string;
+  recipeId?: string;    // Mongo _id of the recipe if added from recipe database
   recipeUuid?: string;  // UUID of the recipe if added from recipe database
   foods?: FoodItem[];   // Multiple foods array for stacking foods in same meal slot
   isAlternative?: boolean; // Mark as alternative food

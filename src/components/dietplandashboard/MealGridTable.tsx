@@ -117,6 +117,22 @@ const to24HourForInput = (time: string): string => {
 
 const DAYS_PER_PAGE = 14;
 
+const normalizeSearchText = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const getSearchRank = (candidate: string, query: string): number => {
+  const candidateNorm = normalizeSearchText(candidate);
+  const queryNorm = normalizeSearchText(query);
+  if (!candidateNorm || !queryNorm) return 99;
+  if (candidateNorm === queryNorm) return 0;
+  if (candidateNorm.startsWith(queryNorm)) return 1;
+  if (candidateNorm.includes(queryNorm)) return 2;
+  return 99;
+};
+
 
 
 // ============ DEEP CLONE HELPERS ============
@@ -251,7 +267,14 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     optionIndex: number;
   } | null>(null);
   // Recipe search state for Find & Replace
-  const [recipes, setRecipes] = useState<{ _id: string; name: string; nutrition?: { calories: number; protein: number; carbs: number; fat: number }; servings?: string | number }[]>([]);
+  const [findRecipeResults, setFindRecipeResults] = useState<{ _id: string; name: string; nutrition?: { calories: number; protein: number; carbs: number; fat: number }; servings?: string | number }[]>([]);
+  const [replaceRecipeResults, setReplaceRecipeResults] = useState<{ _id: string; name: string; nutrition?: { calories: number; protein: number; carbs: number; fat: number }; servings?: string | number }[]>([]);
+  const [findRecipesLoading, setFindRecipesLoading] = useState(false);
+  const [replaceRecipesLoading, setReplaceRecipesLoading] = useState(false);
+  const [findRecipePage, setFindRecipePage] = useState(1);
+  const [replaceRecipePage, setReplaceRecipePage] = useState(1);
+  const [findHasMoreRecipes, setFindHasMoreRecipes] = useState(false);
+  const [replaceHasMoreRecipes, setReplaceHasMoreRecipes] = useState(false);
   const [findRecipeSearch, setFindRecipeSearch] = useState('');
   const [findRecipeId, setFindRecipeId] = useState('');
   const [replaceRecipeSearch, setReplaceRecipeSearch] = useState('');
@@ -352,30 +375,187 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     onUpdate(normalizedWeekPlan);
   }, [weekPlan, readOnly, onUpdate]);
 
-  // Fetch recipes when Find & Replace dialog opens
+  const clientDietaryArr = clientDietaryRestrictions.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const clientMedicalArr = clientMedicalConditions.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const clientAllergyArr = clientAllergies.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+  const fetchRecipeSuggestions = async (searchTerm: string, page: number, signal: AbortSignal) => {
+    const effectiveSearch = searchTerm.trim();
+    if (!effectiveSearch) return { results: [], hasNext: false };
+
+    const params = new URLSearchParams();
+    params.append('view', 'food-database');
+    params.append('limit', '50');
+    params.append('page', String(page));
+    params.append('includeTotal', 'false');
+    params.append('sortBy', 'relevance');
+    params.append('search', effectiveSearch);
+    params.append('searchMode', 'typing');
+
+    if (clientDietaryArr.length > 0) {
+      params.append('excludeDietaryRestrictions', clientDietaryArr.join(','));
+    }
+    if (clientAllergyArr.length > 0) {
+      params.append('excludeAllergens', clientAllergyArr.join(','));
+    }
+    if (clientMedicalArr.length > 0) {
+      params.append('excludeMedicalConditions', clientMedicalArr.join(','));
+    }
+
+    const response = await fetch(`/api/recipes?${params.toString()}`, { signal });
+    if (!response.ok) {
+      throw new Error('Failed to fetch recipes');
+    }
+
+    const data = await response.json();
+    const mapped = (data.recipes || []).map((r: any) => ({
+      _id: r._id,
+      name: r.name,
+      nutrition: r.flatNutrition || r.nutrition || {
+        calories: r.calories || 0,
+        protein: r.protein || 0,
+        carbs: r.carbs || 0,
+        fat: r.fat || 0
+      },
+      servings: r.servings
+    }));
+
+    // Keep exact name matches first, then prefix/contains (API already ranks this, this is a safety pass).
+    const results = mapped.sort((a: any, b: any) => {
+      const rankDiff = getSearchRank(a.name || '', effectiveSearch) - getSearchRank(b.name || '', effectiveSearch);
+      if (rankDiff !== 0) return rankDiff;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    return {
+      results,
+      hasNext: Boolean(data?.pagination?.hasNext)
+    };
+  };
+
   useEffect(() => {
-    if (findReplaceDialogOpen && recipes.length === 0) {
-      fetch('/api/recipes?limit=500')
-        .then(res => res.json())
-        .then(data => {
-          if (data.recipes) {
-            setRecipes(data.recipes.map((r: any) => ({
-              _id: r._id,
-              name: r.name,
-              // API returns flatNutrition or top-level nutrition fields
-              nutrition: r.flatNutrition || r.nutrition || {
-                calories: r.calories || 0,
-                protein: r.protein || 0,
-                carbs: r.carbs || 0,
-                fat: r.fat || 0
-              },
-              servings: r.servings
-            })));
+    if (!findReplaceDialogOpen || !showFindDropdown) return;
+
+    const term = findSearchFilter.trim();
+    if (!term) {
+      setFindRecipeResults([]);
+      setFindRecipesLoading(false);
+      setFindRecipePage(1);
+      setFindHasMoreRecipes(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setFindRecipesLoading(true);
+    const timer = setTimeout(() => {
+      fetchRecipeSuggestions(term, 1, controller.signal)
+        .then(({ results, hasNext }) => {
+          setFindRecipeResults(results);
+          setFindRecipePage(1);
+          setFindHasMoreRecipes(hasNext);
+        })
+        .catch((err) => {
+          if (err?.name !== 'AbortError') {
+            console.error('Failed to fetch find suggestions:', err);
           }
         })
-        .catch(err => console.error('Failed to fetch recipes:', err));
+        .finally(() => setFindRecipesLoading(false));
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [findReplaceDialogOpen, showFindDropdown, findSearchFilter, clientDietaryRestrictions, clientMedicalConditions, clientAllergies]);
+
+  useEffect(() => {
+    if (!findReplaceDialogOpen || !showReplaceDropdown) return;
+
+    const term = replaceSearchFilter.trim();
+    if (!term) {
+      setReplaceRecipeResults([]);
+      setReplaceRecipesLoading(false);
+      setReplaceRecipePage(1);
+      setReplaceHasMoreRecipes(false);
+      return;
     }
-  }, [findReplaceDialogOpen, recipes.length]);
+
+    const controller = new AbortController();
+    setReplaceRecipesLoading(true);
+    const timer = setTimeout(() => {
+      fetchRecipeSuggestions(term, 1, controller.signal)
+        .then(({ results, hasNext }) => {
+          setReplaceRecipeResults(results);
+          setReplaceRecipePage(1);
+          setReplaceHasMoreRecipes(hasNext);
+        })
+        .catch((err) => {
+          if (err?.name !== 'AbortError') {
+            console.error('Failed to fetch replace suggestions:', err);
+          }
+        })
+        .finally(() => setReplaceRecipesLoading(false));
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [findReplaceDialogOpen, showReplaceDropdown, replaceSearchFilter, clientDietaryRestrictions, clientMedicalConditions, clientAllergies]);
+
+  const handleFindDropdownScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    if (findRecipesLoading || !findHasMoreRecipes) return;
+    const target = event.currentTarget;
+    if (target.scrollHeight - target.scrollTop - target.clientHeight > 40) return;
+
+    const nextPage = findRecipePage + 1;
+    const controller = new AbortController();
+    setFindRecipesLoading(true);
+
+    fetchRecipeSuggestions(findSearchFilter, nextPage, controller.signal)
+      .then(({ results, hasNext }) => {
+        setFindRecipeResults(prev => {
+          const existing = new Set(prev.map(item => item._id));
+          const merged = [...prev, ...results.filter((item: any) => !existing.has(item._id))];
+          return merged;
+        });
+        setFindRecipePage(nextPage);
+        setFindHasMoreRecipes(hasNext);
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          console.error('Failed to fetch more find suggestions:', err);
+        }
+      })
+      .finally(() => setFindRecipesLoading(false));
+  };
+
+  const handleReplaceDropdownScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    if (replaceRecipesLoading || !replaceHasMoreRecipes) return;
+    const target = event.currentTarget;
+    if (target.scrollHeight - target.scrollTop - target.clientHeight > 40) return;
+
+    const nextPage = replaceRecipePage + 1;
+    const controller = new AbortController();
+    setReplaceRecipesLoading(true);
+
+    fetchRecipeSuggestions(replaceSearchFilter, nextPage, controller.signal)
+      .then(({ results, hasNext }) => {
+        setReplaceRecipeResults(prev => {
+          const existing = new Set(prev.map(item => item._id));
+          const merged = [...prev, ...results.filter((item: any) => !existing.has(item._id))];
+          return merged;
+        });
+        setReplaceRecipePage(nextPage);
+        setReplaceHasMoreRecipes(hasNext);
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          console.error('Failed to fetch more replace suggestions:', err);
+        }
+      })
+      .finally(() => setReplaceRecipesLoading(false));
+  };
 
   const createNewMeal = (mealType: string): Meal => ({
     id: Math.random().toString(36).substr(2, 9),
@@ -557,6 +737,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       if (field === 'food') {
         const nextFood = value.trim();
         if (nextFood !== previousFood) {
+          option.recipeId = undefined;
           option.recipeUuid = undefined;
           option.cal = '';
           option.carbs = '';
@@ -1110,6 +1291,34 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     )
   ));
 
+  const matchedPlanFoodsForFind = findSearchFilter
+    ? availableFoods
+      .filter(f => getSearchRank(f, findSearchFilter) < 99)
+      .sort((a, b) => {
+        const rankDiff = getSearchRank(a, findSearchFilter) - getSearchRank(b, findSearchFilter);
+        if (rankDiff !== 0) return rankDiff;
+        return a.localeCompare(b);
+      })
+      .slice(0, 5)
+    : [];
+
+  const exactPlanFoodsForFind = matchedPlanFoodsForFind.filter(f => getSearchRank(f, findSearchFilter) === 0);
+  const similarPlanFoodsForFind = matchedPlanFoodsForFind.filter(f => getSearchRank(f, findSearchFilter) > 0);
+
+  const exactRecipeResultsForFind = findSearchFilter
+    ? findRecipeResults.filter(r => getSearchRank(r.name || '', findSearchFilter) === 0)
+    : [];
+  const similarRecipeResultsForFind = findSearchFilter
+    ? findRecipeResults.filter(r => getSearchRank(r.name || '', findSearchFilter) > 0)
+    : [];
+
+  const exactRecipeResultsForReplace = replaceSearchFilter
+    ? replaceRecipeResults.filter(r => getSearchRank(r.name || '', replaceSearchFilter) === 0)
+    : [];
+  const similarRecipeResultsForReplace = replaceSearchFilter
+    ? replaceRecipeResults.filter(r => getSearchRank(r.name || '', replaceSearchFilter) > 0)
+    : [];
+
   const toggleReplaceDay = (dayIndex: number) => {
     setSelectedDaysForReplace(prev => prev.includes(dayIndex) ? prev.filter(d => d !== dayIndex) : [...prev, dayIndex]);
   };
@@ -1122,7 +1331,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     if (readOnly || !onUpdate) return;
     const findValue = (findFoodTarget || manualFindFoodName || findRecipeSearch).trim();
     const selectedReplacementRecipe = replaceRecipeId
-      ? recipes.find(r => r._id === replaceRecipeId)
+      ? replaceRecipeResults.find(r => r._id === replaceRecipeId)
       : null;
     const replaceValue = (replaceFoodValue || replaceRecipeSearch || selectedReplacementRecipe?.name || '').trim();
 
@@ -1166,7 +1375,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
     const isFoodItemMatch = (foodItem: MealFoodItem): boolean => {
       if (matchesText(foodItem.food)) return true;
-      if (findRecipeId && foodItem.recipeUuid && foodItem.recipeUuid === findRecipeId) return true;
+      if (findRecipeId && (foodItem.recipeId === findRecipeId || foodItem.recipeUuid === findRecipeId)) return true;
       return false;
     };
 
@@ -1175,7 +1384,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       // Match primary/combined option text
       if (matchesText(opt.food)) return true;
       // If a recipe was selected from DB, also match by recipeUuid
-      if (findRecipeId && opt.recipeUuid && opt.recipeUuid === findRecipeId) return true;
+      if (findRecipeId && (opt.recipeId === findRecipeId || opt.recipeUuid === findRecipeId)) return true;
 
       // Also check stacked foods array
       if (opt.foods && opt.foods.length > 0) {
@@ -1189,10 +1398,11 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         id: Math.random().toString(36).substr(2, 9),
         food: replaceValue,
         unit: resolvedReplaceNutrition?.unit || '',
-        cal: resolvedReplaceNutrition?.cal || '',
-        carbs: resolvedReplaceNutrition?.carbs || '',
-        fats: resolvedReplaceNutrition?.fats || '',
-        protein: resolvedReplaceNutrition?.protein || '',
+        cal: resolvedReplaceNutrition?.cal || '0',
+        carbs: resolvedReplaceNutrition?.carbs || '0',
+        fats: resolvedReplaceNutrition?.fats || '0',
+        protein: resolvedReplaceNutrition?.protein || '0',
+        recipeId: replaceRecipeId || undefined,
         recipeUuid: replaceRecipeId || undefined
       };
     };
@@ -1208,6 +1418,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
           carbs: '',
           fats: '',
           protein: '',
+          recipeId: undefined,
           recipeUuid: undefined,
           foods: undefined
         };
@@ -1229,6 +1440,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         carbs: formatNum(totals.carbs),
         fats: formatNum(totals.fats),
         protein: formatNum(totals.protein),
+        recipeId: foods.length === 1 ? foods[0]?.recipeId : undefined,
         recipeUuid: foods.length === 1 ? foods[0]?.recipeUuid : undefined,
         foods
       };
@@ -1288,11 +1500,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 return {
                   ...opt,
                   food: replaceValue,
-                  cal: '',
-                  protein: '',
-                  carbs: '',
-                  fats: '',
+                  cal: '0',
+                  protein: '0',
+                  carbs: '0',
+                  fats: '0',
                   unit: '',
+                  recipeId: undefined,
                   recipeUuid: undefined,
                   foods: undefined
                 };
@@ -1307,6 +1520,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
               return {
                 ...opt,
                 food: replaceValue,
+                recipeId: replaceRecipeId || undefined,
                 recipeUuid: replaceRecipeId || undefined,
                 cal: resolvedReplaceNutrition.cal,
                 protein: resolvedReplaceNutrition.protein,
@@ -1321,11 +1535,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
             return {
               ...opt,
               food: replaceValue,
-              cal: '',
-              protein: '',
-              carbs: '',
-              fats: '',
+              cal: '0',
+              protein: '0',
+              carbs: '0',
+              fats: '0',
               unit: '',
+              recipeId: undefined,
               recipeUuid: undefined,
               foods: undefined
             };
@@ -1352,6 +1567,14 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     setReplaceAction('replace');
     setFindSearchFilter('');
     setReplaceSearchFilter('');
+    setFindRecipeResults([]);
+    setReplaceRecipeResults([]);
+    setFindRecipesLoading(false);
+    setReplaceRecipesLoading(false);
+    setFindRecipePage(1);
+    setReplaceRecipePage(1);
+    setFindHasMoreRecipes(false);
+    setReplaceHasMoreRecipes(false);
     setShowFindDropdown(false);
     setShowReplaceDropdown(false);
   };
@@ -2062,6 +2285,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
                                                         if (nextFoodName.trim() !== prevFoodName) {
                                                           // Manual rename means previous recipe mapping is no longer valid.
+                                                          foodRow.recipeId = undefined;
                                                           foodRow.recipeUuid = undefined;
                                                           foodRow.cal = '';
                                                           foodRow.carbs = '';
@@ -2988,68 +3212,117 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
                   {/* Dropdown with filtered results */}
                   {showFindDropdown && findSearchFilter && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto" onScroll={handleFindDropdownScroll}>
                       {/* Existing foods in plan */}
-                      {availableFoods.filter(f => f.toLowerCase().includes(findSearchFilter.toLowerCase())).length > 0 && (
+                      {exactPlanFoodsForFind.length > 0 && (
                         <div className="p-2 bg-gray-50 border-b">
-                          <span className="text-[10px] font-semibold text-gray-500 uppercase">Foods in Current Plan</span>
+                          <span className="text-[10px] font-semibold text-gray-500 uppercase">Foods in Current Plan - Exact Matches</span>
                         </div>
                       )}
-                      {availableFoods
-                        .filter(f => f.toLowerCase().includes(findSearchFilter.toLowerCase()))
-                        .slice(0, 5)
-                        .map(f => (
-                          <div
-                            key={`find-food-${f}`}
-                            className="px-3 py-2 hover:bg-emerald-50 cursor-pointer text-sm border-b border-gray-100"
-                            onClick={() => {
-                              setFindFoodTarget(f);
-                              setFindSearchFilter(f);
-                              setFindRecipeSearch('');
-                              setFindRecipeId('');
-                              setManualFindFoodName('');
-                              setShowFindDropdown(false);
-                            }}
-                          >
-                            <span className="text-emerald-700">📋</span> {f}
-                          </div>
-                        ))
+                      {exactPlanFoodsForFind.map(f => (
+                        <div
+                          key={`find-food-${f}`}
+                          className="px-3 py-2 hover:bg-emerald-50 cursor-pointer text-sm border-b border-gray-100"
+                          onClick={() => {
+                            setFindFoodTarget(f);
+                            setFindSearchFilter(f);
+                            setFindRecipeSearch('');
+                            setFindRecipeId('');
+                            setManualFindFoodName('');
+                            setShowFindDropdown(false);
+                          }}
+                        >
+                          <span className="text-emerald-700">📋</span> {f}
+                        </div>
+                      ))
                       }
+
+                      {similarPlanFoodsForFind.length > 0 && (
+                        <div className="p-2 bg-gray-50 border-b">
+                          <span className="text-[10px] font-semibold text-gray-500 uppercase">Foods in Current Plan - Similar Matches</span>
+                        </div>
+                      )}
+                      {similarPlanFoodsForFind.map(f => (
+                        <div
+                          key={`find-food-similar-${f}`}
+                          className="px-3 py-2 hover:bg-emerald-50 cursor-pointer text-sm border-b border-gray-100"
+                          onClick={() => {
+                            setFindFoodTarget(f);
+                            setFindSearchFilter(f);
+                            setFindRecipeSearch('');
+                            setFindRecipeId('');
+                            setManualFindFoodName('');
+                            setShowFindDropdown(false);
+                          }}
+                        >
+                          <span className="text-emerald-700">📋</span> {f}
+                        </div>
+                      ))}
 
                       {/* Recipes from database */}
-                      {recipes.filter(r => r.name.toLowerCase().includes(findSearchFilter.toLowerCase())).length > 0 && (
+                      {exactRecipeResultsForFind.length > 0 && (
                         <div className="p-2 bg-gray-50 border-b">
-                          <span className="text-[10px] font-semibold text-gray-500 uppercase">Recipes Database</span>
+                          <span className="text-[10px] font-semibold text-gray-500 uppercase">Recipes Database - Exact Matches</span>
                         </div>
                       )}
-                      {recipes
-                        .filter(r => r.name.toLowerCase().includes(findSearchFilter.toLowerCase()))
-                        .slice(0, 10)
-                        .map(r => (
-                          <div
-                            key={`find-recipe-${r._id}`}
-                            className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100"
-                            onClick={() => {
-                              setFindRecipeSearch(r.name);
-                              setFindRecipeId(r._id);
-                              setFindSearchFilter(r.name);
-                              setFindFoodTarget('');
-                              setManualFindFoodName('');
-                              setShowFindDropdown(false);
-                            }}
-                          >
-                            <span className="text-blue-600">🍽️</span> {r.name}
-                          </div>
-                        ))
+                      {exactRecipeResultsForFind.map(r => (
+                        <div
+                          key={`find-recipe-${r._id}`}
+                          className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100"
+                          onClick={() => {
+                            setFindRecipeSearch(r.name);
+                            setFindRecipeId(r._id);
+                            setFindSearchFilter(r.name);
+                            setFindFoodTarget('');
+                            setManualFindFoodName('');
+                            setShowFindDropdown(false);
+                          }}
+                        >
+                          <span className="text-blue-600">🍽️</span> {r.name}
+                        </div>
+                      ))
                       }
 
+                      {similarRecipeResultsForFind.length > 0 && (
+                        <div className="p-2 bg-gray-50 border-b">
+                          <span className="text-[10px] font-semibold text-gray-500 uppercase">Recipes Database - Similar Matches</span>
+                        </div>
+                      )}
+                      {similarRecipeResultsForFind.map(r => (
+                        <div
+                          key={`find-recipe-similar-${r._id}`}
+                          className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100"
+                          onClick={() => {
+                            setFindRecipeSearch(r.name);
+                            setFindRecipeId(r._id);
+                            setFindSearchFilter(r.name);
+                            setFindFoodTarget('');
+                            setManualFindFoodName('');
+                            setShowFindDropdown(false);
+                          }}
+                        >
+                          <span className="text-blue-600">🍽️</span> {r.name}
+                        </div>
+                      ))}
+
+                      {findRecipesLoading && (
+                        <div className="px-3 py-3 text-sm text-gray-500 text-center border-b border-gray-100">
+                          Searching recipes...
+                        </div>
+                      )}
+
+                      {!findRecipesLoading && findHasMoreRecipes && (
+                        <div className="px-3 py-2 text-[11px] text-gray-500 text-center border-b border-gray-100">
+                          Scroll to load more results
+                        </div>
+                      )}
+
                       {/* No results */}
-                      {availableFoods.filter(f => f.toLowerCase().includes(findSearchFilter.toLowerCase())).length === 0 &&
-                        recipes.filter(r => r.name.toLowerCase().includes(findSearchFilter.toLowerCase())).length === 0 && (
-                          <div className="px-3 py-3 text-sm text-gray-500 text-center">
-                            No matching foods or recipes found
-                          </div>
-                        )}
+                      {!findRecipesLoading && matchedPlanFoodsForFind.length === 0 && findRecipeResults.length === 0 && (
+                        <div className="px-3 py-3 text-sm text-gray-500 text-center">
+                          No matching foods or recipes found
+                        </div>
+                      )}
 
                       {/* Use as manual entry option */}
                       <div
@@ -3142,53 +3415,100 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
 
                     {/* Dropdown with filtered results */}
                     {showReplaceDropdown && replaceSearchFilter && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto" onScroll={handleReplaceDropdownScroll}>
                         {/* Recipes from database */}
-                        {recipes.filter(r => r.name.toLowerCase().includes(replaceSearchFilter.toLowerCase())).length > 0 && (
+                        {exactRecipeResultsForReplace.length > 0 && (
                           <div className="p-2 bg-gray-50 border-b">
-                            <span className="text-[10px] font-semibold text-gray-500 uppercase">Recipes Database</span>
+                            <span className="text-[10px] font-semibold text-gray-500 uppercase">Recipes Database - Exact Matches</span>
                           </div>
                         )}
-                        {recipes
-                          .filter(r => r.name.toLowerCase().includes(replaceSearchFilter.toLowerCase()))
-                          .slice(0, 15)
-                          .map(r => (
-                            <div
-                              key={`replace-recipe-${r._id}`}
-                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100"
-                              onClick={() => {
-                                setReplaceRecipeSearch(r.name);
-                                setReplaceRecipeId(r._id);
-                                setReplaceSearchFilter(r.name);
-                                setReplaceFoodValue('');
-                                // Store nutrition data from selected recipe
-                                if (r.nutrition) {
-                                  const servingsStr = typeof r.servings === 'number' ? `${r.servings} serving` : (r.servings || '1 serving');
-                                  setReplaceRecipeNutrition({
-                                    cal: String(r.nutrition.calories || 0),
-                                    protein: String(r.nutrition.protein || 0),
-                                    carbs: String(r.nutrition.carbs || 0),
-                                    fats: String(r.nutrition.fat || 0),
-                                    unit: servingsStr
-                                  });
-                                } else {
-                                  setReplaceRecipeNutrition(null);
-                                }
-                                setShowReplaceDropdown(false);
-                              }}
-                            >
-                              <span className="text-blue-600">🍽️</span> {r.name}
-                              {r.nutrition && (
-                                <span className="text-[10px] text-gray-400 ml-2">
-                                  ({r.nutrition.calories} cal)
-                                </span>
-                              )}
-                            </div>
-                          ))
+                        {exactRecipeResultsForReplace.map(r => (
+                          <div
+                            key={`replace-recipe-${r._id}`}
+                            className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100"
+                            onClick={() => {
+                              setReplaceRecipeSearch(r.name);
+                              setReplaceRecipeId(r._id);
+                              setReplaceSearchFilter(r.name);
+                              setReplaceFoodValue('');
+                              // Store nutrition data from selected recipe
+                              if (r.nutrition) {
+                                const servingsStr = typeof r.servings === 'number' ? `${r.servings} serving` : (r.servings || '1 serving');
+                                setReplaceRecipeNutrition({
+                                  cal: String(r.nutrition.calories || 0),
+                                  protein: String(r.nutrition.protein || 0),
+                                  carbs: String(r.nutrition.carbs || 0),
+                                  fats: String(r.nutrition.fat || 0),
+                                  unit: servingsStr
+                                });
+                              } else {
+                                setReplaceRecipeNutrition(null);
+                              }
+                              setShowReplaceDropdown(false);
+                            }}
+                          >
+                            <span className="text-blue-600">🍽️</span> {r.name}
+                            {r.nutrition && (
+                              <span className="text-[10px] text-gray-400 ml-2">
+                                ({r.nutrition.calories} cal)
+                              </span>
+                            )}
+                          </div>
+                        ))
                         }
 
+                        {similarRecipeResultsForReplace.length > 0 && (
+                          <div className="p-2 bg-gray-50 border-b">
+                            <span className="text-[10px] font-semibold text-gray-500 uppercase">Recipes Database - Similar Matches</span>
+                          </div>
+                        )}
+                        {similarRecipeResultsForReplace.map(r => (
+                          <div
+                            key={`replace-recipe-similar-${r._id}`}
+                            className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100"
+                            onClick={() => {
+                              setReplaceRecipeSearch(r.name);
+                              setReplaceRecipeId(r._id);
+                              setReplaceSearchFilter(r.name);
+                              setReplaceFoodValue('');
+                              if (r.nutrition) {
+                                const servingsStr = typeof r.servings === 'number' ? `${r.servings} serving` : (r.servings || '1 serving');
+                                setReplaceRecipeNutrition({
+                                  cal: String(r.nutrition.calories || 0),
+                                  protein: String(r.nutrition.protein || 0),
+                                  carbs: String(r.nutrition.carbs || 0),
+                                  fats: String(r.nutrition.fat || 0),
+                                  unit: servingsStr
+                                });
+                              } else {
+                                setReplaceRecipeNutrition(null);
+                              }
+                              setShowReplaceDropdown(false);
+                            }}
+                          >
+                            <span className="text-blue-600">🍽️</span> {r.name}
+                            {r.nutrition && (
+                              <span className="text-[10px] text-gray-400 ml-2">
+                                ({r.nutrition.calories} cal)
+                              </span>
+                            )}
+                          </div>
+                        ))}
+
+                        {replaceRecipesLoading && (
+                          <div className="px-3 py-3 text-sm text-gray-500 text-center border-b border-gray-100">
+                            Searching recipes...
+                          </div>
+                        )}
+
+                        {!replaceRecipesLoading && replaceHasMoreRecipes && (
+                          <div className="px-3 py-2 text-[11px] text-gray-500 text-center border-b border-gray-100">
+                            Scroll to load more results
+                          </div>
+                        )}
+
                         {/* No results */}
-                        {recipes.filter(r => r.name.toLowerCase().includes(replaceSearchFilter.toLowerCase())).length === 0 && (
+                        {!replaceRecipesLoading && replaceRecipeResults.length === 0 && (
                           <div className="px-3 py-3 text-sm text-gray-500 text-center">
                             No matching recipes found
                           </div>
@@ -3374,7 +3694,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                   carbs: formatNum(food.carbs),
                   fats: formatNum(food.fats),
                   protein: formatNum(food.protein),
-                  recipeUuid: food.recipeId || food.recipeUuid,
+                  recipeId: food.recipeId || undefined,
+                  recipeUuid: food.recipeUuid || food.recipeId,
                   isAlternative: preserveIsAlternative // Preserve alternative status
                 }));
 

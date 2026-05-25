@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Search, X } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface Recipe {
   _id: string;
@@ -31,19 +32,54 @@ export default function RecipesListMobile() {
   const router = useRouter();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecipes, setTotalRecipes] = useState(0);
+  const ITEMS_PER_PAGE = 20;
+
+  const debouncedSearchQuery = useDebounce(searchQuery, 350);
 
   useEffect(() => {
-    fetchRecipes();
-  }, []);
+    if (searchQuery !== debouncedSearchQuery) {
+      setIsSearching(true);
+    } else {
+      setIsSearching(false);
+    }
+  }, [searchQuery, debouncedSearchQuery]);
 
-  const fetchRecipes = async () => {
+  useEffect(() => {
+    setCurrentPage(1);
+    fetchRecipes(1, debouncedSearchQuery);
+  }, [debouncedSearchQuery]);
+
+  const fetchRecipes = async (pageNum: number, searchValue: string) => {
     try {
-      const response = await fetch('/api/recipes?limit=1000');
+      setLoading(true);
+
+      const params = new URLSearchParams();
+      params.append('limit', String(ITEMS_PER_PAGE));
+      params.append('page', String(pageNum));
+      params.append('includeTotal', 'true');
+
+      if (searchValue.trim()) {
+        params.append('search', searchValue.trim());
+        params.append('sortBy', 'relevance');
+      } else {
+        params.append('sortBy', 'name');
+      }
+
+      const response = await fetch(`/api/recipes?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
         setRecipes(data.recipes || []);
+        const total = Number(data.pagination?.total || 0);
+        const pages = Number(data.pagination?.pages || 1);
+        setTotalRecipes(total);
+        setTotalPages(Math.max(1, pages));
+        setCurrentPage(pageNum);
       }
     } catch (error) {
       console.error('Error fetching recipes:', error);
@@ -52,9 +88,11 @@ export default function RecipesListMobile() {
     }
   };
 
-  const filteredRecipes = recipes.filter(recipe =>
-    recipe.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const goToPage = (pageNum: number) => {
+    if (pageNum < 1 || pageNum > totalPages || pageNum === currentPage) return;
+    fetchRecipes(pageNum, debouncedSearchQuery);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (loading) {
     return (
@@ -96,6 +134,9 @@ export default function RecipesListMobile() {
                     <X className="h-4 w-4 text-gray-400" />
                   </button>
                 )}
+                {isSearching && (
+                  <div className="ml-2 text-xs text-gray-500">Searching...</div>
+                )}
               </div>
             ) : (
               <h1 className="text-lg font-medium text-gray-700 ml-3">
@@ -115,13 +156,13 @@ export default function RecipesListMobile() {
 
       {/* Recipes List */}
       <div className="p-4">
-        {filteredRecipes.length === 0 ? (
+        {recipes.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500">No recipes found</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredRecipes.map((recipe, index) => (
+            {recipes.map((recipe, index) => (
               <button
                 key={recipe._id}
                 onClick={() => router.push(`/recipes/${recipe._id}`)}
@@ -182,6 +223,32 @@ export default function RecipesListMobile() {
                 )}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!loading && totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+
+            <div className="text-sm text-gray-600 text-center">
+              Page {currentPage} of {totalPages}
+              <div className="text-xs text-gray-500">{totalRecipes} total recipes</div>
+            </div>
+
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
           </div>
         )}
       </div>
