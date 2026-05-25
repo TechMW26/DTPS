@@ -20,6 +20,9 @@
 # production
 /build
 
+# Gradle / Android generated files
+**/.gradle/
+
 # misc
 .DS_Store
 *.pem
