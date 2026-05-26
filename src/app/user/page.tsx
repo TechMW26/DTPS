@@ -104,6 +104,14 @@ interface PurchaseInfo {
   } | null;
 }
 
+interface CurrentMealPlanInfo {
+  name?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  duration?: number | null;
+  goal?: string | null;
+}
+
 interface BlogItem {
   _id: string;
   slug: string;
@@ -127,6 +135,7 @@ export default function UserHomePage() {
   const [hasAnyPurchase, setHasAnyPurchase] = useState(false);
   const [hasPendingDietitianAssignment, setHasPendingDietitianAssignment] = useState(false);
   const [activePurchases, setActivePurchases] = useState<PurchaseInfo[]>([]);
+  const [currentMealPlan, setCurrentMealPlan] = useState<CurrentMealPlanInfo | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [userName, setUserName] = useState<string>('');
   const [userAvatar, setUserAvatar] = useState<string>('');
@@ -386,6 +395,7 @@ export default function UserHomePage() {
         setHasAnyPurchase(planData.hasAnyPurchase || false);
         setHasPendingDietitianAssignment(planData.hasPendingDietitianAssignment || false);
         setActivePurchases(planData.activePurchases || []);
+        setCurrentMealPlan(planData.currentMealPlan || null);
       }
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -421,6 +431,7 @@ export default function UserHomePage() {
         setHasAnyPurchase(planData.hasAnyPurchase || false);
         setHasPendingDietitianAssignment(planData.hasPendingDietitianAssignment || false);
         setActivePurchases(planData.activePurchases || []);
+        setCurrentMealPlan(planData.currentMealPlan || null);
       }
 
       // Fetch health data (which includes profile from dashboard-summary)
@@ -850,6 +861,10 @@ export default function UserHomePage() {
         {activePurchases.length > 0 && (() => {
           // Get the current active purchase (first one or most recent)
           const currentPurchase = activePurchases[0];
+          const displayPlanName = currentMealPlan?.name || currentPurchase.mealPlanName || currentPurchase.planName;
+          const displayStartDate = currentMealPlan?.startDate || currentPurchase.startDate;
+          const displayEndDate = currentMealPlan?.endDate || currentPurchase.endDate;
+          const displayDuration = currentMealPlan?.duration || currentPurchase.durationDays;
           return (
             <div key={currentPurchase._id}>
               {currentPurchase.mealPlanCreated ? (
@@ -922,27 +937,27 @@ export default function UserHomePage() {
                       <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
                         <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Plan</p>
                         <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-                          {currentPurchase.mealPlanName || currentPurchase.planName}
+                          {displayPlanName}
                         </p>
                       </div>
                       <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
                         <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Duration</p>
-                        <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{currentPurchase.durationDays} Days</p>
+                        <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{displayDuration} Days</p>
                       </div>
                       {/* Show meal plan dates (from actual meal plan, not payment) */}
-                      {currentPurchase.startDate && (
+                      {displayStartDate && (
                         <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
                           <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Start Date</p>
                           <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-                            {format(new Date(currentPurchase.startDate), 'dd MMM yyyy')}
+                            {format(new Date(displayStartDate), 'dd MMM yyyy')}
                           </p>
                         </div>
                       )}
-                      {currentPurchase.endDate && (
+                      {displayEndDate && (
                         <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
                           <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>End Date</p>
                           <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-                            {format(new Date(currentPurchase.endDate), 'dd MMM yyyy')}
+                            {format(new Date(displayEndDate), 'dd MMM yyyy')}
                           </p>
                         </div>
                       )}
