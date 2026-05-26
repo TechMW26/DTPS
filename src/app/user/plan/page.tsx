@@ -1229,11 +1229,6 @@ export default function UserPlanPage() {
             <p className={`mb-6 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
               You don&apos;t have a meal plan for this date. Get a personalized diet plan from our expert dietitians!
             </p>
-            {planDateWindow?.startDate && planDateWindow?.endDate && (
-              <p className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#1f8b7d]'}`}>
-                Your meal plan runs from {format(new Date(planDateWindow.startDate), 'dd MMM yyyy')} to {format(new Date(planDateWindow.endDate), 'dd MMM yyyy')}.
-              </p>
-            )}
             <div className="flex flex-col gap-3">
               <Link
                 href="/user/services"
