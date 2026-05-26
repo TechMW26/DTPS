@@ -103,6 +103,11 @@ interface DayPlan {
   };
 }
 
+interface PlanDateWindow {
+  startDate: string;
+  endDate: string;
+}
+
 interface RecipeModalData {
   item: MealItem;
   isOpen: boolean;
@@ -213,6 +218,7 @@ export default function UserPlanPage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weekDates, setWeekDates] = useState<Date[]>([]);
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null);
+  const [planDateWindow, setPlanDateWindow] = useState<PlanDateWindow | null>(null);
   const [loading, setLoading] = useState(true);
   const [isChangingDate, setIsChangingDate] = useState(false); // For skeleton loader on date change
   const [completingMeal, setCompletingMeal] = useState<string | null>(null);
@@ -298,6 +304,38 @@ export default function UserPlanPage() {
       });
     }, 100);
   }, [selectedDate]);
+
+  // Load current/upcoming meal plan date window for empty-state guidance.
+  useEffect(() => {
+    const fetchPlanDateWindow = async () => {
+      try {
+        const res = await fetch('/api/client/service-plans', { cache: 'no-store' });
+        if (!res.ok) return;
+
+        const data = await res.json();
+        const current = data?.currentMealPlan;
+        if (current?.startDate && current?.endDate) {
+          setPlanDateWindow({
+            startDate: current.startDate,
+            endDate: current.endDate,
+          });
+          return;
+        }
+
+        const firstActive = Array.isArray(data?.activePurchases) ? data.activePurchases[0] : null;
+        if (firstActive?.startDate && firstActive?.endDate) {
+          setPlanDateWindow({
+            startDate: firstActive.startDate,
+            endDate: firstActive.endDate,
+          });
+        }
+      } catch {
+        // Silent fail; empty state still renders without the helper line.
+      }
+    };
+
+    fetchPlanDateWindow();
+  }, []);
 
   // Auto-refresh on visibility change and focus (when user comes back to tab/window)
   useEffect(() => {
@@ -1191,6 +1229,11 @@ export default function UserPlanPage() {
             <p className={`mb-6 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
               You don&apos;t have a meal plan for this date. Get a personalized diet plan from our expert dietitians!
             </p>
+            {planDateWindow?.startDate && planDateWindow?.endDate && (
+              <p className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#1f8b7d]'}`}>
+                Your meal plan runs from {format(new Date(planDateWindow.startDate), 'dd MMM yyyy')} to {format(new Date(planDateWindow.endDate), 'dd MMM yyyy')}.
+              </p>
+            )}
             <div className="flex flex-col gap-3">
               <Link
                 href="/user/services"
