@@ -3,7 +3,6 @@
 import { useState, useEffect, Suspense, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
-import Image from 'next/image';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import RecipesListMobile from './page-mobile';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,6 +61,7 @@ interface Recipe {
   }>;
   instructions: string[];
   image?: string;
+  images?: string[];
   createdBy: {
     firstName: string;
     lastName: string;
@@ -76,6 +76,7 @@ function RecipesPageContent() {
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecipes, setTotalRecipes] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -171,7 +172,10 @@ function RecipesPageContent() {
           }
           seenIds.add(recipe._id);
           return true;
-        });
+        }).map((recipe) => ({
+          ...recipe,
+          image: recipe.image || (Array.isArray(recipe.images) ? recipe.images[0] : '') || ''
+        }));
 
         setRecipes(uniqueRecipes);
         setCategories(data.categories || data.tags || []);
@@ -455,17 +459,14 @@ function RecipesPageContent() {
               <Card key={recipe._id} className="hover:shadow-md transition-shadow border border-gray-200 flex flex-col h-full  ">
                 {/* Recipe Image - Smaller front area, full image visible without stretching */}
                 <div className="relative w-full aspect-video bg-gray-100 overflow-hidden shrink-0 flex items-center justify-center">
-                  {recipe.image ? (
-                    <Image
+                  {recipe.image && !brokenImages[recipe._id] ? (
+                    <img
                       src={recipe.image}
                       alt={recipe.name}
-                      fill
-                      sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                      className="object-contain p-2"
                       loading="lazy"
-                      onError={(e) => {
-                        // Fallback to placeholder if image fails
-                        (e.target as HTMLImageElement).style.display = 'none';
+                      className="w-full h-full object-contain p-2"
+                      onError={() => {
+                        setBrokenImages((prev) => ({ ...prev, [recipe._id]: true }));
                       }}
                     />
                   ) : (
