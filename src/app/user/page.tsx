@@ -90,9 +90,15 @@ interface PurchaseInfo {
   durationLabel: string;
   startDate: string;
   endDate: string;
+  expectedStartDate?: string | null;
+  expectedEndDate?: string | null;
   status: string;
   hasDietitian: boolean;
   mealPlanCreated: boolean;
+  hasOngoingMealPlan?: boolean;
+  ongoingMealPlanStartDate?: string | null;
+  ongoingMealPlanEndDate?: string | null;
+  ongoingMealPlanDuration?: number | null;
   mealPlanName?: string | null;
   mealPlanGoal?: string | null;
   dietitian: {
@@ -861,13 +867,33 @@ export default function UserHomePage() {
         {activePurchases.length > 0 && (() => {
           // Get the current active purchase (first one or most recent)
           const currentPurchase = activePurchases[0];
-          const displayPlanName = currentMealPlan?.name || currentPurchase.mealPlanName || currentPurchase.planName;
-          const displayStartDate = currentMealPlan?.startDate || currentPurchase.startDate;
-          const displayEndDate = currentMealPlan?.endDate || currentPurchase.endDate;
-          const displayDuration = currentMealPlan?.duration || currentPurchase.durationDays;
+          const hasOngoingMealPlanDates = Boolean(
+            currentPurchase.hasOngoingMealPlan &&
+            currentPurchase.ongoingMealPlanStartDate &&
+            currentPurchase.ongoingMealPlanEndDate
+          );
+
+          const showMealPlanCreatedState = Boolean(currentPurchase.mealPlanCreated) && hasOngoingMealPlanDates;
+
+          const displayPlanName = hasOngoingMealPlanDates
+            ? (currentPurchase.mealPlanName || currentMealPlan?.name || currentPurchase.planName)
+            : currentPurchase.planName;
+
+          const displayStartDate = hasOngoingMealPlanDates
+            ? currentPurchase.ongoingMealPlanStartDate
+            : (currentPurchase.expectedStartDate || null);
+
+          const displayEndDate = hasOngoingMealPlanDates
+            ? currentPurchase.ongoingMealPlanEndDate
+            : (currentPurchase.expectedEndDate || null);
+
+          const displayDuration = hasOngoingMealPlanDates
+            ? (currentPurchase.ongoingMealPlanDuration || currentMealPlan?.duration || currentPurchase.durationDays)
+            : currentPurchase.durationDays;
+
           return (
             <div key={currentPurchase._id}>
-              {currentPurchase.mealPlanCreated ? (
+              {showMealPlanCreatedState ? (
                 /* STATE 3: Meal Plan Created - Full Details with actions */
                 <div
                   className={
@@ -1063,6 +1089,22 @@ export default function UserHomePage() {
                         <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Duration</p>
                         <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{currentPurchase.durationDays} Days</p>
                       </div>
+                      {currentPurchase.expectedStartDate && (
+                        <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
+                          <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Expected Start</p>
+                          <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+                            {format(new Date(currentPurchase.expectedStartDate), 'dd MMM yyyy')}
+                          </p>
+                        </div>
+                      )}
+                      {currentPurchase.expectedEndDate && (
+                        <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
+                          <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Expected End</p>
+                          <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+                            {format(new Date(currentPurchase.expectedEndDate), 'dd MMM yyyy')}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     {/* Notice - Meal plan being prepared */}
                     <div
@@ -1146,6 +1188,22 @@ export default function UserHomePage() {
                         <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Duration</p>
                         <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{currentPurchase.durationDays} Days</p>
                       </div>
+                      {currentPurchase.expectedStartDate && (
+                        <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
+                          <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Expected Start</p>
+                          <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+                            {format(new Date(currentPurchase.expectedStartDate), 'dd MMM yyyy')}
+                          </p>
+                        </div>
+                      )}
+                      {currentPurchase.expectedEndDate && (
+                        <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
+                          <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Expected End</p>
+                          <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+                            {format(new Date(currentPurchase.expectedEndDate), 'dd MMM yyyy')}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

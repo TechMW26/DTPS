@@ -313,6 +313,38 @@ export default function UserPlanPage() {
         if (!res.ok) return;
 
         const data = await res.json();
+
+        // Prefer explicit upcoming/ongoing meal-plan dates from purchase payload when available.
+        const firstPurchaseWithMealPlan = Array.isArray(data?.activePurchases)
+          ? data.activePurchases.find((purchase: any) =>
+            purchase?.mealPlanCreated &&
+            purchase?.ongoingMealPlanStartDate &&
+            purchase?.ongoingMealPlanEndDate
+          )
+          : null;
+
+        if (firstPurchaseWithMealPlan) {
+          setPlanDateWindow({
+            startDate: firstPurchaseWithMealPlan.ongoingMealPlanStartDate,
+            endDate: firstPurchaseWithMealPlan.ongoingMealPlanEndDate,
+          });
+          return;
+        }
+
+        const firstPurchaseExpectedWindow = Array.isArray(data?.activePurchases)
+          ? data.activePurchases.find((purchase: any) =>
+            purchase?.expectedStartDate && purchase?.expectedEndDate
+          )
+          : null;
+
+        if (firstPurchaseExpectedWindow) {
+          setPlanDateWindow({
+            startDate: firstPurchaseExpectedWindow.expectedStartDate,
+            endDate: firstPurchaseExpectedWindow.expectedEndDate,
+          });
+          return;
+        }
+
         const current = data?.currentMealPlan;
         if (current?.startDate && current?.endDate) {
           setPlanDateWindow({
@@ -1229,6 +1261,27 @@ export default function UserPlanPage() {
             <p className={`mb-6 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
               You don&apos;t have a meal plan for this date. Get a personalized diet plan from our expert dietitians!
             </p>
+            {(() => {
+              if (!planDateWindow?.startDate || !planDateWindow?.endDate) return null;
+
+              const start = new Date(planDateWindow.startDate);
+              const end = new Date(planDateWindow.endDate);
+              if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+              const selectedDay = new Date(selectedDate);
+              selectedDay.setHours(0, 0, 0, 0);
+              const startDay = new Date(start);
+              startDay.setHours(0, 0, 0, 0);
+
+              // Show helper only for upcoming windows when the selected day is before plan start.
+              if (selectedDay >= startDay) return null;
+
+              return (
+                <p className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#1f8b7d]'}`}>
+                  Your meal plan starts from {format(start, 'dd MMM yyyy')} to {format(end, 'dd MMM yyyy')}.
+                </p>
+              );
+            })()}
             <div className="flex flex-col gap-3">
               <Link
                 href="/user/services"

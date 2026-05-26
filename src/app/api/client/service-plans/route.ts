@@ -58,17 +58,47 @@ export async function GET(request: NextRequest) {
             startDate: activeClientMealPlan.startDate,
             endDate: activeClientMealPlan.endDate,
             duration: activeClientMealPlan.duration || Math.ceil((new Date(activeClientMealPlan.endDate).getTime() - new Date(activeClientMealPlan.startDate).getTime()) / (1000 * 60 * 60 * 24)),
-            goal: activeClientMealPlan.goal
+            goal: activeClientMealPlan.goal,
+            purchaseId: activeClientMealPlan.purchaseId ? String(activeClientMealPlan.purchaseId) : null
         } : null;
 
         // With UnifiedPayment, we already have all payment data in allPurchases
         const completedPayments = allPurchases;
 
         // Check for active purchases specifically (paid and not expired)
-        const activePurchases = allPurchases.filter(p =>
+        const activePurchaseRecords = allPurchases.filter(p =>
             p.paymentStatus === 'paid' && (!p.endDate || new Date(p.endDate) >= new Date())
         );
-        const hasActivePlan = activePurchases.length > 0;
+        const hasActivePlan = activePurchaseRecords.length > 0;
+
+        // Prefer active purchase cards; if none are active, fall back to historical purchases.
+        const purchasesToDisplay = activePurchaseRecords.length > 0 ? activePurchaseRecords : allPurchases;
+
+        // Build a per-purchase map of the latest created meal plan (active/paused/completed),
+        // so upcoming plans are shown as created even before their start date.
+        const purchaseIds = purchasesToDisplay
+            .map((purchase: any) => purchase?._id)
+            .filter(Boolean);
+
+        const linkedMealPlans = purchaseIds.length > 0
+            ? await ClientMealPlan.find({
+                clientId: session.user.id,
+                purchaseId: { $in: purchaseIds },
+                status: { $in: ['active', 'paused', 'completed'] }
+            })
+                .select('purchaseId name startDate endDate duration goals status createdAt')
+                .sort({ createdAt: -1 })
+                .lean()
+            : [];
+
+        const latestMealPlanByPurchaseId = new Map<string, any>();
+        for (const plan of linkedMealPlans as any[]) {
+            const key = plan?.purchaseId ? String(plan.purchaseId) : null;
+            if (!key) continue;
+            if (!latestMealPlanByPurchaseId.has(key)) {
+                latestMealPlanByPurchaseId.set(key, plan);
+            }
+        }
 
         // Check if there are any purchases OR payments at all (to hide swiper)
         const hasAnyPurchase = allPurchases.length > 0 || completedPayments.length > 0;
@@ -97,7 +127,7 @@ export async function GET(request: NextRequest) {
             hasPendingDietitianAssignment,
             hasActiveMealPlan,
             currentMealPlan: currentMealPlanDetails,
-            activePurchases: allPurchases.map(p => {
+            activePurchases: purchasesToDisplay.map(p => {
                 const paymentDietitian = p.dietitian as any;
                 // Use primary dietitian from User model if available and is a dietitian role
                 // Otherwise fall back to payment dietitian only if they are a dietitian (not health_counselor)
@@ -107,29 +137,49 @@ export async function GET(request: NextRequest) {
                 // Prefer primary dietitian, then payment dietitian (only if role is dietitian)
                 const dietitianToShow = isPrimaryDietitian ? primaryDietitian : (isPaymentDietitian ? paymentDietitian : null);
 
-                // Check if this purchase has an active meal plan running
-                // Either mealPlanCreated flag is true OR there's an active ClientMealPlan
-                const isMealPlanActive = Boolean(p.mealPlanCreated) || hasActiveMealPlan;
+                const purchaseId = String(p._id);
+                const isCurrentMealPlanForThisPurchase = Boolean(
+                    currentMealPlanDetails?.purchaseId && currentMealPlanDetails.purchaseId === purchaseId
+                );
+                const linkedMealPlan = latestMealPlanByPurchaseId.get(purchaseId) || null;
 
-                // Use meal plan dates if available, otherwise use payment dates
-                const mealPlanStartDate = hasActiveMealPlan && currentMealPlanDetails ? currentMealPlanDetails.startDate : p.startDate;
-                const mealPlanEndDate = hasActiveMealPlan && currentMealPlanDetails ? currentMealPlanDetails.endDate : p.endDate;
-                const mealPlanDuration = hasActiveMealPlan && currentMealPlanDetails ? currentMealPlanDetails.duration : p.durationDays;
+                const expectedStartDate = p.expectedStartDate || p.startDate || null;
+                const expectedEndDate = p.expectedEndDate || p.endDate || null;
+
+                // A purchase counts as meal-plan-created if payment indicates so OR current active meal plan links to this purchase.
+                const isMealPlanCreatedForPurchase = Boolean(p.mealPlanCreated) || isCurrentMealPlanForThisPurchase || Boolean(linkedMealPlan);
+
+                const mealPlanStartDate = linkedMealPlan?.startDate || (isCurrentMealPlanForThisPurchase ? currentMealPlanDetails?.startDate : null);
+                const mealPlanEndDate = linkedMealPlan?.endDate || (isCurrentMealPlanForThisPurchase ? currentMealPlanDetails?.endDate : null);
+                const mealPlanDuration = linkedMealPlan?.duration
+                    || (linkedMealPlan?.startDate && linkedMealPlan?.endDate
+                        ? Math.ceil((new Date(linkedMealPlan.endDate).getTime() - new Date(linkedMealPlan.startDate).getTime()) / (1000 * 60 * 60 * 24))
+                        : null)
+                    || (isCurrentMealPlanForThisPurchase ? currentMealPlanDetails?.duration : null);
+
+                const mealPlanGoal = linkedMealPlan?.goals?.primaryGoal || (isCurrentMealPlanForThisPurchase ? currentMealPlanDetails?.goal : null);
+                const mealPlanName = linkedMealPlan?.name || (isCurrentMealPlanForThisPurchase ? currentMealPlanDetails?.name : null);
 
                 return {
                     _id: p._id,
                     planName: p.planName,
                     planCategory: p.planCategory,
-                    durationDays: mealPlanDuration,
+                    durationDays: p.durationDays,
                     durationLabel: p.durationLabel,
-                    startDate: mealPlanStartDate,
-                    endDate: mealPlanEndDate,
+                    startDate: p.startDate,
+                    endDate: p.endDate,
+                    expectedStartDate,
+                    expectedEndDate,
                     status: p.status,
                     hasDietitian: !!dietitianToShow,
-                    mealPlanCreated: isMealPlanActive,
+                    mealPlanCreated: isMealPlanCreatedForPurchase,
+                    hasOngoingMealPlan: Boolean(mealPlanStartDate && mealPlanEndDate),
+                    ongoingMealPlanStartDate: mealPlanStartDate || null,
+                    ongoingMealPlanEndDate: mealPlanEndDate || null,
+                    ongoingMealPlanDuration: mealPlanDuration || null,
                     // Also include meal plan specific info
-                    mealPlanName: currentMealPlanDetails?.name || null,
-                    mealPlanGoal: currentMealPlanDetails?.goal || null,
+                    mealPlanName: mealPlanName || null,
+                    mealPlanGoal: mealPlanGoal || null,
                     // Show only the primary dietitian (from User.assignedDietitian), not health counselors
                     dietitian: dietitianToShow ? {
                         id: dietitianToShow._id,
