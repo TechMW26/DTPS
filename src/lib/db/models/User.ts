@@ -377,6 +377,15 @@ const userSchema = new Schema({
     type: Date
   },
 
+  // Session revocation controls for "logout other devices"
+  logoutOtherSessionsAt: {
+    type: Date
+  },
+  keepCurrentSessionId: {
+    type: String,
+    trim: true
+  },
+
   // Onboarding status for new clients
   onboardingCompleted: {
     type: Boolean,

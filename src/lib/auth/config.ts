@@ -4,29 +4,49 @@ import GoogleProvider from 'next-auth/providers/google';
 import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
 import WooCommerceClient from '@/lib/db/models/WooCommerceClient';
+import ActivityLog from '@/lib/db/models/ActivityLog';
 import { UserRole } from '@/types';
 import { getBaseUrl } from '@/lib/config';
 import { verify } from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 
 /**
  * In-memory cache for user active-status checks in the session callback.
  * Avoids hitting MongoDB on EVERY getServerSession() call.
  * Cache TTL: 5 minutes — a user deactivated by admin will be locked out within 5 min.
  */
-const userStatusCache = new Map<string, { status: string; expiresAt: number }>();
+const userStatusCache = new Map<string, {
+  status: string;
+  logoutOtherSessionsAt?: number;
+  keepCurrentSessionId?: string;
+  expiresAt: number;
+}>();
 const USER_STATUS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-function getCachedUserStatus(userId: string): string | null {
+function getCachedUserStatus(userId: string): {
+  status: string;
+  logoutOtherSessionsAt?: number;
+  keepCurrentSessionId?: string;
+} | null {
   const entry = userStatusCache.get(userId);
   if (entry && entry.expiresAt > Date.now()) {
-    return entry.status;
+    return {
+      status: entry.status,
+      logoutOtherSessionsAt: entry.logoutOtherSessionsAt,
+      keepCurrentSessionId: entry.keepCurrentSessionId,
+    };
   }
   // Expired or not found — clean up
   if (entry) userStatusCache.delete(userId);
   return null;
 }
 
-function setCachedUserStatus(userId: string, status: string): void {
+function setCachedUserStatus(
+  userId: string,
+  status: string,
+  logoutOtherSessionsAt?: Date | null,
+  keepCurrentSessionId?: string | null,
+): void {
   // Cap cache size to prevent memory leaks
   if (userStatusCache.size > 5000) {
     // Evict oldest 1000 entries
@@ -36,12 +56,82 @@ function setCachedUserStatus(userId: string, status: string): void {
       if (k) userStatusCache.delete(k);
     }
   }
-  userStatusCache.set(userId, { status, expiresAt: Date.now() + USER_STATUS_CACHE_TTL });
+  userStatusCache.set(userId, {
+    status,
+    logoutOtherSessionsAt: logoutOtherSessionsAt ? new Date(logoutOtherSessionsAt).getTime() : undefined,
+    keepCurrentSessionId: keepCurrentSessionId || undefined,
+    expiresAt: Date.now() + USER_STATUS_CACHE_TTL
+  });
 }
 
 /** Invalidate cached status when a user is deactivated/suspended */
 export function invalidateUserStatusCache(userId: string): void {
   userStatusCache.delete(userId);
+}
+
+function getHeaderValue(requestObj: any, headerName: string): string | undefined {
+  if (!requestObj) return undefined;
+
+  const headers = requestObj.headers;
+  if (!headers) return undefined;
+
+  // Fetch API Headers interface
+  if (typeof headers.get === 'function') {
+    const value = headers.get(headerName) || headers.get(headerName.toLowerCase()) || headers.get(headerName.toUpperCase());
+    if (value && String(value).trim()) return String(value).trim();
+  }
+
+  // Plain object / Node incoming headers
+  const direct = headers[headerName] ?? headers[headerName.toLowerCase()] ?? headers[headerName.toUpperCase()];
+  if (Array.isArray(direct) && direct.length > 0) {
+    const first = String(direct[0]).trim();
+    return first || undefined;
+  }
+  if (typeof direct === 'string' && direct.trim()) return direct.trim();
+
+  return undefined;
+}
+
+function normalizeIp(ip?: string): string | undefined {
+  if (!ip) return undefined;
+  let normalized = ip.trim();
+  if (!normalized) return undefined;
+
+  // x-forwarded-for can have a list
+  if (normalized.includes(',')) {
+    normalized = normalized.split(',')[0].trim();
+  }
+
+  // Remove IPv6 IPv4-mapped prefix
+  if (normalized.startsWith('::ffff:')) {
+    normalized = normalized.replace('::ffff:', '');
+  }
+
+  if (normalized === '::1') return '127.0.0.1';
+  return normalized;
+}
+
+function deriveDeviceNameFromUserAgent(userAgent?: string): string {
+  if (!userAgent) return 'Unknown Device';
+
+  const ua = userAgent.toLowerCase();
+
+  if (ua.includes('iphone')) return 'iPhone';
+  if (ua.includes('ipad')) return 'iPad';
+
+  if (ua.includes('android')) {
+    const modelMatch = userAgent.match(/Android\s[\d.]+;\s*([^;\)]+?)\s+Build/i);
+    if (modelMatch?.[1]) {
+      return modelMatch[1].trim();
+    }
+    return 'Android Device';
+  }
+
+  if (ua.includes('macintosh') || ua.includes('mac os')) return 'Mac';
+  if (ua.includes('windows')) return 'Windows PC';
+  if (ua.includes('linux')) return 'Linux Device';
+
+  return 'Unknown Device';
 }
 
 export const authOptions: NextAuthOptions = {
@@ -55,7 +145,52 @@ export const authOptions: NextAuthOptions = {
         loginContext: { label: 'Login Context', type: 'text' },
         otpToken: { label: 'OTP Token', type: 'text' }
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
+        const loginSessionId = randomUUID();
+        const loginSessionStartedAt = Date.now();
+
+        const extractIpAddress = (requestObj: any): string | undefined => {
+          const forwardedFor = getHeaderValue(requestObj, 'x-forwarded-for');
+          const realIp = getHeaderValue(requestObj, 'x-real-ip');
+          const cfIp = getHeaderValue(requestObj, 'cf-connecting-ip');
+          const trueClientIp = getHeaderValue(requestObj, 'true-client-ip');
+          const xClientIp = getHeaderValue(requestObj, 'x-client-ip');
+
+          const candidate =
+            normalizeIp(forwardedFor) ||
+            normalizeIp(realIp) ||
+            normalizeIp(cfIp) ||
+            normalizeIp(trueClientIp) ||
+            normalizeIp(xClientIp) ||
+            normalizeIp(requestObj?.ip) ||
+            normalizeIp(requestObj?.socket?.remoteAddress) ||
+            normalizeIp(requestObj?.connection?.remoteAddress);
+
+          if (candidate) return candidate;
+
+          // Local development fallback
+          const host = getHeaderValue(requestObj, 'host');
+          if (host?.includes('localhost') || host?.includes('127.0.0.1')) {
+            return '127.0.0.1';
+          }
+
+          return undefined;
+        };
+
+        const extractUserAgent = (requestObj: any): string | undefined => {
+          const ua = getHeaderValue(requestObj, 'user-agent');
+          if (ua) return ua;
+
+          // Some clients may not send user-agent but provide UA hints.
+          const platformHint = getHeaderValue(requestObj, 'sec-ch-ua-platform');
+          if (platformHint) return `Unknown Browser on ${platformHint.replace(/"/g, '')}`;
+
+          return undefined;
+        };
+
+        const loginIp = extractIpAddress(req);
+        const loginUserAgent = extractUserAgent(req);
+        const loginDeviceName = deriveDeviceNameFromUserAgent(loginUserAgent);
         const loginContext = (credentials as any)?.loginContext as 'staff' | 'client' | undefined;
         const otpToken = (credentials as any)?.otpToken as string | undefined;
 
@@ -106,6 +241,28 @@ export const authOptions: NextAuthOptions = {
             // Update lastLoginAt
             await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
 
+            try {
+              await ActivityLog.create({
+                userId: user._id,
+                userRole: user.role,
+                userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+                userEmail: user.email,
+                action: 'Logged In',
+                actionType: 'login',
+                category: 'auth',
+                description: `${user.firstName || ''} ${user.lastName || ''}`.trim() ? `${user.firstName} ${user.lastName} logged in` : 'User logged in',
+                ipAddress: loginIp,
+                userAgent: loginUserAgent,
+                details: {
+                  deviceName: loginDeviceName,
+                  sessionId: loginSessionId,
+                },
+                isRead: false,
+              });
+            } catch (logError) {
+              console.error('Failed to create login activity log:', logError);
+            }
+
             // Use user's real email from DB, or token email — never generate a fake email
             const userEmail = user.email || decoded.email || '';
 
@@ -118,7 +275,9 @@ export const authOptions: NextAuthOptions = {
               lastName: user.lastName,
               avatar: user.avatar,
               emailVerified: user.emailVerified || true,
-              onboardingCompleted: user.onboardingCompleted
+              onboardingCompleted: user.onboardingCompleted,
+              sessionId: loginSessionId,
+              sessionStartedAt: loginSessionStartedAt,
             };
           } catch (error) {
             console.error('OTP token auth error:', error);
@@ -170,6 +329,28 @@ export const authOptions: NextAuthOptions = {
             // Update lastLoginAt
             await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
 
+            try {
+              await ActivityLog.create({
+                userId: user._id,
+                userRole: user.role,
+                userName: user.fullName,
+                userEmail: user.email,
+                action: 'Logged In',
+                actionType: 'login',
+                category: 'auth',
+                description: `${user.fullName} logged in`,
+                ipAddress: loginIp,
+                userAgent: loginUserAgent,
+                details: {
+                  deviceName: loginDeviceName,
+                  sessionId: loginSessionId,
+                },
+                isRead: false,
+              });
+            } catch (logError) {
+              console.error('Failed to create login activity log:', logError);
+            }
+
             return {
               id: user._id.toString(),
               email: user.email,
@@ -178,7 +359,9 @@ export const authOptions: NextAuthOptions = {
               firstName: user.firstName,
               lastName: user.lastName,
               avatar: user.avatar,
-              emailVerified: user.emailVerified
+              emailVerified: user.emailVerified,
+              sessionId: loginSessionId,
+              sessionStartedAt: loginSessionStartedAt,
             };
           }
 
@@ -198,6 +381,28 @@ export const authOptions: NextAuthOptions = {
               throw new Error('Wrong email or password');
             }
 
+            try {
+              await ActivityLog.create({
+                userId: wooClient._id,
+                userRole: UserRole.CLIENT,
+                userName: wooClient.name,
+                userEmail: wooClient.email,
+                action: 'Logged In',
+                actionType: 'login',
+                category: 'auth',
+                description: `${wooClient.name} logged in`,
+                ipAddress: loginIp,
+                userAgent: loginUserAgent,
+                details: {
+                  deviceName: loginDeviceName,
+                  sessionId: loginSessionId,
+                },
+                isRead: false,
+              });
+            } catch (logError) {
+              console.error('Failed to create login activity log for Woo client:', logError);
+            }
+
             return {
               id: wooClient._id.toString(),
               email: wooClient.email,
@@ -212,7 +417,9 @@ export const authOptions: NextAuthOptions = {
               city: wooClient.city,
               country: wooClient.country,
               totalOrders: wooClient.totalOrders,
-              totalSpent: wooClient.totalSpent
+              totalSpent: wooClient.totalSpent,
+              sessionId: loginSessionId,
+              sessionStartedAt: loginSessionStartedAt,
             };
           }
 
@@ -286,6 +493,8 @@ export const authOptions: NextAuthOptions = {
         token.lastName = user.lastName;
         token.avatar = user.avatar;
         token.emailVerified = !!user.emailVerified;
+        token.sessionId = (user as any).sessionId || token.sessionId || randomUUID();
+        token.sessionStartedAt = (user as any).sessionStartedAt || Date.now();
 
         // For client users, fetch onboardingCompleted from database on initial sign in
         if (user.role === UserRole.CLIENT && !user.isWooCommerceClient) {
@@ -363,6 +572,8 @@ export const authOptions: NextAuthOptions = {
         session.user.lastName = token.lastName as string;
         session.user.avatar = token.avatar as string;
         session.user.emailVerified = token.emailVerified as boolean;
+        session.user.sessionId = token.sessionId as string;
+        session.user.sessionStartedAt = token.sessionStartedAt as number;
 
         // Include onboardingCompleted for client users
         session.user.onboardingCompleted = token.onboardingCompleted as boolean ?? true;
@@ -383,8 +594,21 @@ export const authOptions: NextAuthOptions = {
           const cachedStatus = getCachedUserStatus(userId);
           if (cachedStatus !== null) {
             // Cache hit — check status without DB call
-            if (cachedStatus !== 'active') {
+            if (cachedStatus.status !== 'active') {
               // Return empty session to trigger logout instead of null
+              return { user: {}, expires: new Date(0).toISOString() } as any;
+            }
+
+            const shouldLogoutThisSession = Boolean(
+              cachedStatus.logoutOtherSessionsAt &&
+              token.sessionId !== cachedStatus.keepCurrentSessionId &&
+              (
+                !token.sessionStartedAt ||
+                Number(token.sessionStartedAt) <= Number(cachedStatus.logoutOtherSessionsAt)
+              )
+            );
+
+            if (shouldLogoutThisSession) {
               return { user: {}, expires: new Date(0).toISOString() } as any;
             }
           } else {
@@ -399,14 +623,36 @@ export const authOptions: NextAuthOptions = {
                 const timeoutId = setTimeout(() => controller.abort(), 1500);
 
                 try {
-                  const userDoc = await User.findById(userId).select('status').lean();
+                  const userDoc = await User.findById(userId).select('status logoutOtherSessionsAt keepCurrentSessionId').lean();
                   clearTimeout(timeoutId);
 
-                  const user = userDoc as { status?: string } | null;
+                  const user = userDoc as {
+                    status?: string;
+                    logoutOtherSessionsAt?: Date;
+                    keepCurrentSessionId?: string;
+                  } | null;
                   if (user) {
-                    setCachedUserStatus(userId, user.status || 'active');
+                    setCachedUserStatus(
+                      userId,
+                      user.status || 'active',
+                      user.logoutOtherSessionsAt,
+                      user.keepCurrentSessionId,
+                    );
                     if (user.status !== 'active') {
                       // Return empty session to trigger logout instead of null
+                      return { user: {}, expires: new Date(0).toISOString() } as any;
+                    }
+
+                    const shouldLogoutThisSession = Boolean(
+                      user.logoutOtherSessionsAt &&
+                      token.sessionId !== user.keepCurrentSessionId &&
+                      (
+                        !token.sessionStartedAt ||
+                        Number(token.sessionStartedAt) <= new Date(user.logoutOtherSessionsAt).getTime()
+                      )
+                    );
+
+                    if (shouldLogoutThisSession) {
                       return { user: {}, expires: new Date(0).toISOString() } as any;
                     }
                   } else {

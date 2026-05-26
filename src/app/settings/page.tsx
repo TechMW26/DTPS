@@ -24,7 +24,10 @@ import {
   Loader2,
   Moon,
   Sun,
-  Palette
+  Palette,
+  Shield,
+  MapPin,
+  Monitor
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { log } from 'console';
@@ -56,12 +59,26 @@ interface UserProfile {
   specializations?: string[];
   experience?: number;
   consultationFee?: number;
+  lastLoginAt?: string;
+}
+
+interface LoginLogEntry {
+  _id: string;
+  createdAt: string;
+  ipAddress?: string;
+  userAgent?: string;
+  description?: string;
+  deviceName?: string;
+  sessionId?: string;
+  isCurrentSession?: boolean;
+  source?: 'activity' | 'profile';
 }
 
 // Desktop version component
 function DesktopSettingsPage() {
   const { data: session, update } = useSession();
   const { isDarkMode, toggleDarkMode } = useTheme();
+  const isStaffWithLoginLogs = session?.user?.role === 'dietitian' || session?.user?.role === 'health_counselor';
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +86,9 @@ function DesktopSettingsPage() {
   const [error, setError] = useState('');
   const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false);
   const [googleCalendarConnecting, setGoogleCalendarConnecting] = useState(false);
+  const [loginLogsLoading, setLoginLogsLoading] = useState(false);
+  const [loggingOutOthers, setLoggingOutOthers] = useState(false);
+  const [loginLogs, setLoginLogs] = useState<LoginLogEntry[]>([]);
 
 
 
@@ -77,6 +97,126 @@ function DesktopSettingsPage() {
       fetchProfile();
     }
   }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!isStaffWithLoginLogs || !session?.user?.id) return;
+    fetchLoginLogs();
+  }, [isStaffWithLoginLogs, session?.user?.id]);
+
+  useEffect(() => {
+    if (!isStaffWithLoginLogs) return;
+    if (!profile?.lastLoginAt) return;
+    if (loginLogs.length > 0) return;
+
+    setLoginLogs([
+      {
+        _id: 'last-login-fallback',
+        createdAt: profile.lastLoginAt,
+        description: 'Last account login (from profile record)',
+        source: 'profile'
+      }
+    ]);
+  }, [isStaffWithLoginLogs, profile?.lastLoginAt, loginLogs.length]);
+
+  const getDeviceSummary = (userAgent?: string): string => {
+    if (!userAgent) return 'Unknown device';
+
+    const ua = userAgent.toLowerCase();
+    const platform = ua.includes('android')
+      ? 'Android'
+      : ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')
+        ? 'iOS'
+        : ua.includes('mac')
+          ? 'macOS'
+          : ua.includes('windows')
+            ? 'Windows'
+            : ua.includes('linux')
+              ? 'Linux'
+              : 'Unknown OS';
+
+    const browser = ua.includes('edg/')
+      ? 'Edge'
+      : ua.includes('chrome/')
+        ? 'Chrome'
+        : ua.includes('safari/') && !ua.includes('chrome/')
+          ? 'Safari'
+          : ua.includes('firefox/')
+            ? 'Firefox'
+            : 'Browser';
+
+    return `${browser} on ${platform}`;
+  };
+
+  const fetchLoginLogs = async () => {
+    if (!session?.user?.id) return;
+    try {
+      setLoginLogsLoading(true);
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '200',
+        userId: session.user.id,
+        actionType: 'login',
+        category: 'auth'
+      });
+
+      const response = await fetch(`/api/activity-logs?${params.toString()}`, {
+        cache: 'no-store'
+      });
+
+      if (!response.ok) {
+        setLoginLogs([]);
+        return;
+      }
+
+      const data = await response.json();
+      const activities = Array.isArray(data?.activities) ? data.activities : [];
+      const normalized = activities.map((item: any) => ({
+        _id: String(item?._id || ''),
+        createdAt: item?.createdAt,
+        ipAddress: item?.ipAddress,
+        userAgent: item?.userAgent,
+        deviceName: item?.details?.deviceName,
+        sessionId: item?.details?.sessionId,
+        isCurrentSession: item?.details?.sessionId && session?.user?.sessionId
+          ? item.details.sessionId === session.user.sessionId
+          : false,
+        description: item?.description,
+        source: 'activity' as const,
+      })).filter((item: LoginLogEntry) => Boolean(item._id) && Boolean(item.createdAt));
+      setLoginLogs(normalized);
+    } catch (err) {
+      console.error('Error fetching login logs:', err);
+      setLoginLogs([]);
+    } finally {
+      setLoginLogsLoading(false);
+    }
+  };
+
+  const handleLogoutOtherDevices = async () => {
+    try {
+      setLoggingOutOthers(true);
+      setError('');
+      setMessage('');
+
+      const response = await fetch('/api/auth/logout-other-sessions', {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ error: 'Failed to logout other devices' }));
+        setError(data.error || 'Failed to logout other devices');
+        return;
+      }
+
+      setMessage('Logged out from all other devices. This device stays signed in.');
+      await fetchLoginLogs();
+    } catch (err) {
+      console.error('Error logging out other devices:', err);
+      setError('Failed to logout other devices');
+    } finally {
+      setLoggingOutOthers(false);
+    }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -118,7 +258,7 @@ function DesktopSettingsPage() {
         const updatedProfile = await response.json();
         setProfile(updatedProfile);
         setMessage('Profile updated successfully');
-        
+
         // Update session if avatar changed
         if (updatedProfile?.avatar !== session?.user?.avatar) {
           await update({
@@ -228,6 +368,7 @@ function DesktopSettingsPage() {
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            {isStaffWithLoginLogs && <TabsTrigger value="login-logs">Login Logs</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="appearance" className="space-y-4">
@@ -339,6 +480,95 @@ function DesktopSettingsPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {isStaffWithLoginLogs && (
+            <TabsContent value="login-logs" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Shield className="h-5 w-5" />
+                    <span>Login Logs</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Recent sign-ins for this account, including IP and device details.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleLogoutOtherDevices}
+                      disabled={loggingOutOthers || loginLogsLoading}
+                    >
+                      {loggingOutOthers ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Logging out...
+                        </>
+                      ) : (
+                        'Logout Other Devices'
+                      )}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={fetchLoginLogs} disabled={loginLogsLoading}>
+                      {loginLogsLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Refreshing...
+                        </>
+                      ) : (
+                        'Refresh Logs'
+                      )}
+                    </Button>
+                  </div>
+
+                  {loginLogsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <LoadingSpinner />
+                    </div>
+                  ) : loginLogs.length === 0 ? (
+                    <div className="rounded-lg border p-4 text-sm text-gray-600 dark:text-gray-300">
+                      No login logs found yet for this account.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {loginLogs.map((logItem) => (
+                        <div key={logItem._id} className="rounded-lg border p-3 dark:border-gray-700">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">
+                              {new Date(logItem.createdAt).toLocaleString()}
+                            </p>
+                            {logItem.isCurrentSession && (
+                              <span className="rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-2 py-0.5 text-[11px] font-semibold">
+                                Current Device
+                              </span>
+                            )}
+                          </div>
+                          {logItem.source === 'profile' && (
+                            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{logItem.description}</p>
+                          )}
+                          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-600 dark:text-gray-300">
+                            <span className="inline-flex items-center gap-1">
+                              <Monitor className="h-3.5 w-3.5" />
+                              Device: {logItem.deviceName || getDeviceSummary(logItem.userAgent)}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <MapPin className="h-3.5 w-3.5" />
+                              IP: {logItem.ipAddress || 'Unavailable'}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Shield className="h-3.5 w-3.5" />
+                              {getDeviceSummary(logItem.userAgent)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
 
         {/* Save Button */}

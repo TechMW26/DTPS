@@ -22,6 +22,8 @@ declare module 'next-auth' {
       country?: string;
       totalOrders?: number;
       totalSpent?: number;
+      sessionId?: string;
+      sessionStartedAt?: number;
     };
   }
 
@@ -45,6 +47,8 @@ declare module 'next-auth' {
     country?: string;
     totalOrders?: number;
     totalSpent?: number;
+    sessionId?: string;
+    sessionStartedAt?: number;
   }
 }
 
@@ -66,5 +70,7 @@ declare module 'next-auth/jwt' {
     country?: string;
     totalOrders?: number;
     totalSpent?: number;
+    sessionId?: string;
+    sessionStartedAt?: number;
   }
 }
