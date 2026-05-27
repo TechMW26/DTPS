@@ -135,9 +135,9 @@ export function LifestyleForm(props: LifestyleFormProps) {
               <Input
                 placeholder="e.g. Soy, Shellfish, Gluten"
                 className="h-9 text-sm"
-                value={allergiesFood.filter(a => !["dairy","beef","sea-food","egg","nuts","lamb/mutton","wheat","poultry"].includes(a)).join(", ")}
+                value={allergiesFood.filter(a => !["dairy", "beef", "sea-food", "egg", "nuts", "lamb/mutton", "wheat", "poultry"].includes(a)).join(", ")}
                 onChange={e => {
-                  const preset = allergiesFood.filter(a => ["dairy","beef","sea-food","egg","nuts","lamb/mutton","wheat","poultry"].includes(a));
+                  const preset = allergiesFood.filter(a => ["dairy", "beef", "sea-food", "egg", "nuts", "lamb/mutton", "wheat", "poultry"].includes(a));
                   const custom = e.target.value
                     .split(",")
                     .map(s => s.trim().toLowerCase().replace(/\s+/g, "-"))
@@ -244,6 +244,9 @@ export function LifestyleForm(props: LifestyleFormProps) {
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
                   <SelectItem value="occasional">Occasional</SelectItem>
+                  <SelectItem value="1-2-times-day">1-2 times/day</SelectItem>
+                  <SelectItem value="3-5-times-day">3-5 times/day</SelectItem>
+                  <SelectItem value="more-than-5-times-day">More than 5 times</SelectItem>
                   <SelectItem value="regular">Regular</SelectItem>
                 </SelectContent>
               </Select>
@@ -255,8 +258,10 @@ export function LifestyleForm(props: LifestyleFormProps) {
                 <SelectTrigger className="h-10"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="once-a-week">Once a week</SelectItem>
                   <SelectItem value="once-a-month">Once In A Month</SelectItem>
                   <SelectItem value="twice-a-month">Twice In A Month</SelectItem>
+                  <SelectItem value="two-times-month">Two times in a month</SelectItem>
                   <SelectItem value="daily">Daily</SelectItem>
                 </SelectContent>
               </Select>
@@ -280,7 +285,7 @@ export function LifestyleForm(props: LifestyleFormProps) {
         {/* Other Information */}
         <div className="space-y-6 border-t border-gray-200 pt-6">
           <h4 className="font-semibold text-gray-900 text-base">Cooking & Consumption</h4>
-          
+
           {/* Cooking Oil */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Which Oil Do You Use?</Label>
@@ -436,8 +441,8 @@ export function LifestyleForm(props: LifestyleFormProps) {
 
         {/* Save Button */}
         <div className="flex justify-end pt-6 border-t border-gray-200 mt-6">
-          <Button type="button" onClick={onSave} disabled={loading} 
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all">
+          <Button type="button" onClick={onSave} disabled={loading}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-medium shadow-md hover:shadow-lg transition-all">
             <Save className="mr-2 h-4 w-4" />
             Save Lifestyle
           </Button>

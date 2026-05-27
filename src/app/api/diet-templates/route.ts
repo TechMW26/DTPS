@@ -24,6 +24,63 @@ const mealTypeConfigSchema = z.object({
   time: z.string().optional()
 });
 
+const getSafeNumber = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+};
+
+const getBoundedInt = (value: unknown, fallback: number, min: number, max: number): number => {
+  const parsed = Math.round(getSafeNumber(value, fallback));
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const sanitizeDietTemplatePayload = (body: unknown) => {
+  const source = body && typeof body === 'object' ? body as Record<string, any> : {};
+
+  const targetCalories = source.targetCalories && typeof source.targetCalories === 'object'
+    ? source.targetCalories
+    : {};
+
+  const targetMacros = source.targetMacros && typeof source.targetMacros === 'object'
+    ? source.targetMacros
+    : {};
+
+  const prepTime = source.prepTime && typeof source.prepTime === 'object'
+    ? source.prepTime
+    : {};
+
+  return {
+    ...source,
+    duration: getBoundedInt(source.duration, 7, 1, 365),
+    targetCalories: {
+      min: getSafeNumber(targetCalories.min, 1200),
+      max: getSafeNumber(targetCalories.max, 2500)
+    },
+    targetMacros: {
+      protein: {
+        min: getSafeNumber(targetMacros?.protein?.min, 50),
+        max: getSafeNumber(targetMacros?.protein?.max, 150)
+      },
+      carbs: {
+        min: getSafeNumber(targetMacros?.carbs?.min, 100),
+        max: getSafeNumber(targetMacros?.carbs?.max, 300)
+      },
+      fat: {
+        min: getSafeNumber(targetMacros?.fat?.min, 30),
+        max: getSafeNumber(targetMacros?.fat?.max, 100)
+      }
+    },
+    prepTime: {
+      daily: getSafeNumber(prepTime.daily, 30),
+      weekly: getSafeNumber(prepTime.weekly, 210)
+    }
+  };
+};
+
 // Validation schema for diet template (no word limits)
 const dietTemplateSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -277,9 +334,10 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const body = await request.json();
+    const sanitizedBody = sanitizeDietTemplatePayload(body);
 
     // Validate input
-    const validatedData = dietTemplateSchema.parse(body);
+    const validatedData = dietTemplateSchema.parse(sanitizedBody);
     // Create new diet template
     const template = new DietTemplate({
       ...validatedData,

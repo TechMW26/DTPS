@@ -14,6 +14,70 @@ const mealTypeConfigSchema = z.object({
   time: z.string().optional()
 });
 
+const getSafeNumber = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+};
+
+const getBoundedInt = (value: unknown, fallback: number, min: number, max: number): number => {
+  const parsed = Math.round(getSafeNumber(value, fallback));
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const sanitizeDietTemplateUpdatePayload = (body: unknown) => {
+  const source = body && typeof body === 'object' ? { ...(body as Record<string, any>) } : {};
+
+  if ('duration' in source) {
+    source.duration = getBoundedInt(source.duration, 7, 1, 365);
+  }
+
+  if ('targetCalories' in source) {
+    const targetCalories = source.targetCalories && typeof source.targetCalories === 'object'
+      ? source.targetCalories
+      : {};
+    source.targetCalories = {
+      min: getSafeNumber(targetCalories.min, 1200),
+      max: getSafeNumber(targetCalories.max, 2500)
+    };
+  }
+
+  if ('targetMacros' in source) {
+    const targetMacros = source.targetMacros && typeof source.targetMacros === 'object'
+      ? source.targetMacros
+      : {};
+    source.targetMacros = {
+      protein: {
+        min: getSafeNumber(targetMacros?.protein?.min, 50),
+        max: getSafeNumber(targetMacros?.protein?.max, 150)
+      },
+      carbs: {
+        min: getSafeNumber(targetMacros?.carbs?.min, 100),
+        max: getSafeNumber(targetMacros?.carbs?.max, 300)
+      },
+      fat: {
+        min: getSafeNumber(targetMacros?.fat?.min, 30),
+        max: getSafeNumber(targetMacros?.fat?.max, 100)
+      }
+    };
+  }
+
+  if ('prepTime' in source) {
+    const prepTime = source.prepTime && typeof source.prepTime === 'object'
+      ? source.prepTime
+      : {};
+    source.prepTime = {
+      daily: getSafeNumber(prepTime.daily, 30),
+      weekly: getSafeNumber(prepTime.weekly, 210)
+    };
+  }
+
+  return source;
+};
+
 // Validation schema for updating diet template
 const updateDietTemplateSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200, 'Name too long').optional(),
@@ -159,7 +223,8 @@ export async function PUT(
     await connectDB();
 
     const body = await request.json();
-    const validatedData = updateDietTemplateSchema.parse(body);
+    const sanitizedBody = sanitizeDietTemplateUpdatePayload(body);
+    const validatedData = updateDietTemplateSchema.parse(sanitizedBody);
 
     // First fetch the template to check ownership
     const existingTemplate = await DietTemplate.findOne({ _id: id, isActive: true });
