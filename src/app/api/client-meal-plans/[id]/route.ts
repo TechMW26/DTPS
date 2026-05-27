@@ -181,6 +181,9 @@ export async function PUT(
       );
     }
 
+    // Detect publish action early so phase metadata can be assigned in the same update.
+    const isPublishing = existingPlan.status === 'draft' && status === 'active';
+
     // Build update object — only include fields explicitly provided
     const updateData: Record<string, any> = {};
     const resultingStatus = status !== undefined ? status : existingPlan.status;
@@ -226,6 +229,43 @@ export async function PUT(
     if (goals !== undefined) updateData.goals = goals;
     if (status !== undefined) updateData.status = status;
 
+    // Ensure draft->active publish always receives correct phase numbering.
+    if (isPublishing) {
+      const phaseScopeQuery: Record<string, any> = {
+        clientId: existingPlan.clientId,
+        status: { $in: ['active', 'completed'] },
+        _id: { $ne: existingPlan._id }
+      };
+
+      if (existingPlan.purchaseId) {
+        phaseScopeQuery.purchaseId = existingPlan.purchaseId;
+      }
+
+      if (!existingPlan.phaseNumber) {
+        const previousPlansCount = await ClientMealPlan.countDocuments(phaseScopeQuery);
+
+        updateData.phaseNumber = previousPlansCount + 1;
+      }
+
+      if (!existingPlan.phaseTag) {
+        const resolvedPhaseNumber = updateData.phaseNumber || existingPlan.phaseNumber;
+        if (resolvedPhaseNumber) {
+          updateData.phaseTag = `PHASE-${resolvedPhaseNumber}`;
+        }
+      }
+
+      if (!existingPlan.previousPhaseId) {
+        const previousPlan = await ClientMealPlan.findOne(phaseScopeQuery)
+          .sort({ endDate: -1, createdAt: -1 })
+          .select('_id')
+          .lean() as any;
+
+        if (previousPlan?._id) {
+          updateData.previousPhaseId = previousPlan._id;
+        }
+      }
+    }
+
     const updatedPlan = await ClientMealPlan.findByIdAndUpdate(
       id,
       { $set: updateData },
@@ -241,9 +281,6 @@ export async function PUT(
 
     // Clear cached responses so subsequent GETs return fresh data
     clearCacheByTag('client_meal_plans');
-
-    // Detect if this is a publish action (draft → active)
-    const isPublishing = existingPlan.status === 'draft' && status === 'active';
 
     // Update client status if status or dates changed (could affect active status)
     if ((status && status !== 'draft') || startDate || endDate) {

@@ -566,16 +566,24 @@ export async function POST(request: NextRequest) {
     let previousPhaseId: string | null = null;
 
     if (!isDraft && !phaseNumber) {
-      // Count previous meal plans for this client (active or completed)
-      const previousPlansCount = await ClientMealPlan.countDocuments({
+      const phaseScopeQuery: any = {
         clientId: validatedData.clientId,
         status: { $in: ['active', 'completed'] }
+      };
+
+      const resolvedPurchaseId = linkedPaymentId || validatedData.purchaseId;
+      if (resolvedPurchaseId) {
+        phaseScopeQuery.purchaseId = resolvedPurchaseId;
+      }
+
+      // Count previous meal plans for this client in the same purchase scope.
+      const previousPlansCount = await ClientMealPlan.countDocuments({
+        ...phaseScopeQuery
       });
 
-      // Find the most recent completed meal plan for this client
+      // Find the most recent previous meal plan in the same purchase scope.
       const lastCompletedPlan = await ClientMealPlan.findOne({
-        clientId: validatedData.clientId,
-        status: { $in: ['active', 'completed'] }
+        ...phaseScopeQuery
       }).sort({ endDate: -1, createdAt: -1 }).select('_id phaseNumber').lean() as any;
 
       // Calculate phase number: previous plans count + 1

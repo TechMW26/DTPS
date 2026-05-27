@@ -29,6 +29,7 @@ interface ClientPurchase {
   planCategory: string;
   durationDays: number;
   durationLabel: string;
+  remainingDays: number;
   startDate: string;
   endDate: string;
   expectedStartDate?: string;
@@ -314,6 +315,18 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     if (!paymentCheck?.allPurchasesNeedingMealPlan?.length) return null;
 
     const purchases = paymentCheck.allPurchasesNeedingMealPlan;
+    const currentPurchase = purchases.find(p => p._id === paymentCheck.purchase?._id) || null;
+    const currentPurchaseIsStillActive = Boolean(
+      currentPurchase && (
+        (currentPurchase.remainingDays || 0) > 0 ||
+        (currentPurchase.endDate && new Date(currentPurchase.endDate).getTime() >= Date.now()) ||
+        (currentPurchase.expectedEndDate && new Date(currentPurchase.expectedEndDate).getTime() >= Date.now())
+      )
+    );
+
+    if (currentPurchaseIsStillActive) {
+      return currentPurchase;
+    }
 
     if (selectedPurchaseId) {
       return purchases.find(p => p._id === selectedPurchaseId) || null;
@@ -332,8 +345,14 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     return purchases.find((purchase) => purchase._id === paymentCheck.purchase?._id) || purchases[0] || null;
   }, [paymentCheck, selectedPurchaseId]);
 
-  // Multi-phase support: switching/creation should not be blocked by daysUsed > 0.
-  const currentActivePurchaseBlocks = false;
+  // Prevent switching to another purchase while the current one is still active.
+  const currentActivePurchaseBlocks = Boolean(
+    paymentCheck?.purchase && (
+      (paymentCheck.purchase.remainingDays || 0) > 0 ||
+      (paymentCheck.purchase.endDate && new Date(paymentCheck.purchase.endDate).getTime() >= Date.now()) ||
+      (paymentCheck.purchase.expectedEndDate && new Date(paymentCheck.purchase.expectedEndDate).getTime() >= Date.now())
+    )
+  );
 
   // Success dialog state
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
@@ -4552,11 +4571,13 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           ) : clientPlans.length > 0 ? (
             <div className="space-y-4">
               {(() => {
-                // Group meal plans by purchaseId/payment and calculate phases within each group
-                // Sort plans by createdAt ASC first to get chronological order
-                const sortedByDate = [...clientPlans].sort((a: any, b: any) =>
-                  new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-                );
+                // Group only published plans (active/completed/etc.) by purchaseId/payment for fallback phase display.
+                // Sort plans by createdAt ASC first to get chronological order.
+                const sortedByDate = [...clientPlans]
+                  .filter((plan: any) => plan.status !== 'draft')
+                  .sort((a: any, b: any) =>
+                    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                  );
 
                 // Create a map to track phase number per purchaseId
                 const paymentPhaseMap: Record<string, number> = {};
@@ -4591,7 +4612,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                 // Now render in original order (most recent first)
                 return clientPlans.map((plan: any, index: number) => {
                   const phaseInfo = planPhaseMap[plan._id];
-                  const calculatedPhase = plan.phaseTag || (phaseInfo ? `PHASE-${phaseInfo.phase}` : null);
+                  const calculatedPhase =
+                    plan.phaseTag ||
+                    (typeof plan.phaseNumber === 'number' ? `PHASE-${plan.phaseNumber}` : null) ||
+                    (phaseInfo ? `PHASE-${phaseInfo.phase}` : null);
                   const isLastPhase = phaseInfo?.isLastPhase || false;
 
                   return (
