@@ -405,6 +405,8 @@ export async function PUT(
         clearCacheByTag(`users:id:${JSON.stringify(id)}`);
         clearCacheByTag('client');
         clearCacheByTag(`client:${id}`);
+        clearCacheByTag('client-profile');
+        clearCacheByTag(`client-profile:${id}`);
         const updatedUser = updated.toJSON();
         return NextResponse.json({ user: updatedUser, message: "User updated successfully" });
       }
@@ -725,6 +727,8 @@ export async function PUT(
     // Clear related caches
     await clearCacheByTag('client');
     await clearCacheByTag(`client:${id}`);
+    await clearCacheByTag('client-profile');
+    await clearCacheByTag(`client-profile:${id}`);
 
     // Log admin action if admin made changes
     if (isAdmin && Object.keys(changedFields).length > 0) {
