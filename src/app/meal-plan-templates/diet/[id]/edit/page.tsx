@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -15,11 +15,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { DEFAULT_MEAL_TYPES_LIST, DIETARY_RESTRICTIONS, MEAL_TYPES, normalizeMealType } from '@/lib/mealConfig';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, ChefHat, Target, AlertCircle, Save, Leaf, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeft, ChefHat, Target, AlertCircle, Save, Leaf, UtensilsCrossed, RefreshCw, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { UserRole } from '@/types';
 import { toast } from 'sonner';
 import { DietPlanDashboard } from '@/components/dietplandashboard/DietPlanDashboard';
+import { useDietTemplateAutoSave } from '@/hooks/useAutoSave';
+import { formatTimeIST } from '@/lib/utils/formatDateIST';
 
 const categories = [
   { value: 'weight-loss', label: 'Weight Loss' },
@@ -217,6 +219,58 @@ export default function EditDietTemplatePage() {
   const latestMealsRef = useRef<any[]>([]);
   const latestMealTypesRef = useRef<{ name: string; time: string }[]>(DEFAULT_MEAL_TYPES_LIST);
   const [activeTab, setActiveTab] = useState('details');
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  const draftData = useMemo(() => ({
+    name,
+    description,
+    category,
+    duration,
+    difficulty,
+    calMin,
+    calMax,
+    proteinMin,
+    proteinMax,
+    carbMin,
+    carbMax,
+    fatMin,
+    fatMax,
+    selectedRestrictions,
+    isPublic,
+    meals,
+    mealTypes,
+    activeTab,
+  }), [
+    name,
+    description,
+    category,
+    duration,
+    difficulty,
+    calMin,
+    calMax,
+    proteinMin,
+    proteinMax,
+    carbMin,
+    carbMax,
+    fatMin,
+    fatMax,
+    selectedRestrictions,
+    isPublic,
+    meals,
+    mealTypes,
+    activeTab,
+  ]);
+
+  const {
+    isSaving: isDraftSaving,
+    lastSaved,
+    clearDraft,
+    restoreDraft,
+    saveDraft,
+  } = useDietTemplateAutoSave(`edit-diet-template-${id}`, draftData, {
+    debounceMs: 2000,
+    enabled: !!session?.user?.id && !!id && !loading,
+  });
 
   useEffect(() => {
     latestMealsRef.current = meals;
@@ -286,6 +340,57 @@ export default function EditDietTemplatePage() {
     if (id) fetchTemplate();
   }, [id]);
 
+  useEffect(() => {
+    if (loading || draftRestored || !session?.user?.id) {
+      return;
+    }
+
+    const restored = restoreDraft() as any;
+    if (!restored || typeof restored !== 'object') {
+      setDraftRestored(true);
+      return;
+    }
+
+    setName(restored.name ?? '');
+    setDescription(restored.description ?? '');
+    setCategory(restored.category ?? '');
+    setDuration(restored.duration ?? '7');
+    setDifficulty(restored.difficulty ?? 'intermediate');
+    setCalMin(restored.calMin ?? '1200');
+    setCalMax(restored.calMax ?? '2500');
+    setProteinMin(restored.proteinMin ?? '50');
+    setProteinMax(restored.proteinMax ?? '150');
+    setCarbMin(restored.carbMin ?? '100');
+    setCarbMax(restored.carbMax ?? '300');
+    setFatMin(restored.fatMin ?? '30');
+    setFatMax(restored.fatMax ?? '100');
+    setSelectedRestrictions(normalizeRestrictionsArray(restored.selectedRestrictions));
+    setIsPublic(Boolean(restored.isPublic));
+
+    if (Array.isArray(restored.meals)) {
+      setMeals(restored.meals);
+      setDashboardInitialMeals(restored.meals);
+      latestMealsRef.current = restored.meals;
+    }
+
+    if (Array.isArray(restored.mealTypes) && restored.mealTypes.length > 0) {
+      setMealTypes(restored.mealTypes);
+      setDashboardInitialMealTypes(restored.mealTypes);
+      latestMealTypesRef.current = restored.mealTypes;
+    }
+
+    if (restored.activeTab === 'details' || restored.activeTab === 'meals') {
+      setActiveTab(restored.activeTab);
+    }
+
+    toast.success('Draft restored', {
+      description: 'Your unsaved diet template changes have been restored.',
+      duration: 3500,
+    });
+
+    setDraftRestored(true);
+  }, [loading, draftRestored, restoreDraft, session?.user?.id]);
+
   const handleSave = async (mealsOverride?: any[], mealTypesOverride?: { name: string; time: string }[]) => {
     if (!name.trim()) {
       setError('Name is required');
@@ -330,6 +435,7 @@ export default function EditDietTemplatePage() {
       });
 
       if (res.ok) {
+        clearDraft();
         toast.success('Diet template updated successfully');
         router.push(`/meal-plan-templates/diet/${id}`);
       } else {
@@ -352,6 +458,12 @@ export default function EditDietTemplatePage() {
         ? prev.filter(r => r !== restriction)
         : [...prev, restriction]
     );
+  };
+
+  const handleClearDraft = () => {
+    clearDraft();
+    setDraftRestored(true);
+    toast.success('Draft cleared', { description: 'Unsaved changes draft removed.' });
   };
 
   if (!session) {
@@ -384,10 +496,27 @@ export default function EditDietTemplatePage() {
               <ArrowLeft className="h-4 w-4 mr-2" />Back to Template
             </Link>
           </Button>
-          <Button onClick={() => handleSave()} disabled={saving}>
-            {saving ? <LoadingSpinner className="h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-            Save Changes
-          </Button>
+          <div className="flex items-center gap-2">
+            {isDraftSaving && (
+              <span className="text-xs text-gray-500 flex items-center gap-1">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Saving draft...
+              </span>
+            )}
+            {!isDraftSaving && lastSaved && (
+              <span className="text-xs text-gray-500">
+                Draft saved {formatTimeIST(lastSaved)}
+              </span>
+            )}
+            <Button variant="outline" size="sm" onClick={handleClearDraft}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Clear Draft
+            </Button>
+            <Button onClick={() => handleSave()} disabled={saving}>
+              {saving ? <LoadingSpinner className="h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Save Changes
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -593,6 +722,8 @@ export default function EditDietTemplatePage() {
                       setMealTypes(newMealTypes);
                       latestMealTypesRef.current = newMealTypes;
                     }
+                    // Meal grid edits can be high-frequency; persist immediately to avoid perceived lag.
+                    saveDraft();
                   }}
                   onSavePlan={(weekPlan, newMealTypes) => {
                     setMeals(weekPlan);
