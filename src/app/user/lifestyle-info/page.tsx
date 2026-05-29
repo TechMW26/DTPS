@@ -59,20 +59,7 @@ const activityLevels = [
   { value: "very_active", label: "Very Active", desc: "Hard exercise 6-7 days/week" },
   { value: "extremely_active", label: "Extremely Active", desc: "Very hard exercise & physical job" }
 ];
-const frequencies = [
-  "None",
-  "Never",
-  "Rarely",
-  "Occasionally",
-  "Sometimes",
-  "Frequently",
-  "Daily",
-  "Once a week",
-  "Two times in a month",
-  "1-2 times/day",
-  "3-5 times/day",
-  "More than 5 times"
-];
+const frequencies = ["None", "Never", "Rarely", "Occasionally", "Sometimes", "Frequently", "Daily"];
 const cravings = ["None", "Sweet", "Salty", "Spicy", "Sour", "Fried", "Crunchy"];
 
 export default function LifestyleInfoPage() {

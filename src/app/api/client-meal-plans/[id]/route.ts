@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db/connection';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
+import User from '@/lib/db/models/User';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { updateClientStatusFromMealPlan } from '@/lib/status/computeClientStatus';
 import { getServerSession } from 'next-auth';
@@ -9,6 +10,7 @@ import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { logHistoryServer } from '@/lib/server/history';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { format, startOfDay } from 'date-fns';
+import { UserRole } from '@/types';
 
 const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
   if (!Array.isArray(meals) || meals.length === 0) return false;
@@ -83,6 +85,126 @@ const applyFrozenFlagsFromFreezedDays = (plan: any) => {
   };
 };
 
+const getNormalizedRole = (role: unknown): string => String(role || '').toLowerCase();
+
+const toActivityRole = (role: string): 'admin' | 'dietitian' | 'health_counselor' | 'client' => {
+  if (role === 'admin') return 'admin';
+  if (role === 'health_counselor') return 'health_counselor';
+  if (role === 'client') return 'client';
+  return 'dietitian';
+};
+
+const isSessionUserAssignedToClient = async (sessionUserId: string, clientId: string, role: string): Promise<boolean> => {
+  const client = await User.findById(clientId)
+    .select('assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors')
+    .lean() as any;
+
+  if (!client) return false;
+
+  if (role === UserRole.DIETITIAN || role === 'dietician') {
+    return (
+      client.assignedDietitian?.toString() === sessionUserId ||
+      client.assignedDietitians?.some((id: any) => id?.toString() === sessionUserId)
+    );
+  }
+
+  if (role === UserRole.HEALTH_COUNSELOR || role === 'health_counselor') {
+    return (
+      client.assignedHealthCounselor?.toString() === sessionUserId ||
+      client.assignedHealthCounselors?.some((id: any) => id?.toString() === sessionUserId)
+    );
+  }
+
+  return false;
+};
+
+const canAccessMealPlan = async (session: any, mealPlan: any): Promise<boolean> => {
+  const role = getNormalizedRole(session?.user?.role);
+  const sessionUserId = String(session?.user?.id || '');
+  if (!sessionUserId) return false;
+
+  if (role === UserRole.ADMIN) return true;
+  if (role === UserRole.CLIENT) return mealPlan.clientId?.toString() === sessionUserId;
+
+  const isOwner = mealPlan.dietitianId?.toString() === sessionUserId;
+  if (isOwner) return true;
+
+  if (role === UserRole.DIETITIAN || role === 'dietician' || role === UserRole.HEALTH_COUNSELOR || role === 'health_counselor') {
+    return isSessionUserAssignedToClient(sessionUserId, mealPlan.clientId?.toString(), role);
+  }
+
+  return false;
+};
+
+const canDeleteMealPlan = async (session: any, mealPlan: any): Promise<boolean> => {
+  const role = getNormalizedRole(session?.user?.role);
+  const sessionUserId = String(session?.user?.id || '');
+  if (!sessionUserId) return false;
+
+  // Hard safety: only admins or plan owners can perform delete action.
+  if (role === UserRole.ADMIN) return true;
+
+  const isOwner = mealPlan.dietitianId?.toString() === sessionUserId;
+  return isOwner;
+};
+
+const getRequestMeta = (request: NextRequest) => ({
+  ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+  userAgent: request.headers.get('user-agent') || undefined,
+});
+
+// Allowed lifecycle transitions for a meal plan.
+// Any transition not listed here is rejected with HTTP 409.
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  draft: ['active'],
+  active: ['paused', 'cancelled', 'completed'],
+  paused: ['active', 'cancelled', 'completed'],
+  completed: [],
+  cancelled: [],
+};
+
+const isAllowedTransition = (from: string, to: string): boolean => {
+  if (from === to) return true; // no-op
+  return (ALLOWED_TRANSITIONS[from] || []).includes(to);
+};
+
+const appendLifecycleAudit = async (
+  planId: unknown,
+  entry: {
+    action:
+    | 'status_change'
+    | 'publish'
+    | 'republish'
+    | 'blocked_title_edit'
+    | 'blocked_revert_to_draft'
+    | 'blocked_invalid_transition'
+    | 'blocked_delete'
+    | 'soft_delete';
+    by?: string;
+    fromStatus?: string;
+    toStatus?: string;
+    reason?: string;
+    blocked?: boolean;
+    meta?: Record<string, unknown>;
+  }
+) => {
+  try {
+    await ClientMealPlan.updateOne(
+      { _id: planId },
+      {
+        $push: {
+          lifecycleAudit: {
+            ...entry,
+            at: new Date(),
+          },
+        },
+      }
+    );
+  } catch (err) {
+    console.error('Failed to append lifecycleAudit entry:', err);
+  }
+};
+
 // GET single meal plan by ID
 export async function GET(
   request: NextRequest,
@@ -100,7 +222,7 @@ export async function GET(
 
     const mealPlan = await withCache(
       `client-meal-plans:id:${JSON.stringify(id)}`,
-      async () => await ClientMealPlan.findById(id)
+      async () => await ClientMealPlan.findOne({ _id: id, isDeleted: { $ne: true } })
         .populate('templateId', 'name category duration')
       ,
       { ttl: 120000, tags: ['client_meal_plans'] }
@@ -110,6 +232,14 @@ export async function GET(
       return NextResponse.json(
         { success: false, error: 'Meal plan not found' },
         { status: 404 }
+      );
+    }
+
+    const hasAccess = await canAccessMealPlan(session, mealPlan);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
       );
     }
 
@@ -157,7 +287,8 @@ export async function PUT(
       mealTypes,
       customizations,
       goals,
-      status
+      status,
+      statusReason,
     } = body;
 
     // Validate date range
@@ -173,7 +304,7 @@ export async function PUT(
     }
 
     // Fetch existing plan first to allow partial/merge updates
-    const existingPlan = await ClientMealPlan.findById(id);
+    const existingPlan = await ClientMealPlan.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!existingPlan) {
       return NextResponse.json(
         { success: false, error: 'Meal plan not found' },
@@ -181,8 +312,127 @@ export async function PUT(
       );
     }
 
+    const hasAccess = await canAccessMealPlan(session, existingPlan);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+
+
+
     // Detect publish action early so phase metadata can be assigned in the same update.
     const isPublishing = existingPlan.status === 'draft' && status === 'active';
+    const isStatusChange = status !== undefined && status !== existingPlan.status;
+
+    // ------------------------------------------------------------------
+    // PERMANENT FIX: Lifecycle state-machine + publish immutability guards
+    // ------------------------------------------------------------------
+    // Block any non-draft -> draft transition (prevents silent demotion of
+    // published plans through auto-save or explicit edits).
+    if (isStatusChange && status === 'draft' && existingPlan.status !== 'draft') {
+      await appendLifecycleAudit(existingPlan._id, {
+        action: 'blocked_revert_to_draft',
+        by: session.user.id,
+        fromStatus: existingPlan.status,
+        toStatus: 'draft',
+        blocked: true,
+        reason: 'non-draft-to-draft-forbidden',
+      });
+      await logActivity({
+        userId: session.user.id,
+        userRole: toActivityRole(getNormalizedRole(session.user.role)),
+        userName: session.user.name || session.user.email || 'Unknown',
+        userEmail: session.user.email || undefined,
+        action: 'Blocked Meal Plan Revert To Draft',
+        actionType: 'update',
+        category: 'meal_plan',
+        description: `Blocked attempt to revert "${existingPlan.name}" from ${existingPlan.status} to draft`,
+        targetUserId: existingPlan.clientId?.toString(),
+        resourceId: existingPlan._id?.toString(),
+        resourceType: 'ClientMealPlan',
+        resourceName: existingPlan.name,
+        details: { fromStatus: existingPlan.status, toStatus: 'draft' },
+        ...getRequestMeta(request),
+      }).catch(() => null);
+
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'FORBIDDEN_STATE_TRANSITION',
+          error: 'Published meal plans cannot be reverted to draft',
+          message: `Cannot change status from ${existingPlan.status} to draft. Once published, plans stay published.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    // Block any other disallowed transition.
+    if (isStatusChange && !isAllowedTransition(existingPlan.status, status)) {
+      await appendLifecycleAudit(existingPlan._id, {
+        action: 'blocked_invalid_transition',
+        by: session.user.id,
+        fromStatus: existingPlan.status,
+        toStatus: status,
+        blocked: true,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'FORBIDDEN_STATE_TRANSITION',
+          error: 'Invalid status transition',
+          message: `Cannot change status from ${existingPlan.status} to ${status}.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    // Block title edits on any non-draft plan (preserve published name).
+    if (
+      name !== undefined &&
+      typeof name === 'string' &&
+      name.trim() !== (existingPlan.name || '').trim() &&
+      existingPlan.status !== 'draft'
+    ) {
+      await appendLifecycleAudit(existingPlan._id, {
+        action: 'blocked_title_edit',
+        by: session.user.id,
+        fromStatus: existingPlan.status,
+        toStatus: existingPlan.status,
+        blocked: true,
+        meta: { attemptedName: name, currentName: existingPlan.name },
+      });
+      await logActivity({
+        userId: session.user.id,
+        userRole: toActivityRole(getNormalizedRole(session.user.role)),
+        userName: session.user.name || session.user.email || 'Unknown',
+        userEmail: session.user.email || undefined,
+        action: 'Blocked Meal Plan Title Edit',
+        actionType: 'update',
+        category: 'meal_plan',
+        description: `Blocked title edit on published plan "${existingPlan.name}"`,
+        targetUserId: existingPlan.clientId?.toString(),
+        resourceId: existingPlan._id?.toString(),
+        resourceType: 'ClientMealPlan',
+        resourceName: existingPlan.name,
+        details: { attemptedName: name, currentName: existingPlan.name, status: existingPlan.status },
+        ...getRequestMeta(request),
+      }).catch(() => null);
+
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'TITLE_LOCKED_AFTER_PUBLISH',
+          error: 'Title cannot be edited after publish',
+          message: 'Meal plan name is locked once the plan is published. Create a new plan for a new name.',
+        },
+        { status: 409 }
+      );
+    }
+    // ------------------------------------------------------------------
+
+
 
     // Build update object — only include fields explicitly provided
     const updateData: Record<string, any> = {};
@@ -229,12 +479,28 @@ export async function PUT(
     if (goals !== undefined) updateData.goals = goals;
     if (status !== undefined) updateData.status = status;
 
+    if (isStatusChange && status === 'cancelled') {
+      const reasonText = typeof statusReason === 'string' ? statusReason.trim() : '';
+      if (!reasonText) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Cancellation reason required',
+            message: 'Please provide statusReason when cancelling a meal plan.'
+          },
+          { status: 400 }
+        );
+      }
+      updateData.deletionReason = reasonText;
+    }
+
     // Ensure draft->active publish always receives correct phase numbering.
     if (isPublishing) {
       const phaseScopeQuery: Record<string, any> = {
         clientId: existingPlan.clientId,
         status: { $in: ['active', 'completed'] },
-        _id: { $ne: existingPlan._id }
+        _id: { $ne: existingPlan._id },
+        isDeleted: { $ne: true }
       };
 
       if (existingPlan.purchaseId) {
@@ -264,11 +530,74 @@ export async function PUT(
           updateData.previousPhaseId = previousPlan._id;
         }
       }
+
+      // Publish timeline fields: set firstPublishedAt only once; always bump lastPublishedAt.
+      const nowDate = new Date();
+      if (!existingPlan.firstPublishedAt) {
+        updateData.firstPublishedAt = nowDate;
+      }
+      updateData.lastPublishedAt = nowDate;
+    }
+
+    if (isStatusChange) {
+      const role = getNormalizedRole(session.user.role);
+      const reasonText = typeof statusReason === 'string' ? statusReason.trim() : '';
+      const requestMeta = getRequestMeta(request);
+
+      await logActivity({
+        userId: session.user.id,
+        userRole: toActivityRole(role),
+        userName: session.user.name || session.user.email || 'Unknown',
+        userEmail: session.user.email || undefined,
+        action: 'Meal Plan Status Changed',
+        actionType: 'update',
+        category: 'meal_plan',
+        description: `Meal plan status changed from ${existingPlan.status} to ${status} for "${existingPlan.name}"`,
+        targetUserId: existingPlan.clientId?.toString(),
+        resourceId: existingPlan._id?.toString(),
+        resourceType: 'ClientMealPlan',
+        resourceName: existingPlan.name,
+        details: {
+          previousStatus: existingPlan.status,
+          newStatus: status,
+          reason: reasonText || null,
+          startDate: updateData.startDate ? new Date(updateData.startDate).toISOString() : undefined,
+          endDate: updateData.endDate ? new Date(updateData.endDate).toISOString() : undefined,
+        },
+        ...requestMeta,
+      }).catch(() => null);
+    }
+
+    const mongoUpdate: Record<string, unknown> = { $set: updateData };
+
+    // Track lifecycle audit + publish counters on relevant transitions.
+    const auditEntries: Array<Record<string, unknown>> = [];
+    if (isPublishing) {
+      mongoUpdate.$inc = { republishCount: 1 };
+      auditEntries.push({
+        action: existingPlan.firstPublishedAt ? 'republish' : 'publish',
+        at: new Date(),
+        by: session.user.id,
+        fromStatus: existingPlan.status,
+        toStatus: status,
+      });
+    } else if (isStatusChange) {
+      auditEntries.push({
+        action: 'status_change',
+        at: new Date(),
+        by: session.user.id,
+        fromStatus: existingPlan.status,
+        toStatus: status,
+        reason: typeof statusReason === 'string' ? statusReason.trim() : undefined,
+      });
+    }
+    if (auditEntries.length > 0) {
+      mongoUpdate.$push = { lifecycleAudit: { $each: auditEntries } };
     }
 
     const updatedPlan = await ClientMealPlan.findByIdAndUpdate(
       id,
-      { $set: updateData },
+      mongoUpdate,
       { new: true, runValidators: true }
     ).populate('templateId', 'name category duration');
 
@@ -376,8 +705,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // First, get the meal plan to know the clientId and duration before deleting
-    const mealPlan = await ClientMealPlan.findById(id);
+    // First, fetch plan for authorization and safe soft-delete behavior
+    const mealPlan = await ClientMealPlan.findOne({ _id: id, isDeleted: { $ne: true } });
 
     if (!mealPlan) {
       return NextResponse.json(
@@ -386,45 +715,133 @@ export async function DELETE(
       );
     }
 
+    const role = getNormalizedRole(session.user.role);
+    const canDelete = await canDeleteMealPlan(session, mealPlan);
+    if (!canDelete) {
+      await logActivity({
+        userId: session.user.id,
+        userRole: toActivityRole(role),
+        userName: session.user.name || session.user.email || 'Unknown',
+        userEmail: session.user.email || undefined,
+        action: 'Blocked Meal Plan Deletion',
+        actionType: 'delete',
+        category: 'system',
+        description: `Blocked delete attempt for meal plan ${mealPlan._id}`,
+        targetUserId: mealPlan.clientId?.toString(),
+        resourceId: mealPlan._id?.toString(),
+        resourceType: 'ClientMealPlan',
+        resourceName: mealPlan.name,
+        details: {
+          reason: 'forbidden',
+          mealPlanStatus: mealPlan.status,
+          actorRole: role
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+        userAgent: request.headers.get('user-agent') || undefined,
+      }).catch(() => null);
+
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+
+    // Protect published plans from deletion to prevent data loss.
+    if (mealPlan.status !== 'draft') {
+      await logActivity({
+        userId: session.user.id,
+        userRole: toActivityRole(role),
+        userName: session.user.name || session.user.email || 'Unknown',
+        userEmail: session.user.email || undefined,
+        action: 'Blocked Published Meal Plan Deletion',
+        actionType: 'delete',
+        category: 'meal_plan',
+        description: `Blocked deletion for non-draft meal plan "${mealPlan.name}"`,
+        targetUserId: mealPlan.clientId?.toString(),
+        resourceId: mealPlan._id?.toString(),
+        resourceType: 'ClientMealPlan',
+        resourceName: mealPlan.name,
+        details: {
+          reason: 'published-plan-deletion-disabled',
+          mealPlanStatus: mealPlan.status
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+        userAgent: request.headers.get('user-agent') || undefined,
+      }).catch(() => null);
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Deletion blocked',
+          message: 'Only draft meal plans can be deleted. For published plans, use status updates (pause/cancel) instead.'
+        },
+        { status: 409 }
+      );
+    }
+
     const clientId = mealPlan.clientId?.toString();
-    const purchaseId = mealPlan.purchaseId;
-    const planDuration = mealPlan.duration || 0;
+    const deletionReason = 'user-requested-draft-delete';
 
-    // Now delete the meal plan
-    await ClientMealPlan.findByIdAndDelete(id);
-
-    // Recalculate the linked purchase from remaining plans after deletion.
-    if (purchaseId && planDuration > 0) {
-      try {
-        const { default: UnifiedPayment } = await import('@/lib/db/models/UnifiedPayment');
-        const purchase = await UnifiedPayment.findById(purchaseId);
-        if (purchase) {
-          const remainingMealPlans = await ClientMealPlan.find({
-            purchaseId,
-            status: { $in: ['active', 'completed'] }
-          });
-
-          const recalculatedDaysUsed = remainingMealPlans.reduce(
-            (sum, plan) => sum + (plan.duration || 0),
-            0
-          );
-
-          purchase.daysUsed = recalculatedDaysUsed;
-          purchase.mealPlanCreated = remainingMealPlans.length > 0;
-          await purchase.save();
-          console.log(`[ClientMealPlan] Recalculated daysUsed for purchase ${purchaseId}. New daysUsed: ${purchase.daysUsed}`);
+    // Soft delete only (preserve forensic/audit trail)
+    await ClientMealPlan.findOneAndUpdate(
+      { _id: id, isDeleted: { $ne: true } },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedBy: session.user.id,
+          deletionReason,
+          status: 'cancelled'
         }
-      } catch (purchaseError) {
-        console.error('Failed to update purchase daysUsed after deletion:', purchaseError);
-        // Don't fail the request - meal plan was deleted successfully
-      }
+      },
+      { new: false }
+    );
+
+    await clearCacheByTag('client_meal_plans');
+
+    await logActivity({
+      userId: session.user.id,
+      userRole: toActivityRole(role),
+      userName: session.user.name || session.user.email || 'Unknown',
+      userEmail: session.user.email || undefined,
+      action: 'Soft Deleted Meal Plan Draft',
+      actionType: 'delete',
+      category: 'meal_plan',
+      description: `Soft deleted draft meal plan "${mealPlan.name}"`,
+      targetUserId: mealPlan.clientId?.toString(),
+      resourceId: mealPlan._id?.toString(),
+      resourceType: 'ClientMealPlan',
+      resourceName: mealPlan.name,
+      details: {
+        previousStatus: mealPlan.status,
+        deletionReason,
+        deletedAt: new Date().toISOString()
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined,
+      userAgent: request.headers.get('user-agent') || undefined,
+    }).catch(() => null);
+
+    if (clientId) {
+      await logHistoryServer({
+        userId: clientId,
+        action: 'delete',
+        category: 'diet',
+        description: `Draft meal plan removed: ${mealPlan.name}`,
+        performedById: session.user.id,
+        metadata: {
+          mealPlanId: mealPlan._id,
+          name: mealPlan.name,
+          status: 'draft',
+          softDeleted: true
+        }
+      }).catch(() => null);
     }
 
     // Update client status after deletion
     if (clientId) {
       try {
         const newStatus = await updateClientStatusFromMealPlan(clientId);
-        console.log(`[ClientMealPlan] Client ${clientId} status updated to: ${newStatus} after meal plan deletion`);
+        console.log(`[ClientMealPlan] Client ${clientId} status updated to: ${newStatus} after draft meal plan soft-delete`);
       } catch (statusError) {
         console.error('Failed to update client status after deletion:', statusError);
         // Don't fail the request - meal plan was deleted successfully
@@ -433,7 +850,7 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: 'Meal plan deleted successfully'
+      message: 'Draft meal plan deleted successfully'
     });
   } catch (error) {
     console.error('Error deleting meal plan:', error);

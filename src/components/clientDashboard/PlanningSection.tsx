@@ -517,6 +517,14 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     if (!planTitle.trim()) return;
     if (!startDate || !endDate) return;
 
+    // PERMANENT FIX: Never auto-save (which sends status=draft) for a plan that
+    // has already been published. Editing a published plan must go through the
+    // explicit "Update Plan" flow which preserves status, not the draft autosave.
+    const editingPlanSnapshot = editingPlanRef.current;
+    if (editingPlanSnapshot && editingPlanSnapshot.status && editingPlanSnapshot.status !== 'draft') {
+      return;
+    }
+
     // Use resolveCurrentMealPayload to get meal data with fallback logic
     const mealPayload = resolveCurrentMealPayload();
     if (!mealPayload?.meals?.length) {
@@ -730,7 +738,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
   const fetchClientPlans = async (silent = false) => {
     try {
       if (!silent) setLoadingPlans(true);
-      const res = await fetch(`/api/client-meal-plans?clientId=${client._id}`, { cache: 'no-store' });
+      // PERMANENT FIX: Always fetch with status=all and a generous limit so
+      // older/important plans cannot be hidden by default pagination/filter windows.
+      const res = await fetch(`/api/client-meal-plans?clientId=${client._id}&status=all&limit=200`, { cache: 'no-store' });
       if (!res.ok) {
         console.error('Failed to fetch client plans with status:', res.status);
         return;
@@ -4653,6 +4663,17 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                             {plan.status !== 'draft' && (
                               <Badge className="bg-purple-100 text-purple-800 border border-purple-200">
                                 {calculatedPhase}
+                              </Badge>
+                            )}
+                            {/* PERMANENT FIX: Publish timeline transparency */}
+                            {plan.firstPublishedAt && (
+                              <span className="text-[11px] text-slate-500" title="First time this plan was published">
+                                First published: {format(new Date(plan.firstPublishedAt), 'MMM d, yyyy h:mm a')}
+                              </span>
+                            )}
+                            {typeof plan.republishCount === 'number' && plan.republishCount > 1 && (
+                              <Badge variant="secondary" className="bg-amber-100 text-amber-800" title="This plan id was published multiple times">
+                                Republished ×{plan.republishCount}
                               </Badge>
                             )}
                           </div>

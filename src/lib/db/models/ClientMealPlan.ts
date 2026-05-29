@@ -67,6 +67,27 @@ export interface IClientMealPlan extends Document {
   endDate: Date;
   status: 'draft' | 'active' | 'completed' | 'paused' | 'cancelled';
 
+  // Soft-delete metadata
+  isDeleted?: boolean;
+  deletedAt?: Date;
+  deletedBy?: mongoose.Types.ObjectId;
+  deletionReason?: string;
+
+  // Publish lifecycle timeline (for stability/audit transparency)
+  firstPublishedAt?: Date;
+  lastPublishedAt?: Date;
+  republishCount?: number;
+  lifecycleAudit?: Array<{
+    action: 'status_change' | 'publish' | 'republish' | 'blocked_title_edit' | 'blocked_revert_to_draft' | 'blocked_invalid_transition' | 'blocked_delete' | 'soft_delete';
+    at: Date;
+    by?: mongoose.Types.ObjectId;
+    fromStatus?: string;
+    toStatus?: string;
+    reason?: string;
+    blocked?: boolean;
+    meta?: Record<string, unknown>;
+  }>;
+
   // Freeze tracking
   freezedDays: IFreezeDay[];
   totalFreezeCount: number;
@@ -280,6 +301,64 @@ const ClientMealPlanSchema = new Schema({
     default: 'active'
   },
 
+  // Soft-delete tracking
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  deletedAt: {
+    type: Date,
+    required: false
+  },
+  deletedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: false
+  },
+  deletionReason: {
+    type: String,
+    trim: true,
+    maxlength: 300,
+    required: false
+  },
+
+  // Publish lifecycle timeline (set/updated by API on draft -> active transitions)
+  firstPublishedAt: { type: Date, required: false },
+  lastPublishedAt: { type: Date, required: false },
+  republishCount: { type: Number, default: 0, min: 0 },
+  lifecycleAudit: {
+    type: [
+      new Schema(
+        {
+          action: {
+            type: String,
+            required: true,
+            enum: [
+              'status_change',
+              'publish',
+              'republish',
+              'blocked_title_edit',
+              'blocked_revert_to_draft',
+              'blocked_invalid_transition',
+              'blocked_delete',
+              'soft_delete',
+            ],
+          },
+          at: { type: Date, default: Date.now },
+          by: { type: Schema.Types.ObjectId, ref: 'User', required: false },
+          fromStatus: { type: String },
+          toStatus: { type: String },
+          reason: { type: String, maxlength: 500 },
+          blocked: { type: Boolean, default: false },
+          meta: { type: Schema.Types.Mixed },
+        },
+        { _id: false }
+      ),
+    ],
+    default: [],
+  },
+
   // Freeze tracking
   freezedDays: {
     type: [FreezeDaySchema],
@@ -391,6 +470,20 @@ ClientMealPlanSchema.pre('findOneAndUpdate', function (next) {
   }
 });
 
+// Default safeguard: hide soft-deleted plans unless explicitly requested.
+const excludeSoftDeleted = function (this: any, next: () => void) {
+  const query = this.getQuery() || {};
+  if (!Object.prototype.hasOwnProperty.call(query, 'isDeleted')) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+  next();
+};
+
+ClientMealPlanSchema.pre('find', excludeSoftDeleted);
+ClientMealPlanSchema.pre('findOne', excludeSoftDeleted);
+ClientMealPlanSchema.pre('findOneAndUpdate', excludeSoftDeleted);
+ClientMealPlanSchema.pre('countDocuments', excludeSoftDeleted);
+
 // Indexes for better performance
 ClientMealPlanSchema.index({ clientId: 1, status: 1 });
 ClientMealPlanSchema.index({ dietitianId: 1, status: 1 });
@@ -400,6 +493,7 @@ ClientMealPlanSchema.index({ 'mealCompletions.date': 1 });
 ClientMealPlanSchema.index({ clientId: 1, 'mealCompletions.imagePath': 1 });
 ClientMealPlanSchema.index({ clientId: 1, phaseNumber: 1 });  // Phase tracking index
 ClientMealPlanSchema.index({ purchaseId: 1 });  // Payment-linked index
+ClientMealPlanSchema.index({ isDeleted: 1, status: 1, createdAt: -1 });
 
 // Virtual for calculated duration (fallback if duration field is not set)
 ClientMealPlanSchema.virtual('calculatedDuration').get(function () {

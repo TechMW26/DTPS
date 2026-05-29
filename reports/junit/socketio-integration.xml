@@ -1,9 +1,95 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="2" failures="0" errors="0" time="2.919">
-  <testsuite name="tests/integration/client-meal-plan-visibility-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-26T17:12:02" time="2.726" tests="2">
-    <testcase classname="client meal plan visibility window (supertest)" name="shows upcoming plan only from one day before, and only on the start-date card" time="0.707">
+<testsuites name="jest tests" tests="45" failures="0" errors="0" time="27.99">
+  <testsuite name="tests/integration/meal-plan-lifecycle-edges-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-05-29T08:24:48" time="27.801" tests="45">
+    <testcase classname="client meal plan — exhaustive edge cases &gt; auth &amp; authorization" name="PUT without session returns 401" time="0.643">
     </testcase>
-    <testcase classname="client meal plan visibility window (supertest)" name="shows an ongoing meal plan normally (not as preview)" time="0.564">
+    <testcase classname="client meal plan — exhaustive edge cases &gt; auth &amp; authorization" name="DELETE without session returns 401" time="0.558">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; auth &amp; authorization" name="GET without session returns 401" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; auth &amp; authorization" name="Admin is still blocked from reverting published plan to draft" time="0.867">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; auth &amp; authorization" name="Admin is still blocked from renaming a published plan" time="0.832">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; auth &amp; authorization" name="Admin is still blocked from hard-deleting a published plan" time="0.833">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; not-found &amp; soft-deleted plans" name="PUT on non-existent id returns 404" time="0.552">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; not-found &amp; soft-deleted plans" name="DELETE on non-existent id returns 404" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; not-found &amp; soft-deleted plans" name="PUT on already soft-deleted plan returns 404" time="0.557">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; not-found &amp; soft-deleted plans" name="DELETE on already soft-deleted plan returns 404" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="allows draft -&gt; active" time="0.573">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="allows active -&gt; paused" time="0.555">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="allows active -&gt; completed" time="0.553">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="allows active -&gt; cancelled" time="0.555">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="allows paused -&gt; active" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="allows paused -&gt; completed" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="allows paused -&gt; cancelled" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks active -&gt; draft with 409 FORBIDDEN_STATE_TRANSITION" time="0.556">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks paused -&gt; draft with 409 FORBIDDEN_STATE_TRANSITION" time="0.553">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks completed -&gt; draft with 409 FORBIDDEN_STATE_TRANSITION" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks cancelled -&gt; draft with 409 FORBIDDEN_STATE_TRANSITION" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks completed -&gt; active with 409 FORBIDDEN_STATE_TRANSITION" time="0.552">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks completed -&gt; paused with 409 FORBIDDEN_STATE_TRANSITION" time="0.552">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks completed -&gt; cancelled with 409 FORBIDDEN_STATE_TRANSITION" time="0.552">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks cancelled -&gt; active with 409 FORBIDDEN_STATE_TRANSITION" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks cancelled -&gt; paused with 409 FORBIDDEN_STATE_TRANSITION" time="0.551">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks cancelled -&gt; completed with 409 FORBIDDEN_STATE_TRANSITION" time="0.552">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks draft -&gt; paused with 409 FORBIDDEN_STATE_TRANSITION" time="0.553">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks draft -&gt; completed with 409 FORBIDDEN_STATE_TRANSITION" time="0.553">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="blocks draft -&gt; cancelled with 409 FORBIDDEN_STATE_TRANSITION" time="0.553">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; state machine — every transition" name="allows same-status no-op (active -&gt; active)" time="0.596">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; title immutability edges" name="allows title change with only leading/trailing whitespace difference on published plan (trim-equal)" time="0.555">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; title immutability edges" name="omitting name in PUT body never triggers title-locked error" time="0.552">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; title immutability edges" name="title + status revert in same body — state-machine guard fires first" time="0.553">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; publish timeline &amp; audit accumulation" name="firstPublishedAt is set once and stays stable across pause/resume cycles" time="0.569">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; publish timeline &amp; audit accumulation" name="blocked attempts are recorded in lifecycleAudit" time="0.559">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; publish content validation" name="publishing without body meals but with stored meals succeeds (uses existing)" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; publish content validation" name="publishing with meals[] containing no food options returns 400" time="0.55">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; cancel reason validation" name="rejects cancel with whitespace-only statusReason" time="0.551">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; cancel reason validation" name="accepts cancel with trimmed valid statusReason" time="0.553">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; date validation" name="rejects update with startDate &gt; endDate" time="0.55">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; duration immutability after publish" name="ignores duration change once plan is non-draft" time="0.554">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; duration immutability after publish" name="allows duration change on draft plan" time="0.553">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; draft-first flows" name="save as draft first, then publish later keeps same plan and sets publish metadata once" time="0.56">
+    </testcase>
+    <testcase classname="client meal plan — exhaustive edge cases &gt; draft-first flows" name="if a plan is never published it stays draft, is editable, and can be soft-deleted" time="0.558">
     </testcase>
   </testsuite>
 </testsuites>

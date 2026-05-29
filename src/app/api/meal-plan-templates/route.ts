@@ -52,6 +52,48 @@ const mealPlanTemplateSchema = z.object({
   }).optional()
 });
 
+const toFiniteNumber = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
+};
+
+const sanitizeMealPlanTemplatePayload = (body: any) => ({
+  ...body,
+  duration: toFiniteNumber(body?.duration, 1),
+  targetCalories: {
+    min: toFiniteNumber(body?.targetCalories?.min, 1200),
+    max: toFiniteNumber(body?.targetCalories?.max, 2500)
+  },
+  targetMacros: {
+    protein: {
+      min: toFiniteNumber(body?.targetMacros?.protein?.min, 50),
+      max: toFiniteNumber(body?.targetMacros?.protein?.max, 150)
+    },
+    carbs: {
+      min: toFiniteNumber(body?.targetMacros?.carbs?.min, 100),
+      max: toFiniteNumber(body?.targetMacros?.carbs?.max, 300)
+    },
+    fat: {
+      min: toFiniteNumber(body?.targetMacros?.fat?.min, 30),
+      max: toFiniteNumber(body?.targetMacros?.fat?.max, 100)
+    }
+  },
+  prepTime: body?.prepTime
+    ? {
+      daily: toFiniteNumber(body?.prepTime?.daily, 30),
+      weekly: toFiniteNumber(body?.prepTime?.weekly, 210)
+    }
+    : undefined
+});
+
 export async function GET(request: NextRequest) {
   try {
 
@@ -220,9 +262,10 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const body = await request.json();
+    const sanitizedBody = sanitizeMealPlanTemplatePayload(body);
 
     // Validate input
-    const validatedData = mealPlanTemplateSchema.parse(body);
+    const validatedData = mealPlanTemplateSchema.parse(sanitizedBody);
     // Create new meal plan template
     const template = new MealPlanTemplate({
       ...validatedData,

@@ -164,6 +164,22 @@ const normalizeRestrictionsArray = (restrictions: string[] | undefined): string[
     .filter(Boolean);
 };
 
+const parseIntegerInput = (value: string, fallback: number): number => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const safeNumber = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+};
+
 const normalizeTemplateTime = (value?: string): string => {
   if (!value || !value.trim()) return '';
   const trimmed = value.trim();
@@ -195,20 +211,6 @@ const normalizeTemplateMealName = (rawName?: string): string => {
   if (!name) return name;
   const mealKey = normalizeMealType(name);
   return mealKey ? MEAL_TYPES[mealKey].label : name;
-};
-
-const getSafeNumber = (value: unknown, fallback: number): number => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-};
-
-const getBoundedInt = (value: unknown, fallback: number, min: number, max: number): number => {
-  const parsed = Math.round(getSafeNumber(value, fallback));
-  return Math.min(max, Math.max(min, parsed));
 };
 
 const buildTemplateMealSchedule = (
@@ -480,24 +482,8 @@ export default function CreateDietTemplatePage() {
       description: tmpl.description || '',
       category: tmpl.category || prev.category,
       duration: Math.min(365, templateDuration), // Allow up to 365 days
-      targetCalories: {
-        min: getSafeNumber(tmpl?.targetCalories?.min, prev.targetCalories.min),
-        max: getSafeNumber(tmpl?.targetCalories?.max, prev.targetCalories.max)
-      },
-      targetMacros: {
-        protein: {
-          min: getSafeNumber(tmpl?.targetMacros?.protein?.min, prev.targetMacros.protein.min),
-          max: getSafeNumber(tmpl?.targetMacros?.protein?.max, prev.targetMacros.protein.max)
-        },
-        carbs: {
-          min: getSafeNumber(tmpl?.targetMacros?.carbs?.min, prev.targetMacros.carbs.min),
-          max: getSafeNumber(tmpl?.targetMacros?.carbs?.max, prev.targetMacros.carbs.max)
-        },
-        fat: {
-          min: getSafeNumber(tmpl?.targetMacros?.fat?.min, prev.targetMacros.fat.min),
-          max: getSafeNumber(tmpl?.targetMacros?.fat?.max, prev.targetMacros.fat.max)
-        }
-      },
+      targetCalories: tmpl.targetCalories || prev.targetCalories,
+      targetMacros: tmpl.targetMacros || prev.targetMacros,
       dietaryRestrictions: tmpl.dietaryRestrictions || [],
       difficulty: tmpl.difficulty || 'intermediate',
       targetAudience: tmpl.targetAudience || prev.targetAudience,
@@ -664,31 +650,27 @@ export default function CreateDietTemplatePage() {
 
       const submitPayload = {
         ...template,
-        duration: getBoundedInt(actualDuration, 7, 1, 365), // Use actual meals count
+        duration: actualDuration, // Use actual meals count
         meals: normalizedMeals,
         mealTypes: normalizedMealTypes,
-        // Ensure defaults
+        // Ensure null/NaN-safe numeric targets before sending payload.
         targetCalories: {
-          min: getSafeNumber(template?.targetCalories?.min, 1200),
-          max: getSafeNumber(template?.targetCalories?.max, 2500)
+          min: safeNumber(template.targetCalories?.min, 1200),
+          max: safeNumber(template.targetCalories?.max, 2500)
         },
         targetMacros: {
           protein: {
-            min: getSafeNumber(template?.targetMacros?.protein?.min, 50),
-            max: getSafeNumber(template?.targetMacros?.protein?.max, 150)
+            min: safeNumber(template.targetMacros?.protein?.min, 50),
+            max: safeNumber(template.targetMacros?.protein?.max, 150)
           },
           carbs: {
-            min: getSafeNumber(template?.targetMacros?.carbs?.min, 100),
-            max: getSafeNumber(template?.targetMacros?.carbs?.max, 300)
+            min: safeNumber(template.targetMacros?.carbs?.min, 100),
+            max: safeNumber(template.targetMacros?.carbs?.max, 300)
           },
           fat: {
-            min: getSafeNumber(template?.targetMacros?.fat?.min, 30),
-            max: getSafeNumber(template?.targetMacros?.fat?.max, 100)
+            min: safeNumber(template.targetMacros?.fat?.min, 30),
+            max: safeNumber(template.targetMacros?.fat?.max, 100)
           }
-        },
-        prepTime: {
-          daily: getSafeNumber(template?.prepTime?.daily, 30),
-          weekly: getSafeNumber(template?.prepTime?.weekly, 210)
         }
       };
       // Remove templateType as it's not needed for diet templates (separate collection)
@@ -870,106 +852,16 @@ export default function CreateDietTemplatePage() {
                 </Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2"><Label>Calories Min</Label><Input type="number" value={template.targetCalories.min} onChange={e => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  setTemplate(prev => ({
-                    ...prev,
-                    targetCalories: {
-                      ...prev.targetCalories,
-                      min: Number.isFinite(nextValue) ? nextValue : prev.targetCalories.min
-                    }
-                  }));
-                }} /></div>
-                <div className="space-y-2"><Label>Calories Max</Label><Input type="number" value={template.targetCalories.max} onChange={e => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  setTemplate(prev => ({
-                    ...prev,
-                    targetCalories: {
-                      ...prev.targetCalories,
-                      max: Number.isFinite(nextValue) ? nextValue : prev.targetCalories.max
-                    }
-                  }));
-                }} /></div>
+                <div className="space-y-2"><Label>Calories Min</Label><Input type="number" value={template.targetCalories.min} onChange={e => setTemplate({ ...template, targetCalories: { ...template.targetCalories, min: parseIntegerInput(e.target.value, template.targetCalories.min) } })} /></div>
+                <div className="space-y-2"><Label>Calories Max</Label><Input type="number" value={template.targetCalories.max} onChange={e => setTemplate({ ...template, targetCalories: { ...template.targetCalories, max: parseIntegerInput(e.target.value, template.targetCalories.max) } })} /></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-2"><Label>Protein Min</Label><Input type="number" value={template.targetMacros.protein.min} onChange={e => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  setTemplate(prev => ({
-                    ...prev,
-                    targetMacros: {
-                      ...prev.targetMacros,
-                      protein: {
-                        ...prev.targetMacros.protein,
-                        min: Number.isFinite(nextValue) ? nextValue : prev.targetMacros.protein.min
-                      }
-                    }
-                  }));
-                }} /></div>
-                <div className="space-y-2"><Label>Carbs Min</Label><Input type="number" value={template.targetMacros.carbs.min} onChange={e => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  setTemplate(prev => ({
-                    ...prev,
-                    targetMacros: {
-                      ...prev.targetMacros,
-                      carbs: {
-                        ...prev.targetMacros.carbs,
-                        min: Number.isFinite(nextValue) ? nextValue : prev.targetMacros.carbs.min
-                      }
-                    }
-                  }));
-                }} /></div>
-                <div className="space-y-2"><Label>Fat Min</Label><Input type="number" value={template.targetMacros.fat.min} onChange={e => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  setTemplate(prev => ({
-                    ...prev,
-                    targetMacros: {
-                      ...prev.targetMacros,
-                      fat: {
-                        ...prev.targetMacros.fat,
-                        min: Number.isFinite(nextValue) ? nextValue : prev.targetMacros.fat.min
-                      }
-                    }
-                  }));
-                }} /></div>
-                <div className="space-y-2"><Label>Protein Max</Label><Input type="number" value={template.targetMacros.protein.max} onChange={e => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  setTemplate(prev => ({
-                    ...prev,
-                    targetMacros: {
-                      ...prev.targetMacros,
-                      protein: {
-                        ...prev.targetMacros.protein,
-                        max: Number.isFinite(nextValue) ? nextValue : prev.targetMacros.protein.max
-                      }
-                    }
-                  }));
-                }} /></div>
-                <div className="space-y-2"><Label>Carbs Max</Label><Input type="number" value={template.targetMacros.carbs.max} onChange={e => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  setTemplate(prev => ({
-                    ...prev,
-                    targetMacros: {
-                      ...prev.targetMacros,
-                      carbs: {
-                        ...prev.targetMacros.carbs,
-                        max: Number.isFinite(nextValue) ? nextValue : prev.targetMacros.carbs.max
-                      }
-                    }
-                  }));
-                }} /></div>
-                <div className="space-y-2"><Label>Fat Max</Label><Input type="number" value={template.targetMacros.fat.max} onChange={e => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  setTemplate(prev => ({
-                    ...prev,
-                    targetMacros: {
-                      ...prev.targetMacros,
-                      fat: {
-                        ...prev.targetMacros.fat,
-                        max: Number.isFinite(nextValue) ? nextValue : prev.targetMacros.fat.max
-                      }
-                    }
-                  }));
-                }} /></div>
+                <div className="space-y-2"><Label>Protein Min</Label><Input type="number" value={template.targetMacros.protein.min} onChange={e => setTemplate({ ...template, targetMacros: { ...template.targetMacros, protein: { ...template.targetMacros.protein, min: parseIntegerInput(e.target.value, template.targetMacros.protein.min) } } })} /></div>
+                <div className="space-y-2"><Label>Carbs Min</Label><Input type="number" value={template.targetMacros.carbs.min} onChange={e => setTemplate({ ...template, targetMacros: { ...template.targetMacros, carbs: { ...template.targetMacros.carbs, min: parseIntegerInput(e.target.value, template.targetMacros.carbs.min) } } })} /></div>
+                <div className="space-y-2"><Label>Fat Min</Label><Input type="number" value={template.targetMacros.fat.min} onChange={e => setTemplate({ ...template, targetMacros: { ...template.targetMacros, fat: { ...template.targetMacros.fat, min: parseIntegerInput(e.target.value, template.targetMacros.fat.min) } } })} /></div>
+                <div className="space-y-2"><Label>Protein Max</Label><Input type="number" value={template.targetMacros.protein.max} onChange={e => setTemplate({ ...template, targetMacros: { ...template.targetMacros, protein: { ...template.targetMacros.protein, max: parseIntegerInput(e.target.value, template.targetMacros.protein.max) } } })} /></div>
+                <div className="space-y-2"><Label>Carbs Max</Label><Input type="number" value={template.targetMacros.carbs.max} onChange={e => setTemplate({ ...template, targetMacros: { ...template.targetMacros, carbs: { ...template.targetMacros.carbs, max: parseIntegerInput(e.target.value, template.targetMacros.carbs.max) } } })} /></div>
+                <div className="space-y-2"><Label>Fat Max</Label><Input type="number" value={template.targetMacros.fat.max} onChange={e => setTemplate({ ...template, targetMacros: { ...template.targetMacros, fat: { ...template.targetMacros.fat, max: parseIntegerInput(e.target.value, template.targetMacros.fat.max) } } })} /></div>
               </div>
 
               <div className="flex justify-end">

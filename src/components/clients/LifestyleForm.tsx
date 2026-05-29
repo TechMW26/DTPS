@@ -244,10 +244,10 @@ export function LifestyleForm(props: LifestyleFormProps) {
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
                   <SelectItem value="occasional">Occasional</SelectItem>
+                  <SelectItem value="regular">Regular</SelectItem>
                   <SelectItem value="1-2-times-day">1-2 times/day</SelectItem>
                   <SelectItem value="3-5-times-day">3-5 times/day</SelectItem>
                   <SelectItem value="more-than-5-times-day">More than 5 times</SelectItem>
-                  <SelectItem value="regular">Regular</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -260,8 +260,7 @@ export function LifestyleForm(props: LifestyleFormProps) {
                   <SelectItem value="none">None</SelectItem>
                   <SelectItem value="once-a-week">Once a week</SelectItem>
                   <SelectItem value="once-a-month">Once In A Month</SelectItem>
-                  <SelectItem value="twice-a-month">Twice In A Month</SelectItem>
-                  <SelectItem value="two-times-month">Two times in a month</SelectItem>
+                  <SelectItem value="twice-a-month">Two times in a month</SelectItem>
                   <SelectItem value="daily">Daily</SelectItem>
                 </SelectContent>
               </Select>

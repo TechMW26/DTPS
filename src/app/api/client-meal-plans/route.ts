@@ -16,6 +16,12 @@ import { updateClientStatusFromMealPlan } from '@/lib/status/computeClientStatus
 import { logActivity } from '@/lib/utils/activityLogger';
 import { format, startOfDay } from 'date-fns';
 
+const normalizeRole = (role: unknown): string => {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (normalized === 'dietician') return UserRole.DIETITIAN;
+  return normalized;
+};
+
 // Validation schema for client meal plan assignment
 const clientMealPlanSchema = z.object({
   clientId: z.string().min(1, 'Client ID is required'),
@@ -159,17 +165,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId');
     const status = searchParams.get('status');
+    const includeDeleted = searchParams.get('includeDeleted') === 'true';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
 
     // Build query based on user role
-    let query: any = {};
+    let query: any = { isDeleted: { $ne: true } };
+    const normalizedRole = normalizeRole(session.user.role);
 
-    if (session.user.role === UserRole.CLIENT) {
+    if (normalizedRole === UserRole.CLIENT) {
       // Clients can only see their own published meal plans (not drafts)
       query.clientId = session.user.id;
       query.status = { $ne: 'draft' };
-    } else if (session.user.role === UserRole.DIETITIAN) {
+    } else if (normalizedRole === UserRole.DIETITIAN) {
       // If clientId is specified, filter by that client
       if (clientId) {
         // Check if dietitian has access to this client
@@ -197,6 +205,22 @@ export async function GET(request: NextRequest) {
         });
 
         if (!isAssigned && !hasCreatedPlans) {
+          logActivity({
+            userId: session.user.id,
+            userRole: 'dietitian',
+            userName: session.user.name || session.user.email || '',
+            userEmail: session.user.email || '',
+            action: 'Blocked Client Meal Plan List Access',
+            actionType: 'view',
+            category: 'meal_plan',
+            description: `Blocked meal plan list access for unassigned client ${clientId}`,
+            targetUserId: clientId,
+            details: {
+              reason: 'not-assigned-and-no-created-plans',
+              role: normalizedRole,
+            },
+          }).catch(() => null);
+
           return NextResponse.json({
             success: true,
             mealPlans: [],
@@ -227,12 +251,15 @@ export async function GET(request: NextRequest) {
           { clientId: { $in: assignedClientIds } }
         ];
       }
-    } else if (session.user.role === UserRole.ADMIN) {
+    } else if (normalizedRole === UserRole.ADMIN) {
       // Admins can see all meal plans
+      if (includeDeleted) {
+        delete query.isDeleted;
+      }
       if (clientId) {
         query.clientId = clientId;
       }
-    } else if ((session.user.role as string) === UserRole.HEALTH_COUNSELOR || (session.user.role as string) === 'health_counselor') {
+    } else if (normalizedRole === UserRole.HEALTH_COUNSELOR) {
       // Health counselors can see meal plans for their assigned clients
       if (clientId) {
         // Check if HC has access to this client
@@ -399,7 +426,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Only dietitians, health counselors, and admins can assign meal plans
-    const userRole = session.user.role?.toString().toLowerCase();
+    const userRole = normalizeRole(session.user.role);
     const allowedRoles = ['dietitian', 'health_counselor', 'admin'];
     if (!userRole || !allowedRoles.includes(userRole)) {
       return NextResponse.json({

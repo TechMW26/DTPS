@@ -173,6 +173,11 @@ const activityLevels = ['sedentary', 'lightly-active', 'moderately-active', 'ver
 const healthConditions = ['diabetes', 'hypertension', 'heart-disease', 'obesity', 'pcos', 'thyroid', 'none'];
 const goals = ['weight-loss', 'weight-gain', 'muscle-gain', 'maintenance', 'improved-health', 'better-energy'];
 
+const parseIntegerInput = (value: string, fallback: number): number => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 export default function CreateMealPlanTemplatePage() {
   const { data: session } = useSession();
   const router = useRouter();
@@ -661,7 +666,7 @@ export default function CreateMealPlanTemplatePage() {
                         value={template.targetCalories.min}
                         onChange={(e) => setTemplate({
                           ...template,
-                          targetCalories: { ...template.targetCalories, min: parseInt(e.target.value) }
+                          targetCalories: { ...template.targetCalories, min: parseIntegerInput(e.target.value, template.targetCalories.min) }
                         })}
                         min="800"
                         max="5000"
@@ -675,7 +680,7 @@ export default function CreateMealPlanTemplatePage() {
                         value={template.targetCalories.max}
                         onChange={(e) => setTemplate({
                           ...template,
-                          targetCalories: { ...template.targetCalories, max: parseInt(e.target.value) }
+                          targetCalories: { ...template.targetCalories, max: parseIntegerInput(e.target.value, template.targetCalories.max) }
                         })}
                         min="800"
                         max="5000"
@@ -697,7 +702,7 @@ export default function CreateMealPlanTemplatePage() {
                             ...template,
                             targetMacros: {
                               ...template.targetMacros,
-                              protein: { ...template.targetMacros.protein, min: parseInt(e.target.value) }
+                              protein: { ...template.targetMacros.protein, min: parseIntegerInput(e.target.value, template.targetMacros.protein.min) }
                             }
                           })}
                         />
@@ -711,7 +716,7 @@ export default function CreateMealPlanTemplatePage() {
                             ...template,
                             targetMacros: {
                               ...template.targetMacros,
-                              protein: { ...template.targetMacros.protein, max: parseInt(e.target.value) }
+                              protein: { ...template.targetMacros.protein, max: parseIntegerInput(e.target.value, template.targetMacros.protein.max) }
                             }
                           })}
                         />
@@ -728,7 +733,7 @@ export default function CreateMealPlanTemplatePage() {
                             ...template,
                             targetMacros: {
                               ...template.targetMacros,
-                              carbs: { ...template.targetMacros.carbs, min: parseInt(e.target.value) }
+                              carbs: { ...template.targetMacros.carbs, min: parseIntegerInput(e.target.value, template.targetMacros.carbs.min) }
                             }
                           })}
                         />
@@ -742,7 +747,7 @@ export default function CreateMealPlanTemplatePage() {
                             ...template,
                             targetMacros: {
                               ...template.targetMacros,
-                              carbs: { ...template.targetMacros.carbs, max: parseInt(e.target.value) }
+                              carbs: { ...template.targetMacros.carbs, max: parseIntegerInput(e.target.value, template.targetMacros.carbs.max) }
                             }
                           })}
                         />
@@ -759,7 +764,7 @@ export default function CreateMealPlanTemplatePage() {
                             ...template,
                             targetMacros: {
                               ...template.targetMacros,
-                              fat: { ...template.targetMacros.fat, min: parseInt(e.target.value) }
+                              fat: { ...template.targetMacros.fat, min: parseIntegerInput(e.target.value, template.targetMacros.fat.min) }
                             }
                           })}
                         />
@@ -773,7 +778,7 @@ export default function CreateMealPlanTemplatePage() {
                             ...template,
                             targetMacros: {
                               ...template.targetMacros,
-                              fat: { ...template.targetMacros.fat, max: parseInt(e.target.value) }
+                              fat: { ...template.targetMacros.fat, max: parseIntegerInput(e.target.value, template.targetMacros.fat.max) }
                             }
                           })}
                         />

@@ -24,62 +24,45 @@ const mealTypeConfigSchema = z.object({
   time: z.string().optional()
 });
 
-const getSafeNumber = (value: unknown, fallback: number): number => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
+const toFiniteNumber = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
   }
   return fallback;
 };
 
-const getBoundedInt = (value: unknown, fallback: number, min: number, max: number): number => {
-  const parsed = Math.round(getSafeNumber(value, fallback));
-  return Math.min(max, Math.max(min, parsed));
-};
-
-const sanitizeDietTemplatePayload = (body: unknown) => {
-  const source = body && typeof body === 'object' ? body as Record<string, any> : {};
-
-  const targetCalories = source.targetCalories && typeof source.targetCalories === 'object'
-    ? source.targetCalories
-    : {};
-
-  const targetMacros = source.targetMacros && typeof source.targetMacros === 'object'
-    ? source.targetMacros
-    : {};
-
-  const prepTime = source.prepTime && typeof source.prepTime === 'object'
-    ? source.prepTime
-    : {};
-
-  return {
-    ...source,
-    duration: getBoundedInt(source.duration, 7, 1, 365),
-    targetCalories: {
-      min: getSafeNumber(targetCalories.min, 1200),
-      max: getSafeNumber(targetCalories.max, 2500)
+const sanitizeDietTemplatePayload = (body: any) => ({
+  ...body,
+  duration: toFiniteNumber(body?.duration, 1),
+  targetCalories: {
+    min: toFiniteNumber(body?.targetCalories?.min, 1200),
+    max: toFiniteNumber(body?.targetCalories?.max, 2500)
+  },
+  targetMacros: {
+    protein: {
+      min: toFiniteNumber(body?.targetMacros?.protein?.min, 50),
+      max: toFiniteNumber(body?.targetMacros?.protein?.max, 150)
     },
-    targetMacros: {
-      protein: {
-        min: getSafeNumber(targetMacros?.protein?.min, 50),
-        max: getSafeNumber(targetMacros?.protein?.max, 150)
-      },
-      carbs: {
-        min: getSafeNumber(targetMacros?.carbs?.min, 100),
-        max: getSafeNumber(targetMacros?.carbs?.max, 300)
-      },
-      fat: {
-        min: getSafeNumber(targetMacros?.fat?.min, 30),
-        max: getSafeNumber(targetMacros?.fat?.max, 100)
-      }
+    carbs: {
+      min: toFiniteNumber(body?.targetMacros?.carbs?.min, 100),
+      max: toFiniteNumber(body?.targetMacros?.carbs?.max, 300)
     },
-    prepTime: {
-      daily: getSafeNumber(prepTime.daily, 30),
-      weekly: getSafeNumber(prepTime.weekly, 210)
+    fat: {
+      min: toFiniteNumber(body?.targetMacros?.fat?.min, 30),
+      max: toFiniteNumber(body?.targetMacros?.fat?.max, 100)
     }
-  };
-};
+  },
+  prepTime: {
+    daily: toFiniteNumber(body?.prepTime?.daily, 30),
+    weekly: toFiniteNumber(body?.prepTime?.weekly, 210)
+  }
+});
 
 // Validation schema for diet template (no word limits)
 const dietTemplateSchema = z.object({

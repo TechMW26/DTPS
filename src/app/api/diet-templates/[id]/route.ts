@@ -14,68 +14,58 @@ const mealTypeConfigSchema = z.object({
   time: z.string().optional()
 });
 
-const getSafeNumber = (value: unknown, fallback: number): number => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
+const toFiniteNumber = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
   }
   return fallback;
 };
 
-const getBoundedInt = (value: unknown, fallback: number, min: number, max: number): number => {
-  const parsed = Math.round(getSafeNumber(value, fallback));
-  return Math.min(max, Math.max(min, parsed));
-};
+const sanitizeDietTemplateUpdatePayload = (body: any) => {
+  const sanitized = { ...body };
 
-const sanitizeDietTemplateUpdatePayload = (body: unknown) => {
-  const source = body && typeof body === 'object' ? { ...(body as Record<string, any>) } : {};
-
-  if ('duration' in source) {
-    source.duration = getBoundedInt(source.duration, 7, 1, 365);
+  if ('duration' in sanitized) {
+    sanitized.duration = toFiniteNumber(sanitized.duration, 1);
   }
 
-  if ('targetCalories' in source) {
-    const targetCalories = source.targetCalories && typeof source.targetCalories === 'object'
-      ? source.targetCalories
-      : {};
-    source.targetCalories = {
-      min: getSafeNumber(targetCalories.min, 1200),
-      max: getSafeNumber(targetCalories.max, 2500)
+  if ('targetCalories' in sanitized) {
+    sanitized.targetCalories = {
+      min: toFiniteNumber(sanitized?.targetCalories?.min, 1200),
+      max: toFiniteNumber(sanitized?.targetCalories?.max, 2500),
     };
   }
 
-  if ('targetMacros' in source) {
-    const targetMacros = source.targetMacros && typeof source.targetMacros === 'object'
-      ? source.targetMacros
-      : {};
-    source.targetMacros = {
+  if ('targetMacros' in sanitized) {
+    sanitized.targetMacros = {
       protein: {
-        min: getSafeNumber(targetMacros?.protein?.min, 50),
-        max: getSafeNumber(targetMacros?.protein?.max, 150)
+        min: toFiniteNumber(sanitized?.targetMacros?.protein?.min, 50),
+        max: toFiniteNumber(sanitized?.targetMacros?.protein?.max, 150),
       },
       carbs: {
-        min: getSafeNumber(targetMacros?.carbs?.min, 100),
-        max: getSafeNumber(targetMacros?.carbs?.max, 300)
+        min: toFiniteNumber(sanitized?.targetMacros?.carbs?.min, 100),
+        max: toFiniteNumber(sanitized?.targetMacros?.carbs?.max, 300),
       },
       fat: {
-        min: getSafeNumber(targetMacros?.fat?.min, 30),
-        max: getSafeNumber(targetMacros?.fat?.max, 100)
-      }
+        min: toFiniteNumber(sanitized?.targetMacros?.fat?.min, 30),
+        max: toFiniteNumber(sanitized?.targetMacros?.fat?.max, 100),
+      },
     };
   }
 
-  if ('prepTime' in source) {
-    const prepTime = source.prepTime && typeof source.prepTime === 'object'
-      ? source.prepTime
-      : {};
-    source.prepTime = {
-      daily: getSafeNumber(prepTime.daily, 30),
-      weekly: getSafeNumber(prepTime.weekly, 210)
+  if ('prepTime' in sanitized) {
+    sanitized.prepTime = {
+      daily: toFiniteNumber(sanitized?.prepTime?.daily, 30),
+      weekly: toFiniteNumber(sanitized?.prepTime?.weekly, 210),
     };
   }
 
-  return source;
+  return sanitized;
 };
 
 // Validation schema for updating diet template
