@@ -1417,7 +1417,7 @@ function ClientMessagesUI() {
 
                 <div className="flex items-center justify-between">
                   <p className="text-[14px] text-gray-600 truncate flex-1 pr-2">
-                    {conv.lastMessage.sender._id === session.user.id && (
+                    {conv.lastMessage.isFromMe && (
                       <Check className="inline h-4 w-4 mr-1 text-gray-500" />
                     )}
                     {conv.lastMessage.content}

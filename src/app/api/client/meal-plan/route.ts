@@ -5,13 +5,11 @@ import connectDB from '@/lib/db/connection';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import Recipe from '@/lib/db/models/Recipe';
 import { UserRole } from '@/types';
-import { startOfDay, endOfDay, parseISO, format } from 'date-fns';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { startOfDay, endOfDay, parseISO, format, isValid } from 'date-fns';
+import { withCache } from '@/lib/api/utils';
 import {
   MEAL_TYPES,
   MEAL_TYPE_KEYS,
-  getMealLabel,
-  getDefaultMealTime as getCanonicalMealTime,
   normalizeMealType as canonicalNormalizeMealType,
   type MealTypeKey
 } from '@/lib/mealConfig';
@@ -37,6 +35,15 @@ function convertMealTypeToCamelCase(mealTypeKey: MealTypeKey | string): string {
   return mealTypeKey.toLowerCase().replace(/_([a-z])/g, (match, char) => char.toUpperCase());
 }
 
+function resolveRequestedDate(dateParam: string | null): Date | null {
+  const requestedDate = dateParam ? parseISO(dateParam) : new Date();
+  if (!isValid(requestedDate)) {
+    return null;
+  }
+
+  return startOfDay(requestedDate);
+}
+
 // GET /api/client/meal-plan - Get client's meal plan for a specific date
 export async function GET(request: NextRequest) {
   try {
@@ -55,145 +62,158 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
-    const requestedDate = dateParam ? parseISO(dateParam) : new Date();
-
-    // Normalize to start of day for accurate date comparison
-    const normalizedDate = startOfDay(requestedDate);
-
-    // Find active meal plan for the client
-    const mealPlan = await ClientMealPlan.findOne({
-      clientId: session.user.id,
-      status: 'active',
-      startDate: { $lte: endOfDay(normalizedDate) },
-      endDate: { $gte: startOfDay(normalizedDate) }
-    }).populate('templateId').lean() as any;
-
-    if (!mealPlan) {
-      return NextResponse.json({
-        success: true,
-        hasPlan: false,
-        message: 'No active meal plan for this date'
-      });
+    const normalizedDate = resolveRequestedDate(dateParam);
+    if (!normalizedDate) {
+      return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
     }
 
-    // Calculate day index within the plan
-    const planStartDate = startOfDay(new Date(mealPlan.startDate));
-    const dayIndex = Math.floor((normalizedDate.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24));
+    const cacheKey = `client:meal-plan:${session.user.id}:${normalizedDate.toISOString().slice(0, 10)}`;
 
-    // Get meals for this day
-    let dayMeals: any[] = [];
-    let mealsSource = 'none';
+    const data = await withCache(
+      cacheKey,
+      async () => {
+        // Find active meal plan for the client
+        const mealPlan = await ClientMealPlan.findOne({
+          clientId: session.user.id,
+          status: 'active',
+          startDate: { $lte: endOfDay(normalizedDate) },
+          endDate: { $gte: startOfDay(normalizedDate) }
+        })
+          .select('clientId status startDate endDate meals mealTypes templateId mealCompletions freezedDays customizations goals name')
+          .populate('templateId')
+          .lean() as any;
 
-    // Store daily note
-    let dailyNote = '';
+        if (!mealPlan) {
+          return {
+            success: true,
+            hasPlan: false,
+            message: 'No active meal plan for this date'
+          };
+        }
 
-    // 1. Try direct meals array on the plan
-    if (mealPlan.meals?.length > 0) {
-      const dayData = mealPlan.meals[dayIndex % mealPlan.meals.length];
+        // Calculate day index within the plan
+        const planStartDate = startOfDay(new Date(mealPlan.startDate));
+        const dayIndex = Math.floor((normalizedDate.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24));
 
-      // Capture daily note
-      if (dayData?.note) {
-        dailyNote = dayData.note;
-      }
+        // Get meals for this day
+        let dayMeals: any[] = [];
+        let mealsSource = 'none';
 
-      if (dayData?.meals) {
-        const mealsObj = dayData.meals;
-        // Get ALL meal keys - both canonical and custom meal types
-        // Don't filter by MEAL_TYPE_KEYS to include custom meals
-        const mealKeys = Object.keys(mealsObj).filter(k => {
-          // Skip non-meal properties
-          if (['note', 'date', 'id', '_id'].includes(k)) return false;
-          const meal = mealsObj[k];
-          // Include if it's an object (could be a meal)
-          return meal && typeof meal === 'object' && !Array.isArray(meal);
+        // Store daily note
+        let dailyNote = '';
+
+        // 1. Try direct meals array on the plan
+        if (mealPlan.meals?.length > 0) {
+          const dayData = mealPlan.meals[dayIndex % mealPlan.meals.length];
+
+          // Capture daily note
+          if (dayData?.note) {
+            dailyNote = dayData.note;
+          }
+
+          if (dayData?.meals) {
+            const mealsObj = dayData.meals;
+            // Get ALL meal keys - both canonical and custom meal types
+            // Don't filter by MEAL_TYPE_KEYS to include custom meals
+            const mealKeys = Object.keys(mealsObj).filter(k => {
+              // Skip non-meal properties
+              if (['note', 'date', 'id', '_id'].includes(k)) return false;
+              const meal = mealsObj[k];
+              // Include if it's an object (could be a meal)
+              return meal && typeof meal === 'object' && !Array.isArray(meal);
+            });
+
+            if (mealKeys.length > 0) {
+              mealsSource = 'plan-meals';
+              dayMeals = extractMeals(mealsObj, mealPlan._id, dayIndex, normalizedDate, mealPlan.mealCompletions);
+            }
+          }
+        }
+
+        // 2. Fallback to mealTypes if no meals found (show empty slots)
+        if (dayMeals.length === 0 && mealPlan.mealTypes?.length > 0) {
+          mealsSource = 'meal-types-empty';
+          dayMeals = mealPlan.mealTypes.map((mealType: any, index: number) => ({
+            id: `${mealPlan._id}-${dayIndex}-${index}`,
+            type: mealType.name?.toLowerCase().replace(/\s+/g, '') || getMealTypeByIndex(index),
+            time: mealType.time || getDefaultMealTime(mealType.name || getMealTypeByIndex(index)),
+            totalCalories: 0,
+            items: [],
+            isCompleted: false,
+            isEmpty: true
+          }));
+        }
+
+        // 3. Fallback to template if available
+        if (dayMeals.length === 0 && mealPlan.templateId) {
+          const template = mealPlan.templateId as any;
+
+          if (template?.meals?.length > 0) {
+            const templateDay = template.meals[dayIndex % template.meals.length];
+            if (templateDay) {
+              mealsSource = 'template';
+              dayMeals = extractMeals(templateDay.meals || templateDay, mealPlan._id, dayIndex, normalizedDate, mealPlan.mealCompletions);
+            }
+          }
+        }
+
+        // 4. Ultimate fallback - show default empty meal slots
+        if (dayMeals.length === 0) {
+          mealsSource = 'default-empty';
+          dayMeals = getDefaultMealSlots(mealPlan._id, dayIndex);
+        }
+
+        // 5. Enrich meals with full recipe details from Recipe model
+        dayMeals = await enrichMealsWithRecipeDetails(dayMeals);
+
+        // Calculate total calories
+        const totalCalories = Math.round((dayMeals.reduce((sum, meal) => sum + (meal.totalCalories || 0), 0) ||
+          mealPlan.customizations?.targetCalories || 0) * 100) / 100;
+
+        // Check if this date is frozen
+        const dateStr = format(normalizedDate, 'yyyy-MM-dd');
+        const freezedDays = mealPlan.freezedDays || [];
+        const isFrozen = freezedDays.some((fd: any) => {
+          const freezeDate = format(new Date(fd.date), 'yyyy-MM-dd');
+          return freezeDate === dateStr;
         });
 
-        if (mealKeys.length > 0) {
-          mealsSource = 'plan-meals';
-          dayMeals = extractMeals(mealsObj, mealPlan._id, dayIndex, normalizedDate, mealPlan.mealCompletions);
-        }
-      }
-    }
+        // Get freeze day details if frozen
+        const freezeInfo = isFrozen ? freezedDays.find((fd: any) =>
+          format(new Date(fd.date), 'yyyy-MM-dd') === dateStr
+        ) : null;
 
-    // 2. Fallback to mealTypes if no meals found (show empty slots)
-    if (dayMeals.length === 0 && mealPlan.mealTypes?.length > 0) {
-      mealsSource = 'meal-types-empty';
-      dayMeals = mealPlan.mealTypes.map((mealType: any, index: number) => ({
-        id: `${mealPlan._id}-${dayIndex}-${index}`,
-        type: mealType.name?.toLowerCase().replace(/\s+/g, '') || getMealTypeByIndex(index),
-        time: mealType.time || getDefaultMealTime(mealType.name || getMealTypeByIndex(index)),
-        totalCalories: 0,
-        items: [],
-        isCompleted: false,
-        isEmpty: true
-      }));
-    }
+        return {
+          success: true,
+          hasPlan: true,
+          date: normalizedDate.toISOString(),
+          totalCalories,
+          meals: dayMeals,
+          dailyNote, // Dietitian's note for the day
+          mealsSource, // For debugging
+          isFrozen,
+          freezeInfo: freezeInfo ? {
+            date: freezeInfo.date,
+            reason: freezeInfo.reason || 'Day frozen by dietitian',
+            frozenAt: freezeInfo.createdAt
+          } : null,
+          mealTypes: mealPlan.mealTypes || [], // Return dietitian's custom meal types
+          planDetails: {
+            id: mealPlan._id,
+            name: mealPlan.name,
+            startDate: mealPlan.startDate,
+            endDate: mealPlan.endDate,
+            status: mealPlan.status,
+            goals: mealPlan.goals,
+            dayIndex,
+            hasMealsData: dayMeals.some(m => m.items?.length > 0)
+          }
+        };
+      },
+      { ttl: 60000, tags: ['client'] }
+    );
 
-    // 3. Fallback to template if available
-    if (dayMeals.length === 0 && mealPlan.templateId) {
-      const template = mealPlan.templateId as any;
-
-      if (template?.meals?.length > 0) {
-        const templateDay = template.meals[dayIndex % template.meals.length];
-        if (templateDay) {
-          mealsSource = 'template';
-          dayMeals = extractMeals(templateDay.meals || templateDay, mealPlan._id, dayIndex, normalizedDate, mealPlan.mealCompletions);
-        }
-      }
-    }
-
-    // 4. Ultimate fallback - show default empty meal slots
-    if (dayMeals.length === 0) {
-      mealsSource = 'default-empty';
-      dayMeals = getDefaultMealSlots(mealPlan._id, dayIndex);
-    }
-
-    // 5. Enrich meals with full recipe details from Recipe model
-    dayMeals = await enrichMealsWithRecipeDetails(dayMeals);
-
-    // Calculate total calories
-    const totalCalories = Math.round((dayMeals.reduce((sum, meal) => sum + (meal.totalCalories || 0), 0) ||
-      mealPlan.customizations?.targetCalories || 0) * 100) / 100;
-
-    // Check if this date is frozen
-    const dateStr = format(normalizedDate, 'yyyy-MM-dd');
-    const freezedDays = mealPlan.freezedDays || [];
-    const isFrozen = freezedDays.some((fd: any) => {
-      const freezeDate = format(new Date(fd.date), 'yyyy-MM-dd');
-      return freezeDate === dateStr;
-    });
-
-    // Get freeze day details if frozen
-    const freezeInfo = isFrozen ? freezedDays.find((fd: any) =>
-      format(new Date(fd.date), 'yyyy-MM-dd') === dateStr
-    ) : null;
-
-    return NextResponse.json({
-      success: true,
-      hasPlan: true,
-      date: normalizedDate.toISOString(),
-      totalCalories,
-      meals: dayMeals,
-      dailyNote, // Dietitian's note for the day
-      mealsSource, // For debugging
-      isFrozen,
-      freezeInfo: freezeInfo ? {
-        date: freezeInfo.date,
-        reason: freezeInfo.reason || 'Day frozen by dietitian',
-        frozenAt: freezeInfo.createdAt
-      } : null,
-      mealTypes: mealPlan.mealTypes || [], // Return dietitian's custom meal types
-      planDetails: {
-        id: mealPlan._id,
-        name: mealPlan.name,
-        startDate: mealPlan.startDate,
-        endDate: mealPlan.endDate,
-        status: mealPlan.status,
-        goals: mealPlan.goals,
-        dayIndex,
-        hasMealsData: dayMeals.some(m => m.items?.length > 0)
-      }
-    });
+    return NextResponse.json(data);
 
   } catch (error) {
     console.error('Error fetching client meal plan:', error);

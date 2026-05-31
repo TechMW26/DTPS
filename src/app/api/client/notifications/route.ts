@@ -5,7 +5,6 @@ import connectDB from '@/lib/db/connection';
 import Notification from '@/lib/db/models/Notification';
 import Message from '@/lib/db/models/Message';
 import { broadcastUnreadCounts } from '@/lib/realtime/broadcast-counts';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // GET /api/client/notifications - Get all notifications for the current user
 export async function GET(request: NextRequest) {
@@ -40,19 +39,18 @@ export async function GET(request: NextRequest) {
       query.read = false;
     }
 
-    const [notifications, total] = await Promise.all([
+    const [notifications, total, unreadCount] = await Promise.all([
       Notification.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
-      Notification.countDocuments(query)
+      Notification.countDocuments(query),
+      Notification.countDocuments({
+        userId: session.user.id,
+        read: false
+      })
     ]);
-
-    const unreadCount = await Notification.countDocuments({
-      userId: session.user.id,
-      read: false
-    });
 
     return NextResponse.json({
       success: true,

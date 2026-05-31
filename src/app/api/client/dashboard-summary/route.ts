@@ -5,6 +5,21 @@ import dbConnect from "@/lib/db/connection";
 import JournalTracking from "@/lib/db/models/JournalTracking";
 import User from "@/lib/db/models/User";
 import { withCache } from '@/lib/api/utils';
+import { isValid, parseISO, startOfDay } from 'date-fns';
+
+function toArray<T>(value: T[] | T | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function resolveTargetDate(dateParam: string | null): Date | null {
+  const requestedDate = dateParam ? parseISO(dateParam) : new Date();
+  if (!isValid(requestedDate)) {
+    return null;
+  }
+
+  return startOfDay(requestedDate);
+}
+
 export async function GET(request: Request) {
   try {
     const [session] = await Promise.all([
@@ -20,9 +35,12 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
 
-    // Build date range (same logic as individual endpoints)
-    const targetDate = dateParam ? new Date(dateParam) : new Date();
-    targetDate.setHours(0, 0, 0, 0);
+    // Build a safe date range that matches the day-based journal endpoints
+    const targetDate = resolveTargetDate(dateParam);
+    if (!targetDate) {
+      return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+    }
+
     const nextDay = new Date(targetDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
@@ -37,43 +55,46 @@ export async function GET(request: Request) {
           JournalTracking.findOne({
             client: userId,
             date: { $gte: targetDate, $lt: nextDay },
-          }).lean() as any,
+          })
+            .select('water sleep activities steps assignedWater assignedSteps assignedSleep assignedActivities targets updatedAt hydration activity')
+            .lean() as any,
           User.findById(userId)
             .select('goals heightCm weightKg bmi bmiCategory generalGoal firstName lastName avatar')
             .lean() as any,
         ]);
 
+        const waterEntries = toArray(journal?.water ?? journal?.hydration?.entries);
+        const sleepEntries = toArray(journal?.sleep ?? journal?.sleep?.entries);
+        const activityEntries = toArray(journal?.activities ?? journal?.activity?.entries);
+        const stepsEntries = toArray(journal?.steps ?? journal?.steps?.entries);
+
         // --- Hydration ---
-        const waterEntries = journal?.hydration?.entries || [];
         const totalWater = waterEntries.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
         const waterGoal = user?.goals?.water || journal?.targets?.water || 2500;
-        const assignedWater = journal?.hydration?.assigned || null;
+        const assignedWater = journal?.assignedWater ?? journal?.hydration?.assigned ?? null;
 
         // --- Sleep ---
-        const sleepEntries = journal?.sleep?.entries || [];
         const totalSleep = sleepEntries.reduce((sum: number, e: any) => {
           return sum + (e.hours || 0) + (e.minutes || 0) / 60;
         }, 0);
         const sleepGoal = journal?.targets?.sleep || 8;
-        const assignedSleep = journal?.sleep?.assigned || null;
+        const assignedSleep = journal?.assignedSleep ?? journal?.sleep?.assigned ?? null;
 
         // --- Activity ---
-        const activityEntries = journal?.activity?.entries || [];
         const totalActivity = activityEntries.reduce(
           (sum: number, e: any) => sum + (e.duration || 0),
           0
         );
         const activityGoal = journal?.targets?.activityMinutes || 30;
-        const assignedActivity = journal?.activity?.assigned || null;
+        const assignedActivity = journal?.assignedActivities ?? journal?.activity?.assigned ?? null;
 
         // --- Steps ---
-        const stepsEntries = journal?.steps?.entries || [];
         const totalSteps = stepsEntries.reduce(
           (sum: number, e: any) => sum + (e.steps || 0),
           0
         );
         const stepsGoal = journal?.targets?.steps || 10000;
-        const assignedSteps = journal?.steps?.assigned || null;
+        const assignedSteps = journal?.assignedSteps ?? journal?.steps?.assigned ?? null;
 
         // --- Profile (BMI + goals + name) ---
         const bmi = user?.bmi || '';

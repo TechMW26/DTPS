@@ -7,12 +7,13 @@ import Message from '@/lib/db/models/Message';
 import User from '@/lib/db/models/User';
 import { Notification } from '@/lib/db/models';
 import { UserRole } from '@/types';
-import { parseISO, startOfDay, isToday } from 'date-fns';
+import { parseISO, startOfDay, isToday, isValid } from 'date-fns';
 import { getImageKit } from '@/lib/imagekit';
 import { compressImageServer } from '@/lib/imageCompressionServer';
 import { MEAL_TYPE_KEYS, normalizeMealType, type MealTypeKey } from '@/lib/mealConfig';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { broadcastUnreadCounts, broadcastStaffUnreadCounts } from '@/lib/realtime/broadcast-counts';
+import { clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
 
 // Map camelCase meal types to canonical UPPERCASE keys
@@ -27,10 +28,149 @@ const CAMELCASE_TO_CANONICAL: Record<string, MealTypeKey> = {
   'pastDinner': 'PAST_DINNER',
 };
 
+type MealCompletionSideEffectArgs = {
+  clientId: string;
+  mealPlanId: string;
+  mealPlanName: string;
+  mealType: MealTypeKey;
+  requestedDate: Date;
+  notes: string;
+  imagePath?: string;
+  imageFile?: File | null;
+  primaryDietitianId?: string | null;
+  userName: string;
+  userEmail: string;
+};
+
+function queueMealCompletionSideEffects(args: MealCompletionSideEffectArgs): void {
+  setImmediate(() => {
+    void (async () => {
+      try {
+        const {
+          clientId,
+          mealPlanId,
+          mealPlanName,
+          mealType,
+          requestedDate,
+          notes,
+          imagePath,
+          imageFile,
+          primaryDietitianId,
+          userName,
+          userEmail,
+        } = args;
+
+        let resolvedDietitianId = primaryDietitianId;
+        if (imagePath && !resolvedDietitianId) {
+          const currentUser = await User.findById(clientId)
+            .select('assignedDietitian')
+            .lean();
+          resolvedDietitianId = (currentUser as any)?.assignedDietitian?.toString() || null;
+        }
+
+        if (imagePath && resolvedDietitianId) {
+          const mealLabel = mealType
+            .toLowerCase()
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+          const noteText = notes.trim();
+          const chatContent = noteText
+            ? `Meal Picture • ${mealLabel}\n${noteText}`
+            : `Meal Picture • ${mealLabel}`;
+
+          const mealPictureMessage = new Message({
+            sender: clientId,
+            receiver: resolvedDietitianId,
+            content: chatContent,
+            type: 'image',
+            attachments: [{
+              url: imagePath,
+              filename: imageFile?.name || `meal-picture-${Date.now()}.jpg`,
+              size: Math.max(imageFile?.size || 0, 1),
+              mimeType: imageFile?.type || 'image/jpeg'
+            }],
+            status: 'sent',
+            isRead: false
+          });
+
+          await mealPictureMessage.save();
+          clearCacheByTag('messages');
+          await mealPictureMessage.populate('sender', 'firstName lastName avatar role');
+          await mealPictureMessage.populate('receiver', 'firstName lastName avatar role');
+
+          const msgJson = mealPictureMessage.toJSON();
+          const ts = Date.now();
+
+          socketManager.sendToUser(resolvedDietitianId, 'new_message', {
+            message: msgJson,
+            conversationWith: clientId,
+            timestamp: ts
+          });
+
+          socketManager.sendToUser(clientId, 'new_message', {
+            message: msgJson,
+            conversationWith: resolvedDietitianId,
+            timestamp: ts
+          });
+
+          const [clientNotificationCount, clientMessageCount, staffMessageCount] = await Promise.all([
+            Notification.countDocuments({ userId: clientId, read: false }),
+            Message.countDocuments({ receiver: clientId, isRead: false }),
+            Message.countDocuments({ receiver: resolvedDietitianId, isRead: false })
+          ]);
+
+          broadcastUnreadCounts(clientId, {
+            notifications: clientNotificationCount,
+            messages: clientMessageCount
+          });
+
+          broadcastStaffUnreadCounts(resolvedDietitianId, {
+            messages: staffMessageCount
+          });
+        }
+
+        logActivity({
+          userId: clientId,
+          userRole: 'client',
+          userName,
+          userEmail,
+          action: 'Completed Meal',
+          actionType: 'complete',
+          category: 'meal_plan',
+          description: `Client completed ${mealType.toLowerCase().replace('_', ' ')} meal.`,
+          resourceId: mealPlanId,
+          resourceType: 'ClientMealPlan',
+          resourceName: mealPlanName,
+          details: { mealType, date: requestedDate.toISOString(), hasImage: !!imagePath },
+        }).catch(() => { });
+
+        try {
+          socketManager.sendToUser(clientId, 'meal_completion_updated', {
+            type: 'meal_completion_updated',
+            mealPlanId,
+            date: requestedDate,
+            mealType,
+            completed: true,
+            imagePath: imagePath,
+            timestamp: Date.now()
+          });
+        } catch (sseError) {
+          console.error('SSE notification error:', sseError);
+        }
+      } catch (error) {
+        console.error('Error in meal completion side effects:', error);
+      }
+    })();
+  });
+}
+
 // POST /api/client/meal-plan/complete - Mark a meal as completed with image
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB()
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -71,6 +211,10 @@ export async function POST(request: NextRequest) {
     const [planId] = mealId.split('-');
     const requestedDate = date ? parseISO(date) : new Date();
 
+    if (!isValid(requestedDate)) {
+      return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+    }
+
     // *** IMPORTANT: Only allow completion for today's date ***
     if (!isToday(requestedDate)) {
       return NextResponse.json({
@@ -83,7 +227,9 @@ export async function POST(request: NextRequest) {
       _id: planId,
       clientId: session.user.id,
       status: 'active'
-    });
+    })
+      .select('mealCompletions analytics name')
+      .lean() as any;
 
     if (!mealPlan) {
       return NextResponse.json({
@@ -110,6 +256,10 @@ export async function POST(request: NextRequest) {
       // Fallback to index-based meal type
       determinedMealType = MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
     }
+
+    const mealCompletions = Array.isArray(mealPlan.mealCompletions)
+      ? [...mealPlan.mealCompletions]
+      : [];
 
     // Handle image upload - save to ImageKit
     let imagePath: string | undefined;
@@ -158,27 +308,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if meal is already completed for this date
-    const existingCompletionIndex = mealPlan.mealCompletions?.findIndex((c: any) => {
+    const existingCompletionIndex = mealCompletions.findIndex((c: any) => {
       const completionDate = new Date(c.date);
       const targetDate = startOfDay(requestedDate);
       return startOfDay(completionDate).getTime() === targetDate.getTime() &&
         c.mealType === determinedMealType;
-    }) ?? -1;
+    });
 
     if (existingCompletionIndex >= 0) {
       // Update existing completion
-      mealPlan.mealCompletions[existingCompletionIndex].completed = true;
-      mealPlan.mealCompletions[existingCompletionIndex].notes = notes || undefined;
+      mealCompletions[existingCompletionIndex].completed = true;
+      mealCompletions[existingCompletionIndex].notes = notes || undefined;
       if (imagePath) {
-        mealPlan.mealCompletions[existingCompletionIndex].imagePath = imagePath;
+        mealCompletions[existingCompletionIndex].imagePath = imagePath;
       }
     } else {
       // Add new completion
-      if (!mealPlan.mealCompletions) {
-        mealPlan.mealCompletions = [];
-      }
-
-      mealPlan.mealCompletions.push({
+      mealCompletions.push({
         date: startOfDay(requestedDate),
         mealType: determinedMealType,
         completed: true,
@@ -188,134 +334,46 @@ export async function POST(request: NextRequest) {
     }
 
     // Update analytics
-    if (!mealPlan.analytics) {
-      mealPlan.analytics = {};
-    }
+    const analytics = { ...(mealPlan.analytics || {}) };
 
     // Calculate total days completed
     const uniqueDates = new Set(
-      mealPlan.mealCompletions
+      mealCompletions
         .filter((c: any) => c.completed)
         .map((c: any) => startOfDay(new Date(c.date)).toISOString())
     );
-    mealPlan.analytics.totalDaysCompleted = uniqueDates.size;
+    analytics.totalDaysCompleted = uniqueDates.size;
 
     // Calculate average adherence
-    const totalMeals = mealPlan.mealCompletions.length;
-    const completedMeals = mealPlan.mealCompletions.filter((c: any) => c.completed).length;
-    mealPlan.analytics.averageAdherence = Math.round((completedMeals / totalMeals) * 100);
+    const totalMeals = mealCompletions.length;
+    const completedMeals = mealCompletions.filter((c: any) => c.completed).length;
+    analytics.averageAdherence = totalMeals > 0 ? Math.round((completedMeals / totalMeals) * 100) : 0;
 
-    await mealPlan.save();
-
-    // If meal image exists, also send it as a chat image message to assigned dietitian
-    // so it appears in client↔dietitian conversation with "Meal Picture" tag.
-    if (imagePath) {
-      try {
-        const currentUser = await User.findById(session.user.id)
-          .select('assignedDietitian')
-          .lean();
-
-        const primaryDietitianId = (currentUser as any)?.assignedDietitian?.toString();
-
-        if (primaryDietitianId) {
-          const mealLabel = determinedMealType
-            .toLowerCase()
-            .replace(/_/g, ' ')
-            .replace(/\b\w/g, (char) => char.toUpperCase());
-          const noteText = (notes || '').trim();
-          const chatContent = noteText
-            ? `Meal Picture • ${mealLabel}\n${noteText}`
-            : `Meal Picture • ${mealLabel}`;
-
-          const mealPictureMessage = new Message({
-            sender: session.user.id,
-            receiver: primaryDietitianId,
-            content: chatContent,
-            type: 'image',
-            attachments: [{
-              url: imagePath,
-              filename: imageFile?.name || `meal-picture-${Date.now()}.jpg`,
-              size: Math.max(imageFile?.size || 0, 1),
-              mimeType: imageFile?.type || 'image/jpeg'
-            }],
-            status: 'sent',
-            isRead: false
-          });
-
-          await mealPictureMessage.save();
-          await mealPictureMessage.populate('sender', 'firstName lastName avatar role');
-          await mealPictureMessage.populate('receiver', 'firstName lastName avatar role');
-
-          const msgJson = mealPictureMessage.toJSON();
-          const ts = Date.now();
-
-          // Recipient event: conversation is with sender(client)
-          socketManager.sendToUser(primaryDietitianId, 'new_message', {
-            message: msgJson,
-            conversationWith: session.user.id,
-            timestamp: ts
-          });
-
-          // Sender event: conversation is with recipient(dietitian)
-          socketManager.sendToUser(session.user.id, 'new_message', {
-            message: msgJson,
-            conversationWith: primaryDietitianId,
-            timestamp: ts
-          });
-
-          // Refresh unread badges for both sides
-          const [clientNotificationCount, clientMessageCount, staffMessageCount] = await Promise.all([
-            Notification.countDocuments({ userId: session.user.id, read: false }),
-            Message.countDocuments({ receiver: session.user.id, isRead: false }),
-            Message.countDocuments({ receiver: primaryDietitianId, isRead: false })
-          ]);
-
-          broadcastUnreadCounts(session.user.id, {
-            notifications: clientNotificationCount,
-            messages: clientMessageCount
-          });
-
-          broadcastStaffUnreadCounts(primaryDietitianId, {
-            messages: staffMessageCount
-          });
+    await ClientMealPlan.updateOne(
+      { _id: mealPlan._id, clientId: session.user.id, status: 'active' },
+      {
+        $set: {
+          mealCompletions,
+          analytics
         }
-      } catch (chatMessageError) {
-        console.error('Error sending meal picture to chat:', chatMessageError);
-        // Do not fail meal completion if chat mirror fails
       }
-    }
+    );
 
-    // Log activity
-    logActivity({
-      userId: session.user.id,
-      userRole: 'client',
+    clearCacheByTag('dietitian_panel');
+
+    queueMealCompletionSideEffects({
+      clientId: session.user.id,
+      mealPlanId: mealPlan._id?.toString(),
+      mealPlanName: mealPlan.name,
+      mealType: determinedMealType,
+      requestedDate,
+      notes,
+      imagePath,
+      imageFile,
+      primaryDietitianId: null,
       userName: session.user.name || session.user.email || '',
       userEmail: session.user.email || '',
-      action: 'Completed Meal',
-      actionType: 'complete',
-      category: 'meal_plan',
-      description: `Client completed ${determinedMealType.toLowerCase().replace('_', ' ')} meal.`,
-      resourceId: mealPlan._id?.toString(),
-      resourceType: 'ClientMealPlan',
-      resourceName: mealPlan.name,
-      details: { mealType: determinedMealType, date: requestedDate.toISOString(), hasImage: !!imagePath },
-    }).catch(() => { });
-
-    // Emit real-time event to notify the client (and other tabs/devices)
-    try {
-      socketManager.sendToUser(session.user.id, 'meal_completion_updated', {
-        type: 'meal_completion_updated',
-        mealPlanId: mealPlan._id,
-        date: requestedDate,
-        mealType: determinedMealType,
-        completed: true,
-        imagePath: imagePath,
-        timestamp: Date.now()
-      });
-    } catch (sseError) {
-      console.error('SSE notification error:', sseError);
-      // Don't fail the request if SSE fails
-    }
+    });
 
     return NextResponse.json({
       success: true,
@@ -326,7 +384,7 @@ export async function POST(request: NextRequest) {
         completed: true,
         imagePath: imagePath
       },
-      analytics: mealPlan.analytics
+      analytics
     });
 
   } catch (error) {

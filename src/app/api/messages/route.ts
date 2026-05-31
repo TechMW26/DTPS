@@ -13,7 +13,7 @@ import { createMessageWebhook } from '@/lib/webhooks/webhook-manager';
 import { z } from 'zod';
 import { logHistoryServer } from '@/lib/server/history';
 import { notifyMessageToRecipient } from '@/lib/notifications/staffPushService';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { clearCacheByTag } from '@/lib/api/utils';
 
 // Message validation schema
 const messageSchema = z.object({
@@ -32,6 +32,35 @@ const messageSchema = z.object({
   })).optional(),
   replyTo: z.string().optional() // For replying to specific messages
 });
+
+type UserAssignmentRef = { toString: () => string } | string;
+
+type MessageUserLite = {
+  role?: string;
+  assignedDietitian?: UserAssignmentRef;
+  assignedDietitians?: UserAssignmentRef[];
+  assignedHealthCounselor?: UserAssignmentRef;
+};
+
+type PopulatedPerson = {
+  firstName?: string;
+  lastName?: string;
+};
+
+type PopulatedMessageDoc = {
+  _id: unknown;
+  sender?: PopulatedPerson;
+  receiver?: PopulatedPerson;
+  toJSON: () => {
+    _id: unknown;
+    sender?: PopulatedPerson;
+    receiver?: PopulatedPerson;
+  };
+};
+
+function getDisplayName(person?: PopulatedPerson): string {
+  return `${person?.firstName || ''} ${person?.lastName || ''}`.trim();
+}
 
 // GET /api/messages - Get messages for current user
 export async function GET(request: NextRequest) {
@@ -54,21 +83,21 @@ export async function GET(request: NextRequest) {
     if (conversationWith) {
       const otherUser = await User.findById(conversationWith)
         .select('role assignedDietitian assignedDietitians assignedHealthCounselor')
-        .lean();
+        .lean<MessageUserLite | null>();
 
       if (!otherUser) {
         return NextResponse.json({ error: 'User not found' }, { status: 404 });
       }
 
-      const otherRole = String((otherUser as any).role || '').toLowerCase();
+      const otherRole = String(otherUser.role || '').toLowerCase();
 
       // Validate access based on roles
       if (sessionRole === 'dietitian') {
         // Dietitian can only message their assigned clients OR other staff
         if (otherRole === 'client') {
           const isAssigned =
-            (otherUser as any).assignedDietitian?.toString() === session.user.id ||
-            (otherUser as any).assignedDietitians?.some((d: any) => d.toString() === session.user.id);
+            otherUser.assignedDietitian?.toString() === session.user.id ||
+            otherUser.assignedDietitians?.some((d) => d.toString() === session.user.id);
           if (!isAssigned) {
             return NextResponse.json({ error: 'You can only message clients assigned to you' }, { status: 403 });
           }
@@ -77,7 +106,7 @@ export async function GET(request: NextRequest) {
       } else if (sessionRole === 'health_counselor') {
         // Health Counselor can only message their assigned clients OR other staff
         if (otherRole === 'client') {
-          if ((otherUser as any).assignedHealthCounselor?.toString() !== session.user.id) {
+          if (otherUser.assignedHealthCounselor?.toString() !== session.user.id) {
             return NextResponse.json({ error: 'You can only message clients assigned to you' }, { status: 403 });
           }
         }
@@ -86,9 +115,9 @@ export async function GET(request: NextRequest) {
         // Client can ONLY message their PRIMARY assigned dietitian
         const currentUser = await User.findById(session.user.id)
           .select('assignedDietitian')
-          .lean();
+          .lean<Pick<MessageUserLite, 'assignedDietitian'> | null>();
 
-        const primaryDietitian = (currentUser as any)?.assignedDietitian?.toString();
+        const primaryDietitian = currentUser?.assignedDietitian?.toString();
 
         if (!primaryDietitian || primaryDietitian !== conversationWith) {
           return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
@@ -97,7 +126,7 @@ export async function GET(request: NextRequest) {
       // Admin has no restrictions
     }
 
-    let query: any = {};
+    let query: Record<string, unknown> = {};
 
     if (conversationWith) {
       // Get messages between current user and specific user
@@ -160,6 +189,8 @@ export async function GET(request: NextRequest) {
           readBy: session.user.id,
           readAt: new Date().toISOString()
         });
+
+        clearCacheByTag('messages');
       }
 
       // Broadcast socket update for unread counts
@@ -182,7 +213,7 @@ export async function GET(request: NextRequest) {
         } else {
           broadcastStaffUnreadCounts(session.user.id, { messages: messageCount });
         }
-      } catch (error) {
+      } catch {
         // Silently handle broadcast errors
       }
     }
@@ -226,21 +257,21 @@ export async function POST(request: NextRequest) {
     // STRICT ROLE-BASED VALIDATION for sending messages
     const recipientUser = await User.findById(validatedData.recipientId)
       .select('role assignedDietitian assignedDietitians assignedHealthCounselor')
-      .lean();
+      .lean<MessageUserLite | null>();
 
     if (!recipientUser) {
       return NextResponse.json({ error: 'Recipient not found' }, { status: 404 });
     }
 
-    const recipientRole = String((recipientUser as any).role || '').toLowerCase();
+    const recipientRole = String(recipientUser.role || '').toLowerCase();
 
     // Validate based on sender role
     if (sessionRole === 'dietitian') {
       // Dietitian can message their assigned clients OR other staff
       if (recipientRole === 'client') {
         const isAssigned =
-          (recipientUser as any).assignedDietitian?.toString() === session.user.id ||
-          (recipientUser as any).assignedDietitians?.some((d: any) => d.toString() === session.user.id);
+          recipientUser.assignedDietitian?.toString() === session.user.id ||
+          recipientUser.assignedDietitians?.some((d) => d.toString() === session.user.id);
         if (!isAssigned) {
           return NextResponse.json({ error: 'You can only message clients assigned to you' }, { status: 403 });
         }
@@ -248,7 +279,7 @@ export async function POST(request: NextRequest) {
     } else if (sessionRole === 'health_counselor') {
       // Health Counselor can message their assigned clients OR other staff
       if (recipientRole === 'client') {
-        if ((recipientUser as any).assignedHealthCounselor?.toString() !== session.user.id) {
+        if (recipientUser.assignedHealthCounselor?.toString() !== session.user.id) {
           return NextResponse.json({ error: 'You can only message clients assigned to you' }, { status: 403 });
         }
       }
@@ -256,9 +287,9 @@ export async function POST(request: NextRequest) {
       // Client can ONLY message their PRIMARY assigned dietitian
       const currentUser = await User.findById(session.user.id)
         .select('assignedDietitian')
-        .lean();
+        .lean<Pick<MessageUserLite, 'assignedDietitian'> | null>();
 
-      const primaryDietitian = (currentUser as any)?.assignedDietitian?.toString();
+      const primaryDietitian = currentUser?.assignedDietitian?.toString();
 
       if (!primaryDietitian || primaryDietitian !== validatedData.recipientId) {
         return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
@@ -297,7 +328,8 @@ export async function POST(request: NextRequest) {
     });
 
     // Send real-time notification to BOTH sender and recipient
-    const msgJson = message.toJSON();
+    const populatedMessage = message as unknown as PopulatedMessageDoc;
+    const msgJson = populatedMessage.toJSON();
     const ts = Date.now();
 
     // Send to recipient — from their perspective the conversation is with the sender
@@ -320,7 +352,7 @@ export async function POST(request: NextRequest) {
     // Send push notification only when CLIENT sends message to staff
     // Staff (dietitian/health_counselor/admin) don't need notifications for messages they send
     if (sessionRole === UserRole.CLIENT) {
-      const senderName = `${(message.sender as any).firstName} ${(message.sender as any).lastName}`.trim();
+      const senderName = getDisplayName(populatedMessage.sender);
       try {
         await notifyMessageToRecipient({
           recipientId: validatedData.recipientId,
@@ -328,7 +360,7 @@ export async function POST(request: NextRequest) {
           senderName: senderName || 'A user',
           senderRole: sessionRole,
           messagePreview: validatedData.content,
-          messageId: String((message as any)._id),
+          messageId: String(populatedMessage._id),
           conversationWithUserId: session.user.id,
           clientId: session.user.id,
           clientName: senderName || 'Client',
@@ -339,8 +371,8 @@ export async function POST(request: NextRequest) {
       }
     } else if (recipientRole === UserRole.CLIENT) {
       // Send push notification to CLIENT when staff (dietitian/health_counselor/admin) sends message
-      const senderName = `${(message.sender as any).firstName} ${(message.sender as any).lastName}`.trim();
-      const recipientName = `${(message.receiver as any).firstName} ${(message.receiver as any).lastName}`.trim();
+      const senderName = getDisplayName(populatedMessage.sender);
+      const recipientName = getDisplayName(populatedMessage.receiver);
       try {
         await notifyMessageToRecipient({
           recipientId: validatedData.recipientId,
@@ -348,7 +380,7 @@ export async function POST(request: NextRequest) {
           senderName: senderName || 'Your Care Team',
           senderRole: sessionRole,
           messagePreview: validatedData.content,
-          messageId: String((message as any)._id),
+          messageId: String(populatedMessage._id),
           conversationWithUserId: session.user.id,
           clientId: validatedData.recipientId,
           clientName: recipientName || 'Client',

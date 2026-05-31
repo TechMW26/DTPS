@@ -6,11 +6,14 @@ import User from '@/lib/db/models/User';
 import MedicalInfo from '@/lib/db/models/MedicalInfo';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { UserRole } from '@/types';
-import { withCache } from '@/lib/api/utils';
+import { serverCache, withCache } from '@/lib/api/utils';
 import { getImageKit } from '@/lib/imagekit';
 import { Types } from 'mongoose';
 
 export const dynamic = 'force-dynamic';
+
+const IMAGEKIT_LIST_TIMEOUT_MS = 2500;
+const DOCUMENTS_CACHE_TTL_SECONDS = 300;
 
 type ClientAssignedRef = { toString: () => string } | string;
 
@@ -66,6 +69,35 @@ type ImageKitFileLite = {
     url?: string;
 };
 
+function toTime(value: unknown): number {
+    if (value instanceof Date) {
+        return value.getTime();
+    }
+
+    if (typeof value === 'string' || typeof value === 'number') {
+        const time = new Date(value).getTime();
+        return Number.isNaN(time) ? 0 : time;
+    }
+
+    return 0;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+            reject(new Error(`Timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+
+        promise.then((value) => {
+            clearTimeout(timeoutId);
+            resolve(value);
+        }).catch((error) => {
+            clearTimeout(timeoutId);
+            reject(error);
+        });
+    });
+}
+
 // Known meal type patterns → Display names
 // ImageKit appends random suffixes to filenames (e.g., EARLY_MORNING_N85xmNZhk)
 // We match against these known types to get clean display names
@@ -114,28 +146,45 @@ function extractMealType(raw: string): string {
 }
 
 async function listImageKitFilesForClient(path: string, clientId: string) {
-    return withCache<ImageKitFileLite[]>(
-        `dietitian-panel:documents:imagekit:${path}:${clientId}`,
-        async () => {
-            const ik = getImageKit();
-            try {
-                const result = await ik.listFiles({
-                    path,
-                    searchQuery: `name : "${clientId}"`,
-                    limit: 100
-                });
-                return Array.isArray(result)
-                    ? (result as ImageKitFileLite[]).filter((file) => file.name?.startsWith(clientId))
-                    : [];
-            } catch {
-                const fallbackResult = await ik.listFiles({ path, limit: 500 });
-                return Array.isArray(fallbackResult)
-                    ? (fallbackResult as ImageKitFileLite[]).filter((file) => file.name?.startsWith(clientId))
-                    : [];
-            }
-        },
-        { ttl: 60000, tags: ['dietitian_panel'] }
-    );
+    const cacheKey = `dietitian-panel:documents:imagekit:${path}:${clientId}`;
+    const cachedFiles = serverCache.get<ImageKitFileLite[]>(cacheKey);
+    if (cachedFiles) {
+        return cachedFiles;
+    }
+
+    const ik = getImageKit();
+
+    const normalizeFiles = (files: unknown): ImageKitFileLite[] => {
+        return Array.isArray(files)
+            ? (files as ImageKitFileLite[]).filter((file) => file.name?.startsWith(clientId))
+            : [];
+    };
+
+    try {
+        const result = await withTimeout(
+            ik.listFiles({
+                path,
+                searchQuery: `name : "${clientId}"`,
+                limit: 100
+            }),
+            IMAGEKIT_LIST_TIMEOUT_MS
+        );
+        const filtered = normalizeFiles(result);
+        serverCache.set(cacheKey, filtered, DOCUMENTS_CACHE_TTL_SECONDS);
+        return filtered;
+    } catch {
+        try {
+            const fallbackResult = await withTimeout(
+                ik.listFiles({ path, limit: 100 }),
+                IMAGEKIT_LIST_TIMEOUT_MS
+            );
+            const filtered = normalizeFiles(fallbackResult);
+            serverCache.set(cacheKey, filtered, DOCUMENTS_CACHE_TTL_SECONDS);
+            return filtered;
+        } catch {
+            return [];
+        }
+    }
 }
 
 // GET /api/dietitian-panel/clients/[clientId]/documents - Get all documents for a client
@@ -227,7 +276,7 @@ export async function GET(
                     const completions = plan.mealCompletions || [];
                     completions.forEach((completion) => {
                         if (completion.imagePath) {
-                            const completionDate = new Date(completion.date);
+                            const completionDate = new Date(completion.date ?? Date.now());
                             const formattedDate = completionDate.toLocaleDateString('en-IN', {
                                 month: 'short',
                                 day: 'numeric',
@@ -370,7 +419,7 @@ export async function GET(
                     imagekitMealPictures,
                 };
             },
-            { ttl: 60000, tags: ['dietitian_panel'] }
+            { ttl: 300000, tags: ['dietitian_panel'] }
         );
 
         // Combine all documents and sort by upload date (most recent first)
@@ -380,7 +429,7 @@ export async function GET(
             ...assembled.mealCompletionImages,
             ...assembled.transformationImages,
             ...assembled.imagekitMealPictures
-        ].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+        ].sort((a, b) => toTime(b.uploadedAt) - toTime(a.uploadedAt));
 
         // Remove duplicates by filePath while preserving sort order.
         const seenPaths = new Set<string>();

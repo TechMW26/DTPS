@@ -88,6 +88,10 @@ export async function GET(request: NextRequest) {
         { isRead: true, readAt: new Date() }
       );
 
+      if (updateResult.modifiedCount > 0) {
+        clearCacheByTag('messages');
+      }
+
       // Broadcast socket update for unread counts
       const [notificationCount, messageCount] = await Promise.all([
         Notification.countDocuments({ userId: session.user.id, read: false }),
@@ -193,6 +197,8 @@ export async function POST(request: NextRequest) {
     });
 
     await message.save();
+
+    clearCacheByTag('messages');
 
     // Populate sender and receiver info
     await message.populate('sender', 'firstName lastName avatar role');

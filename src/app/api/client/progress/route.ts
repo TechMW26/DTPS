@@ -549,6 +549,7 @@ export async function POST(request: Request) {
         recordedAt: new Date()
       });
       await progressEntry.save();
+      clearCacheByTag('dietitian_panel');
 
       // Log activity
       logActivity({

@@ -90,6 +90,7 @@ export async function POST(request: Request) {
     // Clear caches so profile/medical pages show updated data immediately
     clearCacheByTag('client');
     clearCacheByTag(`client:medical-info:${session.user.id}`);
+    clearCacheByTag('dietitian_panel');
 
     // Log activity
     logActivity({
