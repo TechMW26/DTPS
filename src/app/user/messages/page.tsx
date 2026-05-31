@@ -64,6 +64,14 @@ interface Message {
   attachments?: MessageAttachment[];
   isRead: boolean;
   createdAt: string;
+  replyTo?: {
+    _id: string;
+    content: string;
+    type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file';
+    attachments?: MessageAttachment[];
+    sender?: Pick<MessageUser, 'firstName' | 'lastName' | 'avatar'>;
+    createdAt?: string;
+  };
 }
 
 interface Conversation {
@@ -123,8 +131,11 @@ export default function UserMessagesPage() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState('');
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const messageElementRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
@@ -1232,6 +1243,43 @@ export default function UserMessagesPage() {
     return !isSameDay(currentDate, prevDate);
   };
 
+  const getReplyPreviewText = (reply?: Message['replyTo']) => {
+    if (!reply) return '';
+
+    if (reply.type === 'image') return 'Photo';
+    if (reply.type === 'video') return 'Video';
+    if (reply.type === 'audio' || reply.type === 'voice') return 'Voice message';
+    if (reply.type === 'file') return reply.attachments?.[0]?.filename || 'Document';
+
+    return (reply.content || '').trim() || 'Message';
+  };
+
+  const jumpToOriginalMessage = (messageId?: string) => {
+    if (!messageId) return;
+
+    const targetElement = messageElementRefs.current[messageId];
+    if (!targetElement) return;
+
+    targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedMessageId(messageId);
+
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedMessageId((current) => (current === messageId ? null : current));
+    }, 3000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const toggleVoicePlayback = (messageId: string) => {
     const audio = audioRefs.current[messageId];
     if (!audio) {
@@ -1733,7 +1781,12 @@ export default function UserMessagesPage() {
                       };
 
                       return (
-                        <div key={message._id}>
+                        <div
+                          key={message._id}
+                          ref={(element) => {
+                            messageElementRefs.current[message._id] = element;
+                          }}
+                        >
                           {/* Date Separator - WhatsApp Style */}
                           {showDateSeparator && (
                             <div className="flex justify-center my-4 sticky top-2 z-10">
@@ -1767,8 +1820,28 @@ export default function UserMessagesPage() {
                                   : isDarkMode
                                     ? 'bg-[#202C33] text-white rounded-2xl rounded-tl-sm'
                                     : 'bg-white text-gray-900 rounded-2xl rounded-tl-sm'
-                                  }`}
+                                  } ${highlightedMessageId === message._id ? 'ring-3 ring-yellow-300 ring-offset-2 ring-offset-transparent' : ''} transition-all duration-300`}
                               >
+                                {message.replyTo && (
+                                  <button
+                                    type="button"
+                                    onClick={() => jumpToOriginalMessage(message.replyTo?._id)}
+                                    className={`mb-2 w-full rounded-lg border-l-3 px-2 py-1 text-left ${isOwn
+                                      ? 'bg-white/15 border-white/80'
+                                      : isDarkMode
+                                        ? 'bg-black/20 border-[#00A884]'
+                                        : 'bg-gray-100 border-[#00A884]'
+                                      }`}
+                                  >
+                                    <p className={`text-[11px] font-semibold ${isOwn ? 'text-white/95' : 'text-[#00A884]'}`}>
+                                      {message.replyTo.sender?.firstName || 'Reply'}
+                                    </p>
+                                    <p className={`text-[12px] leading-snug truncate ${isOwn ? 'text-white/90' : isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                      {getReplyPreviewText(message.replyTo)}
+                                    </p>
+                                  </button>
+                                )}
+
                                 {renderMessageContent()}
                                 <div className="flex items-center justify-end gap-1 mt-0.5">
                                   <span className="text-[10px] opacity-55">

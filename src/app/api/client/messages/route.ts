@@ -72,6 +72,14 @@ export async function GET(request: NextRequest) {
     const messages = await Message.find(query)
       .populate('sender', 'firstName lastName avatar role')
       .populate('receiver', 'firstName lastName avatar role')
+      .populate({
+        path: 'replyTo',
+        select: 'content type attachments sender createdAt',
+        populate: {
+          path: 'sender',
+          select: 'firstName lastName avatar'
+        }
+      })
       .sort({ createdAt: 1 }) // Oldest first for chronological display
       .lean();
 
