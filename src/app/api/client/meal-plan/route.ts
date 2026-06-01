@@ -10,7 +10,6 @@ import { withCache } from '@/lib/api/utils';
 import {
   MEAL_TYPES,
   MEAL_TYPE_KEYS,
-  normalizeMealType as canonicalNormalizeMealType,
   type MealTypeKey
 } from '@/lib/mealConfig';
 
@@ -33,6 +32,30 @@ function convertMealTypeToCamelCase(mealTypeKey: MealTypeKey | string): string {
   }
   // Fallback: try to convert manually
   return mealTypeKey.toLowerCase().replace(/_([a-z])/g, (match, char) => char.toUpperCase());
+}
+
+function resolveBuiltInMealTypeKey(input: string): MealTypeKey | null {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+
+  const canonicalCandidate = raw.toUpperCase().replace(/[\s-]+/g, '_');
+  if (MEAL_TYPE_KEYS.includes(canonicalCandidate as MealTypeKey)) {
+    return canonicalCandidate as MealTypeKey;
+  }
+
+  const camelToCanonical = Object.entries(mealTypeKeyToCamelCase).find(([, camel]) => camel === raw);
+  if (camelToCanonical) {
+    return camelToCanonical[0] as MealTypeKey;
+  }
+
+  // Preserve compatibility for a few legacy frontend keys only.
+  const legacyMap: Record<string, MealTypeKey> = {
+    morningSnack: 'MID_MORNING',
+    afternoonSnack: 'MID_EVENING',
+    eveningSnack: 'EVENING',
+  };
+
+  return legacyMap[raw] || null;
 }
 
 function resolveRequestedDate(dateParam: string | null): Date | null {
@@ -230,10 +253,10 @@ function getMealTypeByIndex(index: number): MealTypeKey {
 }
 
 function getDefaultMealTime(mealType: string): string {
-  // Normalize and get canonical time
-  const normalized = canonicalNormalizeMealType(mealType);
-  if (normalized && MEAL_TYPE_KEYS.includes(normalized)) {
-    return MEAL_TYPES[normalized as MealTypeKey].time12h;
+  // Resolve only strict built-in meal types; custom types should not be coerced.
+  const builtInKey = resolveBuiltInMealTypeKey(mealType);
+  if (builtInKey && MEAL_TYPE_KEYS.includes(builtInKey)) {
+    return MEAL_TYPES[builtInKey].time12h;
   }
   return '12:00 PM';
 }
@@ -351,11 +374,11 @@ function extractMeals(mealsData: any, planId: string, dayIndex: number, date: Da
   if (Array.isArray(mealsData)) {
     mealsData.forEach((meal: any, index: number) => {
       const mealType = meal.mealType || meal.type || getMealTypeByIndex(index);
-      const normalizedType = normalizeMealType(mealType);
-      const isKnownMealType = MEAL_TYPE_KEYS.includes(normalizedType as MealTypeKey);
+      const builtInKey = resolveBuiltInMealTypeKey(String(mealType));
+      const isKnownMealType = Boolean(builtInKey);
       // For known types, convert to camelCase; for custom types, use original name
       const camelCaseType = isKnownMealType
-        ? convertMealTypeToCamelCase(normalizedType as MealTypeKey)
+        ? convertMealTypeToCamelCase(builtInKey as MealTypeKey)
         : mealType; // Preserve custom meal type name as-is
       const items = extractFoodItems(meal, planId, dayIndex, index);
       const macros = calculateMealMacros(meal);
@@ -372,7 +395,7 @@ function extractMeals(mealsData: any, planId: string, dayIndex: number, date: Da
         notes: meal.notes || meal.note || '',
         items: items,
         itemCount: items.length, // Explicit count for debugging
-        isCompleted: checkMealCompletion(completions, date, String(normalizedType || mealType), String(mealType)),
+        isCompleted: checkMealCompletion(completions, date, String(builtInKey || mealType), String(mealType)),
         isEmpty: items.length === 0
       });
     });
@@ -392,11 +415,11 @@ function extractMeals(mealsData: any, planId: string, dayIndex: number, date: Da
 
       // Check if it looks like a meal (has foods/items or is a recognized meal type)
       const hasFoodData = meal.foods || meal.items || meal.foodOptions;
-      const normalizedType = normalizeMealType(mealType);
-      const isKnownMealType = MEAL_TYPE_KEYS.includes(normalizedType as MealTypeKey);
+      const builtInKey = resolveBuiltInMealTypeKey(String(mealType));
+      const isKnownMealType = Boolean(builtInKey);
       // For known types, convert to camelCase; for custom types, use original name
       const camelCaseType = isKnownMealType
-        ? convertMealTypeToCamelCase(normalizedType as MealTypeKey)
+        ? convertMealTypeToCamelCase(builtInKey as MealTypeKey)
         : mealType; // Preserve custom meal type name as-is
 
       if (hasFoodData || isKnownMealType) {
@@ -415,7 +438,7 @@ function extractMeals(mealsData: any, planId: string, dayIndex: number, date: Da
           notes: meal.notes || meal.note || '',
           items: items,
           itemCount: items.length,
-          isCompleted: checkMealCompletion(completions, date, String(normalizedType || mealType), String(mealType)),
+          isCompleted: checkMealCompletion(completions, date, String(builtInKey || mealType), String(mealType)),
           isEmpty: items.length === 0
         });
         mealIndex++;
@@ -425,12 +448,6 @@ function extractMeals(mealsData: any, planId: string, dayIndex: number, date: Da
 
   return results;
 }
-
-// Use imported canonical normalizeMealType as 'normalizeMealType' for local usage
-const normalizeMealType = (type: string): MealTypeKey | string => {
-  const result = canonicalNormalizeMealType(type);
-  return result || type;
-};
 
 function hasFood(meal: any): boolean {
   const foods = flattenMealFoods(meal);

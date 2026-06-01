@@ -10,7 +10,7 @@ import { UserRole } from '@/types';
 import { parseISO, startOfDay, isToday, isValid } from 'date-fns';
 import { getImageKit } from '@/lib/imagekit';
 import { compressImageServer } from '@/lib/imageCompressionServer';
-import { MEAL_TYPE_KEYS, normalizeMealType, type MealTypeKey } from '@/lib/mealConfig';
+import { MEAL_TYPE_KEYS, type MealTypeKey } from '@/lib/mealConfig';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { broadcastUnreadCounts, broadcastStaffUnreadCounts } from '@/lib/realtime/broadcast-counts';
 import { clearCacheByTag } from '@/lib/api/utils';
@@ -30,6 +30,36 @@ const CAMELCASE_TO_CANONICAL: Record<string, MealTypeKey> = {
 
 const normalizeTypeForCompare = (type: string | undefined | null): string =>
   (type || '').toLowerCase().replace(/[\s_-]+/g, '');
+
+function resolveBuiltInMealTypeKey(input: string): MealTypeKey | null {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+
+  const canonicalCandidate = raw.toUpperCase().replace(/[\s-]+/g, '_');
+  if (MEAL_TYPE_KEYS.includes(canonicalCandidate as MealTypeKey)) {
+    return canonicalCandidate as MealTypeKey;
+  }
+
+  if (CAMELCASE_TO_CANONICAL[raw]) {
+    return CAMELCASE_TO_CANONICAL[raw];
+  }
+
+  // Legacy compatibility only; do not coerce arbitrary custom names.
+  const legacyMap: Record<string, MealTypeKey> = {
+    morningSnack: 'MID_MORNING',
+    afternoonSnack: 'MID_EVENING',
+    eveningSnack: 'EVENING',
+  };
+
+  return legacyMap[raw] || null;
+}
+
+const toSafeMealTypeFileSegment = (value: string): string =>
+  String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase() || 'MEAL';
 
 type MealCompletionSideEffectArgs = {
   clientId: string;
@@ -247,24 +277,20 @@ export async function POST(request: NextRequest) {
     const mealIndex = parseInt(mealIdParts[2] || '0');
 
     const requestedMealTypeRaw = String(mealType || '').trim();
-    const normalizedRequestedType = requestedMealTypeRaw ? normalizeMealType(requestedMealTypeRaw) : null;
+    const builtInRequestedType = requestedMealTypeRaw
+      ? resolveBuiltInMealTypeKey(requestedMealTypeRaw)
+      : null;
 
     // Normalize meal type: handle camelCase from frontend, use canonical UPPERCASE keys for DB
     let determinedMealType: MealTypeKey;
     if (requestedMealTypeRaw) {
-      // Check if it's a camelCase type from frontend
-      if (CAMELCASE_TO_CANONICAL[requestedMealTypeRaw]) {
-        determinedMealType = CAMELCASE_TO_CANONICAL[requestedMealTypeRaw];
-      } else {
-        // Try to normalize using the mealConfig function
-        determinedMealType = normalizedRequestedType || MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
-      }
+      determinedMealType = builtInRequestedType || MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
     } else {
       // Fallback to index-based meal type
       determinedMealType = MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
     }
 
-    const isCustomMealType = Boolean(requestedMealTypeRaw) && !normalizedRequestedType && !CAMELCASE_TO_CANONICAL[requestedMealTypeRaw];
+    const isCustomMealType = Boolean(requestedMealTypeRaw) && !builtInRequestedType;
 
     const mealCompletions = Array.isArray(mealPlan.mealCompletions)
       ? [...mealPlan.mealCompletions]
@@ -278,7 +304,10 @@ export async function POST(request: NextRequest) {
         const timestamp = Date.now();
         const clientId = session.user.id;
         const determinedExt = 'jpg'; // Will be jpg after compression
-        const filename = `${clientId}-${timestamp}-${determinedMealType}.${determinedExt}`;
+        const fileMealTypeSegment = isCustomMealType
+          ? toSafeMealTypeFileSegment(requestedMealTypeRaw)
+          : determinedMealType;
+        const filename = `${clientId}-${timestamp}-${fileMealTypeSegment}.${determinedExt}`;
 
         // Convert File to buffer and compress
         const bytes = await imageFile.arrayBuffer();
