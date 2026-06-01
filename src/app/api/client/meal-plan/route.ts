@@ -252,12 +252,36 @@ function getDefaultMealSlots(planId: string, dayIndex: number): any[] {
   }));
 }
 
+const normalizeTypeForCompare = (type: string | undefined | null): string =>
+  (type || '').toLowerCase().replace(/[\s_-]+/g, '');
+
+function flattenMealFoods(meal: any): any[] {
+  if (!meal) return [];
+
+  const foods = meal.foods || meal.items || meal.foodOptions || [];
+  if (!Array.isArray(foods)) return [];
+
+  return foods.flatMap((food: any) => {
+    if (Array.isArray(food?.foods) && food.foods.length > 0) {
+      return food.foods.map((nestedFood: any) => ({
+        ...nestedFood,
+        isAlternative: Boolean(food.isAlternative || nestedFood.isAlternative),
+        recipeId: nestedFood.recipeId || food.recipeId,
+        recipeUuid: nestedFood.recipeUuid || food.recipeUuid,
+        recipe: nestedFood.recipe || food.recipe,
+      }));
+    }
+
+    return [food];
+  }).filter(Boolean);
+}
+
 function calculateMealCalories(meal: any): number {
   if (!meal) return 0;
   if (meal.totalCalories) return Number(meal.totalCalories) || 0;
 
-  const foods = meal.foods || meal.items || meal.foodOptions || [];
-  if (!Array.isArray(foods)) return 0;
+  const foods = flattenMealFoods(meal);
+  if (!foods.length) return 0;
 
   // Only count main foods — exclude alternatives (client eats one OR the other, not both)
   const mainFoods = foods.filter((f: any) => !f.isAlternative);
@@ -272,8 +296,8 @@ function calculateMealMacros(meal: any): { calories: number; protein: number; ca
   const result = { calories: 0, protein: 0, carbs: 0, fat: 0 };
   if (!meal) return result;
 
-  const foods = meal.foods || meal.items || meal.foodOptions || [];
-  if (!Array.isArray(foods)) return result;
+  const foods = flattenMealFoods(meal);
+  if (!foods.length) return result;
 
   // Only count main foods — exclude alternatives (client eats one OR the other, not both)
   const mainFoods = foods.filter((f: any) => !f.isAlternative);
@@ -293,15 +317,27 @@ function calculateMealMacros(meal: any): { calories: number; protein: number; ca
   return result;
 }
 
-function checkMealCompletion(completions: any[], date: Date, mealType: string): boolean {
+function checkMealCompletion(completions: any[], date: Date, mealType: string, originalMealType?: string): boolean {
   if (!completions?.length) return false;
 
   const dateStart = startOfDay(date);
   const dateEnd = endOfDay(date);
+  const targetMealKey = normalizeTypeForCompare(mealType);
+  const targetOriginalKey = normalizeTypeForCompare(originalMealType || mealType);
 
   return completions.some(c => {
     const cDate = new Date(c.date);
-    return cDate >= dateStart && cDate <= dateEnd && c.mealType === mealType && c.completed;
+    if (!(cDate >= dateStart && cDate <= dateEnd && c.completed)) {
+      return false;
+    }
+
+    const completionMealTypeKey = normalizeTypeForCompare(c.mealType);
+    const completionOriginalTypeKey = normalizeTypeForCompare(c.mealTypeOriginal);
+
+    return completionMealTypeKey === targetMealKey ||
+      completionMealTypeKey === targetOriginalKey ||
+      completionOriginalTypeKey === targetOriginalKey ||
+      completionOriginalTypeKey === targetMealKey;
   });
 }
 
@@ -336,7 +372,7 @@ function extractMeals(mealsData: any, planId: string, dayIndex: number, date: Da
         notes: meal.notes || meal.note || '',
         items: items,
         itemCount: items.length, // Explicit count for debugging
-        isCompleted: checkMealCompletion(completions, date, normalizedType || mealType),
+        isCompleted: checkMealCompletion(completions, date, String(normalizedType || mealType), String(mealType)),
         isEmpty: items.length === 0
       });
     });
@@ -379,7 +415,7 @@ function extractMeals(mealsData: any, planId: string, dayIndex: number, date: Da
           notes: meal.notes || meal.note || '',
           items: items,
           itemCount: items.length,
-          isCompleted: checkMealCompletion(completions, date, normalizedType || mealType),
+          isCompleted: checkMealCompletion(completions, date, String(normalizedType || mealType), String(mealType)),
           isEmpty: items.length === 0
         });
         mealIndex++;
@@ -393,20 +429,19 @@ function extractMeals(mealsData: any, planId: string, dayIndex: number, date: Da
 // Use imported canonical normalizeMealType as 'normalizeMealType' for local usage
 const normalizeMealType = (type: string): MealTypeKey | string => {
   const result = canonicalNormalizeMealType(type);
-  return result || type.toLowerCase().replace(/\\s+/g, '');
+  return result || type;
 };
 
 function hasFood(meal: any): boolean {
-  if (!meal) return false;
-  const foods = meal.foods || meal.items || meal.foodOptions || [];
-  return Array.isArray(foods) && foods.length > 0 && foods.some((f: any) => f.food || f.name || f.foodName);
+  const foods = flattenMealFoods(meal);
+  return foods.length > 0 && foods.some((f: any) => f.food || f.name || f.foodName);
 }
 
 function extractFoodItems(meal: any, planId: string, dayIndex: number, mealIndex: number): any[] {
   if (!meal) return [];
 
-  const foods = meal.foods || meal.items || meal.foodOptions || [];
-  if (!Array.isArray(foods)) return [];
+  const foods = flattenMealFoods(meal);
+  if (!foods.length) return [];
 
   // Extract ALL food items - no filtering, include everything
   return foods.map((food: any, foodIndex: number) => {

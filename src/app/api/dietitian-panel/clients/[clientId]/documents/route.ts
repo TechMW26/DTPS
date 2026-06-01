@@ -53,6 +53,7 @@ type MealCompletion = {
     imagePath?: string;
     date?: string | Date;
     mealType?: string;
+    mealTypeOriginal?: string;
     notes?: string;
 };
 
@@ -288,7 +289,7 @@ export async function GET(
                                 minute: '2-digit'
                             });
 
-                            const mealTypeDisplay = (completion.mealType || 'Meal')
+                            const mealTypeDisplay = completion.mealTypeOriginal || (completion.mealType || 'Meal')
                                 .split('_')
                                 .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
                                 .join(' ');
@@ -431,14 +432,33 @@ export async function GET(
             ...assembled.imagekitMealPictures
         ].sort((a, b) => toTime(b.uploadedAt) - toTime(a.uploadedAt));
 
-        // Remove duplicates by filePath while preserving sort order.
-        const seenPaths = new Set<string>();
-        const uniqueDocuments = allDocuments.filter((doc) => {
+        // Remove duplicates by filePath while preserving order, but prefer
+        // DB-backed meal completion entries over generic ImageKit fallback entries.
+        const uniqueDocuments: typeof allDocuments = [];
+        const pathIndex = new Map<string, number>();
+
+        allDocuments.forEach((doc) => {
             const key = String(doc.filePath || '');
-            if (!key) return true;
-            if (seenPaths.has(key)) return false;
-            seenPaths.add(key);
-            return true;
+            if (!key) {
+                uniqueDocuments.push(doc);
+                return;
+            }
+
+            const existingIndex = pathIndex.get(key);
+            if (existingIndex === undefined) {
+                pathIndex.set(key, uniqueDocuments.length);
+                uniqueDocuments.push(doc);
+                return;
+            }
+
+            const existing = uniqueDocuments[existingIndex] as any;
+            const shouldReplaceExisting =
+                existing?.source === 'imagekit-meal' &&
+                (doc as any)?.source === 'meal-completion';
+
+            if (shouldReplaceExisting) {
+                uniqueDocuments[existingIndex] = doc as any;
+            }
         });
 
         // Count by type from unique documents

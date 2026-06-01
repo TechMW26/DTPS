@@ -28,11 +28,15 @@ const CAMELCASE_TO_CANONICAL: Record<string, MealTypeKey> = {
   'pastDinner': 'PAST_DINNER',
 };
 
+const normalizeTypeForCompare = (type: string | undefined | null): string =>
+  (type || '').toLowerCase().replace(/[\s_-]+/g, '');
+
 type MealCompletionSideEffectArgs = {
   clientId: string;
   mealPlanId: string;
   mealPlanName: string;
   mealType: MealTypeKey;
+  mealTypeLabel?: string;
   requestedDate: Date;
   notes: string;
   imagePath?: string;
@@ -51,6 +55,7 @@ function queueMealCompletionSideEffects(args: MealCompletionSideEffectArgs): voi
           mealPlanId,
           mealPlanName,
           mealType,
+          mealTypeLabel,
           requestedDate,
           notes,
           imagePath,
@@ -69,7 +74,7 @@ function queueMealCompletionSideEffects(args: MealCompletionSideEffectArgs): voi
         }
 
         if (imagePath && resolvedDietitianId) {
-          const mealLabel = mealType
+          const mealLabel = mealTypeLabel?.trim() || mealType
             .toLowerCase()
             .replace(/_/g, ' ')
             .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -141,7 +146,7 @@ function queueMealCompletionSideEffects(args: MealCompletionSideEffectArgs): voi
           resourceId: mealPlanId,
           resourceType: 'ClientMealPlan',
           resourceName: mealPlanName,
-          details: { mealType, date: requestedDate.toISOString(), hasImage: !!imagePath },
+          details: { mealType, mealTypeLabel, date: requestedDate.toISOString(), hasImage: !!imagePath },
         }).catch(() => { });
 
         try {
@@ -241,21 +246,25 @@ export async function POST(request: NextRequest) {
     const mealIdParts = mealId.split('-');
     const mealIndex = parseInt(mealIdParts[2] || '0');
 
+    const requestedMealTypeRaw = String(mealType || '').trim();
+    const normalizedRequestedType = requestedMealTypeRaw ? normalizeMealType(requestedMealTypeRaw) : null;
+
     // Normalize meal type: handle camelCase from frontend, use canonical UPPERCASE keys for DB
     let determinedMealType: MealTypeKey;
-    if (mealType) {
+    if (requestedMealTypeRaw) {
       // Check if it's a camelCase type from frontend
-      if (CAMELCASE_TO_CANONICAL[mealType]) {
-        determinedMealType = CAMELCASE_TO_CANONICAL[mealType];
+      if (CAMELCASE_TO_CANONICAL[requestedMealTypeRaw]) {
+        determinedMealType = CAMELCASE_TO_CANONICAL[requestedMealTypeRaw];
       } else {
         // Try to normalize using the mealConfig function
-        const normalized = normalizeMealType(mealType);
-        determinedMealType = normalized || MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
+        determinedMealType = normalizedRequestedType || MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
       }
     } else {
       // Fallback to index-based meal type
       determinedMealType = MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
     }
+
+    const isCustomMealType = Boolean(requestedMealTypeRaw) && !normalizedRequestedType && !CAMELCASE_TO_CANONICAL[requestedMealTypeRaw];
 
     const mealCompletions = Array.isArray(mealPlan.mealCompletions)
       ? [...mealPlan.mealCompletions]
@@ -308,17 +317,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if meal is already completed for this date
+    const requestedCanonicalKey = normalizeTypeForCompare(determinedMealType);
+    const requestedOriginalKey = normalizeTypeForCompare(requestedMealTypeRaw);
+
     const existingCompletionIndex = mealCompletions.findIndex((c: any) => {
       const completionDate = new Date(c.date);
       const targetDate = startOfDay(requestedDate);
-      return startOfDay(completionDate).getTime() === targetDate.getTime() &&
-        c.mealType === determinedMealType;
+      if (startOfDay(completionDate).getTime() !== targetDate.getTime()) {
+        return false;
+      }
+
+      const completionCanonicalKey = normalizeTypeForCompare(c.mealType);
+      const completionOriginalKey = normalizeTypeForCompare(c.mealTypeOriginal);
+
+      if (isCustomMealType && requestedOriginalKey) {
+        if (completionOriginalKey && completionOriginalKey === requestedOriginalKey) {
+          return true;
+        }
+      }
+
+      return completionCanonicalKey === requestedCanonicalKey;
     });
 
     if (existingCompletionIndex >= 0) {
       // Update existing completion
       mealCompletions[existingCompletionIndex].completed = true;
       mealCompletions[existingCompletionIndex].notes = notes || undefined;
+      mealCompletions[existingCompletionIndex].mealTypeOriginal = isCustomMealType ? requestedMealTypeRaw : undefined;
       if (imagePath) {
         mealCompletions[existingCompletionIndex].imagePath = imagePath;
       }
@@ -327,6 +352,7 @@ export async function POST(request: NextRequest) {
       mealCompletions.push({
         date: startOfDay(requestedDate),
         mealType: determinedMealType,
+        mealTypeOriginal: isCustomMealType ? requestedMealTypeRaw : undefined,
         completed: true,
         notes: notes || undefined,
         imagePath: imagePath || undefined
@@ -360,12 +386,14 @@ export async function POST(request: NextRequest) {
     );
 
     clearCacheByTag('dietitian_panel');
+    clearCacheByTag('client');
 
     queueMealCompletionSideEffects({
       clientId: session.user.id,
       mealPlanId: mealPlan._id?.toString(),
       mealPlanName: mealPlan.name,
       mealType: determinedMealType,
+      mealTypeLabel: requestedMealTypeRaw || undefined,
       requestedDate,
       notes,
       imagePath,
@@ -381,6 +409,7 @@ export async function POST(request: NextRequest) {
       completion: {
         date: requestedDate,
         mealType: determinedMealType,
+        mealTypeOriginal: isCustomMealType ? requestedMealTypeRaw : undefined,
         completed: true,
         imagePath: imagePath
       },

@@ -34,10 +34,12 @@ interface IProgressEntry {
 interface IMealCompletion {
   date: Date;
   mealType: 'EARLY_MORNING' | 'BREAKFAST' | 'MID_MORNING' | 'LUNCH' | 'MID_EVENING' | 'EVENING' | 'DINNER' | 'PAST_DINNER';
+  mealTypeOriginal?: string;
   completed: boolean;
   actualServings?: number;
   substitutions?: string;
   notes?: string;
+  imagePath?: string;
   rating?: 1 | 2 | 3 | 4 | 5;
 }
 
@@ -190,10 +192,12 @@ const MealCompletionSchema = new Schema({
     required: true,
     enum: MEAL_TYPE_KEYS
   },
+  mealTypeOriginal: { type: String, maxlength: 100 },
   completed: { type: Boolean, required: true, default: false },
   actualServings: { type: Number, min: 0, max: 10 },
   substitutions: { type: String, maxlength: 200 },
   notes: { type: String, maxlength: 300 },
+  imagePath: { type: String, maxlength: 1000 },
   rating: { type: Number, min: 1, max: 5 }
 }, { _id: false });
 
