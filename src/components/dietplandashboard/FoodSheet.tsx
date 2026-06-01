@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   X,
   Search,
-  Filter,
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -16,7 +15,6 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Debounce hook for search optimization
 function useDebounce<T>(value: T, delay: number): T {
@@ -114,7 +112,6 @@ export function FoodDatabasePanel({
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [refreshKey, setRefreshKey] = useState(0);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalRecipes, setTotalRecipes] = useState<number | null>(null);
@@ -148,9 +145,6 @@ export function FoodDatabasePanel({
         params.append('page', String(currentPage));
         params.append('includeTotal', shouldIncludeTotal ? 'true' : 'false');
         params.append('sortBy', canUseSearch ? 'relevance' : 'name');
-        if (categoryFilter && categoryFilter !== 'all') {
-          params.append('category', categoryFilter);
-        }
         if (canUseSearch) {
           params.append('search', effectiveSearch);
           params.append('searchMode', 'typing');
@@ -254,7 +248,6 @@ export function FoodDatabasePanel({
     fetchRecipes();
   }, [
     isOpen,
-    categoryFilter,
     clientDietaryArr.join(','),
     clientMedicalArr.join(','),
     clientAllergyArr.join(','),
@@ -263,10 +256,6 @@ export function FoodDatabasePanel({
     throttledSearchQuery,
     itemsPerPage,
   ]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [categoryFilter]);
 
   const handleRefresh = () => {
     requestCacheRef.current = {};
@@ -365,7 +354,7 @@ export function FoodDatabasePanel({
         {/* Toolbar */}
         <div className="flex items-center justify-between gap-4 p-4 border-b border-gray-200 bg-white">
           <div className="flex items-center gap-3 flex-1">
-            <div className="flex items-center gap-2 flex-1 max-w-sm">
+            <div className="flex items-center gap-2 flex-1 max-w-xl">
               <Search className="w-4 h-4 text-gray-400" />
               <Input
                 value={searchQuery}
@@ -374,26 +363,9 @@ export function FoodDatabasePanel({
                   setSearchQuery(e.target.value);
                 }}
                 placeholder="Search recipes..."
-                className="h-10 bg-gray-50 border-gray-300 flex-1"
+                className="h-11 bg-gray-50 border-gray-300 flex-1 text-base"
               />
             </div>
-            <Select
-              value={categoryFilter}
-              onValueChange={setCategoryFilter}
-            >
-              <SelectTrigger className="w-40 h-10 border-gray-300">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent style={{ zIndex: 130 }}>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="breakfast">Breakfast</SelectItem>
-                <SelectItem value="lunch">Lunch</SelectItem>
-                <SelectItem value="dinner">Dinner</SelectItem>
-                <SelectItem value="snack">Snack</SelectItem>
-                <SelectItem value="dessert">Dessert</SelectItem>
-                <SelectItem value="beverage">Beverage</SelectItem>
-              </SelectContent>
-            </Select>
             <Button
               variant="outline"
               size="sm"
