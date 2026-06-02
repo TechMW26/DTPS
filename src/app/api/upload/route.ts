@@ -139,16 +139,40 @@ export async function POST(request: NextRequest) {
       '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.zip'
     ]);
 
+    // Image file extensions used as a fallback for gallery pickers (Android/iPhone)
+    // that report an empty or non-standard MIME type.
+    const imageAllowedExtensions = new Set([
+      '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif'
+    ]);
+
     const isMessageTypeAllowed =
       fileType === 'message' && (
         allowedTypes[fileType]?.includes(normalizedMimeType) ||
         normalizedMimeType.startsWith('image/') ||
         normalizedMimeType.startsWith('video/') ||
         normalizedMimeType.startsWith('audio/') ||
-        messageAllowedExtensions.has(extension)
+        messageAllowedExtensions.has(extension) ||
+        // Android gallery often returns an empty MIME type
+        normalizedMimeType === ''
       );
 
-    if (!isMessageTypeAllowed && !allowedTypes[fileType]?.includes(normalizedMimeType)) {
+    // Image-based upload types (avatar, progress photos, recipe images, etc.)
+    // Accept when MIME is image/* OR when the picker reported an empty MIME but
+    // the file extension is a known image type (Android/iPhone gallery quirk).
+    const imageBasedTypes = new Set([
+      'avatar', 'recipe-image', 'progress', 'progress-photo',
+      'ecommerce', 'transformation', 'bug', 'medical-report', 'document', 'note-attachment'
+    ]);
+    const isImageTypeAllowedByExtension =
+      imageBasedTypes.has(fileType as string) &&
+      (normalizedMimeType === '' || normalizedMimeType.startsWith('image/')) &&
+      imageAllowedExtensions.has(extension);
+
+    if (
+      !isMessageTypeAllowed &&
+      !isImageTypeAllowedByExtension &&
+      !allowedTypes[fileType]?.includes(normalizedMimeType)
+    ) {
       return NextResponse.json(
         { error: 'Invalid file type' },
         { status: 400 }

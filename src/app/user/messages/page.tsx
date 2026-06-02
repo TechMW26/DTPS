@@ -4,7 +4,6 @@ import { useEffect, useState, useRef, type ChangeEvent, type PointerEvent as Rea
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
 import { useRealtime } from '@/hooks/useRealtime';
@@ -29,6 +28,7 @@ import {
   RotateCcw,
   Camera,
   File as FileIcon,
+  ChevronDown,
   X
 } from 'lucide-react';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -132,6 +132,7 @@ export default function UserMessagesPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState('');
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messageElementRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -550,6 +551,15 @@ export default function UserMessagesPage() {
     });
   };
 
+  // Show the floating down-arrow only when the user has scrolled up away from the latest message
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    setShowScrollToBottom(distanceFromBottom > 250);
+  };
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation || sending) return;
 
@@ -901,16 +911,23 @@ export default function UserMessagesPage() {
       let file = rawFile;
 
       if (messageType === 'image' && rawFile.type.startsWith('image/')) {
-        const compressed = await compressImage(rawFile, {
-          maxWidth: 800,
-          maxHeight: 800,
-          quality: 0.7,
-          format: 'image/jpeg'
-        });
-        file = new File([compressed.blob], rawFile.name.replace(/\.[^.]+$/, '.jpg'), {
-          type: 'image/jpeg',
-          lastModified: Date.now()
-        });
+        try {
+          const compressed = await compressImage(rawFile, {
+            maxWidth: 800,
+            maxHeight: 800,
+            quality: 0.7,
+            format: 'image/jpeg'
+          });
+          file = new File([compressed.blob], rawFile.name.replace(/\.[^.]+$/, '.jpg'), {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+        } catch (compressionError) {
+          // Some gallery images (e.g. iPhone HEIC/HEIF) can't be decoded by canvas.
+          // Fall back to uploading the original file so the send still succeeds.
+          console.warn('Image compression failed, uploading original file:', compressionError);
+          file = rawFile;
+        }
       }
 
       if (messageType === 'video') {
@@ -1342,7 +1359,7 @@ export default function UserMessagesPage() {
   }
 
   return (
-    <PageTransition>
+    <>
       <div className={`h-dvh md:h-screen overflow-hidden ${isDarkMode ? 'bg-gray-950' : 'bg-[#ECE5DD]'}`}>
         <div className="h-full md:h-[calc(100vh-120px)] flex flex-col md:flex-row md:gap-4 md:p-6 overflow-hidden">
           {/* Conversations List - Hidden on mobile when conversation selected */}
@@ -1438,7 +1455,7 @@ export default function UserMessagesPage() {
               } ${!selectedConversation ? 'hidden md:flex' : 'flex fixed inset-0 z-50 md:relative md:z-auto'}`}
           >
             {selectedConversation ? (
-              <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
                 {/* Chat Header - WhatsApp Style - Fixed at top */}
                 <div
                   className={`flex items-center justify-between p-3 bg-[#075E54] text-white md:border-b md:rounded-t-xl shrink-0 ${isDarkMode ? 'md:bg-gray-900 md:text-white md:border-gray-800' : 'md:bg-white md:text-gray-900 md:border-gray-100'
@@ -1477,6 +1494,7 @@ export default function UserMessagesPage() {
                 {/* Messages - WhatsApp Style - Scrollable area */}
                 <div
                   ref={messagesContainerRef}
+                  onScroll={handleMessagesScroll}
                   className="px-3 py-2 space-y-1"
                   style={{
                     flex: 1,
@@ -1906,6 +1924,21 @@ export default function UserMessagesPage() {
                   <div ref={messagesEndRef} />
                 </div>
 
+                {/* Floating scroll-to-latest button */}
+                {showScrollToBottom && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      scrollToBottom(false);
+                      setShowScrollToBottom(false);
+                    }}
+                    aria-label="Scroll to latest message"
+                    className="absolute right-4 bottom-24 z-60 h-10 w-10 rounded-full bg-[#075E54] text-white shadow-lg flex items-center justify-center transition-transform active:scale-95 hover:bg-[#0a6e62] md:bottom-28"
+                  >
+                    <ChevronDown className="h-5 w-5" />
+                  </button>
+                )}
+
                 <div
                   className="border-t"
                   style={{
@@ -2063,10 +2096,10 @@ export default function UserMessagesPage() {
                       )}
                     </div>
 
-                    <input ref={imageRef} type="file" accept="image/*" hidden onChange={handleImageUpload} />
+                    <input ref={imageRef} type="file" accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.gif" hidden onChange={handleImageUpload} />
                     <input ref={videoRef} type="file" accept="video/*" hidden onChange={handleVideoUpload} />
                     <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx" hidden onChange={handleDocUpload} />
-                    <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={handleImageUpload} />
+                    <input ref={cameraRef} type="file" accept="image/*,.heic,.heif" capture="environment" hidden onChange={handleImageUpload} />
                   </div>
                 </div>
               </div>
@@ -2160,6 +2193,6 @@ export default function UserMessagesPage() {
         src={lightboxImage}
         alt="Message attachment"
       />
-    </PageTransition>
+    </>
   );
 }

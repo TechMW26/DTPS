@@ -158,8 +158,8 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
               key={gender}
               onClick={() => updateData({ gender })}
               className={`flex-1 py-2.5 rounded-full text-sm font-medium transition-all ${data.gender === gender
-                  ? 'bg-[#3AB1A0] text-white'
-                  : isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                ? 'bg-[#3AB1A0] text-white'
+                : isDarkMode ? 'text-gray-400' : 'text-gray-600'
                 }`}
             >
               {gender.charAt(0).toUpperCase() + gender.slice(1)}
@@ -181,8 +181,8 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
           max={maxDateStr}
           min={minDateStr}
           className={`w-full px-4 py-3 border rounded-2xl text-lg focus:ring-2 focus:ring-[#3AB1A0] focus:border-[#3AB1A0] ${isDarkMode
-              ? 'bg-gray-800 border-gray-700 text-white'
-              : 'bg-white border-gray-200 text-gray-900'
+            ? 'bg-gray-800 border-gray-700 text-white'
+            : 'bg-white border-gray-200 text-gray-900'
             }`}
         />
         {data.dateOfBirth && (
@@ -204,8 +204,8 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
               onChange={(e) => handleHeightCmChange(e.target.value)}
               placeholder="Height in CM"
               className={`w-full px-4 py-3 border rounded-2xl text-lg focus:ring-2 focus:ring-[#3AB1A0] focus:border-[#3AB1A0] pr-14 ${isDarkMode
-                  ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500'
-                  : 'bg-white border-gray-200 text-gray-900'
+                ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500'
+                : 'bg-white border-gray-200 text-gray-900'
                 }`}
             />
             <span className={`absolute right-4 top-1/2 -translate-y-1/2 font-medium ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>cm</span>
@@ -236,8 +236,8 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
             onChange={(e) => updateData({ weightKg: e.target.value })}
             placeholder="Weight in KG"
             className={`w-full px-4 py-3 border rounded-2xl text-lg focus:ring-2 focus:ring-[#3AB1A0] focus:border-[#3AB1A0] pr-14 ${isDarkMode
-                ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500'
-                : 'bg-white border-gray-200 text-gray-900'
+              ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500'
+              : 'bg-white border-gray-200 text-gray-900'
               }`}
           />
           <span className={`absolute right-4 top-1/2 -translate-y-1/2 font-medium ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>kg</span>
@@ -262,8 +262,8 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
                 key={level.value}
                 onClick={() => updateData({ activityLevel: level.value as OnboardingData['activityLevel'] })}
                 className={`w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all ${data.activityLevel === level.value
-                    ? 'border-[#3AB1A0] bg-[#3AB1A0]/10'
-                    : isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'
+                  ? 'border-[#3AB1A0] bg-[#3AB1A0]/10'
+                  : isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'
                   }`}
               >
                 <div className={`h-12 w-12 rounded-2xl flex items-center justify-center ${data.activityLevel === level.value ? 'bg-[#3AB1A0]/20' : isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
@@ -293,8 +293,8 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
           onClick={onNext}
           disabled={!isValid}
           className={`w-full py-4 rounded-full font-semibold text-lg flex items-center justify-center gap-2 transition-all ${isValid
-              ? 'bg-[#E06A26] text-white hover:bg-[#c55a1f]'
-              : isDarkMode ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            ? 'bg-[#E06A26] text-white hover:bg-[#c55a1f]'
+            : isDarkMode ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
             }`}
         >
           Continue
@@ -363,8 +363,8 @@ function Step2Goals({ onNext, onBack, data, updateData, isDarkMode }: StepProps)
               key={goal.value}
               onClick={() => updateData({ primaryGoal: goal.value as OnboardingData['primaryGoal'] })}
               className={`w-full p-5 rounded-2xl border-2 flex items-center gap-4 transition-all ${data.primaryGoal === goal.value
-                  ? 'border-[#3AB1A0] bg-[#3AB1A0]/10'
-                  : isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'
+                ? 'border-[#3AB1A0] bg-[#3AB1A0]/10'
+                : isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'
                 }`}
             >
               <div className={`h-14 w-14 rounded-2xl flex items-center justify-center ${data.primaryGoal === goal.value ? 'bg-[#3AB1A0]/20' : isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
@@ -378,8 +378,8 @@ function Step2Goals({ onNext, onBack, data, updateData, isDarkMode }: StepProps)
                 <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{goal.description}</p>
               </div>
               <div className={`h-6 w-6 rounded-full border-2 flex items-center justify-center ${data.primaryGoal === goal.value
-                  ? 'border-[#3AB1A0] bg-white'
-                  : isDarkMode ? 'border-gray-600' : 'border-gray-300'
+                ? 'border-[#3AB1A0] bg-white'
+                : isDarkMode ? 'border-gray-600' : 'border-gray-300'
                 }`}>
                 {data.primaryGoal === goal.value && (
                   <div className="h-2.5 w-2.5 rounded-full bg-[#3AB1A0]" />
@@ -570,8 +570,8 @@ function Step4DietaryPreferences({ onNext, onBack, data, updateData, isDarkMode 
             key={diet.value}
             onClick={() => updateData({ dietType: diet.value })}
             className={`p-4 rounded-2xl border-2 flex flex-col items-center text-center transition-all ${data.dietType === diet.value
-                ? 'border-[#3AB1A0] bg-[#3AB1A0]/10'
-                : isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'
+              ? 'border-[#3AB1A0] bg-[#3AB1A0]/10'
+              : isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-100 bg-white'
               }`}
           >
             <div className={`h-12 w-12 rounded-2xl flex items-center justify-center text-2xl mb-2 ${data.dietType === diet.value ? 'bg-[#3AB1A0]/20' : isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
@@ -597,8 +597,8 @@ function Step4DietaryPreferences({ onNext, onBack, data, updateData, isDarkMode 
           onClick={onNext}
           disabled={!data.dietType}
           className={`w-full py-4 rounded-full font-semibold text-lg transition-all flex items-center justify-center gap-2 ${data.dietType
-              ? 'bg-[#E06A26] text-white hover:bg-[#c55a1f]'
-              : isDarkMode ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            ? 'bg-[#E06A26] text-white hover:bg-[#c55a1f]'
+            : isDarkMode ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
             }`}
         >
           Continue
@@ -803,27 +803,46 @@ export default function OnboardingPage() {
     // Prevent duplicate submissions
     if (saving) return;
 
+    // Safety valve: if the API call hangs, auto-unblock the UI after 35 seconds
+    // so the user can retry rather than being stuck on a frozen spinner forever.
+    let savingTimer: ReturnType<typeof setTimeout> | null = null;
+
     try {
       setSaving(true);
 
-      const response = await fetch('/api/client/onboarding', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gender: data.gender,
-          dateOfBirth: data.dateOfBirth,
-          heightCm: data.heightCm,
-          heightFeet: data.heightFeet,
-          heightInch: data.heightInch,
-          weightKg: data.weightKg,
-          activityLevel: data.activityLevel,
-          generalGoal: data.primaryGoal,
-          dailyGoals: data.dailyGoals,
-          dietType: data.dietType,
-          allergies: data.allergies,
-          onboardingCompleted: true,
-        }),
-      });
+      savingTimer = setTimeout(() => {
+        setSaving(false);
+        toast.error('Request timed out. Please check your connection and try again.');
+      }, 35000);
+
+      // AbortController lets us cancel the fetch if it takes too long
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 30000);
+
+      let response: Response;
+      try {
+        response = await fetch('/api/client/onboarding', {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gender: data.gender,
+            dateOfBirth: data.dateOfBirth,
+            heightCm: data.heightCm,
+            heightFeet: data.heightFeet,
+            heightInch: data.heightInch,
+            weightKg: data.weightKg,
+            activityLevel: data.activityLevel,
+            generalGoal: data.primaryGoal,
+            dailyGoals: data.dailyGoals,
+            dietType: data.dietType,
+            allergies: data.allergies,
+            onboardingCompleted: true,
+          }),
+        });
+      } finally {
+        clearTimeout(fetchTimeout);
+      }
 
       const result = await response.json();
 
@@ -843,8 +862,13 @@ export default function OnboardingPage() {
       }
     } catch (error) {
       console.error('Error completing onboarding:', error);
-      toast.error('Something went wrong. Please try again.');
+      if (error instanceof Error && error.name === 'AbortError') {
+        toast.error('Request timed out. Please check your connection and try again.');
+      } else {
+        toast.error('Something went wrong. Please try again.');
+      }
     } finally {
+      if (savingTimer) clearTimeout(savingTimer);
       setSaving(false);
     }
   };

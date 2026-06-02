@@ -4,10 +4,10 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Upload, 
-  X, 
-  File, 
+import {
+  Upload,
+  X,
+  File,
   Image,
   FileText,
   AlertCircle
@@ -39,13 +39,13 @@ export default function FileUpload({
 
   const getAcceptTypes = () => {
     if (accept) return accept;
-    
+
     switch (type) {
       case 'avatar':
       case 'recipe-image':
-        return 'image/jpeg,image/png,image/webp';
+        return 'image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif';
       case 'document':
-        return 'application/pdf,image/jpeg,image/png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        return 'application/pdf,image/*,.jpg,.jpeg,.png,.webp,.heic,.heif,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.doc,.docx,.pdf';
       default:
         return '*/*';
     }
@@ -56,8 +56,34 @@ export default function FileUpload({
       return `File size must be less than ${Math.round(maxSize / 1024 / 1024)}MB`;
     }
 
+    const mimeType = (file.type || '').toLowerCase();
+    const extension = (file.name.split('.').pop() || '').toLowerCase();
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
+    const docExtensions = ['pdf', 'doc', 'docx'];
+
+    if (type === 'avatar' || type === 'recipe-image') {
+      // Accept any image MIME, or (empty/non-standard MIME) with an image extension.
+      // Android/iPhone gallery pickers often report an empty MIME type.
+      if (mimeType.startsWith('image/') || (mimeType === '' && imageExtensions.includes(extension))) {
+        return null;
+      }
+      return 'Please select a valid image file (JPG, PNG, WEBP, or HEIC).';
+    }
+
+    if (type === 'document') {
+      const isPdfOrImage =
+        mimeType === 'application/pdf' ||
+        mimeType.startsWith('image/') ||
+        mimeType === 'application/msword' ||
+        mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      if (isPdfOrImage || (mimeType === '' && [...imageExtensions, ...docExtensions].includes(extension))) {
+        return null;
+      }
+      return 'Please select a valid document (PDF, DOC, or image).';
+    }
+
     const acceptedTypes = getAcceptTypes().split(',');
-    if (!acceptedTypes.includes(file.type)) {
+    if (!acceptedTypes.includes('*/*') && mimeType && !acceptedTypes.includes(mimeType)) {
       return 'Invalid file type';
     }
 
@@ -111,7 +137,7 @@ export default function FileUpload({
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
     setDragOver(false);
-    
+
     const file = event.dataTransfer.files[0];
     if (file) {
       uploadFile(file);
@@ -163,11 +189,11 @@ export default function FileUpload({
           onChange={handleFileSelect}
           className="hidden"
         />
-        
+
         <div onClick={() => fileInputRef.current?.click()}>
           {children}
         </div>
-        
+
         {error && (
           <Alert variant="destructive" className="mt-2">
             <AlertCircle className="h-4 w-4" />
@@ -187,13 +213,12 @@ export default function FileUpload({
         onChange={handleFileSelect}
         className="hidden"
       />
-      
+
       <div
-        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-          dragOver
+        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${dragOver
             ? 'border-green-500 bg-green-50'
             : 'border-gray-300 hover:border-gray-400'
-        }`}
+          }`}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -221,7 +246,7 @@ export default function FileUpload({
           </div>
         )}
       </div>
-      
+
       {error && (
         <Alert variant="destructive" className="mt-2">
           <AlertCircle className="h-4 w-4" />
