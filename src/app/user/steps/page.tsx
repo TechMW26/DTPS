@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -66,7 +66,11 @@ export default function StepsPage() {
     const [completingTask, setCompletingTask] = useState(false);
     const [animatedFill, setAnimatedFill] = useState(0);
     const [isAnimating, setIsAnimating] = useState(false);
-    const [lastDataHash, setLastDataHash] = useState<string | null>(null);
+
+    // Refs to avoid stale closures in the polling interval and animations
+    const lastDataHashRef = useRef<string | null>(null);
+    const totalRef = useRef(0);
+    const isAnimatingRef = useRef(false);
 
     // Prevent body scroll when modal is open
     useBodyScrollLock(showAddModal || showDatePicker);
@@ -77,35 +81,9 @@ export default function StepsPage() {
         }
     }, [status, router]);
 
-    const fetchStepsData = useCallback(async (showLoader = true, checkForChanges = false) => {
-        try {
-            if (showLoader) setLoading(true);
-            const dateStr = format(selectedDate, 'yyyy-MM-dd');
-            const response = await fetch(`/api/client/steps?date=${dateStr}`);
-            if (response.ok) {
-                const data = await response.json();
-
-                if (checkForChanges && lastDataHash && data.dataHash === lastDataHash) {
-                    return;
-                }
-
-                const prevTotal = stepsData.totalToday;
-                setStepsData(data);
-                setLastDataHash(data.dataHash || null);
-
-                if (data.totalToday !== prevTotal && !showLoader) {
-                    animateStepsFill(prevTotal, data.totalToday, data.goal);
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching steps data:', error);
-        } finally {
-            setLoading(false);
-        }
-    }, [selectedDate, stepsData.totalToday, lastDataHash]);
-
-    const animateStepsFill = (from: number, to: number, goal: number) => {
+    const animateStepsFill = useCallback((from: number, to: number, goal: number) => {
         setIsAnimating(true);
+        isAnimatingRef.current = true;
         const startPercent = Math.min((from / goal) * 100, 100);
         const endPercent = Math.min((to / goal) * 100, 100);
         const duration = 1000; // 1 second for smoother animation
@@ -116,11 +94,11 @@ export default function StepsPage() {
         const animate = (currentTime: number) => {
             const elapsed = currentTime - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            
+
             // Ease-out cubic for smooth deceleration
             const easeOut = 1 - Math.pow(1 - progress, 3);
             const currentPercent = startPercent + (endPercent - startPercent) * easeOut;
-            
+
             setAnimatedFill(currentPercent);
 
             if (progress < 1) {
@@ -128,22 +106,67 @@ export default function StepsPage() {
             } else {
                 setAnimatedFill(endPercent);
                 setIsAnimating(false);
+                isAnimatingRef.current = false;
             }
         };
 
         requestAnimationFrame(animate);
-    };
+    }, []);
+
+    // Apply a fresh steps payload to state + refs, optionally animating the fill.
+    const applyData = useCallback((data: StepsData, animate = false) => {
+        const prevTotal = totalRef.current;
+        setStepsData(data);
+        totalRef.current = data.totalToday;
+        lastDataHashRef.current = data.dataHash ?? null;
+        if (animate && data.totalToday !== prevTotal) {
+            animateStepsFill(prevTotal, data.totalToday, data.goal);
+        }
+    }, [animateStepsFill]);
+
+    const fetchStepsData = useCallback(async (showLoader = true, checkForChanges = false) => {
+        try {
+            if (showLoader) setLoading(true);
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+            const response = await fetch(`/api/client/steps?date=${dateStr}`);
+            if (response.ok) {
+                const data = await response.json();
+
+                // Background poll: skip if nothing changed or an animation is active
+                if (checkForChanges) {
+                    if (isAnimatingRef.current) return;
+                    if (lastDataHashRef.current && data.dataHash === lastDataHashRef.current) {
+                        return;
+                    }
+                }
+
+                applyData(data, !showLoader);
+            }
+        } catch (error) {
+            console.error('Error fetching steps data:', error);
+        } finally {
+            if (showLoader) setLoading(false);
+        }
+    }, [selectedDate, applyData]);
+
+    // Keep a ref to the latest fetch function so the polling interval never
+    // closes over a stale version.
+    const fetchRef = useRef(fetchStepsData);
+    useEffect(() => {
+        fetchRef.current = fetchStepsData;
+    }, [fetchStepsData]);
 
     useEffect(() => {
         if (session?.user) {
             fetchStepsData(true, false);
 
             const interval = setInterval(() => {
-                fetchStepsData(false, true);
-            }, 5000);
+                fetchRef.current(false, true);
+            }, 10000);
 
             return () => clearInterval(interval);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session, selectedDate]);
 
     useEffect(() => {
@@ -155,7 +178,12 @@ export default function StepsPage() {
 
     const handleQuickAdd = async (steps: number) => {
         setSaving(true);
-        const prevTotal = stepsData.totalToday;
+        const prevTotal = totalRef.current;
+        const goal = stepsData.goal;
+
+        // Optimistic feedback: start the fill animation immediately
+        animateStepsFill(prevTotal, prevTotal + steps, goal);
+
         try {
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
             const response = await fetch('/api/client/steps', {
@@ -165,21 +193,17 @@ export default function StepsPage() {
             });
 
             if (response.ok) {
+                // POST now returns the full updated state — no second fetch needed
                 const data = await response.json();
                 toast.success(`Added ${steps.toLocaleString()} steps`);
-
-                const newResponse = await fetch(`/api/client/steps?date=${dateStr}`);
-                if (newResponse.ok) {
-                    const newData = await newResponse.json();
-                    setStepsData(newData);
-                    setLastDataHash(newData.dataHash || null);
-                    animateStepsFill(prevTotal, newData.totalToday, newData.goal);
-                }
+                applyData(data, false);
             } else {
                 toast.error('Failed to add steps');
+                animateStepsFill(prevTotal + steps, prevTotal, goal); // revert
             }
-        } catch (error) {
+        } catch {
             toast.error('Something went wrong');
+            animateStepsFill(prevTotal + steps, prevTotal, goal); // revert
         } finally {
             setSaving(false);
         }
@@ -196,7 +220,16 @@ export default function StepsPage() {
     };
 
     const handleDeleteEntry = async (entryId: string) => {
-        const prevTotal = stepsData.totalToday;
+        const prevTotal = totalRef.current;
+        const entry = stepsData.entries.find((e) => e._id === entryId);
+        const goal = stepsData.goal;
+        const removed = entry?.steps || 0;
+
+        // Optimistic feedback: animate the decrease immediately
+        if (entry) {
+            animateStepsFill(prevTotal, Math.max(prevTotal - removed, 0), goal);
+        }
+
         try {
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
             const response = await fetch(`/api/client/steps?id=${entryId}&date=${dateStr}`, {
@@ -204,43 +237,39 @@ export default function StepsPage() {
             });
 
             if (response.ok) {
+                // DELETE now returns the full updated state — no second fetch needed
+                const data = await response.json();
                 toast.success('Entry deleted');
-                const newResponse = await fetch(`/api/client/steps?date=${dateStr}`);
-                if (newResponse.ok) {
-                    const newData = await newResponse.json();
-                    setStepsData(newData);
-                    setLastDataHash(newData.dataHash || null);
-                    animateStepsFill(prevTotal, newData.totalToday, newData.goal);
-                }
+                applyData(data, false);
             } else {
                 toast.error('Failed to delete entry');
+                if (entry) animateStepsFill(Math.max(prevTotal - removed, 0), prevTotal, goal); // revert
             }
-        } catch (error) {
+        } catch {
             toast.error('Something went wrong');
+            if (entry) animateStepsFill(Math.max(prevTotal - removed, 0), prevTotal, goal); // revert
         }
     };
 
     const handleCompleteSteps = async () => {
         setCompletingTask(true);
         try {
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
             const response = await fetch('/api/client/steps', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'complete' })
+                body: JSON.stringify({ action: 'complete', date: dateStr })
             });
 
             if (response.ok) {
+                // PATCH now returns the full updated state — no second fetch needed
+                const data = await response.json();
                 toast.success('Steps goal marked as complete!');
-                const dateStr = format(selectedDate, 'yyyy-MM-dd');
-                const newResponse = await fetch(`/api/client/steps?date=${dateStr}`);
-                if (newResponse.ok) {
-                    const newData = await newResponse.json();
-                    setStepsData(newData);
-                }
+                applyData(data, false);
             } else {
                 toast.error('Failed to mark as complete');
             }
-        } catch (error) {
+        } catch {
             toast.error('Something went wrong');
         } finally {
             setCompletingTask(false);
@@ -607,7 +636,7 @@ export default function StepsPage() {
             {/* Custom Steps Modal */}
             {showAddModal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center">
-                    <div className="bg-white rounded-t-3xl w-full max-w-lg p-6 animate-slide-up">
+                    <div className="bg-white rounded-t-3xl w-full max-w-lg p-6 pb-8 animate-slide-up max-h-[90vh] overflow-y-auto">
                         {/* Handle */}
                         <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6" />
 

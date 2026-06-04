@@ -379,7 +379,7 @@ export default function UserHomePage() {
       newData.fatGoal = Math.round(fatGoal);
       newData.meals = { eaten: mealsEaten, total: totalMeals, calories: Math.round(caloriesConsumed) };
 
-      setData(newData);
+      setData(prev => ({ ...prev, ...newData }));
     } catch (error) {
       console.error('Error fetching health data:', error);
     }
@@ -447,21 +447,28 @@ export default function UserHomePage() {
     }
   };
 
-  // Refresh data when page becomes visible (user switches back to tab)
-  // useEffect(() => {
-  //   const handleVisibilityChange = () => {
-  //     if (document.visibilityState === 'visible' && session?.user) {
-  //       Refresh when user comes back to the page
-  //       refreshAllData();
-  //     }
-  //   };
+  // Refresh health cards when the user returns to the dashboard (e.g. after
+  // adding water/sleep/steps/activity on a tracker page) or refocuses the tab/app.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
 
-  //   document.addEventListener('visibilitychange', handleVisibilityChange);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchHealthData();
+      }
+    };
+    const handleFocus = () => fetchHealthData();
 
-  //   return () => {
-  //     document.removeEventListener('visibilitychange', handleVisibilityChange);
-  //   };
-  // }, [session, refreshAllData]);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('pageshow', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pageshow', handleFocus);
+    };
+  }, [status, fetchHealthData]);
 
   // Handle payment callback verification
   useEffect(() => {
@@ -1420,6 +1427,11 @@ export default function UserHomePage() {
           </div>
         </div>
 
+        {/* Quick Logs heading */}
+        <h2 className={`text-base font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+          Quick Logs
+        </h2>
+
         {/* Water & Sleep Row */}
         <div className="grid grid-cols-2 gap-4">
           {/* Water Card */}
@@ -1555,79 +1567,80 @@ export default function UserHomePage() {
         </div>
 
         {/* Quick Log Section */}
+        {false && (
+          <div>
+            <h2 className="text-lg font-bold text-[#E06A26] mb-4">
+              Quick Log
+            </h2>
 
-        <div>
-          <h2 className="text-lg font-bold text-[#E06A26] mb-4">
-            Quick Log
-          </h2>
+            {/* Grid Container */}
+            <div className="grid grid-cols-2 gap-4">
 
-          {/* Grid Container */}
-          <div className="grid grid-cols-2 gap-4">
+              {/* Water */}
+              <Link
+                href="/user/hydration"
+                className={`flex flex-col items-center gap-4 p-6 transition-all rounded-3xl ${isDarkMode
+                  ? 'bg-gray-900/60 border border-gray-800 hover:bg-gray-900'
+                  : 'bg-white shadow-md hover:shadow-lg hover:bg-gray-50'
+                  }`}
+              >
+                <div className="h-16 w-16 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center">
+                  <Droplet className="h-8 w-8 text-[#3AB1A0]" fill="#3AB1A0" fillOpacity="0.3" />
+                </div>
+                <span className={`text-base font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Water</span>
+                <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>+250 ml</span>
+              </Link>
 
-            {/* Water */}
-            <Link
-              href="/user/hydration"
-              className={`flex flex-col items-center gap-4 p-6 transition-all rounded-3xl ${isDarkMode
-                ? 'bg-gray-900/60 border border-gray-800 hover:bg-gray-900'
-                : 'bg-white shadow-md hover:shadow-lg hover:bg-gray-50'
-                }`}
-            >
-              <div className="h-16 w-16 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center">
-                <Droplet className="h-8 w-8 text-[#3AB1A0]" fill="#3AB1A0" fillOpacity="0.3" />
-              </div>
-              <span className={`text-base font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Water</span>
-              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>+250 ml</span>
-            </Link>
+              {/* Exercise */}
+              <Link
+                href="/user/activity"
+                className={`flex flex-col items-center gap-4 p-6 transition-all rounded-3xl ${isDarkMode
+                  ? 'bg-gray-900/60 border border-gray-800 hover:bg-gray-900'
+                  : 'bg-white shadow-md hover:shadow-lg hover:bg-gray-50'
+                  }`}
+              >
+                <div className="h-16 w-16 rounded-full bg-[#E06A26]/10 flex items-center justify-center">
+                  <Activity className="h-8 w-8 text-[#E06A26]" />
+                </div>
+                <span className={`text-base font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Exercise</span>
+                <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>Log Activity</span>
+              </Link>
 
-            {/* Exercise */}
-            <Link
-              href="/user/activity"
-              className={`flex flex-col items-center gap-4 p-6 transition-all rounded-3xl ${isDarkMode
-                ? 'bg-gray-900/60 border border-gray-800 hover:bg-gray-900'
-                : 'bg-white shadow-md hover:shadow-lg hover:bg-gray-50'
-                }`}
-            >
-              <div className="h-16 w-16 rounded-full bg-[#E06A26]/10 flex items-center justify-center">
-                <Activity className="h-8 w-8 text-[#E06A26]" />
-              </div>
-              <span className={`text-base font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Exercise</span>
-              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>Log Activity</span>
-            </Link>
+              {/* Sleep */}
+              <Link
+                href="/user/sleep"
+                className={`flex flex-col items-center gap-4 p-6 transition-all rounded-3xl ${isDarkMode
+                  ? 'bg-gray-900/60 border border-gray-800 hover:bg-gray-900'
+                  : 'bg-white shadow-md hover:shadow-lg hover:bg-gray-50'
+                  }`}
+              >
+                <div className="h-16 w-16 rounded-full bg-[#DB9C6E]/20 flex items-center justify-center">
+                  <Moon className="h-8 w-8 text-[#DB9C6E]" />
+                </div>
+                <span className={`text-base font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Sleep</span>
+                <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>Duration</span>
+              </Link>
 
-            {/* Sleep */}
-            <Link
-              href="/user/sleep"
-              className={`flex flex-col items-center gap-4 p-6 transition-all rounded-3xl ${isDarkMode
-                ? 'bg-gray-900/60 border border-gray-800 hover:bg-gray-900'
-                : 'bg-white shadow-md hover:shadow-lg hover:bg-gray-50'
-                }`}
-            >
-              <div className="h-16 w-16 rounded-full bg-[#DB9C6E]/20 flex items-center justify-center">
-                <Moon className="h-8 w-8 text-[#DB9C6E]" />
-              </div>
-              <span className={`text-base font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Sleep</span>
-              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>Duration</span>
-            </Link>
+              {/* Steps */}
+              <Link
+                href="/user/steps"
+                className={`flex flex-col items-center gap-4 p-6 transition-all rounded-3xl ${isDarkMode
+                  ? 'bg-gray-900/60 border border-gray-800 hover:bg-gray-900'
+                  : 'bg-white shadow-md hover:shadow-lg hover:bg-gray-50'
+                  }`}
+              >
+                <div className="h-16 w-16 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center">
+                  <Footprints className="h-8 w-8 text-[#3AB1A0]" />
+                </div>
+                <span className={`text-base font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Steps</span>
+                <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>
+                  {data.steps.current.toLocaleString()}
+                </span>
+              </Link>
 
-            {/* Steps */}
-            <Link
-              href="/user/steps"
-              className={`flex flex-col items-center gap-4 p-6 transition-all rounded-3xl ${isDarkMode
-                ? 'bg-gray-900/60 border border-gray-800 hover:bg-gray-900'
-                : 'bg-white shadow-md hover:shadow-lg hover:bg-gray-50'
-                }`}
-            >
-              <div className="h-16 w-16 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center">
-                <Footprints className="h-8 w-8 text-[#3AB1A0]" />
-              </div>
-              <span className={`text-base font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Steps</span>
-              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>
-                {data.steps.current.toLocaleString()}
-              </span>
-            </Link>
-
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Transformation Success Stories */}
         <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><SpoonGifLoader size="md" /></div>}>

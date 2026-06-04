@@ -5,8 +5,61 @@ import JournalTracking from '@/lib/db/models/JournalTracking';
 import { authOptions } from '@/lib/auth';
 import { format, parseISO, startOfDay, endOfDay } from 'date-fns';
 import mongoose from 'mongoose';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+
+// Build the canonical activity payload from a journal document
+function buildActivityResponse(journal: any, targetDate: Date) {
+    const activityEntries = journal?.activities || [];
+    const totalMinutes = activityEntries.reduce(
+        (sum: number, entry: any) => sum + (entry.duration || 0),
+        0
+    );
+
+    const assignedActivitiesList = journal?.assignedActivities?.activities || [];
+    const transformedAssignedActivity = journal?.assignedActivities
+        ? {
+            amount: assignedActivitiesList.reduce(
+                (sum: number, act: any) => sum + (act.duration || 0),
+                0
+            ) || 0,
+            activityCount: assignedActivitiesList.length,
+            unit: 'minutes',
+            assignedAt: journal.assignedActivities.assignedAt,
+            isCompleted: journal.assignedActivities.isCompleted || false,
+            completedAt: journal.assignedActivities.completedAt,
+            activities: assignedActivitiesList,
+        }
+        : null;
+
+    return {
+        totalToday: totalMinutes,
+        goal: journal?.targets?.activityMinutes || 30,
+        entries: activityEntries
+            .map((entry: any) => ({
+                _id: entry._id?.toString(),
+                name: entry.name,
+                duration: entry.duration,
+                sets: entry.sets,
+                reps: entry.reps,
+                intensity: entry.intensity || 'moderate',
+                videoLink: entry.videoLink,
+                completed: entry.completed,
+                completedAt: entry.completedAt,
+                time: entry.createdAt ? format(new Date(entry.createdAt), 'h:mm a') : '',
+                createdAt: entry.createdAt,
+            }))
+            .sort(
+                (a: any, b: any) =>
+                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            ),
+        assignedActivity: transformedAssignedActivity,
+        date: format(targetDate, 'yyyy-MM-dd'),
+        // Change-detection token: updates whenever the journal document changes
+        dataHash: journal?.updatedAt
+            ? new Date(journal.updatedAt).toISOString()
+            : 'empty',
+    };
+}
 
 export async function GET(request: NextRequest) {
     try {
@@ -19,71 +72,19 @@ export async function GET(request: NextRequest) {
 
         const dateParam = request.nextUrl.searchParams.get('date');
         const targetDate = dateParam ? parseISO(dateParam) : new Date();
-
         const dayStart = startOfDay(targetDate);
         const dayEnd = endOfDay(targetDate);
 
-        const journal = await withCache(
-            `client:activity:${JSON.stringify({
-                client: session.user.id,
-                date: { $gte: dayStart, $lt: dayEnd }
-            })}`,
-            async () => await JournalTracking.findOne({
-                client: session.user.id,
-                date: { $gte: dayStart, $lt: dayEnd }
-            }),
-            { ttl: 120000, tags: ['client'] }
-        );
+        // Fresh lean read — this collection changes frequently, so caching the
+        // whole journal caused new entries to not show up for up to 2 minutes.
+        const journal = await JournalTracking.findOne({
+            client: session.user.id,
+            date: { $gte: dayStart, $lt: dayEnd },
+        })
+            .select('activities assignedActivities targets updatedAt')
+            .lean();
 
-        if (!journal) {
-            return NextResponse.json({
-                totalToday: 0,
-                goal: 30,
-                entries: [],
-                assignedActivity: null,
-                date: format(targetDate, 'yyyy-MM-dd'),
-                dataHash: 'empty'
-            });
-        }
-
-        const activityEntries = journal.activities || [];
-        const totalMinutes = activityEntries.reduce((sum: number, entry: any) => sum + (entry.duration || 0), 0);
-
-        // Generate data hash for change detection
-        const dataHash = JSON.stringify(activityEntries).split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0).toString();
-
-        // Transform assignedActivities to match frontend interface
-        const assignedActivitiesList = journal.assignedActivities?.activities || [];
-        const transformedAssignedActivity = journal.assignedActivities ? {
-            amount: assignedActivitiesList.reduce((sum: number, act: any) => sum + (act.duration || 0), 0) || 0,
-            activityCount: assignedActivitiesList.length,
-            unit: 'minutes',
-            assignedAt: journal.assignedActivities.assignedAt,
-            isCompleted: journal.assignedActivities.isCompleted || false,
-            completedAt: journal.assignedActivities.completedAt,
-            activities: assignedActivitiesList
-        } : null;
-
-        return NextResponse.json({
-            totalToday: totalMinutes,
-            goal: journal.targets?.activityMinutes || 30,
-            entries: activityEntries.map((entry: any) => ({
-                _id: entry._id?.toString(),
-                name: entry.name,
-                duration: entry.duration,
-                sets: entry.sets,
-                reps: entry.reps,
-                intensity: entry.intensity || 'moderate',
-                videoLink: entry.videoLink,
-                completed: entry.completed,
-                completedAt: entry.completedAt,
-                time: entry.createdAt ? format(new Date(entry.createdAt), 'h:mm a') : '',
-                createdAt: entry.createdAt
-            })),
-            assignedActivity: transformedAssignedActivity,
-            date: format(targetDate, 'yyyy-MM-dd'),
-            dataHash
-        });
+        return NextResponse.json(buildActivityResponse(journal, targetDate));
     } catch (error) {
         console.error('Activity GET error:', error);
         return NextResponse.json({ error: 'Failed to fetch activity data' }, { status: 500 });
@@ -139,7 +140,9 @@ export async function POST(request: NextRequest) {
                 }
             },
             { upsert: true, new: true }
-        );
+        )
+            .select('activities assignedActivities targets updatedAt')
+            .lean();
 
         // Log activity
         logActivity({
@@ -162,12 +165,10 @@ export async function POST(request: NextRequest) {
             }
         }).catch(console.error);
 
+        // Return the full updated state so the client needs no second request
         return NextResponse.json({
             success: true,
-            entry: {
-                ...entry,
-                _id: entry._id.toString()
-            }
+            ...buildActivityResponse(journal, targetDate),
         });
     } catch (error) {
         console.error('Activity POST error:', error);
@@ -191,7 +192,7 @@ export async function PATCH(request: NextRequest) {
 
         if (action === 'complete') {
             // Mark all assigned activities as complete
-            await JournalTracking.findOneAndUpdate(
+            const journal = await JournalTracking.findOneAndUpdate(
                 {
                     client: session.user.id,
                     date: { $gte: dayStart, $lt: dayEnd }
@@ -201,15 +202,25 @@ export async function PATCH(request: NextRequest) {
                         'assignedActivities.isCompleted': true,
                         'assignedActivities.completedAt': new Date()
                     }
-                }
-            );
+                },
+                { new: true }
+            )
+                .select('activities assignedActivities targets updatedAt')
+                .lean();
 
-            return NextResponse.json({ success: true });
+            if (!journal) {
+                return NextResponse.json({ error: 'No journal found for this date' }, { status: 404 });
+            }
+
+            return NextResponse.json({
+                success: true,
+                ...buildActivityResponse(journal, targetDate),
+            });
         }
 
         if (action === 'complete-entry' && entryId) {
             // Mark a specific activity entry as complete
-            await JournalTracking.findOneAndUpdate(
+            const journal = await JournalTracking.findOneAndUpdate(
                 {
                     client: session.user.id,
                     date: { $gte: dayStart, $lt: dayEnd },
@@ -220,10 +231,20 @@ export async function PATCH(request: NextRequest) {
                         'activities.$.completed': true,
                         'activities.$.completedAt': new Date()
                     }
-                }
-            );
+                },
+                { new: true }
+            )
+                .select('activities assignedActivities targets updatedAt')
+                .lean();
 
-            return NextResponse.json({ success: true });
+            if (!journal) {
+                return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+            }
+
+            return NextResponse.json({
+                success: true,
+                ...buildActivityResponse(journal, targetDate),
+            });
         }
 
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -253,17 +274,27 @@ export async function DELETE(request: NextRequest) {
         const dayStart = startOfDay(targetDate);
         const dayEnd = endOfDay(targetDate);
 
-        await JournalTracking.findOneAndUpdate(
+        const journal = await JournalTracking.findOneAndUpdate(
             {
                 client: session.user.id,
                 date: { $gte: dayStart, $lt: dayEnd }
             },
             {
                 $pull: { activities: { _id: new mongoose.Types.ObjectId(entryId) } }
-            }
-        );
+            },
+            { new: true }
+        )
+            .select('activities assignedActivities targets updatedAt')
+            .lean();
 
-        return NextResponse.json({ success: true });
+        if (!journal) {
+            return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+        }
+
+        return NextResponse.json({
+            success: true,
+            ...buildActivityResponse(journal, targetDate),
+        });
     } catch (error) {
         console.error('Activity DELETE error:', error);
         return NextResponse.json({ error: 'Failed to delete activity entry' }, { status: 500 });

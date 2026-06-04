@@ -5,8 +5,49 @@ import JournalTracking from '@/lib/db/models/JournalTracking';
 import { authOptions } from '@/lib/auth';
 import { format, parseISO, startOfDay, endOfDay } from 'date-fns';
 import mongoose from 'mongoose';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+
+// Build the canonical steps payload from a journal document
+function buildStepsResponse(journal: any, targetDate: Date) {
+    const stepsEntries = journal?.steps || [];
+    const totalSteps = stepsEntries.reduce(
+        (sum: number, entry: any) => sum + (entry.steps || 0),
+        0
+    );
+
+    const transformedAssignedSteps = journal?.assignedSteps
+        ? {
+            amount: journal.assignedSteps.target || 0,
+            assignedAt: journal.assignedSteps.assignedAt,
+            isCompleted: journal.assignedSteps.isCompleted || false,
+            completedAt: journal.assignedSteps.completedAt,
+        }
+        : null;
+
+    return {
+        totalToday: totalSteps,
+        goal: journal?.targets?.steps || 10000,
+        entries: stepsEntries
+            .map((entry: any) => ({
+                _id: entry._id?.toString(),
+                steps: entry.steps,
+                distance: entry.distance,
+                calories: entry.calories,
+                time: entry.createdAt ? format(new Date(entry.createdAt), 'h:mm a') : '',
+                createdAt: entry.createdAt,
+            }))
+            .sort(
+                (a: any, b: any) =>
+                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            ),
+        assignedSteps: transformedAssignedSteps,
+        date: format(targetDate, 'yyyy-MM-dd'),
+        // Change-detection token: updates whenever the journal document changes
+        dataHash: journal?.updatedAt
+            ? new Date(journal.updatedAt).toISOString()
+            : 'empty',
+    };
+}
 
 export async function GET(request: NextRequest) {
     try {
@@ -19,62 +60,19 @@ export async function GET(request: NextRequest) {
 
         const dateParam = request.nextUrl.searchParams.get('date');
         const targetDate = dateParam ? parseISO(dateParam) : new Date();
-
         const dayStart = startOfDay(targetDate);
         const dayEnd = endOfDay(targetDate);
 
-        const journal = await withCache(
-            `client:steps:${JSON.stringify({
-                client: session.user.id,
-                date: { $gte: dayStart, $lt: dayEnd }
-            })}`,
-            async () => await JournalTracking.findOne({
-                client: session.user.id,
-                date: { $gte: dayStart, $lt: dayEnd }
-            }),
-            { ttl: 120000, tags: ['client'] }
-        );
+        // Fresh lean read — this collection changes frequently, so caching the
+        // whole journal caused new entries to not show up for up to 2 minutes.
+        const journal = await JournalTracking.findOne({
+            client: session.user.id,
+            date: { $gte: dayStart, $lt: dayEnd },
+        })
+            .select('steps assignedSteps targets updatedAt')
+            .lean();
 
-        if (!journal) {
-            return NextResponse.json({
-                totalToday: 0,
-                goal: 10000,
-                entries: [],
-                assignedSteps: null,
-                date: format(targetDate, 'yyyy-MM-dd'),
-                dataHash: 'empty'
-            });
-        }
-
-        const stepsEntries = journal.steps || [];
-        const totalSteps = stepsEntries.reduce((sum: number, entry: any) => sum + (entry.steps || 0), 0);
-
-        // Generate data hash for change detection
-        const dataHash = JSON.stringify(stepsEntries).split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0).toString();
-
-        // Transform assignedSteps to match frontend interface
-        const transformedAssignedSteps = journal.assignedSteps ? {
-            amount: journal.assignedSteps.target || 0,
-            assignedAt: journal.assignedSteps.assignedAt,
-            isCompleted: journal.assignedSteps.isCompleted || false,
-            completedAt: journal.assignedSteps.completedAt
-        } : null;
-
-        return NextResponse.json({
-            totalToday: totalSteps,
-            goal: journal.targets?.steps || 10000,
-            entries: stepsEntries.map((entry: any) => ({
-                _id: entry._id?.toString(),
-                steps: entry.steps,
-                distance: entry.distance,
-                calories: entry.calories,
-                time: entry.createdAt ? format(new Date(entry.createdAt), 'h:mm a') : '',
-                createdAt: entry.createdAt
-            })),
-            assignedSteps: transformedAssignedSteps,
-            date: format(targetDate, 'yyyy-MM-dd'),
-            dataHash
-        });
+        return NextResponse.json(buildStepsResponse(journal, targetDate));
     } catch (error) {
         console.error('Steps GET error:', error);
         return NextResponse.json({ error: 'Failed to fetch steps data' }, { status: 500 });
@@ -117,8 +115,10 @@ export async function POST(request: NextRequest) {
             createdAt
         };
 
-        // FIRE-AND-FORGET: DB update happens in background
-        JournalTracking.findOneAndUpdate(
+        // Await the write so we can return the full, persisted state. The previous
+        // fire-and-forget approach meant the row often wasn't saved before the next
+        // read, causing steps to silently not show up.
+        const journal = await JournalTracking.findOneAndUpdate(
             {
                 client: session.user.id,
                 date: { $gte: dayStart, $lt: dayEnd }
@@ -141,7 +141,9 @@ export async function POST(request: NextRequest) {
                 }
             },
             { upsert: true, new: true }
-        ).catch(err => console.error('Steps DB update failed:', err));
+        )
+            .select('steps assignedSteps targets updatedAt')
+            .lean();
 
         // FIRE-AND-FORGET: Log activity in background
         logActivity({
@@ -156,13 +158,10 @@ export async function POST(request: NextRequest) {
             details: { steps, distance, calories, date: format(targetDate, 'yyyy-MM-dd') },
         }).catch(() => { });
 
-        // Return immediately with pending entry
+        // Return the full updated state so the client needs no second request
         return NextResponse.json({
             success: true,
-            entry: {
-                ...entry,
-                _id: entryId.toString()
-            }
+            ...buildStepsResponse(journal, targetDate),
         });
     } catch (error) {
         console.error('Steps POST error:', error);
@@ -185,7 +184,7 @@ export async function PATCH(request: NextRequest) {
             const dayStart = startOfDay(targetDate);
             const dayEnd = endOfDay(targetDate);
 
-            await JournalTracking.findOneAndUpdate(
+            const journal = await JournalTracking.findOneAndUpdate(
                 {
                     client: session.user.id,
                     date: { $gte: dayStart, $lt: dayEnd }
@@ -195,10 +194,20 @@ export async function PATCH(request: NextRequest) {
                         'assignedSteps.isCompleted': true,
                         'assignedSteps.completedAt': new Date()
                     }
-                }
-            );
+                },
+                { new: true }
+            )
+                .select('steps assignedSteps targets updatedAt')
+                .lean();
 
-            return NextResponse.json({ success: true });
+            if (!journal) {
+                return NextResponse.json({ error: 'No journal found for this date' }, { status: 404 });
+            }
+
+            return NextResponse.json({
+                success: true,
+                ...buildStepsResponse(journal, targetDate),
+            });
         }
 
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -228,17 +237,27 @@ export async function DELETE(request: NextRequest) {
         const dayStart = startOfDay(targetDate);
         const dayEnd = endOfDay(targetDate);
 
-        await JournalTracking.findOneAndUpdate(
+        const journal = await JournalTracking.findOneAndUpdate(
             {
                 client: session.user.id,
                 date: { $gte: dayStart, $lt: dayEnd }
             },
             {
                 $pull: { steps: { _id: new mongoose.Types.ObjectId(entryId) } }
-            }
-        );
+            },
+            { new: true }
+        )
+            .select('steps assignedSteps targets updatedAt')
+            .lean();
 
-        return NextResponse.json({ success: true });
+        if (!journal) {
+            return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+        }
+
+        return NextResponse.json({
+            success: true,
+            ...buildStepsResponse(journal, targetDate),
+        });
     } catch (error) {
         console.error('Steps DELETE error:', error);
         return NextResponse.json({ error: 'Failed to delete steps entry' }, { status: 500 });

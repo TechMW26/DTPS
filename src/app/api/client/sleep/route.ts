@@ -5,8 +5,52 @@ import JournalTracking from '@/lib/db/models/JournalTracking';
 import { authOptions } from '@/lib/auth';
 import { format, parseISO, startOfDay, endOfDay } from 'date-fns';
 import mongoose from 'mongoose';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+
+// Build the canonical sleep payload from a journal document
+function buildSleepResponse(journal: any, targetDate: Date) {
+    const sleepEntries = journal?.sleep || [];
+
+    const totalHours = sleepEntries.reduce(
+        (sum: number, entry: any) => sum + (entry.hours + entry.minutes / 60),
+        0
+    );
+
+    const transformedAssignedSleep = journal?.assignedSleep
+        ? {
+            amount:
+                (journal.assignedSleep.targetHours || 0) +
+                (journal.assignedSleep.targetMinutes || 0) / 60,
+            assignedAt: journal.assignedSleep.assignedAt,
+            isCompleted: journal.assignedSleep.isCompleted || false,
+            completedAt: journal.assignedSleep.completedAt,
+        }
+        : null;
+
+    return {
+        totalToday: totalHours,
+        goal: journal?.targets?.sleep || 8,
+        entries: sleepEntries
+            .map((entry: any) => ({
+                _id: entry._id?.toString(),
+                hours: entry.hours,
+                minutes: entry.minutes,
+                quality: entry.quality,
+                time: entry.createdAt ? format(new Date(entry.createdAt), 'h:mm a') : '',
+                createdAt: entry.createdAt,
+            }))
+            .sort(
+                (a: any, b: any) =>
+                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            ),
+        assignedSleep: transformedAssignedSleep,
+        date: format(targetDate, 'yyyy-MM-dd'),
+        // Change-detection token: updates whenever the journal document changes
+        dataHash: journal?.updatedAt
+            ? new Date(journal.updatedAt).toISOString()
+            : 'empty',
+    };
+}
 
 export async function GET(request: NextRequest) {
     try {
@@ -19,63 +63,19 @@ export async function GET(request: NextRequest) {
 
         const dateParam = request.nextUrl.searchParams.get('date');
         const targetDate = dateParam ? parseISO(dateParam) : new Date();
-
-        // Get date range for the day
         const dayStart = startOfDay(targetDate);
         const dayEnd = endOfDay(targetDate);
 
-        const journal = await withCache(
-            `client:sleep:${JSON.stringify({
-                client: session.user.id,
-                date: { $gte: dayStart, $lt: dayEnd }
-            })}`,
-            async () => await JournalTracking.findOne({
-                client: session.user.id,
-                date: { $gte: dayStart, $lt: dayEnd }
-            }),
-            { ttl: 120000, tags: ['client'] }
-        );
+        // Fresh lean read — this collection changes frequently, so caching the
+        // whole journal caused new entries to not show up for up to 2 minutes.
+        const journal = await JournalTracking.findOne({
+            client: session.user.id,
+            date: { $gte: dayStart, $lt: dayEnd },
+        })
+            .select('sleep assignedSleep targets updatedAt')
+            .lean();
 
-        if (!journal) {
-            return NextResponse.json({
-                totalToday: 0,
-                goal: 8,
-                entries: [],
-                assignedSleep: null,
-                date: format(targetDate, 'yyyy-MM-dd'),
-                dataHash: 'empty'
-            });
-        }
-
-        const sleepEntries = journal.sleep || [];
-        const totalHours = sleepEntries.reduce((sum: number, entry: any) => sum + (entry.hours + entry.minutes / 60), 0);
-
-        // Generate data hash for change detection
-        const dataHash = JSON.stringify(sleepEntries).split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0).toString();
-
-        // Transform assignedSleep to match frontend interface
-        const transformedAssignedSleep = journal.assignedSleep ? {
-            amount: (journal.assignedSleep.targetHours || 0) + ((journal.assignedSleep.targetMinutes || 0) / 60),
-            assignedAt: journal.assignedSleep.assignedAt,
-            isCompleted: journal.assignedSleep.isCompleted || false,
-            completedAt: journal.assignedSleep.completedAt
-        } : null;
-
-        return NextResponse.json({
-            totalToday: totalHours,
-            goal: journal.targets?.sleep || 8,
-            entries: sleepEntries.map((entry: any) => ({
-                _id: entry._id?.toString(),
-                hours: entry.hours,
-                minutes: entry.minutes,
-                quality: entry.quality,
-                time: entry.createdAt ? format(new Date(entry.createdAt), 'h:mm a') : '',
-                createdAt: entry.createdAt
-            })),
-            assignedSleep: transformedAssignedSleep,
-            date: format(targetDate, 'yyyy-MM-dd'),
-            dataHash
-        });
+        return NextResponse.json(buildSleepResponse(journal, targetDate));
     } catch (error) {
         console.error('Sleep GET error:', error);
         return NextResponse.json({ error: 'Failed to fetch sleep data' }, { status: 500 });
@@ -128,7 +128,9 @@ export async function POST(request: NextRequest) {
                 }
             },
             { upsert: true, new: true }
-        );
+        )
+            .select('sleep assignedSleep targets updatedAt')
+            .lean();
 
         // Log activity
         logActivity({
@@ -143,12 +145,10 @@ export async function POST(request: NextRequest) {
             details: { hours, minutes, quality, date: format(targetDate, 'yyyy-MM-dd') },
         }).catch(() => { });
 
+        // Return the full updated state so the client needs no second request
         return NextResponse.json({
             success: true,
-            entry: {
-                ...entry,
-                _id: entry._id.toString()
-            }
+            ...buildSleepResponse(journal, targetDate),
         });
     } catch (error) {
         console.error('Sleep POST error:', error);
@@ -171,7 +171,7 @@ export async function PATCH(request: NextRequest) {
             const dayStart = startOfDay(targetDate);
             const dayEnd = endOfDay(targetDate);
 
-            await JournalTracking.findOneAndUpdate(
+            const journal = await JournalTracking.findOneAndUpdate(
                 {
                     client: session.user.id,
                     date: { $gte: dayStart, $lt: dayEnd }
@@ -181,10 +181,20 @@ export async function PATCH(request: NextRequest) {
                         'assignedSleep.isCompleted': true,
                         'assignedSleep.completedAt': new Date()
                     }
-                }
-            );
+                },
+                { new: true }
+            )
+                .select('sleep assignedSleep targets updatedAt')
+                .lean();
 
-            return NextResponse.json({ success: true });
+            if (!journal) {
+                return NextResponse.json({ error: 'No assigned sleep found for this date' }, { status: 404 });
+            }
+
+            return NextResponse.json({
+                success: true,
+                ...buildSleepResponse(journal, targetDate),
+            });
         }
 
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -214,17 +224,27 @@ export async function DELETE(request: NextRequest) {
         const dayStart = startOfDay(targetDate);
         const dayEnd = endOfDay(targetDate);
 
-        await JournalTracking.findOneAndUpdate(
+        const journal = await JournalTracking.findOneAndUpdate(
             {
                 client: session.user.id,
                 date: { $gte: dayStart, $lt: dayEnd }
             },
             {
                 $pull: { sleep: { _id: new mongoose.Types.ObjectId(entryId) } }
-            }
-        );
+            },
+            { new: true }
+        )
+            .select('sleep assignedSleep targets updatedAt')
+            .lean();
 
-        return NextResponse.json({ success: true });
+        if (!journal) {
+            return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+        }
+
+        return NextResponse.json({
+            success: true,
+            ...buildSleepResponse(journal, targetDate),
+        });
     } catch (error) {
         console.error('Sleep DELETE error:', error);
         return NextResponse.json({ error: 'Failed to delete sleep entry' }, { status: 500 });

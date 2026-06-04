@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -65,7 +65,11 @@ export default function HydrationPage() {
   const [completingTask, setCompletingTask] = useState(false);
   const [animatedFill, setAnimatedFill] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [lastDataHash, setLastDataHash] = useState<string | null>(null); // For change detection
+
+  // Refs to avoid stale closures in the polling interval and animations
+  const lastDataHashRef = useRef<string | null>(null);
+  const totalRef = useRef(0);
+  const isAnimatingRef = useRef(false);
 
   // Prevent body scroll when modal is open
   useBodyScrollLock(showAddModal || showDatePicker);
@@ -76,39 +80,10 @@ export default function HydrationPage() {
     }
   }, [status, router]);
 
-  const fetchHydrationData = useCallback(async (showLoader = true, checkForChanges = false) => {
-    try {
-      if (showLoader) setLoading(true);
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const response = await fetch(`/api/client/hydration?date=${dateStr}`);
-      if (response.ok) {
-        const data = await response.json();
-
-        // If checking for changes, only update if dataHash is different
-        if (checkForChanges && lastDataHash && data.dataHash === lastDataHash) {
-          // No changes, skip update
-          return;
-        }
-
-        const prevTotal = hydrationData.totalToday;
-        setHydrationData(data);
-        setLastDataHash(data.dataHash || null);
-
-        // Animate water fill when total changes
-        if (data.totalToday !== prevTotal && !showLoader) {
-          animateWaterFill(prevTotal, data.totalToday, data.goal);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching hydration data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedDate, hydrationData.totalToday, lastDataHash]);
-
   // Animate water fill smoothly using requestAnimationFrame
-  const animateWaterFill = (from: number, to: number, goal: number) => {
+  const animateWaterFill = useCallback((from: number, to: number, goal: number) => {
     setIsAnimating(true);
+    isAnimatingRef.current = true;
     const startPercent = Math.min((from / goal) * 100, 100);
     const endPercent = Math.min((to / goal) * 100, 100);
     const duration = 1000; // 1 second for smoother animation
@@ -119,11 +94,11 @@ export default function HydrationPage() {
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      
+
       // Ease-out cubic for smooth deceleration
       const easeOut = 1 - Math.pow(1 - progress, 3);
       const currentPercent = startPercent + (endPercent - startPercent) * easeOut;
-      
+
       setAnimatedFill(currentPercent);
 
       if (progress < 1) {
@@ -131,23 +106,69 @@ export default function HydrationPage() {
       } else {
         setAnimatedFill(endPercent);
         setIsAnimating(false);
+        isAnimatingRef.current = false;
       }
     };
 
     requestAnimationFrame(animate);
-  };
+  }, []);
+
+  // Apply a fresh hydration payload to state + refs. Optionally animate the
+  // water fill from the previous total to the new total.
+  const applyData = useCallback((data: HydrationData, animate = false) => {
+    const prevTotal = totalRef.current;
+    setHydrationData(data);
+    totalRef.current = data.totalToday;
+    lastDataHashRef.current = data.dataHash ?? null;
+    if (animate && data.totalToday !== prevTotal) {
+      animateWaterFill(prevTotal, data.totalToday, data.goal);
+    }
+  }, [animateWaterFill]);
+
+  const fetchHydrationData = useCallback(async (showLoader = true, checkForChanges = false) => {
+    try {
+      if (showLoader) setLoading(true);
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      const response = await fetch(`/api/client/hydration?date=${dateStr}`);
+      if (response.ok) {
+        const data = await response.json();
+
+        // Background poll: skip if nothing changed or a local animation is active
+        if (checkForChanges) {
+          if (isAnimatingRef.current) return;
+          if (lastDataHashRef.current && data.dataHash === lastDataHashRef.current) {
+            return;
+          }
+        }
+
+        applyData(data, !showLoader);
+      }
+    } catch (error) {
+      console.error('Error fetching hydration data:', error);
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, [selectedDate, applyData]);
+
+  // Keep a ref to the latest fetch function so the polling interval never
+  // closes over a stale version (this was causing data to silently not update).
+  const fetchRef = useRef(fetchHydrationData);
+  useEffect(() => {
+    fetchRef.current = fetchHydrationData;
+  }, [fetchHydrationData]);
 
   useEffect(() => {
     if (session?.user) {
       fetchHydrationData(true, false);
 
-      // Check for changes every 5 seconds - only reload if data changed
+      // Lightweight background sync every 10s; only re-renders if data changed
       const interval = setInterval(() => {
-        fetchHydrationData(false, true); // checkForChanges = true
-      }, 5000);
+        fetchRef.current(false, true);
+      }, 10000);
 
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, selectedDate]);
 
   // Initialize animated fill when data loads
@@ -160,7 +181,12 @@ export default function HydrationPage() {
 
   const handleQuickAdd = async (amount: number, type: string = 'water') => {
     setSaving(true);
-    const prevTotal = hydrationData.totalToday;
+    const prevTotal = totalRef.current;
+    const goal = hydrationData.goal;
+
+    // Optimistic feedback: start the fill animation immediately
+    animateWaterFill(prevTotal, prevTotal + amount, goal);
+
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const response = await fetch('/api/client/hydration', {
@@ -170,23 +196,17 @@ export default function HydrationPage() {
       });
 
       if (response.ok) {
+        // The POST now returns the full updated state — no second fetch needed
         const data = await response.json();
         toast.success(`Added ${amount}ml of ${type}`);
-
-        // Fetch new data and animate
-        const newResponse = await fetch(`/api/client/hydration?date=${dateStr}`);
-        if (newResponse.ok) {
-          const newData = await newResponse.json();
-          setHydrationData(newData);
-          setLastDataHash(newData.dataHash || null); // Update hash after direct action
-          // Trigger animation
-          animateWaterFill(prevTotal, newData.totalToday, newData.goal);
-        }
+        applyData(data, false);
       } else {
         toast.error('Failed to add water');
+        animateWaterFill(prevTotal + amount, prevTotal, goal); // revert
       }
-    } catch (error) {
+    } catch {
       toast.error('Something went wrong');
+      animateWaterFill(prevTotal + amount, prevTotal, goal); // revert
     } finally {
       setSaving(false);
     }
@@ -203,7 +223,15 @@ export default function HydrationPage() {
   };
 
   const handleDeleteEntry = async (entryId: string) => {
-    const prevTotal = hydrationData.totalToday;
+    const prevTotal = totalRef.current;
+    const entry = hydrationData.entries.find((e) => e._id === entryId);
+    const goal = hydrationData.goal;
+
+    // Optimistic feedback: animate the decrease immediately
+    if (entry) {
+      animateWaterFill(prevTotal, Math.max(prevTotal - entry.amount, 0), goal);
+    }
+
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const response = await fetch(`/api/client/hydration?id=${entryId}&date=${dateStr}`, {
@@ -211,45 +239,39 @@ export default function HydrationPage() {
       });
 
       if (response.ok) {
+        // DELETE now returns the full updated state — no second fetch needed
+        const data = await response.json();
         toast.success('Entry deleted');
-        // Fetch new data and animate decrease
-        const newResponse = await fetch(`/api/client/hydration?date=${dateStr}`);
-        if (newResponse.ok) {
-          const newData = await newResponse.json();
-          setHydrationData(newData);
-          setLastDataHash(newData.dataHash || null); // Update hash after direct action
-          animateWaterFill(prevTotal, newData.totalToday, newData.goal);
-        }
+        applyData(data, false);
       } else {
         toast.error('Failed to delete entry');
+        if (entry) animateWaterFill(Math.max(prevTotal - entry.amount, 0), prevTotal, goal); // revert
       }
-    } catch (error) {
+    } catch {
       toast.error('Something went wrong');
+      if (entry) animateWaterFill(Math.max(prevTotal - entry.amount, 0), prevTotal, goal); // revert
     }
   };
 
   const handleCompleteAssignedWater = async () => {
     setCompletingTask(true);
     try {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const response = await fetch('/api/client/hydration', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'complete' })
+        body: JSON.stringify({ action: 'complete', date: dateStr })
       });
 
       if (response.ok) {
+        // PATCH now returns the full updated state — no second fetch needed
+        const data = await response.json();
         toast.success('Assigned water intake marked as complete!');
-        // Fetch updated data
-        const dateStr = format(selectedDate, 'yyyy-MM-dd');
-        const newResponse = await fetch(`/api/client/hydration?date=${dateStr}`);
-        if (newResponse.ok) {
-          const newData = await newResponse.json();
-          setHydrationData(newData);
-        }
+        applyData(data, false);
       } else {
         toast.error('Failed to mark as complete');
       }
-    } catch (error) {
+    } catch {
       toast.error('Something went wrong');
     } finally {
       setCompletingTask(false);

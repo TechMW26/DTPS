@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -66,7 +66,11 @@ export default function SleepPage() {
     const [completingTask, setCompletingTask] = useState(false);
     const [animatedFill, setAnimatedFill] = useState(0);
     const [isAnimating, setIsAnimating] = useState(false);
-    const [lastDataHash, setLastDataHash] = useState<string | null>(null);
+
+    // Refs to avoid stale closures in the polling interval and animations
+    const lastDataHashRef = useRef<string | null>(null);
+    const totalRef = useRef(0);
+    const isAnimatingRef = useRef(false);
 
     // Prevent body scroll when modal is open
     useBodyScrollLock(showAddModal || showDatePicker);
@@ -77,35 +81,9 @@ export default function SleepPage() {
         }
     }, [status, router]);
 
-    const fetchSleepData = useCallback(async (showLoader = true, checkForChanges = false) => {
-        try {
-            if (showLoader) setLoading(true);
-            const dateStr = format(selectedDate, 'yyyy-MM-dd');
-            const response = await fetch(`/api/client/sleep?date=${dateStr}`);
-            if (response.ok) {
-                const data = await response.json();
-
-                if (checkForChanges && lastDataHash && data.dataHash === lastDataHash) {
-                    return;
-                }
-
-                const prevTotal = sleepData.totalToday;
-                setSleepData(data);
-                setLastDataHash(data.dataHash || null);
-
-                if (data.totalToday !== prevTotal && !showLoader) {
-                    animateSleepFill(prevTotal, data.totalToday, data.goal);
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching sleep data:', error);
-        } finally {
-            setLoading(false);
-        }
-    }, [selectedDate, sleepData.totalToday, lastDataHash]);
-
-    const animateSleepFill = (from: number, to: number, goal: number) => {
+    const animateSleepFill = useCallback((from: number, to: number, goal: number) => {
         setIsAnimating(true);
+        isAnimatingRef.current = true;
         const startPercent = Math.min((from / goal) * 100, 100);
         const endPercent = Math.min((to / goal) * 100, 100);
         const duration = 1000; // 1 second for smoother animation
@@ -116,11 +94,11 @@ export default function SleepPage() {
         const animate = (currentTime: number) => {
             const elapsed = currentTime - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            
+
             // Ease-out cubic for smooth deceleration
             const easeOut = 1 - Math.pow(1 - progress, 3);
             const currentPercent = startPercent + (endPercent - startPercent) * easeOut;
-            
+
             setAnimatedFill(currentPercent);
 
             if (progress < 1) {
@@ -128,22 +106,67 @@ export default function SleepPage() {
             } else {
                 setAnimatedFill(endPercent);
                 setIsAnimating(false);
+                isAnimatingRef.current = false;
             }
         };
 
         requestAnimationFrame(animate);
-    };
+    }, []);
+
+    // Apply a fresh sleep payload to state + refs, optionally animating the fill.
+    const applyData = useCallback((data: SleepData, animate = false) => {
+        const prevTotal = totalRef.current;
+        setSleepData(data);
+        totalRef.current = data.totalToday;
+        lastDataHashRef.current = data.dataHash ?? null;
+        if (animate && data.totalToday !== prevTotal) {
+            animateSleepFill(prevTotal, data.totalToday, data.goal);
+        }
+    }, [animateSleepFill]);
+
+    const fetchSleepData = useCallback(async (showLoader = true, checkForChanges = false) => {
+        try {
+            if (showLoader) setLoading(true);
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+            const response = await fetch(`/api/client/sleep?date=${dateStr}`);
+            if (response.ok) {
+                const data = await response.json();
+
+                // Background poll: skip if nothing changed or an animation is active
+                if (checkForChanges) {
+                    if (isAnimatingRef.current) return;
+                    if (lastDataHashRef.current && data.dataHash === lastDataHashRef.current) {
+                        return;
+                    }
+                }
+
+                applyData(data, !showLoader);
+            }
+        } catch (error) {
+            console.error('Error fetching sleep data:', error);
+        } finally {
+            if (showLoader) setLoading(false);
+        }
+    }, [selectedDate, applyData]);
+
+    // Keep a ref to the latest fetch function so the polling interval never
+    // closes over a stale version.
+    const fetchRef = useRef(fetchSleepData);
+    useEffect(() => {
+        fetchRef.current = fetchSleepData;
+    }, [fetchSleepData]);
 
     useEffect(() => {
         if (session?.user) {
             fetchSleepData(true, false);
 
             const interval = setInterval(() => {
-                fetchSleepData(false, true);
-            }, 5000);
+                fetchRef.current(false, true);
+            }, 10000);
 
             return () => clearInterval(interval);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session, selectedDate]);
 
     useEffect(() => {
@@ -155,7 +178,13 @@ export default function SleepPage() {
 
     const handleQuickAdd = async (hours: number, minutes: number = 0, quality: string = 'good') => {
         setSaving(true);
-        const prevTotal = sleepData.totalToday;
+        const prevTotal = totalRef.current;
+        const goal = sleepData.goal;
+        const added = hours + minutes / 60;
+
+        // Optimistic feedback: start the fill animation immediately
+        animateSleepFill(prevTotal, prevTotal + added, goal);
+
         try {
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
             const response = await fetch('/api/client/sleep', {
@@ -165,21 +194,17 @@ export default function SleepPage() {
             });
 
             if (response.ok) {
+                // POST now returns the full updated state — no second fetch needed
                 const data = await response.json();
                 toast.success(`Added ${hours}h ${minutes}m of sleep`);
-
-                const newResponse = await fetch(`/api/client/sleep?date=${dateStr}`);
-                if (newResponse.ok) {
-                    const newData = await newResponse.json();
-                    setSleepData(newData);
-                    setLastDataHash(newData.dataHash || null);
-                    animateSleepFill(prevTotal, newData.totalToday, newData.goal);
-                }
+                applyData(data, false);
             } else {
                 toast.error('Failed to add sleep');
+                animateSleepFill(prevTotal + added, prevTotal, goal); // revert
             }
-        } catch (error) {
+        } catch {
             toast.error('Something went wrong');
+            animateSleepFill(prevTotal + added, prevTotal, goal); // revert
         } finally {
             setSaving(false);
         }
@@ -198,7 +223,16 @@ export default function SleepPage() {
     };
 
     const handleDeleteEntry = async (entryId: string) => {
-        const prevTotal = sleepData.totalToday;
+        const prevTotal = totalRef.current;
+        const entry = sleepData.entries.find((e) => e._id === entryId);
+        const goal = sleepData.goal;
+        const removed = entry ? entry.hours + entry.minutes / 60 : 0;
+
+        // Optimistic feedback: animate the decrease immediately
+        if (entry) {
+            animateSleepFill(prevTotal, Math.max(prevTotal - removed, 0), goal);
+        }
+
         try {
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
             const response = await fetch(`/api/client/sleep?id=${entryId}&date=${dateStr}`, {
@@ -206,43 +240,39 @@ export default function SleepPage() {
             });
 
             if (response.ok) {
+                // DELETE now returns the full updated state — no second fetch needed
+                const data = await response.json();
                 toast.success('Entry deleted');
-                const newResponse = await fetch(`/api/client/sleep?date=${dateStr}`);
-                if (newResponse.ok) {
-                    const newData = await newResponse.json();
-                    setSleepData(newData);
-                    setLastDataHash(newData.dataHash || null);
-                    animateSleepFill(prevTotal, newData.totalToday, newData.goal);
-                }
+                applyData(data, false);
             } else {
                 toast.error('Failed to delete entry');
+                if (entry) animateSleepFill(Math.max(prevTotal - removed, 0), prevTotal, goal); // revert
             }
-        } catch (error) {
+        } catch {
             toast.error('Something went wrong');
+            if (entry) animateSleepFill(Math.max(prevTotal - removed, 0), prevTotal, goal); // revert
         }
     };
 
     const handleCompleteSleep = async () => {
         setCompletingTask(true);
         try {
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
             const response = await fetch('/api/client/sleep', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'complete' })
+                body: JSON.stringify({ action: 'complete', date: dateStr })
             });
 
             if (response.ok) {
+                // PATCH now returns the full updated state — no second fetch needed
+                const data = await response.json();
                 toast.success('Sleep goal marked as complete!');
-                const dateStr = format(selectedDate, 'yyyy-MM-dd');
-                const newResponse = await fetch(`/api/client/sleep?date=${dateStr}`);
-                if (newResponse.ok) {
-                    const newData = await newResponse.json();
-                    setSleepData(newData);
-                }
+                applyData(data, false);
             } else {
                 toast.error('Failed to mark as complete');
             }
-        } catch (error) {
+        } catch {
             toast.error('Something went wrong');
         } finally {
             setCompletingTask(false);

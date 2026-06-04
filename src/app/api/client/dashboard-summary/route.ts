@@ -59,7 +59,7 @@ export async function GET(request: Request) {
             .select('water sleep activities steps assignedWater assignedSteps assignedSleep assignedActivities targets updatedAt hydration activity')
             .lean() as any,
           User.findById(userId)
-            .select('goals heightCm weightKg bmi bmiCategory generalGoal firstName lastName avatar')
+            .select('goals dailyGoals heightCm weightKg bmi bmiCategory generalGoal firstName lastName avatar')
             .lean() as any,
         ]);
 
@@ -70,7 +70,16 @@ export async function GET(request: Request) {
 
         // --- Hydration ---
         const totalWater = waterEntries.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
-        const waterGoal = user?.goals?.water || journal?.targets?.water || 2500;
+        // `dailyGoals.water` is stored in ml (e.g. 2500). The legacy `goals.water`
+        // is stored in GLASSES (e.g. 8), so convert it (1 glass = 250ml).
+        const dailyWaterMl = user?.dailyGoals?.water;
+        const waterGlasses = user?.goals?.water;
+        const waterGoal =
+          dailyWaterMl && dailyWaterMl >= 100
+            ? dailyWaterMl
+            : waterGlasses && waterGlasses > 0
+              ? waterGlasses * 250
+              : journal?.targets?.water || 2500;
         const assignedWater = journal?.assignedWater ?? journal?.hydration?.assigned ?? null;
 
         // --- Sleep ---
@@ -143,7 +152,7 @@ export async function GET(request: Request) {
           },
         };
       },
-      { ttl: 60000, tags: ['client'] } // 60s cache — health data changes infrequently
+      { ttl: 5000, tags: ['client'] } // Short 5s cache: this summary is NOT invalidated by tracker writes, so keep it brief to stay near real-time
     );
 
     return NextResponse.json(data);
