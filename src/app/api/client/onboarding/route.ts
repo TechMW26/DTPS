@@ -10,6 +10,19 @@ import { logActivity } from '@/lib/utils/activityLogger';
 
 export const dynamic = 'force-dynamic';
 
+function normalizeFoodPreferenceFromDietType(dietType: unknown): 'veg' | 'vegan' | 'non-veg' | '' {
+  const raw = String(dietType || '').trim().toLowerCase();
+  if (!raw) return '';
+
+  if (raw === 'veg' || raw === 'vegetarian') return 'veg';
+  if (raw === 'vegan') return 'vegan';
+  if (raw === 'non-veg' || raw === 'non veg' || raw === 'non-vegetarian' || raw === 'non vegetarian') return 'non-veg';
+
+  // For other diet types (keto, gluten-free, etc.) keep food preference unset
+  // instead of incorrectly forcing non-veg.
+  return '';
+}
+
 export async function POST(request: NextRequest) {
   try {
     // AGGRESSIVE OPTIMIZATION: Run auth + DB + parse + existing check ALL in parallel
@@ -114,14 +127,23 @@ export async function POST(request: NextRequest) {
 
     // BACKGROUND: Run secondary DB updates in parallel, don't wait
     // These are non-critical and can complete after response is sent
-    const foodPref = data.dietType === 'vegetarian' ? 'veg' :
-      data.dietType === 'vegan' ? 'vegan' : 'non-veg';
+    const foodPref = normalizeFoodPreferenceFromDietType(data.dietType);
 
     // Fire-and-forget for secondary data
     Promise.all([
       LifestyleInfo.findOneAndUpdate(
         { userId },
-        { $set: { userId, heightCm: data.heightCm, weightKg: data.weightKg, targetWeightKg: data.targetWeightKg, activityLevel: data.activityLevel, foodPreference: foodPref, allergiesFood: data.allergies || [] } },
+        {
+          $set: {
+            userId,
+            heightCm: data.heightCm,
+            weightKg: data.weightKg,
+            targetWeightKg: data.targetWeightKg,
+            activityLevel: data.activityLevel,
+            ...(foodPref ? { foodPreference: foodPref } : {}),
+            allergiesFood: data.allergies || []
+          }
+        },
         { upsert: true }
       ),
       data.allergies?.length > 0

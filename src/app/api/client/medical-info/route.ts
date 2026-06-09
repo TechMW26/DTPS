@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/db/connection";
 import MedicalInfo from "@/lib/db/models/MedicalInfo";
 import User from "@/lib/db/models/User";
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
 
@@ -18,19 +18,13 @@ export async function GET() {
 
     await dbConnect();
 
-    // Get user's gender
-    const user = await withCache(
-      `client:medical-info:${JSON.stringify(session.user.id)}`,
-      async () => await User.findById(session.user.id).select('gender'),
-      { ttl: 120000, tags: ['client'] }
-    );
-    const gender = user?.gender || '';
+    // Fetch directly from DB — never cache /api/client/** (multi-process safe)
+    const [user, medicalInfo] = await Promise.all([
+      User.findById(session.user.id).select('gender').lean(),
+      MedicalInfo.findOne({ userId: session.user.id }).lean(),
+    ]);
 
-    const medicalInfo = await withCache(
-      `client:medical-info:${JSON.stringify({ userId: session.user.id })}`,
-      async () => await MedicalInfo.findOne({ userId: session.user.id }),
-      { ttl: 120000, tags: ['client'] }
-    );
+    const gender = (user as any)?.gender || '';
 
     if (!medicalInfo) {
       return NextResponse.json({
@@ -54,7 +48,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      ...medicalInfo.toObject(),
+      ...(medicalInfo as any),
       gender: gender
     });
   } catch (error) {

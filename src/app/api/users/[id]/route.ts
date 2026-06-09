@@ -847,7 +847,7 @@ export async function POST(
     const user = await withCache(
       `users:id:${JSON.stringify(id)}`,
       async () => await User.findById(id),
-      { ttl: 120000, tags: ['users'] }
+      { ttl: 10000, tags: ['users'] }
     );
 
     if (!user) {

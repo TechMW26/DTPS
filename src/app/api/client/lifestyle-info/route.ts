@@ -3,9 +3,21 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/db/connection";
 import LifestyleInfo from "@/lib/db/models/LifestyleInfo";
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
+
+function normalizeFoodPreference(value: unknown): string {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+
+  if (raw === 'veg' || raw === 'vegetarian') return 'veg';
+  if (raw === 'vegan') return 'vegan';
+  if (raw === 'non-veg' || raw === 'non veg' || raw === 'non-vegetarian' || raw === 'non vegetarian') return 'non-veg';
+  if (raw === 'eggetarian') return 'eggetarian';
+
+  return raw;
+}
 
 export async function GET() {
   try {
@@ -17,11 +29,8 @@ export async function GET() {
 
     await dbConnect();
 
-    const lifestyleInfo = await withCache(
-      `client:lifestyle-info:${JSON.stringify({ userId: session.user.id })}`,
-      async () => await LifestyleInfo.findOne({ userId: session.user.id }),
-      { ttl: 120000, tags: ['client', `client:lifestyle-info:${session.user.id}`] }
-    );
+    // Fetch directly from DB — never cache /api/client/** (multi-process safe)
+    const lifestyleInfo = await LifestyleInfo.findOne({ userId: session.user.id }).lean();
 
     if (!lifestyleInfo) {
       return NextResponse.json({
@@ -71,6 +80,7 @@ export async function POST(request: Request) {
 
     await dbConnect();
     const data = await request.json();
+    const normalizedFoodPreference = normalizeFoodPreference(data.foodPreference);
 
     // Calculate BMI if height and weight are provided
     let bmi = data.bmi;
@@ -86,6 +96,7 @@ export async function POST(request: Request) {
       { userId: session.user.id },
       {
         ...data,
+        foodPreference: normalizedFoodPreference,
         bmi,
         userId: session.user.id
       },
@@ -112,7 +123,7 @@ export async function POST(request: Request) {
       targetUserId: session.user.id,
       targetUserName: session.user.name || '',
       details: {
-        foodPreference: data.foodPreference || 'not set',
+        foodPreference: normalizedFoodPreference || 'not set',
         activityLevel: data.activityLevel || 'not set',
         weightKg: data.weightKg || 'not set'
       }

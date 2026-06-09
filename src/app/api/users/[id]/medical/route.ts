@@ -27,7 +27,7 @@ export async function GET(
           .select('medicalConditions allergies dietaryRestrictions notes diseaseHistory medicalHistory familyHistory medication bloodGroup gutIssues reports isPregnant isLactating menstrualCycle bloodFlow userId updatedAt')
           .lean();
       },
-      { ttl: 120000, tags: ['users', `users:id:${id}`, `users:id:medical:${id}`] }
+      { ttl: 10000, tags: ['users', `users:id:${id}`, `users:id:medical:${id}`] }
     );
 
     if (!medicalInfo) {

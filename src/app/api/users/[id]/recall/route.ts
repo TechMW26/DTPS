@@ -45,7 +45,7 @@ export async function GET(
         await connectDB();
         return await User.findById(userId).select('_id').lean();
       },
-      { ttl: 120000, tags: ['users'] }
+      { ttl: 10000, tags: ['users'] }
     );
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -88,7 +88,7 @@ export async function GET(
           date: recall.date
         };
       },
-      { ttl: 120000, tags: ['users', `users:id:${userId}`, `users:id:recall:${userId}`] }
+      { ttl: 10000, tags: ['users', `users:id:${userId}`, `users:id:recall:${userId}`] }
     );
 
     return NextResponse.json(recallPayload, { status: 200 });

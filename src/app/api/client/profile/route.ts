@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/db/connection";
 import User from "@/lib/db/models/User";
 import { socketManager } from "@/lib/realtime/socket-manager";
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { clearCacheByTag } from '@/lib/api/utils';
 import { getClientStatusInfo } from '@/lib/status/computeClientStatus';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { emitClientWeightUpdate } from '@/lib/realtime/weight-notify';
@@ -46,71 +46,42 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Generate cache key based on user ID
-    const cacheKey = `client-profile:${session.user.id}`;
-    const statusCacheKey = `client-status:${session.user.id}`;
-
-    // OPTIMIZATION: Run user data AND status check in PARALLEL
+    // Fetch directly from DB — never cache /api/client/** (multi-process safe)
     const [userData, statusInfo] = await Promise.all([
-      withCache(
-        cacheKey,
-        async () => {
-          const user = await User.findById(session.user.id)
-            .select(
-              "name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg firstWeight targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource assignedDietitian bmi bmiCategory height weight clientStatus"
-            )
-            .populate('assignedDietitian', 'firstName lastName email phone')
-            .lean() as any;
-
-          if (!user) {
-            return null;
-          }
-
-          // Calculate BMI if not stored but weight and height available
-          let bmi = user.bmi;
-          let bmiCategory = user.bmiCategory;
-
-          if (!bmi && user.weightKg && user.heightCm) {
-            const weightKg = parseFloat(user.weightKg);
-            const heightCm = parseFloat(user.heightCm);
-            if (weightKg > 0 && heightCm > 0) {
-              const heightM = heightCm / 100;
-              const bmiValue = weightKg / (heightM * heightM);
-              bmi = bmiValue.toFixed(1);
-
-              if (bmiValue < 18.5) {
-                bmiCategory = 'Underweight';
-              } else if (bmiValue < 25) {
-                bmiCategory = 'Normal';
-              } else if (bmiValue < 30) {
-                bmiCategory = 'Overweight';
-              } else {
-                bmiCategory = 'Obese';
-              }
-            }
-          }
-
-          return {
-            ...user,
-            bmi,
-            bmiCategory
-          };
-        },
-        { ttl: 120000, tags: ['client-profile', `client-profile:${session.user.id}`] } // 2 minutes TTL
-      ),
-      withCache(
-        statusCacheKey,
-        () => getClientStatusInfo(session.user.id),
-        { ttl: 120000, tags: ['client-profile', `client-profile:${session.user.id}`] }
-      ).catch(() => null) // Fail silently for status
+      User.findById(session.user.id)
+        .select(
+          "name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg firstWeight targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource assignedDietitian bmi bmiCategory height weight clientStatus"
+        )
+        .populate('assignedDietitian', 'firstName lastName email phone')
+        .lean() as Promise<any>,
+      getClientStatusInfo(session.user.id).catch(() => null)
     ]);
 
     if (!userData) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Calculate BMI if not stored but weight and height available
+    let bmi = userData.bmi;
+    let bmiCategory = userData.bmiCategory;
+    if (!bmi && userData.weightKg && userData.heightCm) {
+      const weightKg = parseFloat(userData.weightKg);
+      const heightCm = parseFloat(userData.heightCm);
+      if (weightKg > 0 && heightCm > 0) {
+        const heightM = heightCm / 100;
+        const bmiValue = weightKg / (heightM * heightM);
+        bmi = bmiValue.toFixed(1);
+        if (bmiValue < 18.5) bmiCategory = 'Underweight';
+        else if (bmiValue < 25) bmiCategory = 'Normal';
+        else if (bmiValue < 30) bmiCategory = 'Overweight';
+        else bmiCategory = 'Obese';
+      }
+    }
+
     return NextResponse.json({
       ...userData,
+      bmi,
+      bmiCategory,
       clientStatus: statusInfo?.clientStatus || userData.clientStatus,
       hasActivePlan: statusInfo?.hasActivePlan || false,
       mealPlanStartDate: statusInfo?.activePlanStartDate,

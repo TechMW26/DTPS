@@ -62,7 +62,7 @@ export async function GET(
           .select('foodPreference preferredCuisine allergiesFood fastDays nonVegExemptDays foodLikes foodDislikes eatOutFrequency smokingFrequency alcoholFrequency activityRate cookingOil monthlyOilConsumption cookingSalt carbonatedBeverageFrequency cravingType sleepPattern stressLevel heightFeet heightInch heightCm weightKg targetWeightKg idealWeightKg bmi userId updatedAt')
           .lean();
       },
-      { ttl: 120000, tags: ['users', `users:id:${id}`, `users:id:lifestyle:${id}`] }
+      { ttl: 10000, tags: ['users', `users:id:${id}`, `users:id:lifestyle:${id}`] }
     );
 
     if (!lifestyleInfo) {

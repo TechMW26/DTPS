@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/db/connection";
 import DietaryRecall from "@/lib/db/models/DietaryRecall";
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { MEAL_TYPES, MEAL_TYPE_KEYS } from '@/lib/mealConfig';
 import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
@@ -27,14 +27,10 @@ export async function GET() {
 
     await dbConnect();
 
-    // Get all dietary recalls for the user, sorted by date descending
-    const recalls = await withCache(
-      `client:dietary-recall:${JSON.stringify({ userId: session.user.id })}`,
-      async () => await DietaryRecall.find({ userId: session.user.id })
-        .sort({ date: -1 })
-        .limit(30),
-      { ttl: 120000, tags: ['client'] }
-    ); // Get last 30 recalls
+    // Fetch directly from DB — never cache /api/client/** (multi-process safe)
+    const recalls = await DietaryRecall.find({ userId: session.user.id })
+      .sort({ date: -1 })
+      .limit(30);
 
     return NextResponse.json({ recalls });
   } catch (error) {
@@ -62,20 +58,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Meals array is required" }, { status: 400 });
     }
 
-    const normalizedMeals = mealsInput.map((meal: any) => {
-      const normalizedMealType = normalizeMealType(String(meal?.mealType || ''));
-      if (!normalizedMealType) return null;
+    const validMeals: Array<{
+      mealType: string;
+      hour: string;
+      minute: string;
+      meridian: 'AM' | 'PM';
+      food: string;
+    }> = [];
 
-      return {
+    let hasInvalidMealType = false;
+    for (const raw of mealsInput as any[]) {
+      const normalizedMealType = normalizeMealType(String(raw?.mealType || ''));
+      if (!normalizedMealType) {
+        hasInvalidMealType = true;
+        break;
+      }
+
+      validMeals.push({
         mealType: normalizedMealType,
-        hour: String(meal?.hour || ''),
-        minute: String(meal?.minute || ''),
-        meridian: meal?.meridian === 'PM' ? 'PM' : 'AM',
-        food: String(meal?.food || ''),
-      };
-    });
+        hour: String(raw?.hour || ''),
+        minute: String(raw?.minute || ''),
+        meridian: raw?.meridian === 'PM' ? 'PM' : 'AM',
+        food: String(raw?.food || ''),
+      });
+    }
 
-    if (normalizedMeals.some((meal) => meal === null)) {
+    if (hasInvalidMealType) {
       return NextResponse.json({ error: "One or more meal types are invalid" }, { status: 400 });
     }
 
@@ -93,18 +101,17 @@ export async function POST(request: Request) {
         }
       },
       {
-        $set: { meals: normalizedMeals },
+        $set: { meals: validMeals },
         $setOnInsert: { userId: session.user.id, date }
       },
       { upsert: true, new: true }
     );
 
-    // FIRE-AND-FORGET: All side effects in background
-    Promise.resolve().then(() => {
-      // Clear cache
-      clearCacheByTag('client');
+    // Clear cache synchronously before returning so next fetch sees fresh data
+    clearCacheByTag('client');
 
-      // Log activity
+    // Log activity and notify (fire-and-forget non-critical side effects)
+    Promise.resolve().then(() => {
       logActivity({
         userId: session.user.id,
         userRole: 'client',
@@ -118,11 +125,10 @@ export async function POST(request: Request) {
         targetUserName: session.user.name || '',
         details: {
           date: date.toISOString(),
-          mealsCount: normalizedMeals.length
+          mealsCount: validMeals.length
         }
       }).catch(() => { });
 
-      // Notify
       notifyClientDataUpdate({
         clientId: session.user.id,
         updateType: 'recall_form',

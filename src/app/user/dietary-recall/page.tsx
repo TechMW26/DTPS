@@ -43,7 +43,7 @@ const mealTypes = [
   { value: "Mid Evening", label: "Mid Evening", icon: Sun },
   { value: "Evening", label: "Evening", icon: Coffee },
   { value: "Dinner", label: "Dinner", icon: Utensils },
-  { value: "Past Dinner", label: "Past Dinner", icon: Moon }
+  { value: "Post Dinner", label: "Post Dinner", icon: Moon }
 ];
 
 const hours = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, "0"));
