@@ -82,14 +82,7 @@ const lifestyleInfoSchema = new Schema<ILifestyleInfo>({
     ]
   },
   stressLevel: {
-    type: String,
-    enum: [
-      'rarely-stressed',
-      'mild-occasional-stress',
-      'moderate-stress',
-      'frequent-stress',
-      ''
-    ]
+    type: String
   },
 }, {
   timestamps: true,

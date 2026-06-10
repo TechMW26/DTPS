@@ -409,7 +409,7 @@ export function LifestyleForm(props: LifestyleFormProps) {
               >
                 <SelectTrigger className="h-10"><SelectValue placeholder="Select sleep pattern" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   <SelectItem value="regular-sleep">Regular (7–9 hours nightly)</SelectItem>
                   <SelectItem value="irregular-sleep">Irregular sleep</SelectItem>
                   <SelectItem value="insomnia-diagnosed">Insomnia diagnosed</SelectItem>
@@ -427,7 +427,7 @@ export function LifestyleForm(props: LifestyleFormProps) {
               >
                 <SelectTrigger className="h-10"><SelectValue placeholder="Select stress level" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   <SelectItem value="rarely-stressed">Rarely stressed</SelectItem>
                   <SelectItem value="mild-occasional-stress">Mild occasional stress</SelectItem>
                   <SelectItem value="moderate-stress">Moderate stress</SelectItem>

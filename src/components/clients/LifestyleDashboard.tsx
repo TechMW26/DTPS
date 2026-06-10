@@ -6,7 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Pencil, Utensils, Moon, Flame } from 'lucide-react';
 import type { LifestyleData } from './LifestyleForm';
 
-const fmtLabel = (v: string) => v?.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || '—';
+const fmtLabel = (v: string) => {
+  const value = String(v || '').trim();
+  if (!value || value === 'none' || value.startsWith('__empty__-')) return '—';
+  return value.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};
 
 interface LifestyleDashboardProps {
   data: LifestyleData;
@@ -65,6 +69,7 @@ export default function LifestyleDashboard({ data, onEdit }: LifestyleDashboardP
     'regular-sleep': 'Regular (7-9 hrs)', 'irregular-sleep': 'Irregular', 'insomnia-diagnosed': 'Insomnia', 'difficulty-falling-asleep': 'Difficulty Falling Asleep'
   };
   const stressMap: Record<string, string> = {
+    'none': 'None',
     'rarely-stressed': 'Rarely', 'mild-occasional-stress': 'Mild', 'moderate-stress': 'Moderate', 'frequent-stress': 'Frequent'
   };
 
@@ -183,7 +188,7 @@ export default function LifestyleDashboard({ data, onEdit }: LifestyleDashboardP
             </div>
             <div className="bg-rose-50 rounded-lg p-3 text-center">
               <p className="text-xs text-gray-500 mb-1">Stress Level</p>
-              <p className="text-sm font-bold text-gray-900">{stressMap[data.stressLevel] || fmtLabel(data.stressLevel)}</p>
+              <p className="text-sm font-bold text-gray-900">{stressMap[data.stressLevel] || (data.stressLevel ? fmtLabel(data.stressLevel) : 'None')}</p>
             </div>
           </div>
         </div>

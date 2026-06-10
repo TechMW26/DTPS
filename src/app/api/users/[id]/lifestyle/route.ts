@@ -14,7 +14,7 @@ const SLEEP_PATTERN_MAP: Record<string, string> = {
 };
 
 const STRESS_LEVEL_MAP: Record<string, string> = {
-  none: '',
+  none: 'none',
   low: 'rarely-stressed',
   mild: 'mild-occasional-stress',
   medium: 'moderate-stress',
@@ -38,19 +38,44 @@ const FOOD_PREFERENCE_MAP: Record<string, string> = {
   none: '',
 };
 
+function normalizeSelectValue(rawValue: unknown): string {
+  const key = String(rawValue ?? '').trim().toLowerCase();
+  if (!key) return '';
+  // Custom Select serializes empty options as values like "__empty__-none".
+  if (key === '__empty__' || key.startsWith('__empty__-')) return '';
+  return key;
+}
+
+function sanitizeLifestyleDoc<T extends Record<string, any> | null>(doc: T): T {
+  if (!doc) return doc;
+  const sanitized = { ...doc } as Record<string, any>;
+  if (typeof sanitized.sleepPattern === 'string' && sanitized.sleepPattern.toLowerCase().startsWith('__empty__-')) {
+    sanitized.sleepPattern = '';
+  }
+  if (typeof sanitized.stressLevel === 'string' && sanitized.stressLevel.toLowerCase().startsWith('__empty__-')) {
+    sanitized.stressLevel = 'none';
+  }
+  if (sanitized.stressLevel === '') {
+    sanitized.stressLevel = 'none';
+  }
+  return sanitized as T;
+}
+
 function normalizeLifestylePayload(body: Record<string, any>): Record<string, any> {
   const normalized = { ...body };
 
   if (typeof normalized.foodPreference === 'string') {
-    const key = normalized.foodPreference.trim().toLowerCase();
+    const key = normalizeSelectValue(normalized.foodPreference);
     if (Object.prototype.hasOwnProperty.call(FOOD_PREFERENCE_MAP, key)) {
       normalized.foodPreference = FOOD_PREFERENCE_MAP[key];
+    } else {
+      normalized.foodPreference = key;
     }
   }
 
   if (typeof normalized.sleepPattern === 'string') {
-    const key = normalized.sleepPattern.trim().toLowerCase().replace(/[()]/g, '');
-    if (key === 'none') {
+    const key = normalizeSelectValue(normalized.sleepPattern).replace(/[()]/g, '');
+    if (key === '' || key === 'none') {
       normalized.sleepPattern = '';
     }
     if (SLEEP_PATTERN_MAP[key]) {
@@ -67,9 +92,13 @@ function normalizeLifestylePayload(body: Record<string, any>): Record<string, an
   }
 
   if (typeof normalized.stressLevel === 'string') {
-    const key = normalized.stressLevel.trim().toLowerCase();
-    if (STRESS_LEVEL_MAP[key]) {
+    const key = normalizeSelectValue(normalized.stressLevel);
+    if (key === '') {
+      normalized.stressLevel = '';
+    } else if (STRESS_LEVEL_MAP[key]) {
       normalized.stressLevel = STRESS_LEVEL_MAP[key];
+    } else {
+      normalized.stressLevel = key;
     }
   }
 
@@ -104,7 +133,7 @@ export async function GET(
       return NextResponse.json({ lifestyleInfo: null });
     }
 
-    return NextResponse.json({ lifestyleInfo });
+    return NextResponse.json({ lifestyleInfo: sanitizeLifestyleDoc(lifestyleInfo) });
   } catch (error) {
     console.error('Error fetching lifestyle info:', error);
     return NextResponse.json(
@@ -146,7 +175,7 @@ export async function POST(
     await clearCacheByTag(`client:lifestyle-info:${id}`);
     await clearCacheByTag(`client:${id}`);
 
-    return NextResponse.json({ lifestyleInfo });
+    return NextResponse.json({ lifestyleInfo: sanitizeLifestyleDoc(lifestyleInfo?.toObject?.() || lifestyleInfo) });
   } catch (error) {
     console.error('Error saving lifestyle info:', error);
     if (error && typeof error === 'object' && 'name' in error && (error as any).name === 'ValidationError') {
