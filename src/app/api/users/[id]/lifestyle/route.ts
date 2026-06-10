@@ -14,20 +14,55 @@ const SLEEP_PATTERN_MAP: Record<string, string> = {
 };
 
 const STRESS_LEVEL_MAP: Record<string, string> = {
+  none: '',
   low: 'rarely-stressed',
   mild: 'mild-occasional-stress',
   medium: 'moderate-stress',
   moderate: 'moderate-stress',
   high: 'frequent-stress',
+  'rarely stressed': 'rarely-stressed',
+  'mild occasional stress': 'mild-occasional-stress',
+  'moderate stress': 'moderate-stress',
+  'frequent stress': 'frequent-stress',
+};
+
+const FOOD_PREFERENCE_MAP: Record<string, string> = {
+  veg: 'veg',
+  vegetarian: 'veg',
+  vegan: 'vegan',
+  'non-veg': 'non-veg',
+  'non veg': 'non-veg',
+  'non-vegetarian': 'non-veg',
+  'non vegetarian': 'non-veg',
+  eggetarian: 'eggetarian',
+  none: '',
 };
 
 function normalizeLifestylePayload(body: Record<string, any>): Record<string, any> {
   const normalized = { ...body };
 
+  if (typeof normalized.foodPreference === 'string') {
+    const key = normalized.foodPreference.trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(FOOD_PREFERENCE_MAP, key)) {
+      normalized.foodPreference = FOOD_PREFERENCE_MAP[key];
+    }
+  }
+
   if (typeof normalized.sleepPattern === 'string') {
-    const key = normalized.sleepPattern.trim().toLowerCase();
+    const key = normalized.sleepPattern.trim().toLowerCase().replace(/[()]/g, '');
+    if (key === 'none') {
+      normalized.sleepPattern = '';
+    }
     if (SLEEP_PATTERN_MAP[key]) {
       normalized.sleepPattern = SLEEP_PATTERN_MAP[key];
+    } else if (key.includes('regular')) {
+      normalized.sleepPattern = 'regular-sleep';
+    } else if (key.includes('irregular')) {
+      normalized.sleepPattern = 'irregular-sleep';
+    } else if (key.includes('insomnia')) {
+      normalized.sleepPattern = 'insomnia-diagnosed';
+    } else if (key.includes('difficulty')) {
+      normalized.sleepPattern = 'difficulty-falling-asleep';
     }
   }
 
@@ -114,6 +149,13 @@ export async function POST(
     return NextResponse.json({ lifestyleInfo });
   } catch (error) {
     console.error('Error saving lifestyle info:', error);
+    if (error && typeof error === 'object' && 'name' in error && (error as any).name === 'ValidationError') {
+      const validationErrors = Object.values((error as any).errors || {}).map((e: any) => e?.message).filter(Boolean);
+      return NextResponse.json(
+        { error: validationErrors.join(', ') || 'Validation failed' },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: 'Failed to save lifestyle info' },
       { status: 500 }
