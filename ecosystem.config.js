@@ -68,7 +68,7 @@ module.exports = {
       user: 'deploy',
       host: ['your-server.com'],
       ref: 'origin/main',
-      repo: 'git@github.com:avirajsharma-ops/DTPS.git',
+      repo: 'git@github.com:TechMW26/DTPS.git',
       path: '/var/www/dtps',
       'pre-deploy-local': '',
       'post-deploy': 'npm install && npm run build && pm2 reload ecosystem.config.js --env production',
