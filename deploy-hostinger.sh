@@ -1,13 +1,3 @@
-#!/bin/bash
-
-# ============================================
-# DTPS - Production Deployment Script
-# ============================================
-# One-command deployment for Hostinger VPS (Ubuntu 24 LTS)
-# Uses Docker with Nginx reverse proxy and SSL
-# Optimized for fast builds with persistent SSL
-# ============================================
-
 set -e
 
 # Colors for output
@@ -23,8 +13,11 @@ DOMAIN="dtps.tech"
 EMAIL="avi2001raj@gmail.com"
 APP_NAME="dtps"
 APP_DIR=$(pwd)
-REPO_URL="https://github.com/TechMW26/DTPS.git"
+REPO_OWNER="TechMW26"
+REPO_NAME="DTPS"
+REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
 REPO_DIR="/opt/dtps"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"  # from env, or set via --github-token
 CONTAINER_NAME="dtps-app"
 NGINX_CONTAINER="dtps-nginx"
 
@@ -66,23 +59,32 @@ while [[ $# -gt 0 ]]; do
             EMAIL="$2"
             shift 2
             ;;
+        --github-token)
+            GITHUB_TOKEN="$2"
+            shift 2
+            ;;
         --help)
             echo "DTPS - Production Deployment Script for Hostinger VPS"
             echo ""
             echo "Usage: ./deploy-hostinger.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --fresh       Fresh install (clean Docker, rebuild everything)"
-            echo "  --no-ssl      Skip SSL setup (HTTP only)"
-            echo "  --skip-deps   Skip dependency installation (faster for updates)"
-            echo "  --no-cache    Build Docker image without cache"
-            echo "  --renew-ssl   Force SSL certificate renewal"
-            echo "  --domain      Your domain name (default: dtps.tech)"
-            echo "  --email       Email for SSL certificate (default: avi2001raj@gmail.com)"
-            echo "  --help        Show this help message"
+            echo "  --fresh         Fresh install (clean Docker, rebuild everything)"
+            echo "  --no-ssl        Skip SSL setup (HTTP only)"
+            echo "  --skip-deps     Skip dependency installation (faster for updates)"
+            echo "  --no-cache      Build Docker image without cache"
+            echo "  --renew-ssl     Force SSL certificate renewal"
+            echo "  --domain        Your domain name (default: dtps.tech)"
+            echo "  --email         Email for SSL certificate (default: avi2001raj@gmail.com)"
+            echo "  --github-token  GitHub personal access token for private repo access"
+            echo "  --help          Show this help message"
+            echo ""
+            echo "Environment variables:"
+            echo "  GITHUB_TOKEN    GitHub personal access token (alternative to --github-token)"
             echo ""
             echo "Examples:"
-            echo "  First time:   sudo ./deploy-hostinger.sh --fresh"
+            echo "  First time:   sudo GITHUB_TOKEN=ghp_xxx ./deploy-hostinger.sh --fresh"
+            echo "  With flag:    sudo ./deploy-hostinger.sh --fresh --github-token ghp_xxx"
             echo "  Updates:      sudo ./deploy-hostinger.sh --skip-deps"
             echo "  Full rebuild: sudo ./deploy-hostinger.sh --no-cache"
             exit 0
@@ -521,20 +523,36 @@ EOF
     log_success "docker-compose.prod.yml created"
 }
 
+# Build authenticated repo URL if token is available
+build_repo_url() {
+    if [ -n "$GITHUB_TOKEN" ]; then
+        echo "https://${GITHUB_TOKEN}@github.com/${REPO_OWNER}/${REPO_NAME}.git"
+    else
+        echo "$REPO_URL"
+    fi
+}
+
 # Clone or update repository from GitHub
 clone_or_update_repo() {
     log_step "Setting Up Repository"
 
+    local AUTH_URL
+    AUTH_URL=$(build_repo_url)
+
     if [ -d "$REPO_DIR/.git" ]; then
         log_info "Repository already exists at $REPO_DIR"
         cd "$REPO_DIR"
-        log_info "Ensuring remote is set to TechMW26/DTPS..."
-        git remote set-url origin "$REPO_URL" 2>/dev/null || true
+        log_info "Ensuring remote points to ${REPO_OWNER}/${REPO_NAME}..."
+        git remote set-url origin "$AUTH_URL" 2>/dev/null || true
         log_success "Repository ready"
     else
-        log_info "Cloning fresh repository from TechMW26/DTPS..."
+        if [ -z "$GITHUB_TOKEN" ]; then
+            log_warning "No GITHUB_TOKEN set — repo is private, clone may fail!"
+            log_warning "Set via: export GITHUB_TOKEN=ghp_xxx OR use --github-token flag"
+        fi
+        log_info "Cloning from ${REPO_OWNER}/${REPO_NAME}..."
         mkdir -p "$(dirname "$REPO_DIR")"
-        git clone "$REPO_URL" "$REPO_DIR"
+        git clone "$AUTH_URL" "$REPO_DIR"
         cd "$REPO_DIR"
         log_success "Repository cloned to $REPO_DIR"
     fi
@@ -547,17 +565,23 @@ pull_latest_code() {
     log_step "Pulling Latest Code"
 
     if [ -d .git ]; then
-        # Ensure correct remote
-        CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
-        if [ "$CURRENT_REMOTE" != "$REPO_URL" ]; then
-            log_info "Updating remote to TechMW26/DTPS..."
-            git remote set-url origin "$REPO_URL" 2>/dev/null || true
-        fi
+        local AUTH_URL
+        AUTH_URL=$(build_repo_url)
 
-        log_info "Fetching latest changes from TechMW26/DTPS..."
-        git fetch origin 2>/dev/null || true
+        # Ensure correct remote with token
+        CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+        if [ "$CURRENT_REMOTE" != "$AUTH_URL" ] && [ "$CURRENT_REMOTE" != "$REPO_URL" ]; then
+            log_info "Updating remote to ${REPO_OWNER}/${REPO_NAME}..."
+        fi
+        git remote set-url origin "$AUTH_URL" 2>/dev/null || true
+
+        log_info "Fetching latest from ${REPO_OWNER}/${REPO_NAME}..."
+        git fetch origin 2>/dev/null || {
+            log_error "Failed to fetch — is the GITHUB_TOKEN valid?"
+            exit 1
+        }
         git reset --hard origin/main 2>/dev/null || git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || log_warning "Could not pull latest code"
-        log_success "Code updated from TechMW26/DTPS"
+        log_success "Code updated"
     else
         log_warning "Not a git repository, skipping code pull"
     fi
