@@ -78,7 +78,7 @@ interface Client {
   avatar?: string;
   phone?: string;
   status: string;
-  clientStatus?: 'lead' | 'active' | 'inactive';
+  clientStatus?: 'lead' | 'active' | 'inactive' | 'hold';
   createdAt: string;
   healthGoals?: string[];
   tags?: Tag[];
@@ -117,9 +117,17 @@ interface Client {
 
 // Client status colors
 const clientStatusColors: Record<string, { bg: string; text: string }> = {
-  lead: { bg: 'bg-blue-100', text: 'text-blue-800' },
+  lead: { bg: 'bg-gray-100', text: 'text-gray-800' },
   active: { bg: 'bg-green-100', text: 'text-green-800' },
-  inactive: { bg: 'bg-gray-100', text: 'text-gray-800' },
+  inactive: { bg: 'bg-red-100', text: 'text-red-800' },
+  hold: { bg: 'bg-yellow-100', text: 'text-yellow-800' },
+};
+
+const clientStatusLabels: Record<string, string> = {
+  lead: 'Lead',
+  active: 'Active',
+  inactive: 'Inactive',
+  hold: 'On Hold',
 };
 
 export default function HealthCounselorClientsPage() {
@@ -569,6 +577,7 @@ export default function HealthCounselorClientsPage() {
                 <SelectItem value="lead">Lead</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="hold">On Hold</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -724,7 +733,7 @@ export default function HealthCounselorClientsPage() {
                                     <div className="flex items-center gap-1 flex-wrap">
                                       <span className="text-xs bg-teal-100 text-teal-700 px-1 py-0.5 rounded font-medium">S</span>
                                       {secondaryDietitians.map((d, idx, arr) => (
-                                        <span key={d._id} className="text-xs text-gray-600">
+                                        <span key={d?._id ? `secondary-dietitian-${String(d._id)}` : `secondary-dietitian-${client._id}-${d?.firstName || ''}-${d?.lastName || ''}-${idx}`} className="text-xs text-gray-600">
                                           {d.firstName} {d.lastName}{idx < arr.length - 1 ? ',' : ''}
                                         </span>
                                       ))}
@@ -751,7 +760,7 @@ export default function HealthCounselorClientsPage() {
                                   <div className="flex items-center gap-1 flex-wrap">
                                     <span className="text-xs bg-orange-100 text-orange-700 px-1 py-0.5 rounded font-medium">S</span>
                                     {client.assignedHealthCounselors.filter(hc => hc?.firstName || hc?.lastName).map((hc, idx, arr) => (
-                                      <span key={hc._id} className="text-xs text-gray-600">
+                                      <span key={hc?._id ? `secondary-hc-${String(hc._id)}` : `secondary-hc-${client._id}-${hc?.firstName || ''}-${hc?.lastName || ''}-${idx}`} className="text-xs text-gray-600">
                                         {hc.firstName} {hc.lastName}{idx < arr.length - 1 ? ',' : ''}
                                       </span>
                                     ))}
@@ -762,9 +771,9 @@ export default function HealthCounselorClientsPage() {
                             <TableCell className="px-3">
                               {client.tags && client.tags.length > 0 ? (
                                 <div className="flex gap-1">
-                                  {client.tags.slice(0, 2).map((tag) => (
+                                  {client.tags.slice(0, 2).map((tag, idx) => (
                                     <Badge
-                                      key={tag._id}
+                                      key={tag?._id ? `tag-${String(tag._id)}` : `tag-${client._id}-${tag?.name || 'unknown'}-${idx}`}
                                       variant="outline"
                                       className="text-xs px-1.5 py-0"
                                       style={tag.color ? { borderColor: tag.color, color: tag.color } : undefined}
@@ -776,22 +785,23 @@ export default function HealthCounselorClientsPage() {
                               ) : '-'}
                             </TableCell>
                             <TableCell className="px-3">
-                              {/* Status is automatically computed: LEAD / ACTIVE / INACTIVE */}
-                              <Badge
-                                variant="outline"
-                                className={`text-xs px-2 py-0.5 ${client.clientStatus === 'active' ? 'bg-green-100 text-green-700 border-green-300' :
-                                  client.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700 border-gray-300' :
-                                    'bg-blue-100 text-blue-700 border-blue-300'
-                                  }`}
-                              >
-                                <span className="flex items-center gap-1.5">
-                                  <span className={`w-2 h-2 rounded-full ${client.clientStatus === 'active' ? 'bg-green-500' :
-                                    client.clientStatus === 'inactive' ? 'bg-gray-500' :
-                                      'bg-blue-500'
-                                    }`}></span>
-                                  {client.clientStatus === 'active' ? 'Active' : client.clientStatus === 'inactive' ? 'Inactive' : 'Lead'}
-                                </span>
-                              </Badge>
+                              {/* Status is automatically computed: LEAD / ACTIVE / INACTIVE / HOLD */}
+                              {(() => {
+                                const cs = client.clientStatus || 'lead';
+                                const colors = clientStatusColors[cs] || clientStatusColors.lead;
+                                const dot = cs === 'active' ? 'bg-green-500' : cs === 'inactive' ? 'bg-red-500' : cs === 'hold' ? 'bg-yellow-500' : 'bg-gray-500';
+                                return (
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-xs px-2 py-0.5 ${colors.bg} ${colors.text} border-current`}
+                                  >
+                                    <span className="flex items-center gap-1.5">
+                                      <span className={`w-2 h-2 rounded-full ${dot}`}></span>
+                                      {clientStatusLabels[cs] || 'Lead'}
+                                    </span>
+                                  </Badge>
+                                );
+                              })()}
                             </TableCell>
                             <TableCell className="px-3 text-sm whitespace-nowrap">{client.programStart ? formatDate(client.programStart) : '-'}</TableCell>
                             <TableCell className="px-3 text-sm whitespace-nowrap">{client.programEnd ? formatDate(client.programEnd) : '-'}</TableCell>

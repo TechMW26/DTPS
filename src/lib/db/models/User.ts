@@ -122,6 +122,110 @@ const userSchema = new Schema({
     enum: [...Object.values(ClientStatus), 'leading', 'onboarding', 'paused'],
     default: ClientStatus.LEAD
   },
+
+  // Client Hold Status - for temporarily pausing client activity
+  holdStatus: {
+    isOnHold: {
+      type: Boolean,
+      default: false
+    },
+    // Current hold period
+    holdDate: {
+      type: Date
+    },
+    holdTime: {
+      type: String
+    },
+    // Last activation
+    activatedDate: {
+      type: Date
+    },
+    activatedTime: {
+      type: String
+    },
+    // Cumulative tracking
+    totalHoldDurationMs: {
+      type: Number,
+      default: 0,
+      description: 'Total milliseconds client has been on hold across all hold periods'
+    },
+    holdCount: {
+      type: Number,
+      default: 0,
+      description: 'Number of times client has been put on hold'
+    },
+    // Who performed the last action
+    heldBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    activatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    }
+  },
+
+  // Complete history of hold/activate status changes (immutable audit trail)
+  holdStatusHistory: [{
+    action: {
+      type: String,
+      enum: ['hold', 'activate'],
+      required: true
+    },
+    performedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    performedByName: {
+      type: String,
+      required: true
+    },
+    performedByRole: {
+      type: String,
+      required: true
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now,
+      required: true
+    },
+    reason: {
+      type: String
+    },
+    // For 'activate' actions, store duration of that hold period
+    holdDurationMs: {
+      type: Number
+    }
+  }],
+
+  // Automatic client status change audit trail (single source of truth history)
+  clientStatusHistory: [{
+    previousStatus: {
+      type: String
+    },
+    newStatus: {
+      type: String
+    },
+    changedBy: {
+      type: String // userId or 'system'; nullable for purely automatic recalcs
+    },
+    isManual: {
+      type: Boolean,
+      default: false
+    },
+    trigger: {
+      type: String // e.g. 'payment_created', 'hold', 'resume', 'expected_date_updated', 'auto'
+    },
+    relatedEvent: {
+      type: String // optional related payment/subscription identifier or description
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+
   phone: {
     type: String,
     trim: true,

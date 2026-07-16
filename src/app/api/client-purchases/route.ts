@@ -6,6 +6,7 @@ import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import PaymentLink from '@/lib/db/models/PaymentLink';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
 
 const getPaidPurchaseQuery = () => ({
   $or: [
@@ -484,6 +485,17 @@ export async function POST(request: NextRequest) {
       }
     );
 
+    // A new paid purchase establishes/extends the subscription window — recompute status.
+    try {
+      await recalculateAndPersistClientStatus(clientId, {
+        trigger: 'purchase_created',
+        changedBy: session.user.id,
+        relatedEvent: `purchase:${purchase._id}`,
+      });
+    } catch (statusError) {
+      console.error('Error recalculating client status after purchase create:', statusError);
+    }
+
     return NextResponse.json({
       success: true,
       purchase,
@@ -643,6 +655,23 @@ export async function PUT(request: NextRequest) {
     // Clear cache to ensure real-time updates across all platforms
     clearCacheByTag('client_purchases');
     clearCacheByTag(`client-purchases:${JSON.stringify(purchaseId)}`);
+
+    // If the subscription window or payment status changed, recompute client status
+    // (single source of truth: Expected End Date + manual hold).
+    if (expectedEndDate !== undefined || expectedStartDate !== undefined || status !== undefined) {
+      const purchaseClientId = updatedPurchase.client ? String(updatedPurchase.client) : null;
+      if (purchaseClientId) {
+        try {
+          await recalculateAndPersistClientStatus(purchaseClientId, {
+            trigger: 'purchase_updated',
+            changedBy: session.user.id,
+            relatedEvent: `purchase:${purchaseId}`,
+          });
+        } catch (statusError) {
+          console.error('Error recalculating client status after purchase update:', statusError);
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,

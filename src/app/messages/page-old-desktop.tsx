@@ -1,22 +1,43 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef, Suspense } from 'react';
-import { useSession } from 'next-auth/react';
-import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import dynamic from 'next/dynamic';
-import { useRealtime } from '@/hooks/useRealtime';
-import { useSimpleWebRTC } from '@/hooks/useSimpleWebRTC';
-import DashboardLayout from '@/components/layout/DashboardLayout';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import dynamic from "next/dynamic";
+import { useRealtime } from "@/hooks/useRealtime";
+import { useSimpleWebRTC } from "@/hooks/useSimpleWebRTC";
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   Send,
   MessageCircle,
@@ -46,18 +67,19 @@ import {
   Megaphone,
   MoreVertical,
   Trash2,
-  Loader2
-} from 'lucide-react';
-import { format, isToday, isYesterday, isSameDay } from 'date-fns';
-import BulkMessageModal from '@/components/messages/BulkMessageModal';
+  Loader2,
+  CornerDownRight,
+} from "lucide-react";
+import { format, isToday, isYesterday, isSameDay } from "date-fns";
+import BulkMessageModal from "@/components/messages/BulkMessageModal";
 
 // Dynamic import for emoji picker to avoid SSR issues
-const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false });
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
 interface Message {
   _id: string;
   content: string;
-  type: 'text' | 'image' | 'file' | 'video' | 'audio' | 'voice';
+  type: "text" | "image" | "file" | "video" | "audio" | "voice";
   isRead: boolean;
   createdAt: string;
   attachments?: {
@@ -81,7 +103,7 @@ interface Message {
   replyTo?: {
     _id: string;
     content: string;
-    type: 'text' | 'image' | 'file' | 'video' | 'audio' | 'voice';
+    type: "text" | "image" | "file" | "video" | "audio" | "voice";
     attachments?: {
       url: string;
       filename: string;
@@ -103,7 +125,7 @@ interface Conversation {
     lastName: string;
     avatar?: string;
     role: string;
-    clientStatus?: 'lead' | 'active' | 'inactive';
+    clientStatus?: "lead" | "active" | "inactive";
     clientId?: string;
   };
   lastMessage: Message;
@@ -119,7 +141,7 @@ interface AvailableUser {
   email: string;
   avatar?: string;
   role: string;
-  clientStatus?: 'lead' | 'active' | 'inactive';
+  clientStatus?: "lead" | "active" | "inactive";
   hasExistingConversation: boolean;
 }
 
@@ -127,19 +149,25 @@ function MessagesContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [selectedConversation, setSelectedConversation] = useState<
+    string | null
+  >(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null);
-  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(
+    null,
+  );
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    string | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
   const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
-  const [searchUsers, setSearchUsers] = useState('');
+  const [searchUsers, setSearchUsers] = useState("");
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [roleFilter, setRoleFilter] = useState<string>('all');
-  const [conversationSearch, setConversationSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [conversationSearch, setConversationSearch] = useState("");
 
   // Enhanced WhatsApp-like features
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -160,10 +188,13 @@ function MessagesContent() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // WebRTC calling states
-  const [callState, setCallState] = useState<'idle' | 'calling' | 'incoming' | 'connected' | 'ended'>('idle');
+  const [callState, setCallState] = useState<
+    "idle" | "calling" | "incoming" | "connected" | "ended"
+  >("idle");
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [peerConnection, setPeerConnection] = useState<RTCPeerConnection | null>(null);
+  const [peerConnection, setPeerConnection] =
+    useState<RTCPeerConnection | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [callId, setCallId] = useState<string | null>(null);
@@ -190,7 +221,7 @@ function MessagesContent() {
 
   // Refs to hold latest state/functions for SSE callbacks (avoids stale closures)
   const selectedConversationRef = useRef<string | null>(null);
-  const fetchConversationsRef = useRef<() => void>(() => { });
+  const fetchConversationsRef = useRef<() => void>(() => {});
 
   // ICE buffering to avoid race where candidates arrive before remote description is set
   const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
@@ -199,7 +230,9 @@ function MessagesContent() {
   // Use ref to avoid stale closures in event handlers
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
 
-  const flushPendingIce = async (pc: RTCPeerConnection | null = peerConnection) => {
+  const flushPendingIce = async (
+    pc: RTCPeerConnection | null = peerConnection,
+  ) => {
     if (!pc) return;
     const queue = pendingRemoteCandidatesRef.current;
     while (queue.length) {
@@ -207,12 +240,10 @@ function MessagesContent() {
       try {
         await pc.addIceCandidate(new RTCIceCandidate(cand));
       } catch (e) {
-        console.warn('Failed to add queued ICE candidate', e);
+        console.warn("Failed to add queued ICE candidate", e);
       }
     }
   };
-
-
 
   const scrollToBottom = (instant = true) => {
     requestAnimationFrame(() => {
@@ -221,11 +252,16 @@ function MessagesContent() {
         if (instant) {
           container.scrollTop = container.scrollHeight;
         } else {
-          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: "smooth",
+          });
         }
       }
       // Also use scrollIntoView as backup
-      messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'instant' : 'smooth' });
+      messagesEndRef.current?.scrollIntoView({
+        behavior: instant ? "instant" : "smooth",
+      });
     });
   };
 
@@ -235,16 +271,21 @@ function MessagesContent() {
       try {
         const data = evt.data; // already parsed in hook
 
-        if (evt.type === 'new_message') {
+        if (evt.type === "new_message") {
           const incoming = (data as any)?.message;
           if (incoming?._id) {
             // If this belongs to the currently open conversation, append it
             const currentConv = selectedConversationRef.current;
             if (
               currentConv &&
-              (String(incoming.sender?._id) === currentConv || String(incoming.receiver?._id) === currentConv)
+              (String(incoming.sender?._id) === currentConv ||
+                String(incoming.receiver?._id) === currentConv)
             ) {
-              setMessages(prev => (prev.some(m => m._id === incoming._id) ? prev : [...prev, incoming]));
+              setMessages((prev) =>
+                prev.some((m) => m._id === incoming._id)
+                  ? prev
+                  : [...prev, incoming],
+              );
               setTimeout(() => scrollToBottom(false), 50);
             }
             // Always refresh conversations list (keeps last message + unread counts in sync)
@@ -254,15 +295,17 @@ function MessagesContent() {
         }
 
         // Handle message read event - update isRead status for messages
-        if (evt.type === 'message_read') {
+        if (evt.type === "message_read") {
           const readData = data as any;
           if (readData?.conversationWith) {
             // Mark all messages in this conversation as read
-            setMessages(prev => prev.map(msg =>
-              String(msg.receiver?._id) === String(readData.readBy)
-                ? { ...msg, isRead: true }
-                : msg
-            ));
+            setMessages((prev) =>
+              prev.map((msg) =>
+                String(msg.receiver?._id) === String(readData.readBy)
+                  ? { ...msg, isRead: true }
+                  : msg,
+              ),
+            );
             // Refresh conversations to update unread count
             fetchConversationsRef.current();
           }
@@ -270,11 +313,13 @@ function MessagesContent() {
         }
 
         // Handle message deletion event
-        if (evt.type === 'message_deleted') {
+        if (evt.type === "message_deleted") {
           const deletedMessageId = (data as any)?.messageId;
           if (deletedMessageId) {
             // Remove the deleted message from local state
-            setMessages(prev => prev.filter(m => m._id !== deletedMessageId));
+            setMessages((prev) =>
+              prev.filter((m) => m._id !== deletedMessageId),
+            );
             // Refresh conversations to update last message if needed
             fetchConversationsRef.current();
           }
@@ -283,19 +328,29 @@ function MessagesContent() {
 
         // Check connection health for critical call events (do not drop the event)
         // If we're temporarily disconnected, still handle the event and nudge a reconnect
-        if (['incoming_call', 'call_accepted', 'call_rejected', 'call_ended'].includes(evt.type) && !isConnected) {
-          console.warn('Received call event during transient SSE reconnect; handling event and triggering reconnect in background...');
+        if (
+          [
+            "incoming_call",
+            "call_accepted",
+            "call_rejected",
+            "call_ended",
+          ].includes(evt.type) &&
+          !isConnected
+        ) {
+          console.warn(
+            "Received call event during transient SSE reconnect; handling event and triggering reconnect in background...",
+          );
           forceReconnect();
           // Do not return here — we already have the event, so proceed to process it
         }
-        if (evt.type === 'incoming_call') {
+        if (evt.type === "incoming_call") {
           // If we are the target, prepare incoming state
           setIncomingCall(data);
           setCallId(data.callId);
           setIsInitiator(false);
           setRemoteUserId(data.callerId);
-          setCallState('incoming');
-        } else if (evt.type === 'call_accepted') {
+          setCallState("incoming");
+        } else if (evt.type === "call_accepted") {
           // We are the caller and got the answer
           // Use ref to get the latest peer connection (avoid stale closure)
           const pc = peerConnectionRef.current;
@@ -305,17 +360,19 @@ function MessagesContent() {
           }
 
           // If we don't have a callId but we're in calling state, accept it anyway
-          if (!callId && callState === 'calling') {
+          if (!callId && callState === "calling") {
             setCallId(data.callId);
           }
 
           if (!pc) {
-            console.error('No peer connection available for call_accepted (ref is null)');
+            console.error(
+              "No peer connection available for call_accepted (ref is null)",
+            );
             return;
           }
 
           if (!data.answer) {
-            console.error('No answer provided in call_accepted event');
+            console.error("No answer provided in call_accepted event");
             return;
           }
 
@@ -323,7 +380,7 @@ function MessagesContent() {
             .then(async () => {
               remoteDescriptionSetRef.current = true;
               await flushPendingIce(pc);
-              setCallState('connected');
+              setCallState("connected");
 
               // Force clear any pending timeouts
               if (callTimeoutRef.current) {
@@ -340,37 +397,43 @@ function MessagesContent() {
               }, 100);
             })
             .catch((error) => {
-              console.error('❌ Error setting remote description:', error);
+              console.error("❌ Error setting remote description:", error);
             });
-        } else if (evt.type === 'ice_candidate') {
+        } else if (evt.type === "ice_candidate") {
           if (callId && data.callId && data.callId !== callId) return; // ignore wrong call
           // Candidates can arrive before answer/offer is applied; queue until ready
           if (data.iceCandidate) {
             if (peerConnection && remoteDescriptionSetRef.current) {
-              peerConnection.addIceCandidate(new RTCIceCandidate(data.iceCandidate)).catch(console.error);
+              peerConnection
+                .addIceCandidate(new RTCIceCandidate(data.iceCandidate))
+                .catch(console.error);
             } else {
               pendingRemoteCandidatesRef.current.push(data.iceCandidate);
             }
           }
-        } else if (evt.type === 'call_ended') {
+        } else if (evt.type === "call_ended") {
           endCall();
-        } else if (evt.type === 'webrtc-signal') {
+        } else if (evt.type === "webrtc-signal") {
           // 🚀 NEW: Handle Simple WebRTC signals
           handleSimpleSignal(data);
         }
       } catch (e) {
-        console.error('Failed handling realtime event', e);
+        console.error("Failed handling realtime event", e);
       }
     },
     onUserOnline: (userId) => {
-      setConversations(prev => prev.map(conv =>
-        conv.user._id === userId ? { ...conv, isOnline: true } : conv
-      ));
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.user._id === userId ? { ...conv, isOnline: true } : conv,
+        ),
+      );
     },
     onUserOffline: (userId) => {
-      setConversations(prev => prev.map(conv =>
-        conv.user._id === userId ? { ...conv, isOnline: false } : conv
-      ));
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.user._id === userId ? { ...conv, isOnline: false } : conv,
+        ),
+      );
     },
   });
 
@@ -384,7 +447,7 @@ function MessagesContent() {
     acceptCall: acceptSimpleCall,
     rejectCall: rejectSimpleCall,
     endCall: endSimpleCall,
-    handleSignal: handleSimpleSignal
+    handleSignal: handleSimpleSignal,
   } = useSimpleWebRTC({
     onIncomingCall: (callData) => {
       // You can integrate this with your existing incoming call UI
@@ -394,18 +457,18 @@ function MessagesContent() {
         callerName: callData.fromUserId, // You might want to fetch the actual name
         callId: callData.callId,
         callType: callData.callType,
-        isSimpleWebRTC: true // Flag to identify simple WebRTC calls
+        isSimpleWebRTC: true, // Flag to identify simple WebRTC calls
       });
     },
     onCallAccepted: () => {
-      setCallState('connected');
+      setCallState("connected");
     },
     onCallRejected: () => {
-      setCallState('ended');
+      setCallState("ended");
       setIncomingCall(null);
     },
     onCallEnded: () => {
-      setCallState('ended');
+      setCallState("ended");
       setIncomingCall(null);
     },
     onRemoteStream: (stream) => {
@@ -416,7 +479,7 @@ function MessagesContent() {
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = stream;
       }
-    }
+    },
   });
 
   useEffect(() => {
@@ -432,7 +495,7 @@ function MessagesContent() {
 
   // Handle user parameter from URL to open specific chat
   useEffect(() => {
-    const userId = searchParams?.get('user');
+    const userId = searchParams?.get("user");
 
     if (userId && session?.user && conversations.length >= 0) {
       // Always try to start conversation, regardless of existing conversations
@@ -440,48 +503,47 @@ function MessagesContent() {
     }
   }, [searchParams, session, conversations]);
 
-
   // Attach remote audio stream for audio-only calls
   // Auto mark missed call if not answered within 30s (caller side)
   useEffect(() => {
-    if (isInitiator && callState === 'calling' && callId && remoteUserId) {
+    if (isInitiator && callState === "calling" && callId && remoteUserId) {
       callTimeoutRef.current = setTimeout(async () => {
         try {
           // notify receiver of missed call
-          await fetch('/api/webrtc/signal', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          await fetch("/api/webrtc/signal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              type: 'missed_call',
+              type: "missed_call",
               callId,
               receiverId: remoteUserId,
-            })
+            }),
           });
 
           // end the call as not answered
-          await fetch('/api/webrtc/signal', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          await fetch("/api/webrtc/signal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              type: 'call_ended',
+              type: "call_ended",
               callId,
               callerId: session?.user?.id,
               receiverId: remoteUserId,
-            })
+            }),
           });
 
           // persist a missed-call system message in the chat
-          await fetch('/api/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          await fetch("/api/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               recipientId: remoteUserId,
-              content: 'Missed call',
-              type: 'call_missed'
-            })
+              content: "Missed call",
+              type: "call_missed",
+            }),
           });
-        } catch (_) { }
-        setCallState('ended');
+        } catch (_) {}
+        setCallState("ended");
         setIsAudioCall(false);
         setIsVideoCall(false);
       }, 30000);
@@ -499,7 +561,7 @@ function MessagesContent() {
 
   // Additional useEffect to clear timeout when call state changes to connected
   useEffect(() => {
-    if (callState === 'connected' && callTimeoutRef.current) {
+    if (callState === "connected" && callTimeoutRef.current) {
       clearTimeout(callTimeoutRef.current);
       callTimeoutRef.current = null;
     }
@@ -510,14 +572,16 @@ function MessagesContent() {
       // @ts-ignore
       remoteAudioRef.current.srcObject = remoteStream;
       // @ts-ignore
-      remoteAudioRef.current.play?.().catch(() => { });
+      remoteAudioRef.current.play?.().catch(() => {});
     }
   }, [remoteStream]);
 
   const handleUserFromURL = async (userId: string) => {
     try {
       // Check if conversation already exists
-      const existingConversation = conversations.find(c => c.user._id === userId);
+      const existingConversation = conversations.find(
+        (c) => c.user._id === userId,
+      );
 
       if (existingConversation) {
         // Conversation exists, just select it
@@ -545,17 +609,17 @@ function MessagesContent() {
             _id: userData._id,
             firstName: userData.firstName,
             lastName: userData.lastName,
-            avatar: userData.avatar || '',
-            role: userData.role
+            avatar: userData.avatar || "",
+            role: userData.role,
           },
           lastMessage: {} as Message,
           unreadCount: 0,
-          isOnline: false
+          isOnline: false,
         };
 
         // Add to conversations list if not already there
-        setConversations(prev => {
-          const exists = prev.find(c => c.user._id === userId);
+        setConversations((prev) => {
+          const exists = prev.find((c) => c.user._id === userId);
           if (!exists) {
             return [newConversation, ...prev];
           } else {
@@ -583,20 +647,18 @@ function MessagesContent() {
     const fallbackConversation: Conversation = {
       user: {
         _id: userId,
-        firstName: 'User',
-        lastName: '',
-        avatar: '',
-        role: 'client'
+        firstName: "User",
+        lastName: "",
+        avatar: "",
+        role: "client",
       },
       lastMessage: {} as Message,
       unreadCount: 0,
-      isOnline: false
+      isOnline: false,
     };
 
-
-
-    setConversations(prev => {
-      const exists = prev.find(c => c.user._id === userId);
+    setConversations((prev) => {
+      const exists = prev.find((c) => c.user._id === userId);
       if (!exists) {
         return [fallbackConversation, ...prev];
       }
@@ -606,8 +668,6 @@ function MessagesContent() {
     setSelectedConversation(userId);
     setMessages([]);
     fetchMessages(userId);
-
-
   };
 
   useEffect(() => {
@@ -618,7 +678,7 @@ function MessagesContent() {
 
   const fetchConversations = async () => {
     try {
-      const response = await fetch('/api/messages/conversations');
+      const response = await fetch("/api/messages/conversations");
       if (response.ok) {
         const data = await response.json();
         const conversations = data.conversations || [];
@@ -626,7 +686,9 @@ function MessagesContent() {
 
         // Fetch online status for all conversation users
         if (conversations.length > 0) {
-          const userIds = conversations.map((conv: Conversation) => conv.user._id);
+          const userIds = conversations.map(
+            (conv: Conversation) => conv.user._id,
+          );
           fetchOnlineStatus(userIds);
         }
       }
@@ -648,18 +710,22 @@ function MessagesContent() {
 
   const fetchOnlineStatus = async (userIds: string[]) => {
     try {
-      const response = await fetch(`/api/realtime/status?userIds=${userIds.join(',')}`);
+      const response = await fetch(
+        `/api/realtime/status?userIds=${userIds.join(",")}`,
+      );
       if (response.ok) {
         const data = await response.json();
 
         // Update conversations with online status
-        setConversations(prev => prev.map(conv => ({
-          ...conv,
-          isOnline: data.users?.[conv.user._id]?.isOnline || false
-        })));
+        setConversations((prev) =>
+          prev.map((conv) => ({
+            ...conv,
+            isOnline: data.users?.[conv.user._id]?.isOnline || false,
+          })),
+        );
       }
     } catch (error) {
-      console.error('Failed to fetch online status:', error);
+      console.error("Failed to fetch online status:", error);
     }
   };
 
@@ -667,8 +733,8 @@ function MessagesContent() {
     setLoadingUsers(true);
     try {
       const params = new URLSearchParams();
-      if (searchUsers) params.append('search', searchUsers);
-      if (roleFilter && roleFilter !== 'all') params.append('role', roleFilter);
+      if (searchUsers) params.append("search", searchUsers);
+      if (roleFilter && roleFilter !== "all") params.append("role", roleFilter);
 
       const response = await fetch(`/api/users/available-for-chat?${params}`);
       if (response.ok) {
@@ -685,17 +751,21 @@ function MessagesContent() {
   const fetchMessages = async (conversationWith: string) => {
     try {
       // Fetch ALL messages for the conversation (no limit) to ensure no messages are missed
-      const response = await fetch(`/api/messages?conversationWith=${conversationWith}`);
+      const response = await fetch(
+        `/api/messages?conversationWith=${conversationWith}`,
+      );
       if (response.ok) {
         const data = await response.json();
         setMessages(data.messages || []);
 
         // Reset unread count for this conversation locally
-        setConversations(prev => prev.map(conv =>
-          conv.user._id === conversationWith
-            ? { ...conv, unreadCount: 0 }
-            : conv
-        ));
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.user._id === conversationWith
+              ? { ...conv, unreadCount: 0 }
+              : conv,
+          ),
+        );
 
         // Scroll to bottom after messages are loaded
         requestAnimationFrame(() => {
@@ -719,32 +789,33 @@ function MessagesContent() {
 
   const sendMessage = async (
     content: string,
-    type: 'text' | 'image' | 'file' | 'video' | 'audio' = 'text',
+    type: "text" | "image" | "file" | "video" | "audio" = "text",
     attachments?: any[],
-    replyToId?: string
+    replyToId?: string,
   ) => {
-    if ((!content.trim() && !attachments) || !selectedConversation || sending) return;
+    if ((!content.trim() && !attachments) || !selectedConversation || sending)
+      return;
 
     setSending(true);
     try {
-      const response = await fetch('/api/messages', {
-        method: 'POST',
+      const response = await fetch("/api/messages", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           recipientId: selectedConversation,
-          content: content.trim() || (type === 'image' ? 'Image' : 'File'),
+          content: content.trim() || (type === "image" ? "Image" : "File"),
           type,
           attachments,
-          replyTo: replyToId || replyingToMessage?._id
+          replyTo: replyToId || replyingToMessage?._id,
         }),
       });
 
       if (response.ok) {
         // Don't add message locally - SSE will deliver it to avoid duplicates
         // Message will appear via real-time SSE event (sent to both sender and recipient)
-        setNewMessage('');
+        setNewMessage("");
         setReplyingToMessage(null);
         // Refresh conversations list to update last message preview
         fetchConversations();
@@ -757,10 +828,12 @@ function MessagesContent() {
   };
 
   const handleSendText = () => {
-    sendMessage(newMessage, 'text', undefined, replyingToMessage?._id);
+    sendMessage(newMessage, "text", undefined, replyingToMessage?._id);
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -768,16 +841,16 @@ function MessagesContent() {
     try {
       // Upload file to server
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'message');
+      formData.append("file", file);
+      formData.append("type", "message");
 
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
+      const uploadResponse = await fetch("/api/upload", {
+        method: "POST",
         body: formData,
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file');
+        throw new Error("Failed to upload file");
       }
 
       const uploadData = await uploadResponse.json();
@@ -786,16 +859,20 @@ function MessagesContent() {
         url: uploadData.url,
         filename: uploadData.filename || file.name,
         size: uploadData.size || file.size,
-        mimeType: uploadData.type || file.type
+        mimeType: uploadData.type || file.type,
       };
 
-      const type = file.type.startsWith('image/') ? 'image' :
-        file.type.startsWith('video/') ? 'video' :
-          file.type.startsWith('audio/') ? 'audio' : 'file';
+      const type = file.type.startsWith("image/")
+        ? "image"
+        : file.type.startsWith("video/")
+          ? "video"
+          : file.type.startsWith("audio/")
+            ? "audio"
+            : "file";
 
-      await sendMessage('', type, [attachment]);
+      await sendMessage("", type, [attachment]);
     } catch (error) {
-      alert('Failed to upload file. Please try again.');
+      alert("Failed to upload file. Please try again.");
     } finally {
       setUploadingFile(false);
       setShowAttachmentMenu(false);
@@ -803,7 +880,7 @@ function MessagesContent() {
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendText();
     }
@@ -811,7 +888,7 @@ function MessagesContent() {
 
   // Enhanced WhatsApp-like functions
   const handleEmojiSelect = (emojiData: any) => {
-    setNewMessage(prev => prev + emojiData.emoji);
+    setNewMessage((prev) => prev + emojiData.emoji);
     setShowEmojiPicker(false);
   };
 
@@ -827,17 +904,19 @@ function MessagesContent() {
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-        const audioFile = new File([audioBlob], `audio_${Date.now()}.wav`, { type: 'audio/wav' });
+        const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+        const audioFile = new File([audioBlob], `audio_${Date.now()}.wav`, {
+          type: "audio/wav",
+        });
 
         // Upload audio file
         const formData = new FormData();
-        formData.append('file', audioFile);
-        formData.append('type', 'message');
+        formData.append("file", audioFile);
+        formData.append("type", "message");
 
         try {
-          const uploadResponse = await fetch('/api/upload', {
-            method: 'POST',
+          const uploadResponse = await fetch("/api/upload", {
+            method: "POST",
             body: formData,
           });
 
@@ -847,15 +926,15 @@ function MessagesContent() {
               url: uploadData.url,
               filename: uploadData.filename,
               size: uploadData.size,
-              mimeType: uploadData.type
+              mimeType: uploadData.type,
             };
-            await sendMessage('', 'audio', [attachment]);
+            await sendMessage("", "audio", [attachment]);
           }
         } catch (error) {
           // Handle error silently
         }
 
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       };
 
       setIsRecording(true);
@@ -864,11 +943,10 @@ function MessagesContent() {
 
       // Start recording timer
       recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
+        setRecordingTime((prev) => prev + 1);
       }, 1000);
-
     } catch (error) {
-      alert('Could not access microphone. Please check permissions.');
+      alert("Could not access microphone. Please check permissions.");
     }
   };
 
@@ -887,7 +965,7 @@ function MessagesContent() {
 
   const handleImageCapture = () => {
     if (fileInputRef.current) {
-      fileInputRef.current.accept = 'image/*';
+      fileInputRef.current.accept = "image/*";
       fileInputRef.current.click();
     }
   };
@@ -900,22 +978,34 @@ function MessagesContent() {
 
   const handleDocumentUpload = () => {
     if (fileInputRef.current) {
-      fileInputRef.current.accept = '.pdf,.doc,.docx,.txt';
+      fileInputRef.current.accept = ".pdf,.doc,.docx,.txt";
       fileInputRef.current.click();
     }
   };
 
   // WebRTC Configuration (robust STUN/TURN set)
   const iceServers: RTCIceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' },
-    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
+    { urls: "stun:global.stun.twilio.com:3478" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turns:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
   ];
 
   const initializePeerConnection = (activeCallId?: string) => {
@@ -925,20 +1015,20 @@ function MessagesContent() {
       const id = activeCallId || callId; // ensure we have the correct call ID even before state updates propagate
       if (event.candidate && id && session?.user?.id && remoteUserId) {
         try {
-          await fetch('/api/webrtc/signal', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          await fetch("/api/webrtc/signal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              type: 'ice_candidate',
+              type: "ice_candidate",
               callId: id,
               iceCandidate: event.candidate.toJSON(),
               // needed by the signaling route to figure out the target
               callerId: isInitiator ? session.user.id : incomingCall?.callerId,
               receiverId: isInitiator ? remoteUserId : session.user.id,
-            })
+            }),
           });
         } catch (e) {
-          console.error('Failed to send ICE candidate', e);
+          console.error("Failed to send ICE candidate", e);
         }
       }
     };
@@ -950,14 +1040,18 @@ function MessagesContent() {
         remoteVideoRef.current.srcObject = stream;
         // Attempt to play (some browsers require explicit play())
         // @ts-ignore
-        remoteVideoRef.current.play?.().catch(() => { });
+        remoteVideoRef.current.play?.().catch(() => {});
       }
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') {
-        setCallState('connected');
-      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      if (pc.connectionState === "connected") {
+        setCallState("connected");
+      } else if (
+        pc.connectionState === "disconnected" ||
+        pc.connectionState === "failed" ||
+        pc.connectionState === "closed"
+      ) {
         endCall();
       }
     };
@@ -971,13 +1065,13 @@ function MessagesContent() {
   const startSimpleVideoCall = async () => {
     if (!selectedConversation || !session?.user?.id) return;
 
-    await startSimpleCall(selectedConversation, 'video');
+    await startSimpleCall(selectedConversation, "video");
   };
 
   const startSimpleAudioCall = async () => {
     if (!selectedConversation || !session?.user?.id) return;
 
-    await startSimpleCall(selectedConversation, 'audio');
+    await startSimpleCall(selectedConversation, "audio");
   };
 
   const handleSimpleCallAccept = () => {
@@ -1000,12 +1094,16 @@ function MessagesContent() {
 
       // Check SSE connection health before starting call
       if (!isConnected) {
-        console.warn('SSE connection not healthy, attempting reconnect before call...');
+        console.warn(
+          "SSE connection not healthy, attempting reconnect before call...",
+        );
         await forceReconnect();
         // Wait a bit for connection to stabilize
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
         if (!isConnected) {
-          console.error('Failed to establish SSE connection, cannot start call');
+          console.error(
+            "Failed to establish SSE connection, cannot start call",
+          );
           return;
         }
       }
@@ -1013,48 +1111,56 @@ function MessagesContent() {
       setIsVideoCall(true);
       setIsInitiator(true);
       setRemoteUserId(selectedConversation);
-      setCallState('calling');
+      setCallState("calling");
 
       // Allocate a call ID before creating the peer connection so ICE uses the right ID
       const newCallId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
       setCallId(newCallId);
 
       // Get user media
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
       setLocalStream(stream);
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         // @ts-ignore
         localVideoRef.current.muted = true; // avoid echo locally
         // @ts-ignore
-        localVideoRef.current.play?.().catch(() => { });
+        localVideoRef.current.play?.().catch(() => {});
       }
 
       // Initialize peer connection with the call ID
       const pc = initializePeerConnection(newCallId);
 
       // Add local stream to peer connection
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       // Create offer
-      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true } as any);
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      } as any);
       await pc.setLocalDescription(offer);
 
       // Send offer to signaling server
-      await fetch('/api/webrtc/signal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/webrtc/signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: 'video',
+          type: "video",
           callId: newCallId,
           receiverId: selectedConversation,
-          offer
-        })
+          offer,
+        }),
       });
     } catch (error) {
       console.error(error);
-      alert('Failed to start video call. Please check camera/microphone permissions.');
-      setCallState('idle');
+      alert(
+        "Failed to start video call. Please check camera/microphone permissions.",
+      );
+      setCallState("idle");
       setIsVideoCall(false);
     }
   };
@@ -1065,12 +1171,16 @@ function MessagesContent() {
 
       // Check SSE connection health before starting call
       if (!isConnected) {
-        console.warn('SSE connection not healthy, attempting reconnect before call...');
+        console.warn(
+          "SSE connection not healthy, attempting reconnect before call...",
+        );
         await forceReconnect();
         // Wait a bit for connection to stabilize
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
         if (!isConnected) {
-          console.error('Failed to establish SSE connection, cannot start call');
+          console.error(
+            "Failed to establish SSE connection, cannot start call",
+          );
           return;
         }
       }
@@ -1078,40 +1188,43 @@ function MessagesContent() {
       setIsAudioCall(true);
       setIsInitiator(true);
       setRemoteUserId(selectedConversation);
-      setCallState('calling');
+      setCallState("calling");
 
       // Allocate a call ID before creating the peer connection so ICE uses the right ID
       const newCallId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
       setCallId(newCallId);
 
       // Get user media (audio only)
-      const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: true,
+      });
       setLocalStream(stream);
 
       // Initialize peer connection
       const pc = initializePeerConnection(newCallId);
 
       // Add local stream to peer connection
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       // Create offer
       const offer = await pc.createOffer({ offerToReceiveAudio: true } as any);
       await pc.setLocalDescription(offer);
 
       // Send offer to signaling server
-      await fetch('/api/webrtc/signal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/webrtc/signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: 'audio',
+          type: "audio",
           callId: newCallId,
           receiverId: selectedConversation,
-          offer
-        })
+          offer,
+        }),
       });
     } catch (error) {
-      alert('Failed to start audio call. Please check microphone permissions.');
-      setCallState('idle');
+      alert("Failed to start audio call. Please check microphone permissions.");
+      setCallState("idle");
       setIsAudioCall(false);
     }
   };
@@ -1121,14 +1234,17 @@ function MessagesContent() {
       if (!incomingCall || !incomingCall.offer) return;
       setIsInitiator(false);
       setRemoteUserId(incomingCall.callerId);
-      const isVideo = incomingCall.type === 'video';
+      const isVideo = incomingCall.type === "video";
       setIsVideoCall(isVideo);
       setIsAudioCall(!isVideo);
 
       const theCallId = callId || incomingCall.callId;
       if (theCallId) setCallId(theCallId);
 
-      const stream = await navigator.mediaDevices.getUserMedia({ video: isVideo, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: isVideo,
+        audio: true,
+      });
       setLocalStream(stream);
       if (localVideoRef.current) {
         // @ts-ignore
@@ -1136,11 +1252,11 @@ function MessagesContent() {
         // @ts-ignore
         localVideoRef.current.muted = true;
         // @ts-ignore
-        localVideoRef.current.play?.().catch(() => { });
+        localVideoRef.current.play?.().catch(() => {});
       }
 
       const pc = initializePeerConnection(theCallId);
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       await pc.setRemoteDescription(incomingCall.offer);
       remoteDescriptionSetRef.current = true;
@@ -1148,21 +1264,21 @@ function MessagesContent() {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      await fetch('/api/webrtc/signal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/webrtc/signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: 'call_accepted',
+          type: "call_accepted",
           callId: theCallId,
           callerId: incomingCall.callerId,
           answer,
         }),
       });
 
-      setCallState('connected');
+      setCallState("connected");
     } catch (e) {
-      console.error('Failed to accept call', e);
-      setCallState('idle');
+      console.error("Failed to accept call", e);
+      setCallState("idle");
       setIsVideoCall(false);
       setIsAudioCall(false);
       setIncomingCall(null);
@@ -1174,52 +1290,52 @@ function MessagesContent() {
       if (!incomingCall) return;
       const theCallId = callId || incomingCall.callId;
       if (theCallId) setCallId(theCallId);
-      await fetch('/api/webrtc/signal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/webrtc/signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: 'call_rejected',
+          type: "call_rejected",
           callId: theCallId,
           callerId: incomingCall.callerId,
         }),
       });
     } catch (e) {
-      console.warn('Failed to send call_rejected', e);
+      console.warn("Failed to send call_rejected", e);
     }
     setIncomingCall(null);
-    setCallState('idle');
+    setCallState("idle");
   };
 
-
   const endCall = async () => {
-
     // Reset ICE buffering flags
     remoteDescriptionSetRef.current = false;
     pendingRemoteCandidatesRef.current.length = 0;
 
     try {
-      if (callId && session?.user?.id && (remoteUserId || incomingCall?.callerId)) {
-        await fetch('/api/webrtc/signal', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+      if (
+        callId &&
+        session?.user?.id &&
+        (remoteUserId || incomingCall?.callerId)
+      ) {
+        await fetch("/api/webrtc/signal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type: 'call_ended',
+            type: "call_ended",
             callId,
             callerId: isInitiator ? session.user.id : incomingCall?.callerId,
             receiverId: isInitiator ? remoteUserId : session?.user?.id,
-          })
+          }),
         });
       }
     } catch (e) {
-      console.warn('Failed to notify call end', e);
+      console.warn("Failed to notify call end", e);
     }
 
     // Stop local stream
     if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+      localStream.getTracks().forEach((track) => track.stop());
       setLocalStream(null);
-
-
     }
 
     // Close peer connection
@@ -1230,7 +1346,7 @@ function MessagesContent() {
     }
 
     // Reset states
-    setCallState('idle');
+    setCallState("idle");
     setIsVideoCall(false);
     setIsAudioCall(false);
     setRemoteStream(null);
@@ -1262,11 +1378,10 @@ function MessagesContent() {
     }
   };
 
-
   // Bridge notification actions from Service Worker and custom events to in-page call handlers
   useEffect(() => {
     const hydrateFromNotification = (nd: any) => {
-      if (!nd || nd.type !== 'call') return;
+      if (!nd || nd.type !== "call") return;
       if (!incomingCall || !incomingCall.offer) {
         setIncomingCall({
           type: nd.callType || nd.type,
@@ -1278,23 +1393,26 @@ function MessagesContent() {
         setCallId(nd.callId || callId);
         setIsInitiator(false);
         if (nd.callerId) setRemoteUserId(nd.callerId);
-        setCallState('incoming');
+        setCallState("incoming");
       }
     };
 
     const onSWMessage = (event: MessageEvent) => {
       try {
         const data: any = (event as any).data;
-        if (data?.type === 'notification-click' && data.notificationData?.type === 'call') {
+        if (
+          data?.type === "notification-click" &&
+          data.notificationData?.type === "call"
+        ) {
           hydrateFromNotification(data.notificationData);
-          if (data.action === 'accept') {
+          if (data.action === "accept") {
             acceptIncomingCall();
-          } else if (data.action === 'decline') {
+          } else if (data.action === "decline") {
             rejectIncomingCall();
           }
         }
       } catch (e) {
-        console.warn('SW message handling failed', e);
+        console.warn("SW message handling failed", e);
       }
     };
 
@@ -1303,29 +1421,32 @@ function MessagesContent() {
         const detail: any = (e as CustomEvent).detail;
         const nd = detail?.notificationData;
         if (nd) hydrateFromNotification(nd);
-        if (detail?.action === 'accept') {
+        if (detail?.action === "accept") {
           acceptIncomingCall();
-        } else if (detail?.action === 'decline') {
+        } else if (detail?.action === "decline") {
           rejectIncomingCall();
         }
       } catch (e) {
-        console.warn('custom call-notification-action handling failed', e);
+        console.warn("custom call-notification-action handling failed", e);
       }
     };
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('call-notification-action', onCustom as any);
+    if (typeof window !== "undefined") {
+      window.addEventListener("call-notification-action", onCustom as any);
     }
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('message', onSWMessage as any);
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", onSWMessage as any);
     }
 
     return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('call-notification-action', onCustom as any);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("call-notification-action", onCustom as any);
       }
-      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.removeEventListener('message', onSWMessage as any);
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener(
+          "message",
+          onSWMessage as any,
+        );
       }
     };
   }, [acceptIncomingCall, rejectIncomingCall, incomingCall, callId]);
@@ -1343,7 +1464,9 @@ function MessagesContent() {
     setShowNewChatDialog(false);
 
     // Check if conversation already exists
-    const existingConversation = conversations.find(c => c.user._id === user._id);
+    const existingConversation = conversations.find(
+      (c) => c.user._id === user._id,
+    );
 
     if (existingConversation) {
       // Conversation exists, just select it
@@ -1357,17 +1480,15 @@ function MessagesContent() {
           firstName: user.firstName,
           lastName: user.lastName,
           avatar: user.avatar,
-          role: user.role
+          role: user.role,
         },
         lastMessage: {} as Message,
         unreadCount: 0,
-        isOnline: false
-
-
+        isOnline: false,
       };
 
       // Add to conversations list
-      setConversations(prev => [newConversation, ...prev]);
+      setConversations((prev) => [newConversation, ...prev]);
 
       // Select the conversation and start with empty messages
       setSelectedConversation(user._id);
@@ -1385,15 +1506,17 @@ function MessagesContent() {
     );
   };
 
-  const getReplyPreviewText = (message: Message | Message['replyTo']) => {
-    if (!message) return '';
+  const getReplyPreviewText = (message: Message | Message["replyTo"]) => {
+    if (!message) return "";
 
-    if (message.type === 'image') return 'Image';
-    if (message.type === 'video') return 'Video';
-    if (message.type === 'audio' || message.type === 'voice') return 'Voice message';
-    if (message.type === 'file') return message.attachments?.[0]?.filename || 'File';
+    if (message.type === "image") return "Image";
+    if (message.type === "video") return "Video";
+    if (message.type === "audio" || message.type === "voice")
+      return "Voice message";
+    if (message.type === "file")
+      return message.attachments?.[0]?.filename || "File";
 
-    return message.content || '';
+    return message.content || "";
   };
 
   const jumpToOriginalMessage = (messageId?: string) => {
@@ -1402,7 +1525,7 @@ function MessagesContent() {
     const targetElement = messageElementRefs.current[messageId];
     if (!targetElement) return;
 
-    targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    targetElement.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlightedMessageId(messageId);
 
     if (highlightTimeoutRef.current) {
@@ -1410,7 +1533,9 @@ function MessagesContent() {
     }
 
     highlightTimeoutRef.current = setTimeout(() => {
-      setHighlightedMessageId((current) => (current === messageId ? null : current));
+      setHighlightedMessageId((current) =>
+        current === messageId ? null : current,
+      );
     }, 3000);
   };
 
@@ -1429,20 +1554,22 @@ function MessagesContent() {
     setIsDeleting(true);
     try {
       const response = await fetch(`/api/messages/${messageToDelete._id}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (response.ok) {
         // Remove message from local state immediately
-        setMessages(prev => prev.filter(m => m._id !== messageToDelete._id));
-        toast.success('Message deleted');
+        setMessages((prev) =>
+          prev.filter((m) => m._id !== messageToDelete._id),
+        );
+        toast.success("Message deleted");
       } else {
         const data = await response.json();
-        toast.error(data.error || 'Failed to delete message');
+        toast.error(data.error || "Failed to delete message");
       }
     } catch (error) {
-      console.error('Error deleting message:', error);
-      toast.error('Failed to delete message');
+      console.error("Error deleting message:", error);
+      toast.error("Failed to delete message");
     } finally {
       setIsDeleting(false);
       setDeleteDialogOpen(false);
@@ -1458,19 +1585,24 @@ function MessagesContent() {
   // Date formatting helper functions
   const formatDateSeparator = (dateString: string) => {
     const date = new Date(dateString);
-    if (isToday(date)) return 'Today';
-    if (isYesterday(date)) return 'Yesterday';
-    return format(date, 'MMMM d, yyyy');
+    if (isToday(date)) return "Today";
+    if (isYesterday(date)) return "Yesterday";
+    return format(date, "MMMM d, yyyy");
   };
 
-  const shouldShowDateSeparator = (currentMsg: Message, prevMsg: Message | null) => {
+  const shouldShowDateSeparator = (
+    currentMsg: Message,
+    prevMsg: Message | null,
+  ) => {
     if (!prevMsg) return true; // Always show for first message
     const currentDate = new Date(currentMsg.createdAt);
     const prevDate = new Date(prevMsg.createdAt);
     return !isSameDay(currentDate, prevDate);
   };
 
-  const selectedUser = conversations.find(c => c.user._id === selectedConversation);
+  const selectedUser = conversations.find(
+    (c) => c.user._id === selectedConversation,
+  );
 
   if (!session) {
     return (
@@ -1498,8 +1630,10 @@ function MessagesContent() {
         {/* Conversations Sidebar */}
         <div
           className={cn(
-            'border-r bg-white flex flex-col',
-            selectedConversation ? 'hidden md:flex md:w-1/3' : 'flex w-full md:w-1/3'
+            "border-r bg-white flex flex-col",
+            selectedConversation
+              ? "hidden md:flex md:w-1/3"
+              : "flex w-full md:w-1/3",
           )}
         >
           {/* Header */}
@@ -1508,20 +1642,30 @@ function MessagesContent() {
               <h1 className="text-xl font-semibold">DTPS Chat</h1>
               <div className="flex items-center gap-1">
                 {/* Bulk Message Button - staff only */}
-                {session?.user?.role && ['admin', 'dietitian', 'health_counselor'].includes(session.user.role.toLowerCase()) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-white hover:bg-green-700"
-                    onClick={() => setShowBulkMessageModal(true)}
-                    title="Bulk Message"
-                  >
-                    <Megaphone className="h-5 w-5" />
-                  </Button>
-                )}
-                <Dialog open={showNewChatDialog} onOpenChange={setShowNewChatDialog}>
+                {session?.user?.role &&
+                  ["admin", "dietitian", "health_counselor"].includes(
+                    session.user.role.toLowerCase(),
+                  ) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-green-700"
+                      onClick={() => setShowBulkMessageModal(true)}
+                      title="Bulk Message"
+                    >
+                      <Megaphone className="h-5 w-5" />
+                    </Button>
+                  )}
+                <Dialog
+                  open={showNewChatDialog}
+                  onOpenChange={setShowNewChatDialog}
+                >
                   <DialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="text-white hover:bg-green-700">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-white hover:bg-green-700"
+                    >
                       <Plus className="h-5 w-5" />
                     </Button>
                   </DialogTrigger>
@@ -1537,11 +1681,14 @@ function MessagesContent() {
                       {/* Role Filter Tabs */}
                       <div className="flex flex-wrap gap-2">
                         {[
-                          { value: 'all', label: 'All' },
-                          { value: 'client', label: 'Clients' },
-                          { value: 'dietitian', label: 'Dietitians' },
-                          { value: 'health_counselor', label: 'Health Counselors' },
-                          { value: 'admin', label: 'Admin' },
+                          { value: "all", label: "All" },
+                          { value: "client", label: "Clients" },
+                          { value: "dietitian", label: "Dietitians" },
+                          {
+                            value: "health_counselor",
+                            label: "Health Counselors",
+                          },
+                          { value: "admin", label: "Admin" },
                         ].map((tab) => (
                           <button
                             key={tab.value}
@@ -1550,7 +1697,7 @@ function MessagesContent() {
                               "px-3 py-1.5 text-sm font-medium rounded-full transition-colors",
                               roleFilter === tab.value
                                 ? "bg-green-600 text-white"
-                                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                : "bg-gray-100 text-gray-600 hover:bg-gray-200",
                             )}
                           >
                             {tab.label}
@@ -1576,7 +1723,9 @@ function MessagesContent() {
                             <LoadingSpinner />
                           </div>
                         ) : availableUsers.length === 0 ? (
-                          <p className="text-gray-500 text-center py-4">No users found</p>
+                          <p className="text-gray-500 text-center py-4">
+                            No users found
+                          </p>
                         ) : (
                           availableUsers.map((user) => (
                             <div
@@ -1588,7 +1737,8 @@ function MessagesContent() {
                                 <Avatar className="h-10 w-10">
                                   <AvatarImage src={user.avatar} />
                                   <AvatarFallback className="bg-green-100 text-green-600">
-                                    {user.firstName[0]}{user.lastName[0]}
+                                    {user.firstName[0]}
+                                    {user.lastName[0]}
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1 min-w-0">
@@ -1596,21 +1746,32 @@ function MessagesContent() {
                                     <p className="font-medium text-gray-900">
                                       {user.firstName} {user.lastName}
                                     </p>
-                                    <span className={cn(
-                                      "px-2 py-0.5 text-xs font-medium rounded-full",
-                                      user.role === 'admin' && "bg-purple-100 text-purple-700",
-                                      user.role === 'dietitian' && "bg-blue-100 text-blue-700",
-                                      user.role === 'health_counselor' && "bg-orange-100 text-orange-700",
-                                      user.role === 'client' && "bg-green-100 text-green-700"
-                                    )}>
-                                      {user.role === 'health_counselor' ? 'HC' : user.role?.charAt(0).toUpperCase() + user.role?.slice(1)}
+                                    <span
+                                      className={cn(
+                                        "px-2 py-0.5 text-xs font-medium rounded-full",
+                                        user.role === "admin" &&
+                                          "bg-purple-100 text-purple-700",
+                                        user.role === "dietitian" &&
+                                          "bg-blue-100 text-blue-700",
+                                        user.role === "health_counselor" &&
+                                          "bg-orange-100 text-orange-700",
+                                        user.role === "client" &&
+                                          "bg-green-100 text-green-700",
+                                      )}
+                                    >
+                                      {user.role === "health_counselor"
+                                        ? "HC"
+                                        : user.role?.charAt(0).toUpperCase() +
+                                          user.role?.slice(1)}
                                     </span>
                                   </div>
                                   <p className="text-sm text-gray-500 truncate">
                                     {user.email}
                                   </p>
                                   {user.hasExistingConversation && (
-                                    <p className="text-xs text-blue-600">Existing conversation</p>
+                                    <p className="text-xs text-blue-600">
+                                      Existing conversation
+                                    </p>
                                   )}
                                 </div>
                               </div>
@@ -1641,7 +1802,9 @@ function MessagesContent() {
               <div className="text-center py-8 px-4">
                 <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500">No conversations yet</p>
-                <p className="text-sm text-gray-400 mb-4">Start a conversation with a client or dietitian</p>
+                <p className="text-sm text-gray-400 mb-4">
+                  Start a conversation with a client or dietitian
+                </p>
                 <Button onClick={() => setShowNewChatDialog(true)} size="sm">
                   <Plus className="h-4 w-4 mr-2" />
                   Start Chat
@@ -1649,27 +1812,33 @@ function MessagesContent() {
               </div>
             ) : (
               conversations
-                .filter(conversation => conversation.user)
-                .filter(conversation => {
+                .filter((conversation) => conversation.user)
+                .filter((conversation) => {
                   if (!conversationSearch.trim()) return true;
                   const search = conversationSearch.toLowerCase().trim();
-                  const fullName = `${conversation.user.firstName} ${conversation.user.lastName}`.toLowerCase();
-                  const clientId = conversation.user.clientId?.toLowerCase() || '';
+                  const fullName =
+                    `${conversation.user.firstName} ${conversation.user.lastName}`.toLowerCase();
+                  const clientId =
+                    conversation.user.clientId?.toLowerCase() || "";
                   return fullName.includes(search) || clientId.includes(search);
                 })
                 .map((conversation) => (
                   <div
                     key={conversation.user._id}
                     onClick={() => selectConversation(conversation.user._id)}
-                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors border-b ${selectedConversation === conversation.user._id ? 'bg-green-50' : ''
-                      }`}
+                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors border-b ${
+                      selectedConversation === conversation.user._id
+                        ? "bg-green-50"
+                        : ""
+                    }`}
                   >
                     <div className="flex items-center space-x-3">
                       <div className="relative">
                         <Avatar className="h-12 w-12">
                           <AvatarImage src={conversation.user.avatar} />
                           <AvatarFallback className="bg-green-100 text-green-600">
-                            {conversation.user.firstName[0]}{conversation.user.lastName[0]}
+                            {conversation.user.firstName[0]}
+                            {conversation.user.lastName[0]}
                           </AvatarFallback>
                         </Avatar>
                         {conversation.isOnline && (
@@ -1680,44 +1849,65 @@ function MessagesContent() {
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             <p className="text-sm font-medium text-gray-900 truncate">
-                              {conversation.user.firstName} {conversation.user.lastName}
+                              {conversation.user.firstName}{" "}
+                              {conversation.user.lastName}
                               {conversation.user.clientId && (
-                                <span className="ml-1 text-xs text-gray-500">({conversation.user.clientId})</span>
+                                <span className="ml-1 text-xs text-gray-500">
+                                  ({conversation.user.clientId})
+                                </span>
                               )}
                             </p>
                             {conversation.user.clientStatus && (
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${conversation.user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
-                                conversation.user.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700' :
-                                  'bg-blue-100 text-blue-700'
-                                }`}>
-                                {conversation.user.clientStatus.charAt(0).toUpperCase() + conversation.user.clientStatus.slice(1)}
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${
+                                  conversation.user.clientStatus === "active"
+                                    ? "bg-green-100 text-green-700"
+                                    : conversation.user.clientStatus ===
+                                        "inactive"
+                                      ? "bg-gray-100 text-gray-700"
+                                      : "bg-blue-100 text-blue-700"
+                                }`}
+                              >
+                                {conversation.user.clientStatus
+                                  .charAt(0)
+                                  .toUpperCase() +
+                                  conversation.user.clientStatus.slice(1)}
                               </span>
                             )}
                           </div>
-                          {conversation.lastMessage?.createdAt && (() => {
-                            try {
-                              const date = new Date(conversation.lastMessage.createdAt);
-                              if (!isNaN(date.getTime())) {
-                                return (
-                                  <p className="text-xs text-gray-500 shrink-0">
-                                    {format(date, 'MMM d, yyyy • h:mm a')}
-                                  </p>
+                          {conversation.lastMessage?.createdAt &&
+                            (() => {
+                              try {
+                                const date = new Date(
+                                  conversation.lastMessage.createdAt,
                                 );
+                                if (!isNaN(date.getTime())) {
+                                  return (
+                                    <p className="text-xs text-gray-500 shrink-0">
+                                      {format(date, "MMM d, yyyy • h:mm a")}
+                                    </p>
+                                  );
+                                }
+                              } catch (error) {
+                                return null;
                               }
-                            } catch (error) {
                               return null;
-                            }
-                            return null;
-                          })()}
+                            })()}
                         </div>
                         <div className="flex items-center justify-between">
                           <p className="text-sm text-gray-500 truncate">
-                            {conversation.lastMessage?.type === 'image' ? '📷 Photo' :
-                              conversation.lastMessage?.type === 'video' ? '🎬 Video' :
-                                conversation.lastMessage?.type === 'audio' ? '🎵 Audio' :
-                                  conversation.lastMessage?.type === 'voice' ? '🎤 Voice message' :
-                                    conversation.lastMessage?.type === 'file' ? '📄 Document' :
-                                      conversation.lastMessage?.content || 'Start conversation...'}
+                            {conversation.lastMessage?.type === "image"
+                              ? "📷 Photo"
+                              : conversation.lastMessage?.type === "video"
+                                ? "🎬 Video"
+                                : conversation.lastMessage?.type === "audio"
+                                  ? "🎵 Audio"
+                                  : conversation.lastMessage?.type === "voice"
+                                    ? "🎤 Voice message"
+                                    : conversation.lastMessage?.type === "file"
+                                      ? "📄 Document"
+                                      : conversation.lastMessage?.content ||
+                                        "Start conversation..."}
                           </p>
                           {conversation.unreadCount > 0 && (
                             <div className="bg-green-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center shrink-0 ml-2">
@@ -1734,7 +1924,12 @@ function MessagesContent() {
         </div>
 
         {/* Chat Area */}
-        <div className={cn('flex-1 flex flex-col', selectedConversation ? 'flex' : 'hidden md:flex')}>
+        <div
+          className={cn(
+            "flex-1 flex flex-col",
+            selectedConversation ? "flex" : "hidden md:flex",
+          )}
+        >
           {selectedConversation && selectedUser ? (
             <>
               {/* Chat Header */}
@@ -1752,7 +1947,8 @@ function MessagesContent() {
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={selectedUser.user.avatar} />
                       <AvatarFallback className="bg-green-100 text-green-600">
-                        {selectedUser.user.firstName[0]}{selectedUser.user.lastName[0]}
+                        {selectedUser.user.firstName[0]}
+                        {selectedUser.user.lastName[0]}
                       </AvatarFallback>
                     </Avatar>
                     {selectedUser.isOnline && (
@@ -1762,243 +1958,365 @@ function MessagesContent() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-medium">
-                        {selectedUser.user.firstName} {selectedUser.user.lastName}
+                        {selectedUser.user.firstName}{" "}
+                        {selectedUser.user.lastName}
                         {selectedUser.user.clientId && (
-                          <span className="ml-1 text-sm font-normal text-gray-500">({selectedUser.user.clientId})</span>
+                          <span className="ml-1 text-sm font-normal text-gray-500">
+                            ({selectedUser.user.clientId})
+                          </span>
                         )}
                       </h3>
                       {selectedUser.user.clientStatus && (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${selectedUser.user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
-                          selectedUser.user.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700' :
-                            'bg-blue-100 text-blue-700'
-                          }`}>
-                          {selectedUser.user.clientStatus.charAt(0).toUpperCase() + selectedUser.user.clientStatus.slice(1)}
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            selectedUser.user.clientStatus === "active"
+                              ? "bg-green-100 text-green-700"
+                              : selectedUser.user.clientStatus === "inactive"
+                                ? "bg-gray-100 text-gray-700"
+                                : "bg-blue-100 text-blue-700"
+                          }`}
+                        >
+                          {selectedUser.user.clientStatus
+                            .charAt(0)
+                            .toUpperCase() +
+                            selectedUser.user.clientStatus.slice(1)}
                         </span>
                       )}
                     </div>
                     <p className="text-sm text-gray-500">
-                      {selectedUser.user.role} • {selectedUser.isOnline ? 'Online' : selectedUser.lastSeen ? `Last seen ${selectedUser.lastSeen}` : 'Offline'}
+                      {selectedUser.user.role} •{" "}
+                      {selectedUser.isOnline
+                        ? "Online"
+                        : selectedUser.lastSeen
+                          ? `Last seen ${selectedUser.lastSeen}`
+                          : "Offline"}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  {selectedUser.user.role === 'client' && selectedUser.user._id && (
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/dietician/clients/${selectedUser.user._id}`} aria-label="View client dashboard">
-                        View Dashboard
-                      </Link>
-                    </Button>
-                  )}
+                  {selectedUser.user.role === "client" &&
+                    selectedUser.user._id && (
+                      <Button variant="outline" size="sm" asChild>
+                        <Link
+                          href={`/dietician/clients/${selectedUser.user._id}`}
+                          aria-label="View client dashboard"
+                        >
+                          View Dashboard
+                        </Link>
+                      </Button>
+                    )}
                 </div>
               </div>
 
               {/* Messages */}
-              <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50" style={{ backgroundImage: "url('data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><defs><pattern id=\"grain\" width=\"100\" height=\"100\" patternUnits=\"userSpaceOnUse\"><circle cx=\"50\" cy=\"50\" r=\"0.5\" fill=\"%23000\" opacity=\"0.02\"/></pattern></defs><rect width=\"100\" height=\"100\" fill=\"url(%23grain)\"/></svg>')" }}>
+              <div
+                ref={messagesContainerRef}
+                className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50"
+                style={{
+                  backgroundImage:
+                    'url(\'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="0.5" fill="%23000" opacity="0.02"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>\')',
+                }}
+              >
                 {messages.length === 0 ? (
                   <div className="text-center py-8">
                     <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-500">No messages yet</p>
-                    <p className="text-sm text-gray-400">Start the conversation!</p>
+                    <p className="text-sm text-gray-400">
+                      Start the conversation!
+                    </p>
                   </div>
                 ) : (
-                  messages.map((message, index) => {
-                    // Safety check for sender
-                    if (!message.sender) {
-                      return null;
-                    }
+                  messages
+                    .map((message, index) => {
+                      // Safety check for sender
+                      if (!message.sender) {
+                        return null;
+                      }
 
-                    // Convert both to strings for proper comparison (handles ObjectId vs string mismatch)
-                    const isOwn = String(message.sender._id || '') === String(session?.user?.id || '');
-                    const prevMessage = index > 0 ? messages[index - 1] : null;
-                    const showDateSeparator = shouldShowDateSeparator(message, prevMessage);
+                      // Convert both to strings for proper comparison (handles ObjectId vs string mismatch)
+                      const isOwn =
+                        String(message.sender._id || "") ===
+                        String(session?.user?.id || "");
+                      const prevMessage =
+                        index > 0 ? messages[index - 1] : null;
+                      const showDateSeparator = shouldShowDateSeparator(
+                        message,
+                        prevMessage,
+                      );
 
-                    return (
-                      <div key={message._id}>
-                        {/* Date Separator - WhatsApp style */}
-                        {showDateSeparator && (
-                          <div className="flex justify-center my-4 sticky top-2 z-10">
-                            <div className="px-4 py-1.5 rounded-lg text-[12px] font-medium text-gray-600 bg-white shadow-md">
-                              {formatDateSeparator(message.createdAt)}
+                      return (
+                        <div key={message._id}>
+                          {/* Date Separator - WhatsApp style */}
+                          {showDateSeparator && (
+                            <div className="flex justify-center my-4 sticky top-2 z-10">
+                              <div className="px-4 py-1.5 rounded-lg text-[12px] font-medium text-gray-600 bg-white shadow-md">
+                                {formatDateSeparator(message.createdAt)}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {/* Message */}
-                        <div
-                          className={`flex items-end gap-2 ${isOwn ? 'justify-end' : 'justify-start'
+                          {/* Message */}
+                          <div
+                            className={`flex items-end gap-2 ${
+                              isOwn ? "justify-end" : "justify-start"
                             }`}
-                          ref={(element) => {
-                            messageElementRefs.current[message._id] = element;
-                          }}
-                        >
-                          {/* Avatar for received messages */}
-                          {!isOwn && (
-                            <Avatar className="h-7 w-7 shrink-0">
-                              <AvatarImage src={message.sender?.avatar} />
-                              <AvatarFallback className="bg-green-100 text-green-600 text-xs">
-                                {message.sender?.firstName?.[0]}{message.sender?.lastName?.[0]}
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
-
-                          {/* Delete menu only for own messages/media - always visible on left */}
-                          {isOwn && (
-                            <div className="order-2">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 rounded-full hover:bg-gray-200"
-                                  >
-                                    <MoreVertical className="h-3.5 w-3.5" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start" className="min-w-40">
-                                  <DropdownMenuItem
-                                    className="text-red-600 focus:text-red-600 cursor-pointer"
-                                    onClick={() => confirmDeleteMessage(message)}
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          )}
-
-                          <div className="max-w-xs lg:max-w-md">
-                            {/* Sender name for received messages */}
+                            ref={(element) => {
+                              messageElementRefs.current[message._id] = element;
+                            }}
+                          >
+                            {/* Avatar for received messages */}
                             {!isOwn && (
-                              <p className="text-xs text-gray-500 mb-1 ml-1">
-                                {message.sender?.firstName} {message.sender?.lastName}
-                              </p>
+                              <Avatar className="h-7 w-7 shrink-0">
+                                <AvatarImage src={message.sender?.avatar} />
+                                <AvatarFallback className="bg-green-100 text-green-600 text-xs">
+                                  {message.sender?.firstName?.[0]}
+                                  {message.sender?.lastName?.[0]}
+                                </AvatarFallback>
+                              </Avatar>
                             )}
-                            <div
-                              className={`px-3 py-2 rounded-2xl shadow-sm ${isOwn
-                                ? 'bg-[#25D366] text-white rounded-tr-sm'
-                                : 'bg-white text-gray-900 rounded-tl-sm border border-gray-100'
-                                } ${highlightedMessageId === message._id ? 'ring-3 ring-yellow-400 ring-offset-2 ring-offset-[#f5f5f5]' : ''} transition-all duration-300`}
-                              onDoubleClick={() => setReplyingToMessage(message)}
-                              onTouchEnd={() => {
-                                const now = Date.now();
-                                const previousTap = lastTappedMessageRef.current;
-                                if (previousTap && previousTap.id === message._id && now - previousTap.at < 320) {
-                                  setReplyingToMessage(message);
-                                  lastTappedMessageRef.current = null;
-                                  return;
-                                }
-                                lastTappedMessageRef.current = { id: message._id, at: now };
-                              }}
-                            >
-                              {message.replyTo && (
-                                <button
-                                  type="button"
-                                  onClick={() => jumpToOriginalMessage(message.replyTo?._id)}
-                                  className={`mb-2 w-full text-left rounded-lg border-l-3 px-2 py-1 text-xs cursor-pointer ${isOwn ? 'bg-green-400/20 border-white/70 text-white/95 hover:bg-green-400/30' : 'bg-gray-100 border-green-500 text-gray-700 hover:bg-gray-200'} transition-colors`}
-                                >
-                                  <p className={`font-semibold ${isOwn ? 'text-white' : 'text-green-700'}`}>
-                                    {message.replyTo.sender?.firstName || 'Reply'}
-                                  </p>
-                                  <p className="truncate">{getReplyPreviewText(message.replyTo)}</p>
-                                </button>
-                              )}
 
-                              {/* Image Messages */}
-                              {message.type === 'image' && message.attachments?.[0] && (
-                                <div className="mb-2">
-                                  <img
-                                    src={message.attachments[0].url}
-                                    alt="Shared image"
-                                    className="rounded-lg max-w-xs h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                                    onClick={() => setPreviewImage(message.attachments?.[0]?.url || '')}
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement;
-                                      target.style.display = 'none';
-                                      const parent = target.parentElement;
-                                      if (parent && !parent.querySelector('.error-placeholder')) {
-                                        const placeholder = document.createElement('div');
-                                        placeholder.className = 'error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm';
-                                        placeholder.innerHTML = '<span>📷 Image could not be loaded</span>';
-                                        parent.appendChild(placeholder);
-                                      }
-                                    }}
-                                  />
-                                </div>
-                              )}
-
-                              {/* Video Messages */}
-                              {message.type === 'video' && message.attachments?.[0] && (
-                                <div className="mb-2">
-                                  <video
-                                    src={message.attachments[0].url}
-                                    controls
-                                    className="rounded-lg max-w-xs h-auto"
-                                    preload="metadata"
+                            {/* Delete menu only for own messages/media - always visible on left */}
+                            {isOwn && (
+                              <div className="order-2">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0 rounded-full hover:bg-gray-200"
+                                    >
+                                      <MoreVertical className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="start"
+                                    className="min-w-40"
                                   >
-                                    Your browser does not support video playback.
-                                  </video>
-                                </div>
-                              )}
+                                    <DropdownMenuItem
+                                      className="text-red-600 focus:text-red-600 cursor-pointer"
+                                      onClick={() =>
+                                        confirmDeleteMessage(message)
+                                      }
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            )}
 
-                              {/* Audio Messages */}
-                              {(message.type === 'audio' || message.type === 'voice') && message.attachments?.[0] && (
-                                <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
-                                  <Volume2 className="h-4 w-4 text-gray-600" />
-                                  <audio controls className="flex-1" preload="metadata">
-                                    <source
-                                      src={message.attachments[0].url}
-                                      type={message.attachments[0].mimeType || 'audio/*'}
-                                    />
-                                    <a href={message.attachments[0].url} target="_blank" rel="noopener noreferrer">
-                                      Open audio message
-                                    </a>
-                                  </audio>
-                                </div>
-                              )}
+                            {/* ── Reply arrow button (always visible) ── */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReplyingToMessage(message);
+                              }}
+                              className="shrink-0 p-1.5 rounded-full bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-600 active:scale-90 transition-all duration-150 border border-gray-200"
+                              title="Reply"
+                              aria-label="Reply to message"
+                            >
+                              <CornerDownRight className="w-4 h-4" />
+                            </button>
 
-                              {/* File Messages */}
-                              {message.type === 'file' && message.attachments?.[0] && (
-                                <a
-                                  href={message.attachments[0].url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  download={message.attachments[0].filename}
-                                  className="flex items-center space-x-2 mb-2 p-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
-                                >
-                                  <FileIcon className="h-4 w-4 text-gray-600" />
-                                  <div className="flex-1">
-                                    <span className="text-sm font-medium">{message.attachments[0].filename}</span>
-                                    <p className="text-xs text-gray-500">
-                                      {(message.attachments[0].size / 1024 / 1024).toFixed(2)} MB
-                                    </p>
-                                  </div>
-                                  <Download className="h-4 w-4 text-gray-600" />
-                                </a>
-                              )}
-                              <p className="text-sm">{message.content}</p>
-                              <div className={`flex items-center ${isOwn ? 'justify-end' : 'justify-start'} space-x-1 mt-1`}>
-                                <p
-                                  className={`text-xs ${isOwn ? 'text-green-100' : 'text-gray-500'
-                                    }`}
-                                >
-                                  {(() => {
-                                    try {
-                                      const date = new Date(message.createdAt);
-                                      return !isNaN(date.getTime()) ? format(date, 'h:mm a') : '';
-                                    } catch (error) {
-                                      return '';
-                                    }
-                                  })()}
+                            <div className="max-w-xs lg:max-w-md">
+                              {/* Sender name for received messages */}
+                              {!isOwn && (
+                                <p className="text-xs text-gray-500 mb-1 ml-1">
+                                  {message.sender?.firstName}{" "}
+                                  {message.sender?.lastName}
                                 </p>
-                                {getMessageStatus(message)}
+                              )}
+                              <div
+                                className={`px-3 py-2 rounded-2xl shadow-sm ${
+                                  isOwn
+                                    ? "bg-[#25D366] text-white rounded-tr-sm"
+                                    : "bg-white text-gray-900 rounded-tl-sm border border-gray-100"
+                                } ${highlightedMessageId === message._id ? "ring-3 ring-yellow-400 ring-offset-2 ring-offset-[#f5f5f5]" : ""} transition-all duration-300`}
+                                onDoubleClick={() =>
+                                  setReplyingToMessage(message)
+                                }
+                                onTouchEnd={() => {
+                                  const now = Date.now();
+                                  const previousTap =
+                                    lastTappedMessageRef.current;
+                                  if (
+                                    previousTap &&
+                                    previousTap.id === message._id &&
+                                    now - previousTap.at < 320
+                                  ) {
+                                    setReplyingToMessage(message);
+                                    lastTappedMessageRef.current = null;
+                                    return;
+                                  }
+                                  lastTappedMessageRef.current = {
+                                    id: message._id,
+                                    at: now,
+                                  };
+                                }}
+                              >
+                                {message.replyTo && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      jumpToOriginalMessage(
+                                        message.replyTo?._id,
+                                      )
+                                    }
+                                    className={`mb-2 w-full text-left rounded-lg border-l-3 px-2 py-1 text-xs cursor-pointer ${isOwn ? "bg-green-400/20 border-white/70 text-white/95 hover:bg-green-400/30" : "bg-gray-100 border-green-500 text-gray-700 hover:bg-gray-200"} transition-colors`}
+                                  >
+                                    <p
+                                      className={`font-semibold ${isOwn ? "text-white" : "text-green-700"}`}
+                                    >
+                                      {message.replyTo.sender?.firstName ||
+                                        "Reply"}
+                                    </p>
+                                    <p className="truncate">
+                                      {getReplyPreviewText(message.replyTo)}
+                                    </p>
+                                  </button>
+                                )}
+
+                                {/* Image Messages */}
+                                {message.type === "image" &&
+                                  message.attachments?.[0] && (
+                                    <div className="mb-2">
+                                      <img
+                                        src={message.attachments[0].url}
+                                        alt="Shared image"
+                                        className="rounded-lg max-w-xs h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                        onClick={() =>
+                                          setPreviewImage(
+                                            message.attachments?.[0]?.url || "",
+                                          )
+                                        }
+                                        onError={(e) => {
+                                          const target =
+                                            e.target as HTMLImageElement;
+                                          target.style.display = "none";
+                                          const parent = target.parentElement;
+                                          if (
+                                            parent &&
+                                            !parent.querySelector(
+                                              ".error-placeholder",
+                                            )
+                                          ) {
+                                            const placeholder =
+                                              document.createElement("div");
+                                            placeholder.className =
+                                              "error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm";
+                                            placeholder.innerHTML =
+                                              "<span>📷 Image could not be loaded</span>";
+                                            parent.appendChild(placeholder);
+                                          }
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+
+                                {/* Video Messages */}
+                                {message.type === "video" &&
+                                  message.attachments?.[0] && (
+                                    <div className="mb-2">
+                                      <video
+                                        src={message.attachments[0].url}
+                                        controls
+                                        className="rounded-lg max-w-xs h-auto"
+                                        preload="metadata"
+                                      >
+                                        Your browser does not support video
+                                        playback.
+                                      </video>
+                                    </div>
+                                  )}
+
+                                {/* Audio Messages */}
+                                {(message.type === "audio" ||
+                                  message.type === "voice") &&
+                                  message.attachments?.[0] && (
+                                    <div className="mb-2 flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
+                                      <Volume2 className="h-4 w-4 text-gray-600" />
+                                      <audio
+                                        controls
+                                        className="flex-1"
+                                        preload="metadata"
+                                      >
+                                        <source
+                                          src={message.attachments[0].url}
+                                          type={
+                                            message.attachments[0].mimeType ||
+                                            "audio/*"
+                                          }
+                                        />
+                                        <a
+                                          href={message.attachments[0].url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          Open audio message
+                                        </a>
+                                      </audio>
+                                    </div>
+                                  )}
+
+                                {/* File Messages */}
+                                {message.type === "file" &&
+                                  message.attachments?.[0] && (
+                                    <a
+                                      href={message.attachments[0].url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      download={message.attachments[0].filename}
+                                      className="flex items-center space-x-2 mb-2 p-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
+                                    >
+                                      <FileIcon className="h-4 w-4 text-gray-600" />
+                                      <div className="flex-1">
+                                        <span className="text-sm font-medium">
+                                          {message.attachments[0].filename}
+                                        </span>
+                                        <p className="text-xs text-gray-500">
+                                          {(
+                                            message.attachments[0].size /
+                                            1024 /
+                                            1024
+                                          ).toFixed(2)}{" "}
+                                          MB
+                                        </p>
+                                      </div>
+                                      <Download className="h-4 w-4 text-gray-600" />
+                                    </a>
+                                  )}
+                                <p className="text-sm">{message.content}</p>
+                                <div
+                                  className={`flex items-center ${isOwn ? "justify-end" : "justify-start"} space-x-1 mt-1`}
+                                >
+                                  <p
+                                    className={`text-xs ${
+                                      isOwn ? "text-green-100" : "text-gray-500"
+                                    }`}
+                                  >
+                                    {(() => {
+                                      try {
+                                        const date = new Date(
+                                          message.createdAt,
+                                        );
+                                        return !isNaN(date.getTime())
+                                          ? format(date, "h:mm a")
+                                          : "";
+                                      } catch (error) {
+                                        return "";
+                                      }
+                                    })()}
+                                  </p>
+                                  {getMessageStatus(message)}
+                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  }).filter(Boolean)
+                      );
+                    })
+                    .filter(Boolean)
                 )}
                 <div ref={messagesEndRef} />
               </div>
@@ -2060,7 +2378,9 @@ function MessagesContent() {
                 {isRecording && (
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-red-500 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
                     <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    <span className="text-sm">Recording... {recordingTime}s</span>
+                    <span className="text-sm">
+                      Recording... {recordingTime}s
+                    </span>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -2078,7 +2398,11 @@ function MessagesContent() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-green-700">
-                            Replying to {String(replyingToMessage.sender?._id || '') === String(session?.user?.id || '') ? 'yourself' : `${replyingToMessage.sender?.firstName || ''} ${replyingToMessage.sender?.lastName || ''}`.trim()}
+                            Replying to{" "}
+                            {String(replyingToMessage.sender?._id || "") ===
+                            String(session?.user?.id || "")
+                              ? "yourself"
+                              : `${replyingToMessage.sender?.firstName || ""} ${replyingToMessage.sender?.lastName || ""}`.trim()}
                           </p>
                           <p className="text-xs text-gray-700 truncate">
                             {getReplyPreviewText(replyingToMessage)}
@@ -2150,7 +2474,7 @@ function MessagesContent() {
                         onTouchStart={startAudioRecording}
                         onTouchEnd={stopAudioRecording}
                         size="sm"
-                        className={`rounded-full w-10 h-10 p-0 ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
+                        className={`rounded-full w-10 h-10 p-0 ${isRecording ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"}`}
                       >
                         <Mic className="h-4 w-4" />
                       </Button>
@@ -2184,7 +2508,10 @@ function MessagesContent() {
 
               {/* Image Preview Modal */}
               {previewImage && (
-                <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
+                <Dialog
+                  open={!!previewImage}
+                  onOpenChange={() => setPreviewImage(null)}
+                >
                   <DialogContent className="max-w-4xl">
                     <DialogHeader>
                       <DialogTitle>Image Preview</DialogTitle>
@@ -2204,19 +2531,29 @@ function MessagesContent() {
             <div className="flex-1 flex items-center justify-center bg-gray-50">
               <div className="text-center">
                 <MessageCircle className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Welcome to DTPS Chat</h3>
-                <p className="text-gray-500 mb-4">Select a conversation to start messaging</p>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  Welcome to DTPS Chat
+                </h3>
+                <p className="text-gray-500 mb-4">
+                  Select a conversation to start messaging
+                </p>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
                   <Button onClick={() => setShowNewChatDialog(true)}>
                     <Plus className="h-4 w-4 mr-2" />
                     New Chat
                   </Button>
-                  {session?.user?.role && ['admin', 'dietitian', 'health_counselor'].includes(session.user.role.toLowerCase()) && (
-                    <Button variant="outline" onClick={() => setShowBulkMessageModal(true)}>
-                      <Megaphone className="h-4 w-4 mr-2" />
-                      Bulk Message
-                    </Button>
-                  )}
+                  {session?.user?.role &&
+                    ["admin", "dietitian", "health_counselor"].includes(
+                      session.user.role.toLowerCase(),
+                    ) && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowBulkMessageModal(true)}
+                      >
+                        <Megaphone className="h-4 w-4 mr-2" />
+                        Bulk Message
+                      </Button>
+                    )}
                 </div>
               </div>
             </div>
@@ -2228,7 +2565,7 @@ function MessagesContent() {
       <BulkMessageModal
         isOpen={showBulkMessageModal}
         onClose={() => setShowBulkMessageModal(false)}
-        currentUserId={session?.user?.id || ''}
+        currentUserId={session?.user?.id || ""}
       />
 
       {/* Delete Message Dialog */}
@@ -2237,7 +2574,8 @@ function MessagesContent() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Message?</AlertDialogTitle>
             <AlertDialogDescription>
-              This message will be permanently deleted. This action cannot be undone.
+              This message will be permanently deleted. This action cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2253,7 +2591,7 @@ function MessagesContent() {
                   Deleting...
                 </>
               ) : (
-                'Delete'
+                "Delete"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -2273,8 +2611,8 @@ function MessagesContent() {
 
           .dietitian-messages-page button,
           .dietitian-messages-page input,
-          .dietitian-messages-page [role='button'],
-          .dietitian-messages-page [role='combobox'] {
+          .dietitian-messages-page [role="button"],
+          .dietitian-messages-page [role="combobox"] {
             min-height: 44px;
           }
         }
@@ -2292,50 +2630,81 @@ function MessagesContent() {
               <div>
                 <h3 className="font-medium">
                   {(() => {
-                    const conversation = conversations.find(c => c.user._id === selectedConversation);
-                    return conversation ? `${conversation.user.firstName} ${conversation.user.lastName}` : 'Unknown';
+                    const conversation = conversations.find(
+                      (c) => c.user._id === selectedConversation,
+                    );
+                    return conversation
+                      ? `${conversation.user.firstName} ${conversation.user.lastName}`
+                      : "Unknown";
                   })()}
                 </h3>
                 <p className="text-sm text-gray-300">
-                  {callState === 'calling' ? 'Calling...' :
-                    callState === 'connected' ? 'Connected' :
-                      callState === 'incoming' ? 'Incoming call...' : 'Connecting...'}
+                  {callState === "calling"
+                    ? "Calling..."
+                    : callState === "connected"
+                      ? "Connected"
+                      : callState === "incoming"
+                        ? "Incoming call..."
+                        : "Connecting..."}
                 </p>
               </div>
             </div>
           </div>
 
           {/* Incoming Call Banner/Modal */}
-          {callState === 'incoming' && incomingCall && (
+          {callState === "incoming" && incomingCall && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 text-center">
                 <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
                   <Phone className="w-8 h-8 text-green-600" />
                 </div>
-                <h3 className="text-xl font-semibold mb-1">Incoming {incomingCall.type === 'video' ? 'Video' : 'Audio'} Call</h3>
-                <p className="text-gray-600 mb-6">from {(() => {
-                  const conv = conversations.find(c => c.user._id === incomingCall.callerId);
-                  return conv ? `${conv.user.firstName} ${conv.user.lastName}` : 'Unknown';
-                })()}</p>
+                <h3 className="text-xl font-semibold mb-1">
+                  Incoming {incomingCall.type === "video" ? "Video" : "Audio"}{" "}
+                  Call
+                </h3>
+                <p className="text-gray-600 mb-6">
+                  from{" "}
+                  {(() => {
+                    const conv = conversations.find(
+                      (c) => c.user._id === incomingCall.callerId,
+                    );
+                    return conv
+                      ? `${conv.user.firstName} ${conv.user.lastName}`
+                      : "Unknown";
+                  })()}
+                </p>
                 <div className="flex justify-center gap-4">
                   <Button
-                    onClick={incomingCall?.isSimpleWebRTC ? handleSimpleCallReject : rejectIncomingCall}
+                    onClick={
+                      incomingCall?.isSimpleWebRTC
+                        ? handleSimpleCallReject
+                        : rejectIncomingCall
+                    }
                     className="bg-red-500 hover:bg-red-600"
                   >
                     <X className="w-4 h-4 mr-2" /> Reject
                   </Button>
                   <Button
-                    onClick={incomingCall?.isSimpleWebRTC ? handleSimpleCallAccept : acceptIncomingCall}
+                    onClick={
+                      incomingCall?.isSimpleWebRTC
+                        ? handleSimpleCallAccept
+                        : acceptIncomingCall
+                    }
                     className="bg-green-500 hover:bg-green-600"
                   >
-                    <Phone className="w-4 h-4 mr-2" /> Accept {incomingCall?.isSimpleWebRTC ? '🚀' : ''}
+                    <Phone className="w-4 h-4 mr-2" /> Accept{" "}
+                    {incomingCall?.isSimpleWebRTC ? "🚀" : ""}
                   </Button>
                 </div>
               </div>
 
               {/* Hidden remote audio element for audio-only calls */}
-              <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-
+              <audio
+                ref={remoteAudioRef}
+                autoPlay
+                playsInline
+                className="hidden"
+              />
             </div>
           )}
 
@@ -2345,12 +2714,15 @@ function MessagesContent() {
               <div className="flex items-center space-x-3">
                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                 <div>
-                  <div className="font-semibold text-sm">🚀 Simple WebRTC Call</div>
+                  <div className="font-semibold text-sm">
+                    🚀 Simple WebRTC Call
+                  </div>
                   <div className="text-xs text-gray-600">
-                    Status: {simpleCallState.status} | Type: {simpleCallState.callType}
+                    Status: {simpleCallState.status} | Type:{" "}
+                    {simpleCallState.callType}
                   </div>
                   <div className="text-xs text-gray-500">
-                    Role: {simpleCallState.isInitiator ? 'Caller' : 'Receiver'}
+                    Role: {simpleCallState.isInitiator ? "Caller" : "Receiver"}
                   </div>
                 </div>
                 <Button
@@ -2370,7 +2742,6 @@ function MessagesContent() {
               )}
             </div>
           )}
-
 
           {/* Video Area */}
           {isVideoCall && (
@@ -2403,12 +2774,16 @@ function MessagesContent() {
                     </div>
                     <p className="text-lg">
                       {(() => {
-                        const conversation = conversations.find(c => c.user._id === selectedConversation);
-                        return conversation ? conversation.user.firstName : 'Contact';
+                        const conversation = conversations.find(
+                          (c) => c.user._id === selectedConversation,
+                        );
+                        return conversation
+                          ? conversation.user.firstName
+                          : "Contact";
                       })()}
                     </p>
                     <p className="text-sm text-gray-300">
-                      {callState === 'calling' ? 'Calling...' : 'Connecting...'}
+                      {callState === "calling" ? "Calling..." : "Connecting..."}
                     </p>
                   </div>
                 </div>
@@ -2425,13 +2800,20 @@ function MessagesContent() {
                 </div>
                 <h2 className="text-2xl font-medium mb-2">
                   {(() => {
-                    const conversation = conversations.find(c => c.user._id === selectedConversation);
-                    return conversation ? `${conversation.user.firstName} ${conversation.user.lastName}` : 'Contact';
+                    const conversation = conversations.find(
+                      (c) => c.user._id === selectedConversation,
+                    );
+                    return conversation
+                      ? `${conversation.user.firstName} ${conversation.user.lastName}`
+                      : "Contact";
                   })()}
                 </h2>
                 <p className="text-gray-300">
-                  {callState === 'calling' ? 'Calling...' :
-                    callState === 'connected' ? 'Connected' : 'Connecting...'}
+                  {callState === "calling"
+                    ? "Calling..."
+                    : callState === "connected"
+                      ? "Connected"
+                      : "Connecting..."}
                 </p>
               </div>
             </div>
@@ -2444,10 +2826,17 @@ function MessagesContent() {
               <Button
                 onClick={toggleMute}
                 variant="outline"
-                className={`w-12 h-12 rounded-full ${isMuted ? 'bg-red-500 text-white border-red-500' : 'bg-white/10 text-white border-white/20'
-                  }`}
+                className={`w-12 h-12 rounded-full ${
+                  isMuted
+                    ? "bg-red-500 text-white border-red-500"
+                    : "bg-white/10 text-white border-white/20"
+                }`}
               >
-                {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                {isMuted ? (
+                  <MicOff className="w-5 h-5" />
+                ) : (
+                  <Mic className="w-5 h-5" />
+                )}
               </Button>
 
               {/* Video toggle button (only for video calls) */}
@@ -2455,10 +2844,17 @@ function MessagesContent() {
                 <Button
                   onClick={toggleVideo}
                   variant="outline"
-                  className={`w-12 h-12 rounded-full ${!isVideoEnabled ? 'bg-red-500 text-white border-red-500' : 'bg-white/10 text-white border-white/20'
-                    }`}
+                  className={`w-12 h-12 rounded-full ${
+                    !isVideoEnabled
+                      ? "bg-red-500 text-white border-red-500"
+                      : "bg-white/10 text-white border-white/20"
+                  }`}
                 >
-                  {!isVideoEnabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+                  {!isVideoEnabled ? (
+                    <VideoOff className="w-5 h-5" />
+                  ) : (
+                    <Video className="w-5 h-5" />
+                  )}
                 </Button>
               )}
 
@@ -2480,7 +2876,8 @@ function MessagesContent() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Message</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this message? This action cannot be undone.
+              Are you sure you want to delete this message? This action cannot
+              be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2502,18 +2899,20 @@ function MessagesContent() {
 
 export default function MessagesPage() {
   return (
-    <Suspense fallback={
-      <DashboardLayout>
-        <div className="flex h-screen bg-gray-100">
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
-              <p className="text-gray-500">Loading messages...</p>
+    <Suspense
+      fallback={
+        <DashboardLayout>
+          <div className="flex h-screen bg-gray-100">
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
+                <p className="text-gray-500">Loading messages...</p>
+              </div>
             </div>
           </div>
-        </div>
-      </DashboardLayout>
-    }>
+        </DashboardLayout>
+      }
+    >
       <MessagesContent />
     </Suspense>
   );

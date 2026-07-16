@@ -1,17 +1,23 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useRef, type ChangeEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { useSession } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
-import { useRealtime } from '@/hooks/useRealtime';
-import { ResponsiveLayout } from '@/components/client/layouts';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { compressImage } from '@/lib/imageCompression';
-import ImageLightbox from '@/components/ui/image-lightbox';
+import {
+  useEffect,
+  useState,
+  useRef,
+  type ChangeEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useTheme } from "@/contexts/ThemeContext";
+import { useUnreadCountsSafe } from "@/contexts/UnreadCountContext";
+import { useRealtime } from "@/hooks/useRealtime";
+import { ResponsiveLayout } from "@/components/client/layouts";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { compressImage } from "@/lib/imageCompression";
+import ImageLightbox from "@/components/ui/image-lightbox";
 import {
   Send,
   Paperclip,
@@ -29,11 +35,11 @@ import {
   Camera,
   File as FileIcon,
   ChevronDown,
-  X
-} from 'lucide-react';
-import { format, isToday, isYesterday, isSameDay } from 'date-fns';
-import { toast } from 'sonner';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+  X,
+} from "lucide-react";
+import { format, isToday, isYesterday, isSameDay } from "date-fns";
+import { toast } from "sonner";
+import SpoonGifLoader from "@/components/ui/SpoonGifLoader";
 
 interface MessageUser {
   _id: string;
@@ -60,16 +66,16 @@ interface Message {
   content: string;
   sender: MessageUser;
   receiver: MessageUser;
-  type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file';
+  type: "text" | "image" | "video" | "audio" | "voice" | "file";
   attachments?: MessageAttachment[];
   isRead: boolean;
   createdAt: string;
   replyTo?: {
     _id: string;
     content: string;
-    type: 'text' | 'image' | 'video' | 'audio' | 'voice' | 'file';
+    type: "text" | "image" | "video" | "audio" | "voice" | "file";
     attachments?: MessageAttachment[];
-    sender?: Pick<MessageUser, 'firstName' | 'lastName' | 'avatar'>;
+    sender?: Pick<MessageUser, "firstName" | "lastName" | "avatar">;
     createdAt?: string;
   };
 }
@@ -88,7 +94,7 @@ interface Conversation {
 
 interface MediaPreviewState {
   file: File;
-  type: 'image' | 'video' | 'file';
+  type: "image" | "video" | "file";
   previewUrl: string;
   caption: string;
 }
@@ -96,7 +102,7 @@ interface MediaPreviewState {
 interface UploadingMediaState {
   id: string;
   file: File;
-  type: 'image' | 'video' | 'file';
+  type: "image" | "video" | "file";
   previewUrl: string;
   caption: string;
   progress: number;
@@ -110,33 +116,49 @@ export default function UserMessagesPage() {
   const { isDarkMode } = useTheme();
   const { refreshCounts } = useUnreadCountsSafe();
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [selectedConversation, setSelectedConversation] =
+    useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [hasDietitian, setHasDietitian] = useState(true);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
-  const [uploadingMedia, setUploadingMedia] = useState<UploadingMediaState | null>(null);
-  const [failedAttachments, setFailedAttachments] = useState<Set<string>>(new Set());
-  const [attachmentRetryTick, setAttachmentRetryTick] = useState<Record<string, number>>({});
+  const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(
+    null,
+  );
+  const [uploadingMedia, setUploadingMedia] =
+    useState<UploadingMediaState | null>(null);
+  const [failedAttachments, setFailedAttachments] = useState<Set<string>>(
+    new Set(),
+  );
+  const [attachmentRetryTick, setAttachmentRetryTick] = useState<
+    Record<string, number>
+  >({});
   const [voicePlayingId, setVoicePlayingId] = useState<string | null>(null);
-  const [voiceProgress, setVoiceProgress] = useState<Record<string, number>>({});
-  const [voiceDurations, setVoiceDurations] = useState<Record<string, number>>({});
+  const [voiceProgress, setVoiceProgress] = useState<Record<string, number>>(
+    {},
+  );
+  const [voiceDurations, setVoiceDurations] = useState<Record<string, number>>(
+    {},
+  );
   const [videoPlayerOpen, setVideoPlayerOpen] = useState(false);
-  const [videoPlayerUrl, setVideoPlayerUrl] = useState('');
+  const [videoPlayerUrl, setVideoPlayerUrl] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [lightboxImage, setLightboxImage] = useState('');
-  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState("");
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    string | null
+  >(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messageElementRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
@@ -159,29 +181,35 @@ export default function UserMessagesPage() {
 
   const detectAudioExtension = (mimeType: string) => {
     const normalized = mimeType.toLowerCase();
-    if (normalized.includes('mp4') || normalized.includes('m4a') || normalized.includes('aac')) return 'm4a';
-    if (normalized.includes('ogg') || normalized.includes('opus')) return 'ogg';
-    if (normalized.includes('wav')) return 'wav';
-    if (normalized.includes('mpeg') || normalized.includes('mp3')) return 'mp3';
-    if (normalized.includes('flac')) return 'flac';
-    return 'webm';
+    if (
+      normalized.includes("mp4") ||
+      normalized.includes("m4a") ||
+      normalized.includes("aac")
+    )
+      return "m4a";
+    if (normalized.includes("webm")) return "webm";
+    if (normalized.includes("ogg") || normalized.includes("opus")) return "ogg";
+    if (normalized.includes("wav")) return "wav";
+    if (normalized.includes("mpeg") || normalized.includes("mp3")) return "mp3";
+    if (normalized.includes("flac")) return "flac";
+    return "webm";
   };
 
   const resolveAttachmentUrl = (rawUrl: string, messageId: string) => {
-    if (!rawUrl) return '';
+    if (!rawUrl) return "";
 
     let resolvedUrl = rawUrl.trim();
-    if (!resolvedUrl) return '';
+    if (!resolvedUrl) return "";
 
-    if (/^\/\//.test(resolvedUrl) && typeof window !== 'undefined') {
+    if (/^\/\//.test(resolvedUrl) && typeof window !== "undefined") {
       resolvedUrl = `${window.location.protocol}${resolvedUrl}`;
-    } else if (/^\//.test(resolvedUrl) && typeof window !== 'undefined') {
+    } else if (/^\//.test(resolvedUrl) && typeof window !== "undefined") {
       resolvedUrl = `${window.location.origin}${resolvedUrl}`;
     }
 
     const retryTick = attachmentRetryTick[messageId] || 0;
     if (retryTick > 0) {
-      const separator = resolvedUrl.includes('?') ? '&' : '?';
+      const separator = resolvedUrl.includes("?") ? "&" : "?";
       resolvedUrl = `${resolvedUrl}${separator}retry=${retryTick}`;
     }
 
@@ -214,14 +242,14 @@ export default function UserMessagesPage() {
     });
     setAttachmentRetryTick((prev) => ({
       ...prev,
-      [messageId]: (prev[messageId] || 0) + 1
+      [messageId]: (prev[messageId] || 0) + 1,
     }));
   };
 
   // Refs for SSE callbacks to avoid stale closures
   const selectedConversationRef = useRef<Conversation | null>(null);
-  const fetchConversationsRef = useRef<() => void>(() => { });
-  const scrollToBottomRef = useRef<(instant?: boolean) => void>(() => { });
+  const fetchConversationsRef = useRef<() => void>(() => {});
+  const scrollToBottomRef = useRef<(instant?: boolean) => void>(() => {});
   const isFetchingConversationsRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
 
@@ -229,7 +257,7 @@ export default function UserMessagesPage() {
   useRealtime({
     onMessage: (evt) => {
       try {
-        if (evt.type === 'new_message') {
+        if (evt.type === "new_message") {
           const incoming = (evt.data as any)?.message;
           const conversationWith = (evt.data as any)?.conversationWith;
           if (incoming?._id) {
@@ -237,17 +265,22 @@ export default function UserMessagesPage() {
             // If this belongs to the currently open conversation, append it
             if (
               currentConv &&
-              (incoming.sender?._id === currentConv._id || incoming.receiver?._id === currentConv._id)
+              (incoming.sender?._id === currentConv._id ||
+                incoming.receiver?._id === currentConv._id)
             ) {
-              setMessages(prev => (prev.some(m => m._id === incoming._id) ? prev : [...prev, incoming]));
+              setMessages((prev) =>
+                prev.some((m) => m._id === incoming._id)
+                  ? prev
+                  : [...prev, incoming],
+              );
               // Smooth scroll for new messages
               setTimeout(() => scrollToBottomRef.current(false), 50);
             }
 
             // Update ONLY the specific conversation in the list (not a full refetch)
             if (conversationWith) {
-              setConversations(prev => {
-                const idx = prev.findIndex(c => c._id === conversationWith);
+              setConversations((prev) => {
+                const idx = prev.findIndex((c) => c._id === conversationWith);
                 if (idx === -1) {
                   // New conversation partner — do a full refetch to pick them up
                   const now = Date.now();
@@ -262,14 +295,16 @@ export default function UserMessagesPage() {
                   ...updated[idx],
                   lastMessage: {
                     content: incoming.content,
-                    type: incoming.type || 'text',
+                    type: incoming.type || "text",
                     createdAt: incoming.createdAt,
-                    isRead: currentConv?._id === conversationWith ? true : false
+                    isRead:
+                      currentConv?._id === conversationWith ? true : false,
                   },
                   // If chat is currently open, keep unread at 0; otherwise increment
-                  unreadCount: currentConv?._id === conversationWith
-                    ? 0
-                    : updated[idx].unreadCount + 1
+                  unreadCount:
+                    currentConv?._id === conversationWith
+                      ? 0
+                      : updated[idx].unreadCount + 1,
                 };
                 // Move to top of list
                 if (idx > 0) {
@@ -293,11 +328,13 @@ export default function UserMessagesPage() {
         }
 
         // Handle message deletion event
-        if (evt.type === 'message_deleted') {
+        if (evt.type === "message_deleted") {
           const deletedMessageId = (evt.data as any)?.messageId;
           if (deletedMessageId) {
             // Remove the deleted message from local state
-            setMessages(prev => prev.filter(m => m._id !== deletedMessageId));
+            setMessages((prev) =>
+              prev.filter((m) => m._id !== deletedMessageId),
+            );
             // Refresh conversations to update last message if needed
             const now = Date.now();
             if (now - lastFetchTimeRef.current > 1000) {
@@ -308,21 +345,23 @@ export default function UserMessagesPage() {
         }
 
         // Handle message read event - update isRead status for messages
-        if (evt.type === 'message_read') {
+        if (evt.type === "message_read") {
           const readData = evt.data as any;
           if (readData?.conversationWith) {
             // Mark all messages in this conversation as read
-            setMessages(prev => prev.map(msg =>
-              String(msg.receiver?._id) === String(readData.readBy)
-                ? { ...msg, isRead: true }
-                : msg
-            ));
+            setMessages((prev) =>
+              prev.map((msg) =>
+                String(msg.receiver?._id) === String(readData.readBy)
+                  ? { ...msg, isRead: true }
+                  : msg,
+              ),
+            );
           }
         }
       } catch (e) {
-        console.error('Failed handling realtime message event', e);
+        console.error("Failed handling realtime message event", e);
       }
-    }
+    },
   });
 
   // Keep refs updated for SSE callbacks
@@ -346,12 +385,12 @@ export default function UserMessagesPage() {
       }
     };
 
-    document.addEventListener('mousedown', handleOutside);
-    document.addEventListener('touchstart', handleOutside);
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("touchstart", handleOutside);
 
     return () => {
-      document.removeEventListener('mousedown', handleOutside);
-      document.removeEventListener('touchstart', handleOutside);
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("touchstart", handleOutside);
     };
   }, []);
 
@@ -367,7 +406,7 @@ export default function UserMessagesPage() {
         clearInterval(recordTimerRef.current);
         recordTimerRef.current = null;
       }
-      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
         recorderRef.current.stop();
       }
       if (recordStreamRef.current) {
@@ -378,8 +417,8 @@ export default function UserMessagesPage() {
   }, [mediaPreview, uploadingMedia]);
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login');
+    if (status === "unauthenticated") {
+      router.push("/login");
     }
   }, [status, router]);
 
@@ -391,16 +430,18 @@ export default function UserMessagesPage() {
 
   // Handle conversationWith query param from push notification taps
   useEffect(() => {
-    const conversationWith = searchParams.get('conversationWith');
+    const conversationWith = searchParams.get("conversationWith");
     if (conversationWith && conversations.length > 0 && !selectedConversation) {
       // Find the conversation with this user ID
-      const targetConversation = conversations.find(c => c._id === conversationWith);
+      const targetConversation = conversations.find(
+        (c) => c._id === conversationWith,
+      );
       if (targetConversation) {
         userPressedBackRef.current = false;
         setSelectedConversation(targetConversation);
         // Clear the query param from URL without triggering a navigation
         const newUrl = window.location.pathname;
-        window.history.replaceState({}, '', newUrl);
+        window.history.replaceState({}, "", newUrl);
       }
     }
   }, [searchParams, conversations, selectedConversation]);
@@ -408,8 +449,13 @@ export default function UserMessagesPage() {
   // Auto-select conversation if there's only one (the assigned dietitian)
   // But don't re-select if user manually pressed back or if URL has conversationWith
   useEffect(() => {
-    const hasConversationWithParam = searchParams.get('conversationWith');
-    if (conversations.length === 1 && !selectedConversation && !userPressedBackRef.current && !hasConversationWithParam) {
+    const hasConversationWithParam = searchParams.get("conversationWith");
+    if (
+      conversations.length === 1 &&
+      !selectedConversation &&
+      !userPressedBackRef.current &&
+      !hasConversationWithParam
+    ) {
       setSelectedConversation(conversations[0]);
     }
   }, [conversations, selectedConversation, searchParams]);
@@ -439,7 +485,7 @@ export default function UserMessagesPage() {
 
     try {
       isFetchingConversationsRef.current = true;
-      const response = await fetch('/api/client/messages/conversations');
+      const response = await fetch("/api/client/messages/conversations");
       if (response.ok) {
         const data = await response.json();
         setConversations(data.conversations || []);
@@ -458,14 +504,14 @@ export default function UserMessagesPage() {
     try {
       isFetchingConversationsRef.current = true;
       setLoading(true);
-      const response = await fetch('/api/client/messages/conversations');
+      const response = await fetch("/api/client/messages/conversations");
       if (response.ok) {
         const data = await response.json();
         setConversations(data.conversations || []);
         setHasDietitian(data.hasDietitian !== false);
       }
     } catch (error) {
-      console.error('Error fetching conversations:', error);
+      console.error("Error fetching conversations:", error);
     } finally {
       setLoading(false);
       isFetchingConversationsRef.current = false;
@@ -477,9 +523,11 @@ export default function UserMessagesPage() {
       if (showLoader) setLoadingMessages(true);
 
       // Fetch ALL messages in one call - no limit
-      const response = await fetch(`/api/client/messages?conversationWith=${userId}`);
+      const response = await fetch(
+        `/api/client/messages?conversationWith=${userId}`,
+      );
       if (!response.ok) {
-        console.error('Failed to fetch messages');
+        console.error("Failed to fetch messages");
         return;
       }
 
@@ -492,11 +540,11 @@ export default function UserMessagesPage() {
       setLoadingMessages(false);
 
       // Reset unread count for this conversation locally
-      setConversations(prev => prev.map(conv =>
-        conv._id === userId
-          ? { ...conv, unreadCount: 0 }
-          : conv
-      ));
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv._id === userId ? { ...conv, unreadCount: 0 } : conv,
+        ),
+      );
 
       // Now schedule scrolls AFTER the messages have actually rendered
       // Using nested rAF ensures we scroll after React commits the DOM update
@@ -509,17 +557,20 @@ export default function UserMessagesPage() {
           // Additional delayed scrolls to catch images/media that load late
           setTimeout(() => {
             if (messagesContainerRef.current) {
-              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+              messagesContainerRef.current.scrollTop =
+                messagesContainerRef.current.scrollHeight;
             }
           }, 100);
           setTimeout(() => {
             if (messagesContainerRef.current) {
-              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+              messagesContainerRef.current.scrollTop =
+                messagesContainerRef.current.scrollHeight;
             }
           }, 300);
           setTimeout(() => {
             if (messagesContainerRef.current) {
-              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+              messagesContainerRef.current.scrollTop =
+                messagesContainerRef.current.scrollHeight;
             }
             isInitialLoadRef.current = false;
           }, 500);
@@ -527,9 +578,9 @@ export default function UserMessagesPage() {
       });
 
       // Refresh unread counts in background (don't await - don't block rendering)
-      refreshCounts().catch(() => { });
+      refreshCounts().catch(() => {});
     } catch (error) {
-      console.error('Error fetching messages:', error);
+      console.error("Error fetching messages:", error);
       setLoadingMessages(false);
     }
   };
@@ -544,7 +595,7 @@ export default function UserMessagesPage() {
         } else {
           container.scrollTo({
             top: container.scrollHeight,
-            behavior: 'smooth'
+            behavior: "smooth",
           });
         }
       }
@@ -565,20 +616,20 @@ export default function UserMessagesPage() {
 
     const messageContent = newMessage.trim();
     setSending(true);
-    setNewMessage(''); // Optimistic clear
+    setNewMessage(""); // Optimistic clear
     if (inputRef.current) {
-      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = "auto";
     }
 
     try {
-      const response = await fetch('/api/client/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/client/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipientId: selectedConversation._id,
           content: messageContent,
-          type: 'text'
-        })
+          type: "text",
+        }),
       });
 
       if (response.ok) {
@@ -589,20 +640,20 @@ export default function UserMessagesPage() {
         // Restore message on failure and show error from API
         setNewMessage(messageContent);
         if (inputRef.current) {
-          inputRef.current.style.height = 'auto';
+          inputRef.current.style.height = "auto";
           inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
         }
         const errorData = await response.json().catch(() => ({}));
-        toast.error(errorData.error || 'Failed to send message');
+        toast.error(errorData.error || "Failed to send message");
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
       setNewMessage(messageContent);
       if (inputRef.current) {
-        inputRef.current.style.height = 'auto';
+        inputRef.current.style.height = "auto";
         inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
       }
-      toast.error('Failed to send message');
+      toast.error("Failed to send message");
     } finally {
       setSending(false);
     }
@@ -611,18 +662,22 @@ export default function UserMessagesPage() {
   const handleMessageInput = (value: string) => {
     setNewMessage(value);
     if (!inputRef.current) return;
-    inputRef.current.style.height = 'auto';
+    inputRef.current.style.height = "auto";
     inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
   };
 
   const compressVideoFile = async (file: File): Promise<File> => {
-    if (!file.type.startsWith('video/') || file.size < 1024 * 1024 || typeof document === 'undefined') {
+    if (
+      !file.type.startsWith("video/") ||
+      file.size < 1024 * 1024 ||
+      typeof document === "undefined"
+    ) {
       return file;
     }
 
     return new Promise((resolve) => {
       let settled = false;
-      let objectUrl = '';
+      let objectUrl = "";
 
       const finish = (result: File) => {
         if (settled) return;
@@ -632,16 +687,16 @@ export default function UserMessagesPage() {
       };
 
       try {
-        const video = document.createElement('video');
-        video.preload = 'metadata';
+        const video = document.createElement("video");
+        video.preload = "metadata";
         video.muted = true;
         video.playsInline = true;
 
         objectUrl = URL.createObjectURL(file);
 
         video.onloadedmetadata = () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
           if (!ctx) {
             finish(file);
             return;
@@ -660,10 +715,10 @@ export default function UserMessagesPage() {
 
           const stream = canvas.captureStream(24);
           const recorder = new MediaRecorder(stream, {
-            mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-              ? 'video/webm;codecs=vp9'
-              : 'video/webm',
-            videoBitsPerSecond: 700000
+            mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+              ? "video/webm;codecs=vp9"
+              : "video/webm",
+            videoBitsPerSecond: 700000,
           });
 
           const chunks: Blob[] = [];
@@ -672,15 +727,19 @@ export default function UserMessagesPage() {
           };
 
           recorder.onstop = () => {
-            const blob = new Blob(chunks, { type: 'video/webm' });
+            const blob = new Blob(chunks, { type: "video/webm" });
             if (!blob.size) {
               finish(file);
               return;
             }
-            const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.webm'), {
-              type: 'video/webm',
-              lastModified: Date.now()
-            });
+            const compressed = new File(
+              [blob],
+              file.name.replace(/\.[^.]+$/, ".webm"),
+              {
+                type: "video/webm",
+                lastModified: Date.now(),
+              },
+            );
             finish(compressed);
           };
 
@@ -692,7 +751,7 @@ export default function UserMessagesPage() {
 
           const draw = () => {
             if (video.paused || video.ended) {
-              if (recorder.state === 'recording') recorder.stop();
+              if (recorder.state === "recording") recorder.stop();
               return;
             }
             ctx.drawImage(video, 0, 0, width, height);
@@ -701,11 +760,11 @@ export default function UserMessagesPage() {
 
           video.onplay = draw;
           video.onended = () => {
-            if (recorder.state === 'recording') recorder.stop();
+            if (recorder.state === "recording") recorder.stop();
           };
 
           setTimeout(() => {
-            if (recorder.state === 'recording') {
+            if (recorder.state === "recording") {
               video.pause();
               recorder.stop();
             }
@@ -720,40 +779,49 @@ export default function UserMessagesPage() {
     });
   };
 
-  const compressAudioFile = async (file: File, mode: 'audio' | 'voice' = 'audio'): Promise<File> => {
-    if (!file.type.startsWith('audio/') || file.size < 1024 * 1024 || typeof document === 'undefined') {
+  const compressAudioFile = async (
+    file: File,
+    mode: "audio" | "voice" = "audio",
+  ): Promise<File> => {
+    if (
+      !file.type.startsWith("audio/") ||
+      file.size < 1024 * 1024 ||
+      typeof document === "undefined"
+    ) {
       return file;
     }
 
     return new Promise((resolve) => {
       let settled = false;
-      let objectUrl = '';
+      let objectUrl = "";
       let audioContext: AudioContext | null = null;
 
       const finish = (result: File) => {
         if (settled) return;
         settled = true;
         if (objectUrl) URL.revokeObjectURL(objectUrl);
-        if (audioContext && audioContext.state !== 'closed') {
+        if (audioContext && audioContext.state !== "closed") {
           void audioContext.close().catch(() => undefined);
         }
         resolve(result);
       };
 
       try {
-        const audio = document.createElement('audio');
-        audio.preload = 'metadata';
+        const audio = document.createElement("audio");
+        audio.preload = "metadata";
         audio.muted = true;
 
         objectUrl = URL.createObjectURL(file);
 
         audio.onloadedmetadata = async () => {
           try {
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-              ? 'audio/webm;codecs=opus'
-              : MediaRecorder.isTypeSupported('audio/webm')
-                ? 'audio/webm'
-                : '';
+            const mimeType = MediaRecorder.isTypeSupported(
+              "audio/webm;codecs=opus",
+            )
+              ? "audio/webm;codecs=opus"
+              : MediaRecorder.isTypeSupported("audio/webm")
+                ? "audio/webm"
+                : "";
 
             if (!mimeType) {
               finish(file);
@@ -767,7 +835,7 @@ export default function UserMessagesPage() {
 
             const recorder = new MediaRecorder(destination.stream, {
               mimeType,
-              audioBitsPerSecond: mode === 'voice' ? 24000 : 48000
+              audioBitsPerSecond: mode === "voice" ? 24000 : 48000,
             });
 
             const chunks: Blob[] = [];
@@ -777,19 +845,27 @@ export default function UserMessagesPage() {
 
             recorder.onstop = () => {
               const recorderMimeType = recorder.mimeType || mimeType;
-              const extension = recorderMimeType.includes('mp4') || recorderMimeType.includes('m4a') || recorderMimeType.includes('aac')
-                ? 'm4a'
-                : recorderMimeType.includes('ogg') || recorderMimeType.includes('opus')
-                  ? 'ogg'
-                  : recorderMimeType.includes('wav')
-                    ? 'wav'
-                    : 'webm';
+              const extension =
+                recorderMimeType.includes("mp4") ||
+                recorderMimeType.includes("m4a") ||
+                recorderMimeType.includes("aac")
+                  ? "m4a"
+                  : recorderMimeType.includes("ogg") ||
+                      recorderMimeType.includes("opus")
+                    ? "ogg"
+                    : recorderMimeType.includes("wav")
+                      ? "wav"
+                      : "webm";
 
               const blob = new Blob(chunks, { type: recorderMimeType });
-              const compressed = new File([blob], file.name.replace(/\.[^.]+$/, `.${extension}`), {
-                type: recorderMimeType,
-                lastModified: Date.now()
-              });
+              const compressed = new File(
+                [blob],
+                file.name.replace(/\.[^.]+$/, `.${extension}`),
+                {
+                  type: recorderMimeType,
+                  lastModified: Date.now(),
+                },
+              );
               finish(compressed.size < file.size ? compressed : file);
             };
 
@@ -798,12 +874,15 @@ export default function UserMessagesPage() {
             await audio.play();
 
             audio.onended = () => {
-              if (recorder.state === 'recording') recorder.stop();
+              if (recorder.state === "recording") recorder.stop();
             };
 
-            const timeoutMs = Math.max(8000, Math.min(120000, Math.floor((audio.duration || 30) * 1200)));
+            const timeoutMs = Math.max(
+              8000,
+              Math.min(120000, Math.floor((audio.duration || 30) * 1200)),
+            );
             setTimeout(() => {
-              if (recorder.state === 'recording') {
+              if (recorder.state === "recording") {
                 audio.pause();
                 recorder.stop();
               }
@@ -821,14 +900,17 @@ export default function UserMessagesPage() {
     });
   };
 
-  const uploadFileWithProgress = async (file: File, onProgress?: (progress: number) => void) => {
+  const uploadFileWithProgress = async (
+    file: File,
+    onProgress?: (progress: number) => void,
+  ) => {
     return new Promise<any>((resolve, reject) => {
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'message');
+      formData.append("file", file);
+      formData.append("type", "message");
 
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/upload');
+      xhr.open("POST", "/api/upload");
 
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;
@@ -841,20 +923,20 @@ export default function UserMessagesPage() {
           try {
             resolve(JSON.parse(xhr.responseText));
           } catch {
-            reject(new Error('Invalid upload response'));
+            reject(new Error("Invalid upload response"));
           }
           return;
         }
 
         try {
           const err = JSON.parse(xhr.responseText);
-          reject(new Error(err.error || 'Upload failed'));
+          reject(new Error(err.error || "Upload failed"));
         } catch {
-          reject(new Error('Upload failed'));
+          reject(new Error("Upload failed"));
         }
       };
 
-      xhr.onerror = () => reject(new Error('Network upload error'));
+      xhr.onerror = () => reject(new Error("Network upload error"));
       xhr.send(formData);
     });
   };
@@ -862,30 +944,32 @@ export default function UserMessagesPage() {
   const optimizeDocumentFile = async (file: File): Promise<File> => {
     const maxDocSize = 25 * 1024 * 1024; // 25MB
     if (file.size > maxDocSize) {
-      throw new Error('Document is too large. Please upload a file smaller than 25MB.');
+      throw new Error(
+        "Document is too large. Please upload a file smaller than 25MB.",
+      );
     }
 
     // Lightweight optimization for text-based documents
     const isTextLike =
-      file.type === 'text/plain' ||
-      file.type === 'text/csv' ||
-      file.type === 'application/json' ||
-      file.type === 'application/xml' ||
-      file.type === 'text/xml';
+      file.type === "text/plain" ||
+      file.type === "text/csv" ||
+      file.type === "application/json" ||
+      file.type === "application/xml" ||
+      file.type === "text/xml";
 
     if (isTextLike && file.size > 100 * 1024) {
       try {
         const text = await file.text();
         const normalized = text
-          .replace(/\r\n/g, '\n')
-          .replace(/[\t ]+\n/g, '\n')
-          .replace(/\n{3,}/g, '\n\n')
+          .replace(/\r\n/g, "\n")
+          .replace(/[\t ]+\n/g, "\n")
+          .replace(/\n{3,}/g, "\n\n")
           .trim();
 
         if (normalized.length > 0 && normalized.length < text.length) {
           return new File([normalized], file.name, {
             type: file.type,
-            lastModified: Date.now()
+            lastModified: Date.now(),
           });
         }
       } catch {
@@ -898,10 +982,10 @@ export default function UserMessagesPage() {
 
   const sendAttachmentMessage = async (
     rawFile: File,
-    messageType: 'image' | 'video' | 'audio' | 'voice' | 'file',
+    messageType: "image" | "video" | "audio" | "voice" | "file",
     caption?: string,
     duration?: number,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
   ) => {
     if (!selectedConversation) return;
 
@@ -910,53 +994,63 @@ export default function UserMessagesPage() {
     try {
       let file = rawFile;
 
-      if (messageType === 'image' && rawFile.type.startsWith('image/')) {
+      if (messageType === "image" && rawFile.type.startsWith("image/")) {
         try {
           const compressed = await compressImage(rawFile, {
             maxWidth: 800,
             maxHeight: 800,
             quality: 0.7,
-            format: 'image/jpeg'
+            format: "image/jpeg",
           });
-          file = new File([compressed.blob], rawFile.name.replace(/\.[^.]+$/, '.jpg'), {
-            type: 'image/jpeg',
-            lastModified: Date.now()
-          });
+          file = new File(
+            [compressed.blob],
+            rawFile.name.replace(/\.[^.]+$/, ".jpg"),
+            {
+              type: "image/jpeg",
+              lastModified: Date.now(),
+            },
+          );
         } catch (compressionError) {
           // Some gallery images (e.g. iPhone HEIC/HEIF) can't be decoded by canvas.
           // Fall back to uploading the original file so the send still succeeds.
-          console.warn('Image compression failed, uploading original file:', compressionError);
+          console.warn(
+            "Image compression failed, uploading original file:",
+            compressionError,
+          );
           file = rawFile;
         }
       }
 
-      if (messageType === 'video') {
+      if (messageType === "video") {
         file = await compressVideoFile(rawFile);
 
         // Ensure large videos are compressed before upload
         if (rawFile.size > 1024 * 1024 && file === rawFile) {
-          throw new Error('Video compression failed. Please try a shorter/lower-quality video.');
+          throw new Error(
+            "Video compression failed. Please try a shorter/lower-quality video.",
+          );
         }
       }
 
-      if (messageType === 'audio') {
-        file = await compressAudioFile(rawFile, 'audio');
+      if (messageType === "audio") {
+        file = await compressAudioFile(rawFile, "audio");
       }
 
-      if (messageType === 'voice') {
-        file = await compressAudioFile(rawFile, 'voice');
+      if (messageType === "voice") {
+        file = await compressAudioFile(rawFile, "voice");
       }
 
-      if (messageType === 'file') {
+      if (messageType === "file") {
         file = await optimizeDocumentFile(rawFile);
       }
 
       const uploadData = await uploadFileWithProgress(file, onProgress);
       const uploadedUrl = uploadData?.url;
-      const uploadedFileId = uploadData?.fileId || uploadData?.id || uploadData?.file?.fileId;
+      const uploadedFileId =
+        uploadData?.fileId || uploadData?.id || uploadData?.file?.fileId;
 
       if (!uploadedUrl) {
-        throw new Error('Upload succeeded but file URL is missing');
+        throw new Error("Upload succeeded but file URL is missing");
       }
 
       const attachment: MessageAttachment = {
@@ -966,33 +1060,34 @@ export default function UserMessagesPage() {
         size: uploadData.size || file.size,
         mimeType: uploadData.type || file.type,
         thumbnail: uploadData.thumbnail || uploadData.thumbnailUrl,
-        duration
+        duration,
       };
 
-      const mediaLabel = messageType === 'image'
-        ? 'Photo'
-        : messageType === 'video'
-          ? 'Video'
-          : messageType === 'voice'
-            ? 'Voice message'
-            : messageType === 'audio'
-              ? 'Audio'
-              : 'File';
+      const mediaLabel =
+        messageType === "image"
+          ? "Photo"
+          : messageType === "video"
+            ? "Video"
+            : messageType === "voice"
+              ? "Voice message"
+              : messageType === "audio"
+                ? "Audio"
+                : "File";
 
-      const response = await fetch('/api/client/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/client/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipientId: selectedConversation._id,
           content: caption?.trim() || mediaLabel,
           type: messageType,
-          attachments: [attachment]
-        })
+          attachments: [attachment],
+        }),
       });
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to send media message');
+        throw new Error(data.error || "Failed to send media message");
       }
 
       setShowAttachMenu(false);
@@ -1005,7 +1100,7 @@ export default function UserMessagesPage() {
     }
   };
 
-  const setPreviewForFile = (file: File, type: 'image' | 'video' | 'file') => {
+  const setPreviewForFile = (file: File, type: "image" | "video" | "file") => {
     if (mediaPreview?.previewUrl) {
       URL.revokeObjectURL(mediaPreview.previewUrl);
     }
@@ -1015,7 +1110,7 @@ export default function UserMessagesPage() {
       file,
       type,
       previewUrl,
-      caption: ''
+      caption: "",
     });
     setShowAttachMenu(false);
   };
@@ -1023,36 +1118,36 @@ export default function UserMessagesPage() {
   const handleImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     try {
       const file = event.target.files?.[0];
-      event.target.value = '';
+      event.target.value = "";
       if (!file) return;
-      setPreviewForFile(file, 'image');
+      setPreviewForFile(file, "image");
     } catch (error) {
-      console.error('Error handling image upload:', error);
-      toast.error('Failed to process image. Please try again.');
+      console.error("Error handling image upload:", error);
+      toast.error("Failed to process image. Please try again.");
     }
   };
 
   const handleVideoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     try {
       const file = event.target.files?.[0];
-      event.target.value = '';
+      event.target.value = "";
       if (!file) return;
-      setPreviewForFile(file, 'video');
+      setPreviewForFile(file, "video");
     } catch (error) {
-      console.error('Error handling video upload:', error);
-      toast.error('Failed to process video. Please try again.');
+      console.error("Error handling video upload:", error);
+      toast.error("Failed to process video. Please try again.");
     }
   };
 
   const handleDocUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     try {
       const file = event.target.files?.[0];
-      event.target.value = '';
+      event.target.value = "";
       if (!file) return;
-      setPreviewForFile(file, 'file');
+      setPreviewForFile(file, "file");
     } catch (error) {
-      console.error('Error handling document upload:', error);
-      toast.error('Failed to process document. Please try again.');
+      console.error("Error handling document upload:", error);
+      toast.error("Failed to process document. Please try again.");
     }
   };
 
@@ -1073,7 +1168,7 @@ export default function UserMessagesPage() {
       previewUrl: mediaPreview.previewUrl,
       caption: mediaPreview.caption,
       progress: 0,
-      error: null
+      error: null,
     });
 
     setMediaPreview(null);
@@ -1089,7 +1184,7 @@ export default function UserMessagesPage() {
             if (!prev) return prev;
             return { ...prev, progress };
           });
-        }
+        },
       );
 
       setUploadingMedia((prev) => {
@@ -1098,7 +1193,8 @@ export default function UserMessagesPage() {
         return null;
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to send file';
+      const message =
+        error instanceof Error ? error.message : "Failed to send file";
       setUploadingMedia((prev) => {
         if (!prev) return prev;
         return { ...prev, error: message };
@@ -1109,7 +1205,9 @@ export default function UserMessagesPage() {
 
   const retryUploadingMedia = async () => {
     if (!uploadingMedia) return;
-    setUploadingMedia((prev) => (prev ? { ...prev, progress: 0, error: null } : prev));
+    setUploadingMedia((prev) =>
+      prev ? { ...prev, progress: 0, error: null } : prev,
+    );
 
     try {
       await sendAttachmentMessage(
@@ -1122,7 +1220,7 @@ export default function UserMessagesPage() {
             if (!prev) return prev;
             return { ...prev, progress };
           });
-        }
+        },
       );
 
       setUploadingMedia((prev) => {
@@ -1131,13 +1229,15 @@ export default function UserMessagesPage() {
         return null;
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Retry failed';
+      const message = error instanceof Error ? error.message : "Retry failed";
       setUploadingMedia((prev) => (prev ? { ...prev, error: message } : prev));
       toast.error(message);
     }
   };
 
-  const startVoiceRecording = async (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const startVoiceRecording = async (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
     if (sending || isRecording || !selectedConversation) return;
 
     try {
@@ -1145,11 +1245,11 @@ export default function UserMessagesPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       // Use audio/webm for Chrome/Firefox, audio/mp4 for Safari
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-          ? 'audio/webm'
-          : 'audio/mp4';
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "audio/mp4";
 
       const recorder = new MediaRecorder(stream, { mimeType });
 
@@ -1168,11 +1268,13 @@ export default function UserMessagesPage() {
 
       recorder.start();
       recordTimerRef.current = setInterval(() => {
-        setRecordingTime(Math.floor((Date.now() - recordStartedAtRef.current) / 1000));
+        setRecordingTime(
+          Math.floor((Date.now() - recordStartedAtRef.current) / 1000),
+        );
       }, 250);
     } catch (error) {
-      console.error('Voice recording start error:', error);
-      toast.error('Microphone permission is required');
+      console.error("Voice recording start error:", error);
+      toast.error("Microphone permission is required");
       setIsRecording(false);
     }
   };
@@ -1186,17 +1288,24 @@ export default function UserMessagesPage() {
       recordTimerRef.current = null;
     }
 
-    const duration = Math.max(1, Math.floor((Date.now() - recordStartedAtRef.current) / 1000));
+    const duration = Math.max(
+      1,
+      Math.floor((Date.now() - recordStartedAtRef.current) / 1000),
+    );
 
     await new Promise<void>((resolve) => {
       recorder.onstop = async () => {
         // Use the actual MIME type from the recorder for the blob
-        const actualMimeType = recorder.mimeType || 'audio/webm';
-        const voiceBlob = new Blob(recordChunksRef.current, { type: actualMimeType });
+        const actualMimeType = recorder.mimeType || "audio/webm";
+        const voiceBlob = new Blob(recordChunksRef.current, {
+          type: actualMimeType,
+        });
 
         // Determine file extension based on MIME type
         const ext = detectAudioExtension(actualMimeType);
-        const voiceFile = new File([voiceBlob], `voice_${Date.now()}.${ext}`, { type: actualMimeType });
+        const voiceFile = new File([voiceBlob], `voice_${Date.now()}.${ext}`, {
+          type: actualMimeType,
+        });
 
         if (recordStreamRef.current) {
           recordStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -1209,14 +1318,23 @@ export default function UserMessagesPage() {
         setRecordingTime(0);
 
         try {
-          await sendAttachmentMessage(voiceFile, 'voice', 'Voice message', duration);
+          await sendAttachmentMessage(
+            voiceFile,
+            "voice",
+            "Voice message",
+            duration,
+          );
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : 'Failed to send voice message');
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to send voice message",
+          );
         }
         resolve();
       };
 
-      if (recorder.state !== 'inactive') {
+      if (recorder.state !== "inactive") {
         recorder.stop();
       } else {
         resolve();
@@ -1226,49 +1344,54 @@ export default function UserMessagesPage() {
 
   // Format file size for display
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   const formatMessageDate = (dateString: string) => {
     const date = new Date(dateString);
-    if (isToday(date)) return format(date, 'h:mm a');
-    if (isYesterday(date)) return 'Yesterday';
-    return format(date, 'MMM d');
+    if (isToday(date)) return format(date, "h:mm a");
+    if (isYesterday(date)) return "Yesterday";
+    return format(date, "MMM d");
   };
 
   const formatMessageTime = (dateString: string) => {
-    return format(new Date(dateString), 'h:mm a');
+    return format(new Date(dateString), "h:mm a");
   };
 
   // Format date for date separator (WhatsApp style)
   const formatDateSeparator = (dateString: string) => {
     const date = new Date(dateString);
-    if (isToday(date)) return 'Today';
-    if (isYesterday(date)) return 'Yesterday';
-    return format(date, 'MMMM d, yyyy');
+    if (isToday(date)) return "Today";
+    if (isYesterday(date)) return "Yesterday";
+    return format(date, "MMMM d, yyyy");
   };
 
   // Check if we should show date separator between two messages
-  const shouldShowDateSeparator = (currentMsg: Message, prevMsg: Message | null) => {
+  const shouldShowDateSeparator = (
+    currentMsg: Message,
+    prevMsg: Message | null,
+  ) => {
     if (!prevMsg) return true; // Always show for first message
     const currentDate = new Date(currentMsg.createdAt);
     const prevDate = new Date(prevMsg.createdAt);
     return !isSameDay(currentDate, prevDate);
   };
 
-  const getReplyPreviewText = (reply?: Message['replyTo']) => {
-    if (!reply) return '';
+  const getReplyPreviewText = (reply?: Message["replyTo"]) => {
+    if (!reply) return "";
 
-    if (reply.type === 'image') return 'Photo';
-    if (reply.type === 'video') return 'Video';
-    if (reply.type === 'audio' || reply.type === 'voice') return 'Voice message';
-    if (reply.type === 'file') return reply.attachments?.[0]?.filename || 'Document';
+    if (reply.type === "image") return "Photo";
+    if (reply.type === "video") return "Video";
+    if (reply.type === "audio" || reply.type === "voice")
+      return "Voice message";
+    if (reply.type === "file")
+      return reply.attachments?.[0]?.filename || "Document";
 
-    return (reply.content || '').trim() || 'Message';
+    return (reply.content || "").trim() || "Message";
   };
 
   const jumpToOriginalMessage = (messageId?: string) => {
@@ -1277,7 +1400,7 @@ export default function UserMessagesPage() {
     const targetElement = messageElementRefs.current[messageId];
     if (!targetElement) return;
 
-    targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    targetElement.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlightedMessageId(messageId);
 
     if (highlightTimeoutRef.current) {
@@ -1285,7 +1408,9 @@ export default function UserMessagesPage() {
     }
 
     highlightTimeoutRef.current = setTimeout(() => {
-      setHighlightedMessageId((current) => (current === messageId ? null : current));
+      setHighlightedMessageId((current) =>
+        current === messageId ? null : current,
+      );
     }, 3000);
   };
 
@@ -1300,7 +1425,7 @@ export default function UserMessagesPage() {
   const toggleVoicePlayback = (messageId: string) => {
     const audio = audioRefs.current[messageId];
     if (!audio) {
-      console.error('Audio element not found for message:', messageId);
+      console.error("Audio element not found for message:", messageId);
       return;
     }
 
@@ -1324,13 +1449,14 @@ export default function UserMessagesPage() {
       audio.currentTime = 0;
     }
 
-    audio.play()
+    audio
+      .play()
       .then(() => {
         setVoicePlayingId(messageId);
       })
       .catch((error) => {
-        console.error('Audio playback error:', error);
-        toast.error('Unable to play voice message');
+        console.error("Audio playback error:", error);
+        toast.error("Unable to play voice message");
         setVoicePlayingId(null);
       });
   };
@@ -1338,7 +1464,7 @@ export default function UserMessagesPage() {
   const formatVoiceDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
-    return `${m}:${String(s).padStart(2, '0')}`;
+    return `${m}:${String(s).padStart(2, "0")}`;
   };
 
   // Handle message deletion
@@ -1352,7 +1478,9 @@ export default function UserMessagesPage() {
 
   if (loading) {
     return (
-      <div className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
+      <div
+        className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? "bg-gray-950" : "bg-white"}`}
+      >
         <SpoonGifLoader size="lg" />
       </div>
     );
@@ -1360,22 +1488,34 @@ export default function UserMessagesPage() {
 
   return (
     <>
-      <div className={`h-dvh md:h-screen overflow-hidden ${isDarkMode ? 'bg-gray-950' : 'bg-[#ECE5DD]'}`}>
+      <div
+        className={`h-dvh md:h-screen overflow-hidden ${isDarkMode ? "bg-gray-950" : "bg-[#ECE5DD]"}`}
+      >
         <div className="h-full md:h-[calc(100vh-120px)] flex flex-col md:flex-row md:gap-4 md:p-6 overflow-hidden">
           {/* Conversations List - Hidden on mobile when conversation selected */}
           <div
-            className={`md:w-80 shrink-0 md:rounded-xl md:shadow-sm md:border ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'
-              } ${selectedConversation ? 'hidden md:block' : 'block'}`}
+            className={`md:w-80 shrink-0 md:rounded-xl md:shadow-sm md:border ${
+              isDarkMode
+                ? "bg-gray-900 border-gray-800"
+                : "bg-white border-gray-100"
+            } ${selectedConversation ? "hidden md:block" : "block"}`}
           >
             {/* Header */}
             <div
-              className={`p-4 border-b flex items-center gap-3 bg-[#075E54] md:rounded-t-xl ${isDarkMode ? 'md:bg-gray-900 border-gray-800' : 'md:bg-white border-gray-100'
-                }`}
+              className={`p-4 border-b flex items-center gap-3 bg-[#075E54] md:rounded-t-xl ${
+                isDarkMode
+                  ? "md:bg-gray-900 border-gray-800"
+                  : "md:bg-white border-gray-100"
+              }`}
             >
               <Link href="/user" className="p-2 -ml-2 md:hidden">
                 <ArrowLeft className="w-5 h-5 text-white md:text-gray-700" />
               </Link>
-              <h2 className={`font-bold text-lg text-white ${isDarkMode ? 'md:text-white' : 'md:text-[#075E54]'}`}>Messages</h2>
+              <h2
+                className={`font-bold text-lg text-white ${isDarkMode ? "md:text-white" : "md:text-[#075E54]"}`}
+              >
+                Messages
+              </h2>
             </div>
             <div className="overflow-y-auto">
               {conversations.length === 0 ? (
@@ -1383,9 +1523,16 @@ export default function UserMessagesPage() {
                   <div className="w-16 h-16 bg-[#075E54]/10 rounded-full flex items-center justify-center mb-4">
                     <User className="w-8 h-8 text-[#075E54]" />
                   </div>
-                  <h3 className={`font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>No dietitian assigned</h3>
-                  <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'} text-sm text-center`}>
-                    You don't have a primary dietitian assigned yet. Please contact support.
+                  <h3
+                    className={`font-semibold mb-2 ${isDarkMode ? "text-white" : "text-gray-900"}`}
+                  >
+                    No dietitian assigned
+                  </h3>
+                  <p
+                    className={`${isDarkMode ? "text-gray-300" : "text-gray-500"} text-sm text-center`}
+                  >
+                    You don't have a primary dietitian assigned yet. Please
+                    contact support.
                   </p>
                 </div>
               ) : (
@@ -1396,14 +1543,25 @@ export default function UserMessagesPage() {
                       userPressedBackRef.current = false;
                       setSelectedConversation(conv);
                     }}
-                    className={`w-full flex items-center gap-3 p-4 transition-colors border-b ${isDarkMode ? 'border-gray-800 hover:bg-gray-800' : 'border-gray-100 hover:bg-gray-50'
-                      } ${selectedConversation?._id === conv._id ? 'bg-[#075E54]/5' : ''
-                      }`}
+                    className={`w-full flex items-center gap-3 p-4 transition-colors border-b ${
+                      isDarkMode
+                        ? "border-gray-800 hover:bg-gray-800"
+                        : "border-gray-100 hover:bg-gray-50"
+                    } ${
+                      selectedConversation?._id === conv._id
+                        ? "bg-[#075E54]/5"
+                        : ""
+                    }`}
                   >
                     <div className="relative">
                       <div className="h-12 w-12 rounded-full bg-[#075E54]/10 flex items-center justify-center overflow-hidden">
                         {conv.user.avatar ? (
-                          <img src={conv.user.avatar} alt={conv.user.firstName} loading="lazy" className="w-full h-full object-cover" />
+                          <img
+                            src={conv.user.avatar}
+                            alt={conv.user.firstName}
+                            loading="lazy"
+                            className="w-full h-full object-cover"
+                          />
                         ) : (
                           <User className="w-5 h-5 text-[#075E54]" />
                         )}
@@ -1416,31 +1574,42 @@ export default function UserMessagesPage() {
                     </div>
                     <div className="flex-1 min-w-0 text-left">
                       <div className="flex items-center justify-between">
-                        <p className={`font-medium truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <p
+                          className={`font-medium truncate ${isDarkMode ? "text-white" : "text-gray-900"}`}
+                        >
                           {conv.user.firstName} {conv.user.lastName}
                         </p>
                         {conv.lastMessage && (
-                          <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <span
+                            className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}
+                          >
                             {formatMessageDate(conv.lastMessage.createdAt)}
                           </span>
                         )}
                       </div>
                       <p
-                        className={`text-sm truncate ${conv.unreadCount > 0
-                          ? isDarkMode
-                            ? 'text-white font-medium'
-                            : 'text-gray-900 font-medium'
-                          : isDarkMode
-                            ? 'text-gray-300'
-                            : 'text-gray-500'
-                          }`}
+                        className={`text-sm truncate ${
+                          conv.unreadCount > 0
+                            ? isDarkMode
+                              ? "text-white font-medium"
+                              : "text-gray-900 font-medium"
+                            : isDarkMode
+                              ? "text-gray-300"
+                              : "text-gray-500"
+                        }`}
                       >
-                        {conv.lastMessage?.type === 'image' ? '📷 Photo' :
-                          conv.lastMessage?.type === 'video' ? '🎬 Video' :
-                            conv.lastMessage?.type === 'audio' ? '🎵 Audio' :
-                              conv.lastMessage?.type === 'voice' ? '🎤 Voice message' :
-                                conv.lastMessage?.type === 'file' ? '📄 Document' :
-                                  conv.lastMessage?.content || 'Start a conversation'}
+                        {conv.lastMessage?.type === "image"
+                          ? "📷 Photo"
+                          : conv.lastMessage?.type === "video"
+                            ? "🎬 Video"
+                            : conv.lastMessage?.type === "audio"
+                              ? "🎵 Audio"
+                              : conv.lastMessage?.type === "voice"
+                                ? "🎤 Voice message"
+                                : conv.lastMessage?.type === "file"
+                                  ? "📄 Document"
+                                  : conv.lastMessage?.content ||
+                                    "Start a conversation"}
                       </p>
                     </div>
                   </button>
@@ -1451,15 +1620,27 @@ export default function UserMessagesPage() {
 
           {/* Chat Area */}
           <div
-            className={`flex-1 flex flex-col min-h-0 md:rounded-xl md:shadow-sm md:border ${isDarkMode ? 'border-gray-800' : 'border-gray-100'
-              } ${!selectedConversation ? 'hidden md:flex' : 'flex fixed inset-0 z-50 md:relative md:z-auto'}`}
+            className={`flex-1 flex flex-col min-h-0 md:rounded-xl md:shadow-sm md:border ${
+              isDarkMode ? "border-gray-800" : "border-gray-100"
+            } ${!selectedConversation ? "hidden md:flex" : "flex fixed inset-0 z-50 md:relative md:z-auto"}`}
           >
             {selectedConversation ? (
-              <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  height: "100dvh",
+                  overflow: "hidden",
+                  position: "relative",
+                }}
+              >
                 {/* Chat Header - WhatsApp Style - Fixed at top */}
                 <div
-                  className={`flex items-center justify-between p-3 bg-[#075E54] text-white md:border-b md:rounded-t-xl shrink-0 ${isDarkMode ? 'md:bg-gray-900 md:text-white md:border-gray-800' : 'md:bg-white md:text-gray-900 md:border-gray-100'
-                    }`}
+                  className={`flex items-center justify-between p-3 bg-[#075E54] text-white md:border-b md:rounded-t-xl shrink-0 ${
+                    isDarkMode
+                      ? "md:bg-gray-900 md:text-white md:border-gray-800"
+                      : "md:bg-white md:text-gray-900 md:border-gray-100"
+                  }`}
                   style={{ flexShrink: 0 }}
                 >
                   <div className="flex items-center gap-3">
@@ -1474,21 +1655,30 @@ export default function UserMessagesPage() {
                     </button>
                     <div className="h-10 w-10 rounded-full bg-white/20 md:bg-[#075E54]/10 flex items-center justify-center overflow-hidden">
                       {selectedConversation.user.avatar ? (
-                        <img src={selectedConversation.user.avatar} alt={selectedConversation.user.firstName} loading="lazy" className="w-full h-full object-cover" />
+                        <img
+                          src={selectedConversation.user.avatar}
+                          alt={selectedConversation.user.firstName}
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         <User className="w-5 h-5 text-white md:text-[#075E54]" />
                       )}
                     </div>
                     <div>
-                      <p className={`font-medium text-white ${isDarkMode ? 'md:text-white' : 'md:text-gray-900'}`}>
-                        {selectedConversation.user.firstName} {selectedConversation.user.lastName}
+                      <p
+                        className={`font-medium text-white ${isDarkMode ? "md:text-white" : "md:text-gray-900"}`}
+                      >
+                        {selectedConversation.user.firstName}{" "}
+                        {selectedConversation.user.lastName}
                       </p>
                       <p className="text-xs text-white/80 md:text-[#25D366] capitalize">
-                        {selectedConversation.user.role === 'dietitian' ? 'Your Dietitian' : selectedConversation.user.role}
+                        {selectedConversation.user.role === "dietitian"
+                          ? "Your Dietitian"
+                          : selectedConversation.user.role}
                       </p>
                     </div>
                   </div>
-
                 </div>
 
                 {/* Messages - WhatsApp Style - Scrollable area */}
@@ -1498,12 +1688,12 @@ export default function UserMessagesPage() {
                   className="px-3 py-2 space-y-1"
                   style={{
                     flex: 1,
-                    overflowY: 'auto',
-                    backgroundColor: isDarkMode ? '#0B141A' : '#EFEAE2',
+                    overflowY: "auto",
+                    backgroundColor: isDarkMode ? "#0B141A" : "#EFEAE2",
                     backgroundImage: isDarkMode
                       ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cdefs%3E%3Cpattern id='p' width='40' height='40' patternUnits='userSpaceOnUse'%3E%3Cpath d='M20 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM35 30a2 2 0 1 0 0 4 2 2 0 0 0 0-4z' fill='%23ffffff' opacity='.025'/%3E%3C/pattern%3E%3C/defs%3E%3Crect fill='url(%23p)' width='200' height='200'/%3E%3C/svg%3E")`
                       : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cdefs%3E%3Cpattern id='p' width='40' height='40' patternUnits='userSpaceOnUse'%3E%3Cpath d='M20 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM35 30a2 2 0 1 0 0 4 2 2 0 0 0 0-4z' fill='%23000000' opacity='.03'/%3E%3C/pattern%3E%3C/defs%3E%3Crect fill='url(%23p)' width='200' height='200'/%3E%3C/svg%3E")`,
-                    backgroundSize: '300px 300px'
+                    backgroundSize: "300px 300px",
                   }}
                 >
                   {loadingMessages ? (
@@ -1512,95 +1702,166 @@ export default function UserMessagesPage() {
                     </div>
                   ) : messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full py-12">
-                      <div className={`rounded-2xl p-6 shadow-sm ${isDarkMode ? 'bg-gray-900/80' : 'bg-white/80'}`}>
+                      <div
+                        className={`rounded-2xl p-6 shadow-sm ${isDarkMode ? "bg-gray-900/80" : "bg-white/80"}`}
+                      >
                         <div className="w-16 h-16 bg-[#075E54]/10 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Send className="w-8 h-8 text-[#075E54]" />
                         </div>
-                        <h3 className={`font-semibold mb-1 text-center ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Start a conversation</h3>
-                        <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'} text-sm text-center`}>
-                          Send a message to {selectedConversation.user.firstName}
+                        <h3
+                          className={`font-semibold mb-1 text-center ${isDarkMode ? "text-white" : "text-gray-900"}`}
+                        >
+                          Start a conversation
+                        </h3>
+                        <p
+                          className={`${isDarkMode ? "text-gray-300" : "text-gray-500"} text-sm text-center`}
+                        >
+                          Send a message to{" "}
+                          {selectedConversation.user.firstName}
                         </p>
                       </div>
                     </div>
                   ) : (
                     messages.map((message, index) => {
                       // Convert both to strings for proper comparison (handles ObjectId vs string mismatch)
-                      const isOwn = String(message.sender?._id || '') === String(session?.user?.id || '');
+                      const isOwn =
+                        String(message.sender?._id || "") ===
+                        String(session?.user?.id || "");
                       const attachment = message.attachments?.[0];
-                      const prevMessage = index > 0 ? messages[index - 1] : null;
-                      const showDateSeparator = shouldShowDateSeparator(message, prevMessage);
+                      const prevMessage =
+                        index > 0 ? messages[index - 1] : null;
+                      const showDateSeparator = shouldShowDateSeparator(
+                        message,
+                        prevMessage,
+                      );
 
                       // Render message content based on type
                       const renderMessageContent = () => {
-                        const mediaLabels = ['Photo', 'Video', 'Audio', 'File', 'Voice message', 'File attachment', 'Image'];
-                        const rawContent = (message.content || '').trim();
+                        const mediaLabels = [
+                          "Photo",
+                          "Video",
+                          "Audio",
+                          "File",
+                          "Voice message",
+                          "File attachment",
+                          "Image",
+                        ];
+                        const rawContent = (message.content || "").trim();
                         const contentLines = rawContent
                           .split(/\r?\n/)
                           .map((line) => line.trim())
                           .filter(Boolean);
-                        const firstContentLine = contentLines[0] || '';
-                        const url = attachment?.url || '';
-                        const resolvedUrl = resolveAttachmentUrl(url, message._id);
-                        const mimeType = (attachment?.mimeType || '').toLowerCase();
-                        const filename = (attachment?.filename || '').toLowerCase();
+                        const firstContentLine = contentLines[0] || "";
+                        const url = attachment?.url || "";
+                        const resolvedUrl = resolveAttachmentUrl(
+                          url,
+                          message._id,
+                        );
+                        const mimeType = (
+                          attachment?.mimeType || ""
+                        ).toLowerCase();
+                        const filename = (
+                          attachment?.filename || ""
+                        ).toLowerCase();
                         const lowerUrl = resolvedUrl.toLowerCase();
-                        const hasValidUrl = !!resolvedUrl && (/^https?:\/\//i.test(resolvedUrl) || /^blob:/i.test(resolvedUrl));
+                        const hasValidUrl =
+                          !!resolvedUrl &&
+                          (/^https?:\/\//i.test(resolvedUrl) ||
+                            /^blob:/i.test(resolvedUrl));
                         const failed = failedAttachments.has(message._id);
 
                         // Check if URL is from ImageKit and appears to be an image
-                        const isImageKitImage = /ik\.imagekit\.io/i.test(lowerUrl) &&
-                          (/\/(messages|meal-completions|progress|transformation|profile|recipes)\//i.test(lowerUrl) ||
+                        const isImageKitImage =
+                          /ik\.imagekit\.io/i.test(lowerUrl) &&
+                          (/\/(messages|meal-completions|progress|transformation|profile|recipes)\//i.test(
+                            lowerUrl,
+                          ) ||
                             /tr:[^/]*\.(jpg|jpeg|png|webp)/i.test(lowerUrl));
 
                         let resolvedType = message.type;
-                        if (attachment && (message.type === 'text' || message.type === 'file')) {
-                          if (mimeType.startsWith('image/') ||
-                            /\.(jpg|jpeg|png|webp|gif|heic|heif)(\?|$)/i.test(lowerUrl) ||
+                        if (
+                          attachment &&
+                          (message.type === "text" || message.type === "file")
+                        ) {
+                          if (
+                            mimeType.startsWith("image/") ||
+                            /\.(jpg|jpeg|png|webp|gif|heic|heif)(\?|$)/i.test(
+                              lowerUrl,
+                            ) ||
                             isImageKitImage ||
-                            /meal-completions?\//i.test(lowerUrl)) {
-                            resolvedType = 'image';
-                          } else if (mimeType.startsWith('video/') || /\.(mp4|mov|webm|mkv|avi)(\?|$)/i.test(lowerUrl)) {
-                            resolvedType = 'video';
-                          } else if (mimeType.startsWith('audio/') || /\.(mp3|wav|m4a|ogg)(\?|$)/i.test(lowerUrl)) {
-                            resolvedType = 'audio';
-                          } else if (message.type !== 'file') {
-                            resolvedType = 'file';
+                            /meal-completions?\//i.test(lowerUrl)
+                          ) {
+                            resolvedType = "image";
+                          } else if (
+                            mimeType.startsWith("video/") ||
+                            /\.(mp4|mov|webm|mkv|avi)(\?|$)/i.test(lowerUrl)
+                          ) {
+                            resolvedType = "video";
+                          } else if (
+                            mimeType.startsWith("audio/") ||
+                            /\.(mp3|wav|m4a|ogg)(\?|$)/i.test(lowerUrl)
+                          ) {
+                            resolvedType = "audio";
+                          } else if (message.type !== "file") {
+                            resolvedType = "file";
                           }
                         }
 
                         const isMealPicture =
-                          /meal\s*(picture|photo|image)|meal\s*completion/i.test(message.content || '') ||
-                          /meal[-_\s]*(picture|photo|image|completion)/i.test(filename) ||
-                          /meal[-_\s]*(picture|photo|image|completion)/i.test(lowerUrl) ||
+                          /meal\s*(picture|photo|image)|meal\s*completion/i.test(
+                            message.content || "",
+                          ) ||
+                          /meal[-_\s]*(picture|photo|image|completion)/i.test(
+                            filename,
+                          ) ||
+                          /meal[-_\s]*(picture|photo|image|completion)/i.test(
+                            lowerUrl,
+                          ) ||
                           /meal-completions?\//i.test(lowerUrl);
 
-                        const mealTypeText = isMealPicture && /^meal\s*picture/i.test(firstContentLine)
-                          ? firstContentLine.replace(/^meal\s*picture\s*[:•\-]?\s*/i, '').trim()
-                          : '';
+                        const mealTypeText =
+                          isMealPicture &&
+                          /^meal\s*picture/i.test(firstContentLine)
+                            ? firstContentLine
+                                .replace(/^meal\s*picture\s*[:•\-]?\s*/i, "")
+                                .trim()
+                            : "";
                         const mealHeaderCaption = isMealPicture
-                          ? `Meal Picture - ${mealTypeText || 'Meal'}`
-                          : '';
-                        const mealNoteCaption = isMealPicture && /^meal\s*picture/i.test(firstContentLine)
-                          ? contentLines.slice(1).join('\n').trim()
-                          : '';
+                          ? `Meal Picture - ${mealTypeText || "Meal"}`
+                          : "";
+                        const mealNoteCaption =
+                          isMealPicture &&
+                          /^meal\s*picture/i.test(firstContentLine)
+                            ? contentLines.slice(1).join("\n").trim()
+                            : "";
                         const imageCaption = isMealPicture
-                          ? [mealHeaderCaption, mealNoteCaption].filter(Boolean).join('\n')
+                          ? [mealHeaderCaption, mealNoteCaption]
+                              .filter(Boolean)
+                              .join("\n")
                           : rawContent;
-                        const hasCaption = imageCaption && !mediaLabels.includes(imageCaption.trim());
+                        const hasCaption =
+                          imageCaption &&
+                          !mediaLabels.includes(imageCaption.trim());
 
                         if (attachment) {
                           switch (resolvedType) {
-                            case 'image':
+                            case "image":
                               if (!hasValidUrl || failed) {
                                 return (
                                   <button
                                     type="button"
                                     onClick={() => retryAttachment(message._id)}
                                     className="w-55 h-40 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
-                                    style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
+                                    style={{
+                                      backgroundColor: isOwn
+                                        ? "rgba(255,255,255,0.15)"
+                                        : "rgba(0,0,0,0.08)",
+                                    }}
                                   >
                                     <RotateCcw className="w-5 h-5" />
-                                    <span>Image unavailable · Tap to retry</span>
+                                    <span>
+                                      Image unavailable · Tap to retry
+                                    </span>
                                   </button>
                                 );
                               }
@@ -1616,32 +1877,51 @@ export default function UserMessagesPage() {
                                     alt="Image attachment"
                                     className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                                     onClick={() => openLightbox(resolvedUrl)}
-                                    style={{ maxWidth: '220px', maxHeight: '260px', objectFit: 'cover' }}
-                                    onError={() => markAttachmentFailed(message._id)}
+                                    style={{
+                                      maxWidth: "220px",
+                                      maxHeight: "260px",
+                                      objectFit: "cover",
+                                    }}
+                                    onError={() =>
+                                      markAttachmentFailed(message._id)
+                                    }
                                   />
-                                  {hasCaption && (
-                                    isMealPicture ? (
+                                  {hasCaption &&
+                                    (isMealPicture ? (
                                       <div className="mt-1.5 leading-snug wrap-break-word whitespace-pre-line">
-                                        <p className="text-[14px] font-semibold">{mealHeaderCaption}</p>
-                                        {mealNoteCaption && <p className="text-[14px]">{mealNoteCaption}</p>}
+                                        <p className="text-[14px] font-semibold">
+                                          {mealHeaderCaption}
+                                        </p>
+                                        {mealNoteCaption && (
+                                          <p className="text-[14px]">
+                                            {mealNoteCaption}
+                                          </p>
+                                        )}
                                       </div>
                                     ) : (
-                                      <p className="text-[14px] mt-1.5 leading-snug wrap-break-word whitespace-pre-line">{imageCaption}</p>
-                                    )
-                                  )}
+                                      <p className="text-[14px] mt-1.5 leading-snug wrap-break-word whitespace-pre-line">
+                                        {imageCaption}
+                                      </p>
+                                    ))}
                                 </div>
                               );
-                            case 'video':
+                            case "video":
                               if (!hasValidUrl || failed) {
                                 return (
                                   <button
                                     type="button"
                                     onClick={() => retryAttachment(message._id)}
                                     className="w-55 h-40 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
-                                    style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
+                                    style={{
+                                      backgroundColor: isOwn
+                                        ? "rgba(255,255,255,0.15)"
+                                        : "rgba(0,0,0,0.08)",
+                                    }}
                                   >
                                     <RotateCcw className="w-5 h-5" />
-                                    <span>Video unavailable · Tap to retry</span>
+                                    <span>
+                                      Video unavailable · Tap to retry
+                                    </span>
                                   </button>
                                 );
                               }
@@ -1654,25 +1934,42 @@ export default function UserMessagesPage() {
                                     playsInline
                                     poster={attachment.thumbnail}
                                     className="rounded-lg bg-black"
-                                    style={{ maxWidth: '220px', maxHeight: '260px' }}
-                                    onError={() => markAttachmentFailed(message._id)}
+                                    style={{
+                                      maxWidth: "220px",
+                                      maxHeight: "260px",
+                                    }}
+                                    onError={() =>
+                                      markAttachmentFailed(message._id)
+                                    }
                                   />
-                                  <div className="mt-1 text-[11px] opacity-70">Video • {formatFileSize(attachment.size)}</div>
-                                  {hasCaption && <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">{message.content}</p>}
+                                  <div className="mt-1 text-[11px] opacity-70">
+                                    Video • {formatFileSize(attachment.size)}
+                                  </div>
+                                  {hasCaption && (
+                                    <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">
+                                      {message.content}
+                                    </p>
+                                  )}
                                 </div>
                               );
-                            case 'audio':
-                            case 'voice':
+                            case "audio":
+                            case "voice":
                               if (!hasValidUrl || failed) {
                                 return (
                                   <button
                                     type="button"
                                     onClick={() => retryAttachment(message._id)}
                                     className="w-55 h-24 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
-                                    style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
+                                    style={{
+                                      backgroundColor: isOwn
+                                        ? "rgba(255,255,255,0.15)"
+                                        : "rgba(0,0,0,0.08)",
+                                    }}
                                   >
                                     <RotateCcw className="w-5 h-5" />
-                                    <span>Audio unavailable · Tap to retry</span>
+                                    <span>
+                                      Audio unavailable · Tap to retry
+                                    </span>
                                   </button>
                                 );
                               }
@@ -1681,39 +1978,68 @@ export default function UserMessagesPage() {
                                   <audio
                                     key={`${message._id}-${attachmentRetryTick[message._id] || 0}`}
                                     ref={(element) => {
-                                      if (element) audioRefs.current[message._id] = element;
+                                      if (element)
+                                        audioRefs.current[message._id] =
+                                          element;
                                     }}
                                     src={resolvedUrl}
                                     preload="metadata"
                                     onTimeUpdate={(event) => {
                                       const audio = event.currentTarget;
-                                      if (audio.duration && isFinite(audio.duration)) {
-                                        setVoiceProgress((prev) => ({ ...prev, [message._id]: (audio.currentTime / audio.duration) * 100 }));
+                                      if (
+                                        audio.duration &&
+                                        isFinite(audio.duration)
+                                      ) {
+                                        setVoiceProgress((prev) => ({
+                                          ...prev,
+                                          [message._id]:
+                                            (audio.currentTime /
+                                              audio.duration) *
+                                            100,
+                                        }));
                                       }
                                     }}
                                     onLoadedMetadata={(event) => {
-                                      const duration = event.currentTarget.duration;
+                                      const duration =
+                                        event.currentTarget.duration;
                                       if (isFinite(duration) && duration > 0) {
-                                        setVoiceDurations((prev) => ({ ...prev, [message._id]: duration }));
+                                        setVoiceDurations((prev) => ({
+                                          ...prev,
+                                          [message._id]: duration,
+                                        }));
                                       }
                                     }}
                                     onEnded={() => {
                                       setVoicePlayingId(null);
-                                      setVoiceProgress((prev) => ({ ...prev, [message._id]: 0 }));
+                                      setVoiceProgress((prev) => ({
+                                        ...prev,
+                                        [message._id]: 0,
+                                      }));
                                     }}
                                     onError={(e) => {
-                                      const audioElement = e.currentTarget as HTMLAudioElement;
-                                      const errorCode = audioElement?.error?.code;
-                                      const errorMessage = audioElement?.error?.message || 'Unknown audio error';
-                                      console.warn(`Audio load error for message ${message._id}:`, errorCode, errorMessage, resolvedUrl);
+                                      const audioElement =
+                                        e.currentTarget as HTMLAudioElement;
+                                      const errorCode =
+                                        audioElement?.error?.code;
+                                      const errorMessage =
+                                        audioElement?.error?.message ||
+                                        "Unknown audio error";
+                                      console.warn(
+                                        `Audio load error for message ${message._id}:`,
+                                        errorCode,
+                                        errorMessage,
+                                        resolvedUrl,
+                                      );
                                       markAttachmentFailed(message._id);
                                     }}
                                     className="hidden"
                                   />
                                   <button
                                     type="button"
-                                    onClick={() => toggleVoicePlayback(message._id)}
-                                    className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${isOwn ? 'bg-white/25 hover:bg-white/35' : 'bg-[#00A884] hover:bg-[#00A884]/80'}`}
+                                    onClick={() =>
+                                      toggleVoicePlayback(message._id)
+                                    }
+                                    className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${isOwn ? "bg-white/25 hover:bg-white/35" : "bg-[#00A884] hover:bg-[#00A884]/80"}`}
                                   >
                                     {voicePlayingId === message._id ? (
                                       <Pause className="w-4 h-4 text-white" />
@@ -1725,49 +2051,74 @@ export default function UserMessagesPage() {
                                     {/* Clickable seek bar */}
                                     <div
                                       className="h-2 rounded-full overflow-hidden cursor-pointer relative"
-                                      style={{ backgroundColor: isOwn ? 'rgba(255,255,255,.28)' : 'rgba(0,0,0,.15)' }}
+                                      style={{
+                                        backgroundColor: isOwn
+                                          ? "rgba(255,255,255,.28)"
+                                          : "rgba(0,0,0,.15)",
+                                      }}
                                       onClick={(e) => {
-                                        const audio = audioRefs.current[message._id];
-                                        if (!audio || !isFinite(audio.duration)) return;
-                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        const audio =
+                                          audioRefs.current[message._id];
+                                        if (!audio || !isFinite(audio.duration))
+                                          return;
+                                        const rect =
+                                          e.currentTarget.getBoundingClientRect();
                                         const clickX = e.clientX - rect.left;
                                         const percent = clickX / rect.width;
-                                        audio.currentTime = percent * audio.duration;
-                                        setVoiceProgress((prev) => ({ ...prev, [message._id]: percent * 100 }));
+                                        audio.currentTime =
+                                          percent * audio.duration;
+                                        setVoiceProgress((prev) => ({
+                                          ...prev,
+                                          [message._id]: percent * 100,
+                                        }));
                                       }}
                                     >
                                       <div
                                         className="h-full rounded-full transition-all duration-100"
                                         style={{
                                           width: `${voiceProgress[message._id] || 0}%`,
-                                          backgroundColor: isOwn ? '#fff' : '#00A884'
+                                          backgroundColor: isOwn
+                                            ? "#fff"
+                                            : "#00A884",
                                         }}
                                       />
                                     </div>
                                     <div className="flex justify-between mt-1">
                                       <span className="text-[10px] opacity-55">
                                         {voiceDurations[message._id]
-                                          ? formatVoiceDuration(voiceDurations[message._id])
+                                          ? formatVoiceDuration(
+                                              voiceDurations[message._id],
+                                            )
                                           : attachment.duration
-                                            ? formatVoiceDuration(attachment.duration)
-                                            : '0:00'}
+                                            ? formatVoiceDuration(
+                                                attachment.duration,
+                                              )
+                                            : "0:00"}
                                       </span>
-                                      <span className="text-[10px] opacity-55">{formatFileSize(attachment.size)}</span>
+                                      <span className="text-[10px] opacity-55">
+                                        {formatFileSize(attachment.size)}
+                                      </span>
                                     </div>
                                   </div>
                                 </div>
                               );
-                            case 'file':
+                            case "file":
                               if (!hasValidUrl || failed) {
                                 return (
                                   <button
                                     type="button"
                                     onClick={() => retryAttachment(message._id)}
                                     className="w-55 h-24 rounded-lg flex flex-col items-center justify-center gap-2 text-xs opacity-70"
-                                    style={{ backgroundColor: isOwn ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }}
+                                    style={{
+                                      backgroundColor: isOwn
+                                        ? "rgba(255,255,255,0.15)"
+                                        : "rgba(0,0,0,0.08)",
+                                    }}
                                   >
                                     <RotateCcw className="w-5 h-5" />
-                                    <span>Document unavailable · Tap to retry</span>
+                                    <span>
+                                      Document unavailable · Tap to retry
+                                    </span>
                                   </button>
                                 );
                               }
@@ -1777,25 +2128,41 @@ export default function UserMessagesPage() {
                                     href={resolvedUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className={`flex items-center gap-3 rounded-lg p-2.5 ${isOwn ? 'bg-white/10 hover:bg-white/15' : isDarkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-gray-100 hover:bg-gray-200'}`}
+                                    className={`flex items-center gap-3 rounded-lg p-2.5 ${isOwn ? "bg-white/10 hover:bg-white/15" : isDarkMode ? "bg-white/5 hover:bg-white/10" : "bg-gray-100 hover:bg-gray-200"}`}
                                   >
                                     <div className="w-10 h-10 bg-blue-500/15 rounded-lg flex items-center justify-center shrink-0">
                                       <FileText className="w-5 h-5 text-blue-500" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium truncate">{attachment.filename || 'Document'}</p>
-                                      <p className="text-[10px] opacity-55">{formatFileSize(attachment.size)}</p>
+                                      <p className="text-sm font-medium truncate">
+                                        {attachment.filename || "Document"}
+                                      </p>
+                                      <p className="text-[10px] opacity-55">
+                                        {formatFileSize(attachment.size)}
+                                      </p>
                                     </div>
                                     <Download className="w-4 h-4 opacity-60 shrink-0" />
                                   </a>
-                                  {hasCaption && <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">{message.content}</p>}
+                                  {hasCaption && (
+                                    <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">
+                                      {message.content}
+                                    </p>
+                                  )}
                                 </div>
                               );
                             default:
-                              return <p className="text-[14px] leading-relaxed whitespace-pre-wrap wrap-break-word">{message.content}</p>;
+                              return (
+                                <p className="text-[14px] leading-relaxed whitespace-pre-wrap wrap-break-word">
+                                  {message.content}
+                                </p>
+                              );
                           }
                         }
-                        return <p className="text-[14px] leading-relaxed whitespace-pre-wrap wrap-break-word">{message.content}</p>;
+                        return (
+                          <p className="text-[14px] leading-relaxed whitespace-pre-wrap wrap-break-word">
+                            {message.content}
+                          </p>
+                        );
                       };
 
                       return (
@@ -1808,53 +2175,76 @@ export default function UserMessagesPage() {
                           {/* Date Separator - WhatsApp Style */}
                           {showDateSeparator && (
                             <div className="flex justify-center my-4 sticky top-2 z-10">
-                              <div className={`px-4 py-1.5 rounded-lg text-[12px] font-medium shadow-md ${isDarkMode
-                                ? 'bg-[#1F2C34] text-[#8696A0] border border-[#2A3942]'
-                                : 'bg-white text-[#54656F] shadow-[0_1px_3px_rgba(0,0,0,.12)]'
-                                }`}>
+                              <div
+                                className={`px-4 py-1.5 rounded-lg text-[12px] font-medium shadow-md ${
+                                  isDarkMode
+                                    ? "bg-[#1F2C34] text-[#8696A0] border border-[#2A3942]"
+                                    : "bg-white text-[#54656F] shadow-[0_1px_3px_rgba(0,0,0,.12)]"
+                                }`}
+                              >
                                 {formatDateSeparator(message.createdAt)}
                               </div>
                             </div>
                           )}
 
                           {/* Message Bubble */}
-                          <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} items-end gap-2 mb-1 group`}>
+                          <div
+                            className={`flex ${isOwn ? "justify-end" : "justify-start"} items-end gap-2 mb-1 group`}
+                          >
                             {!isOwn && (
                               <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 bg-[#075E54]/15 flex items-center justify-center">
                                 {message.sender?.avatar ? (
-                                  <img src={message.sender.avatar} alt={message.sender.firstName} className="w-full h-full object-cover" loading="lazy" />
+                                  <img
+                                    src={message.sender.avatar}
+                                    alt={message.sender.firstName}
+                                    className="w-full h-full object-cover"
+                                    loading="lazy"
+                                  />
                                 ) : (
                                   <User className="w-3.5 h-3.5 text-[#075E54]" />
                                 )}
                               </div>
                             )}
 
-                            <div className={`max-w-[85%] sm:max-w-[75%] relative ${isOwn ? 'order-2' : ''}`}>
+                            <div
+                              className={`max-w-[85%] sm:max-w-[75%] relative ${isOwn ? "order-2" : ""}`}
+                            >
                               <div
-                                className={`px-2.5 py-1.5 shadow-sm inline-block ${isOwn
-                                  ? isDarkMode
-                                    ? 'bg-[#005C4B] text-white rounded-2xl rounded-tr-sm'
-                                    : 'bg-[#D9FDD3] text-gray-900 rounded-2xl rounded-tr-sm'
-                                  : isDarkMode
-                                    ? 'bg-[#202C33] text-white rounded-2xl rounded-tl-sm'
-                                    : 'bg-white text-gray-900 rounded-2xl rounded-tl-sm'
-                                  } ${highlightedMessageId === message._id ? 'ring-3 ring-yellow-300 ring-offset-2 ring-offset-transparent' : ''} transition-all duration-300`}
+                                className={`px-2.5 py-1.5 shadow-sm inline-block ${
+                                  isOwn
+                                    ? isDarkMode
+                                      ? "bg-[#005C4B] text-white rounded-2xl rounded-tr-sm"
+                                      : "bg-[#D9FDD3] text-gray-900 rounded-2xl rounded-tr-sm"
+                                    : isDarkMode
+                                      ? "bg-[#202C33] text-white rounded-2xl rounded-tl-sm"
+                                      : "bg-white text-gray-900 rounded-2xl rounded-tl-sm"
+                                } ${highlightedMessageId === message._id ? "ring-3 ring-yellow-300 ring-offset-2 ring-offset-transparent" : ""} transition-all duration-300`}
                               >
                                 {message.replyTo && (
                                   <button
                                     type="button"
-                                    onClick={() => jumpToOriginalMessage(message.replyTo?._id)}
-                                    className={`mb-2 w-full rounded-lg border-l-3 px-2 py-1 text-left ${isOwn
-                                      ? 'bg-white/15 border-white/80'
-                                      : isDarkMode
-                                        ? 'bg-black/20 border-[#00A884]'
-                                        : 'bg-gray-100 border-[#00A884]'
-                                      }`}
+                                    onClick={() =>
+                                      jumpToOriginalMessage(
+                                        message.replyTo?._id,
+                                      )
+                                    }
+                                    className={`mb-2 w-full rounded-lg border-l-3 px-2 py-1 text-left ${
+                                      isOwn
+                                        ? "bg-white/15 border-white/80"
+                                        : isDarkMode
+                                          ? "bg-black/20 border-[#00A884]"
+                                          : "bg-gray-100 border-[#00A884]"
+                                    }`}
                                   >
-                                    <p className={`text-[11px] font-semibold ${isOwn ? 'text-white/95' : 'text-[#00A884]'}`}>
-                                      {message.replyTo.sender?.firstName || 'Reply'}
+                                    <p
+                                      className={`text-[11px] font-semibold ${isOwn ? "text-white/95" : "text-[#00A884]"}`}
+                                    >
+                                      {message.replyTo.sender?.firstName ||
+                                        "Reply"}
                                     </p>
-                                    <p className={`text-[12px] leading-snug truncate ${isOwn ? 'text-white/90' : isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                    <p
+                                      className={`text-[12px] leading-snug truncate ${isOwn ? "text-white/90" : isDarkMode ? "text-gray-200" : "text-gray-700"}`}
+                                    >
                                       {getReplyPreviewText(message.replyTo)}
                                     </p>
                                   </button>
@@ -1877,22 +2267,32 @@ export default function UserMessagesPage() {
 
                   {uploadingMedia && (
                     <div className="flex justify-end mb-1">
-                      <div className={`px-2.5 py-1.5 shadow-sm inline-block rounded-2xl rounded-tr-sm ${isDarkMode ? 'bg-[#005C4B] text-white' : 'bg-[#D9FDD3] text-gray-900'} max-w-[85%] sm:max-w-[75%]`}>
+                      <div
+                        className={`px-2.5 py-1.5 shadow-sm inline-block rounded-2xl rounded-tr-sm ${isDarkMode ? "bg-[#005C4B] text-white" : "bg-[#D9FDD3] text-gray-900"} max-w-[85%] sm:max-w-[75%]`}
+                      >
                         <div className="rounded-lg overflow-hidden bg-black/5 min-w-45 max-w-55">
-                          {uploadingMedia.type === 'image' && (
-                            <img src={uploadingMedia.previewUrl} alt="Uploading" className="w-full h-40 object-cover" />
+                          {uploadingMedia.type === "image" && (
+                            <img
+                              src={uploadingMedia.previewUrl}
+                              alt="Uploading"
+                              className="w-full h-40 object-cover"
+                            />
                           )}
-                          {uploadingMedia.type === 'video' && (
+                          {uploadingMedia.type === "video" && (
                             <div className="w-full h-40 bg-black/60 flex items-center justify-center">
                               <Play className="w-7 h-7 text-white" />
                             </div>
                           )}
-                          {uploadingMedia.type === 'file' && (
+                          {uploadingMedia.type === "file" && (
                             <div className="p-3 flex items-center gap-3">
                               <FileText className="w-7 h-7 text-blue-500" />
                               <div className="min-w-0">
-                                <p className="text-sm truncate">{uploadingMedia.file.name}</p>
-                                <p className="text-[10px] opacity-60">{formatFileSize(uploadingMedia.file.size)}</p>
+                                <p className="text-sm truncate">
+                                  {uploadingMedia.file.name}
+                                </p>
+                                <p className="text-[10px] opacity-60">
+                                  {formatFileSize(uploadingMedia.file.size)}
+                                </p>
                               </div>
                             </div>
                           )}
@@ -1901,13 +2301,20 @@ export default function UserMessagesPage() {
                         {!uploadingMedia.error ? (
                           <div className="mt-2">
                             <div className="h-1.5 rounded-full bg-white/30 overflow-hidden">
-                              <div className="h-full bg-[#00A884] transition-all" style={{ width: `${uploadingMedia.progress}%` }} />
+                              <div
+                                className="h-full bg-[#00A884] transition-all"
+                                style={{ width: `${uploadingMedia.progress}%` }}
+                              />
                             </div>
-                            <p className="text-[11px] mt-1 opacity-80">Uploading... {uploadingMedia.progress}%</p>
+                            <p className="text-[11px] mt-1 opacity-80">
+                              Uploading... {uploadingMedia.progress}%
+                            </p>
                           </div>
                         ) : (
                           <div className="mt-2">
-                            <p className="text-[11px] text-red-200">{uploadingMedia.error}</p>
+                            <p className="text-[11px] text-red-200">
+                              {uploadingMedia.error}
+                            </p>
                             <button
                               type="button"
                               onClick={retryUploadingMedia}
@@ -1943,12 +2350,12 @@ export default function UserMessagesPage() {
                   className="border-t"
                   style={{
                     flexShrink: 0,
-                    position: 'sticky',
+                    position: "sticky",
                     bottom: 0,
                     zIndex: 50,
-                    background: '#f0f0f0',
-                    padding: '8px 12px',
-                    paddingBottom: 'max(8px, env(safe-area-inset-bottom))'
+                    background: "#f0f0f0",
+                    padding: "8px 12px",
+                    paddingBottom: "max(8px, env(safe-area-inset-bottom))",
                   }}
                 >
                   <div className="relative" ref={attachMenuRef}>
@@ -1971,13 +2378,18 @@ export default function UserMessagesPage() {
                                   docRef.current.click();
                                 }
                               } catch (error) {
-                                console.error('Error opening document picker:', error);
-                                toast.error('Unable to open file picker');
+                                console.error(
+                                  "Error opening document picker:",
+                                  error,
+                                );
+                                toast.error("Unable to open file picker");
                               }
                             }}
                           >
                             <FileIcon className="h-5 w-5 text-[#075E54]" />
-                            <span className="text-xs text-gray-700">📄 Document</span>
+                            <span className="text-xs text-gray-700">
+                              📄 Document
+                            </span>
                           </button>
                           <button
                             type="button"
@@ -1988,13 +2400,18 @@ export default function UserMessagesPage() {
                                   imageRef.current.click();
                                 }
                               } catch (error) {
-                                console.error('Error opening image picker:', error);
-                                toast.error('Unable to open file picker');
+                                console.error(
+                                  "Error opening image picker:",
+                                  error,
+                                );
+                                toast.error("Unable to open file picker");
                               }
                             }}
                           >
                             <Paperclip className="h-5 w-5 text-[#075E54]" />
-                            <span className="text-xs text-gray-700">🖼 Image</span>
+                            <span className="text-xs text-gray-700">
+                              🖼 Image
+                            </span>
                           </button>
                           <button
                             type="button"
@@ -2005,13 +2422,18 @@ export default function UserMessagesPage() {
                                   videoRef.current.click();
                                 }
                               } catch (error) {
-                                console.error('Error opening video picker:', error);
-                                toast.error('Unable to open file picker');
+                                console.error(
+                                  "Error opening video picker:",
+                                  error,
+                                );
+                                toast.error("Unable to open file picker");
                               }
                             }}
                           >
                             <Play className="h-5 w-5 text-[#075E54]" />
-                            <span className="text-xs text-gray-700">🎥 Video</span>
+                            <span className="text-xs text-gray-700">
+                              🎥 Video
+                            </span>
                           </button>
                           <button
                             type="button"
@@ -2022,13 +2444,15 @@ export default function UserMessagesPage() {
                                   cameraRef.current.click();
                                 }
                               } catch (error) {
-                                console.error('Error opening camera:', error);
-                                toast.error('Unable to open camera');
+                                console.error("Error opening camera:", error);
+                                toast.error("Unable to open camera");
                               }
                             }}
                           >
                             <Camera className="h-5 w-5 text-[#075E54]" />
-                            <span className="text-xs text-gray-700">📷 Camera</span>
+                            <span className="text-xs text-gray-700">
+                              📷 Camera
+                            </span>
                           </button>
                         </div>
                       </div>
@@ -2047,16 +2471,22 @@ export default function UserMessagesPage() {
                       <div className="flex-1 rounded-full bg-white border border-gray-200 px-4 py-2 min-h-10 flex items-center">
                         {isRecording ? (
                           <div className="w-full flex items-center justify-between text-sm text-gray-700">
-                            <span>Recording... {formatVoiceDuration(recordingTime)}</span>
-                            <span className="text-xs text-gray-500">Release to send</span>
+                            <span>
+                              Recording... {formatVoiceDuration(recordingTime)}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              Release to send
+                            </span>
                           </div>
                         ) : (
                           <textarea
                             ref={inputRef}
                             value={newMessage}
-                            onChange={(event) => handleMessageInput(event.target.value)}
+                            onChange={(event) =>
+                              handleMessageInput(event.target.value)
+                            }
                             onKeyDown={(event) => {
-                              if (event.key === 'Enter' && !event.shiftKey) {
+                              if (event.key === "Enter" && !event.shiftKey) {
                                 event.preventDefault();
                                 handleSendMessage();
                               }
@@ -2096,21 +2526,58 @@ export default function UserMessagesPage() {
                       )}
                     </div>
 
-                    <input ref={imageRef} type="file" accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.gif" hidden onChange={handleImageUpload} />
-                    <input ref={videoRef} type="file" accept="video/*" hidden onChange={handleVideoUpload} />
-                    <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx" hidden onChange={handleDocUpload} />
-                    <input ref={cameraRef} type="file" accept="image/*,.heic,.heif" capture="environment" hidden onChange={handleImageUpload} />
+                    <input
+                      ref={imageRef}
+                      type="file"
+                      accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.gif"
+                      hidden
+                      onChange={handleImageUpload}
+                    />
+                    <input
+                      ref={videoRef}
+                      type="file"
+                      accept="video/*"
+                      hidden
+                      onChange={handleVideoUpload}
+                    />
+                    <input
+                      ref={docRef}
+                      type="file"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.ppt,.pptx"
+                      hidden
+                      onChange={handleDocUpload}
+                    />
+                    <input
+                      ref={cameraRef}
+                      type="file"
+                      accept="image/*,.heic,.heif"
+                      capture="environment"
+                      hidden
+                      onChange={handleImageUpload}
+                    />
                   </div>
                 </div>
               </div>
             ) : (
-              <div className={`flex-1 flex items-center justify-center ${isDarkMode ? 'bg-gray-950' : 'bg-[#ECE5DD]'}`}>
-                <div className={`text-center rounded-2xl p-8 shadow-sm ${isDarkMode ? 'bg-gray-900/80' : 'bg-white/80'}`}>
+              <div
+                className={`flex-1 flex items-center justify-center ${isDarkMode ? "bg-gray-950" : "bg-[#ECE5DD]"}`}
+              >
+                <div
+                  className={`text-center rounded-2xl p-8 shadow-sm ${isDarkMode ? "bg-gray-900/80" : "bg-white/80"}`}
+                >
                   <div className="w-16 h-16 bg-[#075E54]/10 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Send className="w-8 h-8 text-[#075E54]" />
                   </div>
-                  <h3 className={`font-semibold mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Select a conversation</h3>
-                  <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'} text-sm`}>Choose a conversation from the list to start chatting</p>
+                  <h3
+                    className={`font-semibold mb-1 ${isDarkMode ? "text-white" : "text-gray-900"}`}
+                  >
+                    Select a conversation
+                  </h3>
+                  <p
+                    className={`${isDarkMode ? "text-gray-300" : "text-gray-500"} text-sm`}
+                  >
+                    Choose a conversation from the list to start chatting
+                  </p>
                 </div>
               </div>
             )}
@@ -2119,8 +2586,14 @@ export default function UserMessagesPage() {
       </div>
 
       {mediaPreview && (
-        <div className="fixed inset-0 z-200 bg-black/70 flex items-center justify-center p-4" onClick={clearMediaPreview}>
-          <div className="relative w-[92vw] max-w-md max-h-[85vh] rounded-2xl bg-white overflow-hidden" onClick={(event) => event.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-200 bg-black/70 flex items-center justify-center p-4"
+          onClick={clearMediaPreview}
+        >
+          <div
+            className="relative w-[92vw] max-w-md max-h-[85vh] rounded-2xl bg-white overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
             <button
               type="button"
               className="absolute top-3 right-3 z-10 h-8 w-8 rounded-full bg-black/60 text-white flex items-center justify-center"
@@ -2130,13 +2603,23 @@ export default function UserMessagesPage() {
             </button>
 
             <div className="h-[52vh] max-h-[52vh] bg-gray-100 flex items-center justify-center">
-              {mediaPreview.type === 'image' && (
-                <img src={mediaPreview.previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+              {mediaPreview.type === "image" && (
+                <img
+                  src={mediaPreview.previewUrl}
+                  alt="Preview"
+                  className="max-w-full max-h-full object-contain"
+                />
               )}
 
-              {mediaPreview.type === 'video' && (
+              {mediaPreview.type === "video" && (
                 <div className="relative w-full h-full flex items-center justify-center bg-black/70">
-                  <video src={mediaPreview.previewUrl} className="max-w-full max-h-full object-contain" muted playsInline preload="metadata" />
+                  <video
+                    src={mediaPreview.previewUrl}
+                    className="max-w-full max-h-full object-contain"
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="h-12 w-12 rounded-full bg-black/60 flex items-center justify-center">
                       <Play className="w-6 h-6 text-white ml-0.5" />
@@ -2145,11 +2628,15 @@ export default function UserMessagesPage() {
                 </div>
               )}
 
-              {mediaPreview.type === 'file' && (
+              {mediaPreview.type === "file" && (
                 <div className="p-6 text-center">
                   <FileText className="w-12 h-12 text-[#075E54] mx-auto mb-3" />
-                  <p className="text-sm font-medium break-all">{mediaPreview.file.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">{formatFileSize(mediaPreview.file.size)}</p>
+                  <p className="text-sm font-medium break-all">
+                    {mediaPreview.file.name}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formatFileSize(mediaPreview.file.size)}
+                  </p>
                 </div>
               )}
             </div>
@@ -2157,7 +2644,11 @@ export default function UserMessagesPage() {
             <div className="p-3 border-t bg-white">
               <textarea
                 value={mediaPreview.caption}
-                onChange={(event) => setMediaPreview((prev) => (prev ? { ...prev, caption: event.target.value } : prev))}
+                onChange={(event) =>
+                  setMediaPreview((prev) =>
+                    prev ? { ...prev, caption: event.target.value } : prev,
+                  )
+                }
                 placeholder="Add a caption (optional)"
                 rows={2}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none outline-none"
@@ -2179,9 +2670,21 @@ export default function UserMessagesPage() {
       )}
 
       {videoPlayerOpen && (
-        <div className="fixed inset-0 z-90 bg-black/80 flex items-center justify-center p-4" onClick={() => setVideoPlayerOpen(false)}>
-          <div className="w-full max-w-xl" onClick={(event) => event.stopPropagation()}>
-            <video src={videoPlayerUrl} controls autoPlay playsInline className="w-full rounded-xl bg-black" />
+        <div
+          className="fixed inset-0 z-90 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setVideoPlayerOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <video
+              src={videoPlayerUrl}
+              controls
+              autoPlay
+              playsInline
+              className="w-full rounded-xl bg-black"
+            />
           </div>
         </div>
       )}

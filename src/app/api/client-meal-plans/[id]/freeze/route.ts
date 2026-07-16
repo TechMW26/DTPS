@@ -7,6 +7,7 @@ import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import ServicePlan, { ClientPurchase } from '@/lib/db/models/ServicePlan';
 import { addDays, format, differenceInDays, startOfDay, parseISO } from 'date-fns';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
 
 // Helper function to calculate allowed freeze days based on plan duration in months (fallback)
 function calculateAllowedFreezeDaysFallback(durationDays: number): number {
@@ -218,6 +219,77 @@ function resolvePurchaseExpectedEndBaseline(records: PurchaseDateRecord[], fallb
   return fallbackDate;
 }
 
+function shiftDateValue(value: any, deltaDays: number): Date | null {
+  if (!value || deltaDays === 0) return value ? new Date(value) : null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return addDays(startOfDay(date), deltaDays);
+}
+
+function sortPhasesForCascade(a: any, b: any): number {
+  const aPhase = typeof a?.phaseNumber === 'number' ? a.phaseNumber : Number.MAX_SAFE_INTEGER;
+  const bPhase = typeof b?.phaseNumber === 'number' ? b.phaseNumber : Number.MAX_SAFE_INTEGER;
+  if (aPhase !== bPhase) return aPhase - bPhase;
+
+  const aStart = new Date(a?.startDate || 0).getTime();
+  const bStart = new Date(b?.startDate || 0).getTime();
+  if (aStart !== bStart) return aStart - bStart;
+
+  const aCreated = new Date(a?.createdAt || 0).getTime();
+  const bCreated = new Date(b?.createdAt || 0).getTime();
+  return aCreated - bCreated;
+}
+
+async function cascadeShiftLinkedPhases(
+  purchaseId: string | null,
+  anchorPlanId: string,
+  deltaDays: number
+): Promise<void> {
+  if (!purchaseId || deltaDays === 0) return;
+
+  const linkedPlans: any[] = await ClientMealPlan.find({
+    purchaseId,
+    isDeleted: { $ne: true }
+  });
+
+  if (linkedPlans.length <= 1) return;
+
+  const orderedPlans = [...linkedPlans].sort(sortPhasesForCascade);
+  const anchorIndex = orderedPlans.findIndex((plan) => String(plan._id) === String(anchorPlanId));
+  if (anchorIndex < 0 || anchorIndex >= orderedPlans.length - 1) return;
+
+  for (let i = anchorIndex + 1; i < orderedPlans.length; i += 1) {
+    const plan = orderedPlans[i];
+
+    const shiftedStartDate = shiftDateValue(plan.startDate, deltaDays);
+    const shiftedEndDate = shiftDateValue(plan.endDate, deltaDays);
+    if (shiftedStartDate) plan.startDate = shiftedStartDate;
+    if (shiftedEndDate) plan.endDate = shiftedEndDate;
+
+    if (Array.isArray(plan.meals)) {
+      plan.meals = plan.meals.map((meal: any) => {
+        if (!meal?.date) return meal;
+        const shiftedMealDate = shiftDateValue(meal.date, deltaDays);
+        if (!shiftedMealDate) return meal;
+        return {
+          ...meal,
+          date: shiftedMealDate
+        };
+      });
+    }
+
+    if (Array.isArray(plan.freezedDays)) {
+      plan.freezedDays = plan.freezedDays.map((fd: any) => ({
+        ...fd,
+        date: shiftDateValue(fd?.date, deltaDays) || fd?.date,
+        addedDate: fd?.addedDate ? (shiftDateValue(fd.addedDate, deltaDays) || fd.addedDate) : fd?.addedDate
+      }));
+    }
+
+    await plan.save();
+  }
+}
+
 // GET - Get freeze information for a meal plan
 export async function GET(
   request: NextRequest,
@@ -392,7 +464,7 @@ export async function POST(
         }, { status: 400 });
       }
 
-      // Check if date is not in the past
+      // Allow today and future dates (only strictly past dates are blocked)
       if (freezeDate < today) {
         return NextResponse.json({
           error: `Cannot freeze past date: ${formattedDate}`
@@ -541,11 +613,19 @@ export async function POST(
 
     await mealPlan.save();
 
-    // Also update UnifiedPayment end date and expected end date to keep in sync
-    await UnifiedPayment.updateOne(
-      { mealPlan: mealPlan._id },
-      { $set: { endDate: newEndDate } }
-    );
+    // Keep subsequent linked phases contiguous when this phase timeline grows.
+    await cascadeShiftLinkedPhases(purchaseId, String(mealPlan._id), validFreezeDates.length);
+
+    // Ensure subsequent reads return fresh freeze state and copied recovery days.
+    clearCacheByTag('client_meal_plans');
+
+    // For standalone plans (no linked purchase), keep linked payment dates aligned to plan.
+    if (!purchaseId) {
+      await UnifiedPayment.updateOne(
+        { mealPlan: mealPlan._id },
+        { $set: { endDate: newEndDate, expectedEndDate: newEndDate } }
+      );
+    }
 
     // If this plan is linked to a purchase, extend linked purchase expected/end dates too
     if (purchaseId) {
@@ -555,7 +635,16 @@ export async function POST(
         ...linkedPurchaseTargets.unifiedTargets,
         ...linkedPurchaseTargets.legacyTargets
       ];
-      const newExpectedEndDate = await resolveLatestLinkedMealPlanEndDate(purchaseId, newEndDate);
+
+      // Base from the purchase window first (e.g. 15 Jun -> 15 Jul), not from current phase end.
+      const purchaseBaselineEnd = resolvePurchaseExpectedEndBaseline(purchaseRecords, endDate);
+      const latestLinkedMealPlanEnd = await resolveLatestLinkedMealPlanEndDate(purchaseId, newEndDate);
+      const effectiveBaselineEnd = purchaseBaselineEnd.getTime() > latestLinkedMealPlanEnd.getTime()
+        ? purchaseBaselineEnd
+        : latestLinkedMealPlanEnd;
+
+      // Freeze consumes/extends allocation days: push expected end by frozen days count.
+      const newExpectedEndDate = addDays(startOfDay(effectiveBaselineEnd), validFreezeDates.length);
       const purchaseUpdate = {
         $set: {
           expectedEndDate: newExpectedEndDate,
@@ -578,7 +667,19 @@ export async function POST(
       }
 
       clearCacheByTag('client_purchases');
-      clearCacheByTag('client_meal_plans');
+    }
+
+    // Freezing shifts the Expected End Date — recompute client status (ACTIVE/INACTIVE).
+    if (mealPlan.clientId) {
+      try {
+        await recalculateAndPersistClientStatus(String(mealPlan.clientId), {
+          trigger: 'meal_plan_freeze',
+          changedBy: session.user.id,
+          relatedEvent: `mealPlan:${id}`,
+        });
+      } catch (statusError) {
+        console.error('Error recalculating client status after meal plan freeze:', statusError);
+      }
     }
 
     // Calculate the new shared freeze count for the response
@@ -724,14 +825,23 @@ export async function DELETE(
 
     await mealPlan.save();
 
-    // Also update UnifiedPayment end date to keep in sync
-    await UnifiedPayment.updateOne(
-      { mealPlan: mealPlan._id },
-      { $set: { endDate: newEndDate } }
-    );
-
     // If linked to a purchase, keep linked expected/end dates aligned without decrementing
     const purchaseId = mealPlan.purchaseId?.toString() || null;
+
+    // Keep subsequent linked phases contiguous when this phase timeline shrinks.
+    await cascadeShiftLinkedPhases(purchaseId, String(mealPlan._id), -datesToUnfreeze.length);
+
+    // Ensure subsequent reads return fresh unfreeze state immediately.
+    clearCacheByTag('client_meal_plans');
+
+    // For standalone plans (no linked purchase), keep linked payment dates aligned to plan.
+    if (!purchaseId) {
+      await UnifiedPayment.updateOne(
+        { mealPlan: mealPlan._id },
+        { $set: { endDate: newEndDate, expectedEndDate: newEndDate } }
+      );
+    }
+
     if (purchaseId) {
       const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(purchaseId);
 
@@ -739,7 +849,15 @@ export async function DELETE(
         ...linkedPurchaseTargets.unifiedTargets,
         ...linkedPurchaseTargets.legacyTargets
       ];
-      const newExpectedEndDate = await resolveLatestLinkedMealPlanEndDate(purchaseId, newEndDate);
+
+      // Unfreeze should roll back expected end window by removed freeze days.
+      const purchaseBaselineEnd = resolvePurchaseExpectedEndBaseline(purchaseRecords, currentEndDate);
+      const latestLinkedMealPlanEnd = await resolveLatestLinkedMealPlanEndDate(purchaseId, newEndDate);
+      const decrementedExpectedEnd = addDays(startOfDay(purchaseBaselineEnd), -datesToUnfreeze.length);
+      const newExpectedEndDate = decrementedExpectedEnd.getTime() > latestLinkedMealPlanEnd.getTime()
+        ? decrementedExpectedEnd
+        : latestLinkedMealPlanEnd;
+
       const purchaseUpdate = {
         $set: {
           expectedEndDate: newExpectedEndDate,
@@ -762,7 +880,19 @@ export async function DELETE(
       }
 
       clearCacheByTag('client_purchases');
-      clearCacheByTag('client_meal_plans');
+    }
+
+    // Unfreezing shifts the Expected End Date back — recompute client status.
+    if (mealPlan.clientId) {
+      try {
+        await recalculateAndPersistClientStatus(String(mealPlan.clientId), {
+          trigger: 'meal_plan_unfreeze',
+          changedBy: session.user.id,
+          relatedEvent: `mealPlan:${id}`,
+        });
+      } catch (statusError) {
+        console.error('Error recalculating client status after meal plan unfreeze:', statusError);
+      }
     }
 
     // Recalculate allowed freeze days based on original duration

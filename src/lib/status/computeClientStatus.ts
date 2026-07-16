@@ -3,12 +3,15 @@ import { ClientStatus } from '@/types';
 /**
  * Centralized, single-source-of-truth client status computation.
  *
- * Rules:
+ * Status priority (highest to lowest):
+ *   HOLD     → Manual override. Program temporarily paused. Overrides ACTIVE/INACTIVE.
  *   LEAD     → Registered but no successful payment yet.
- *   ACTIVE   → Has at least one successful payment AND either:
- *              - A meal plan whose endDate is in the future, OR
- *              - No meal plan created yet (awaiting diet plan).
- *   INACTIVE → Has paid in the past, but all plans have expired (endDate < today).
+ *   ACTIVE   → Has at least one successful payment AND the subscription period is still
+ *              valid: today <= Expected End Date.
+ *   INACTIVE → Has paid, but the subscription period has ended: today > Expected End Date.
+ *
+ * NOTE: ACTIVE/INACTIVE depend ONLY on the subscription's Expected End Date.
+ * Meal plan / phase / day publication state must NOT change the client status.
  *
  * This function is **pure** — it does NOT touch the database. Callers are
  * responsible for fetching the required data and persisting the result.
@@ -16,57 +19,78 @@ import { ClientStatus } from '@/types';
 export interface StatusInput {
   /** Whether the client has at least one successful (paid/completed) payment */
   hasSuccessfulPayment: boolean;
-  /** The active meal plan (if any) with start/end dates and status */
-  activePlan?: {
-    startDate: Date | string;
-    endDate: Date | string;
-    status: string; // 'active' | 'completed' | 'paused' | 'cancelled'
-  } | null;
+  /** Whether the client is currently on a manual hold (overrides ACTIVE/INACTIVE) */
+  isOnHold?: boolean;
+  /**
+   * The latest subscription end date across all successful purchases
+   * (max of `expectedEndDate` / `endDate`). When today <= this date the client is
+   * ACTIVE; when today is past it the client is INACTIVE. If unknown/missing for a
+   * paying client, the client is treated as ACTIVE (subscription just created).
+   */
+  subscriptionEndDate?: Date | string | null;
 }
 
 export function computeClientStatus(input: StatusInput): ClientStatus {
-  const { hasSuccessfulPayment, activePlan } = input;
+  const { hasSuccessfulPayment, isOnHold, subscriptionEndDate } = input;
 
-  // Rule 1: No successful payment → LEAD
+  // Rule 0: No successful payment → LEAD (a lead depends only on payment existence)
   if (!hasSuccessfulPayment) {
     return ClientStatus.LEAD;
   }
 
-  // Rule 2: Has payment. Check if there is an active plan whose endDate is in the future.
-  // Note: A plan is considered valid even if startDate is in the future (upcoming paid plan).
-  if (activePlan) {
+  // Rule 1: Manual HOLD override (highest priority for paying clients)
+  if (isOnHold) {
+    return ClientStatus.HOLD;
+  }
+
+  // Rule 2/3: ACTIVE vs INACTIVE strictly by Expected End Date.
+  if (subscriptionEndDate) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const endDate = new Date(activePlan.endDate);
+    const endDate = new Date(subscriptionEndDate);
     endDate.setHours(23, 59, 59, 999);
 
-    // Client is ACTIVE if plan status is 'active' AND endDate is today or in the future
-    if (activePlan.status === 'active' && endDate >= today) {
-      return ClientStatus.ACTIVE;
-    }
-
-    // Rule 3: Has paid, plan exists but expired → INACTIVE
-    return ClientStatus.INACTIVE;
+    // today <= Expected End Date → ACTIVE, else INACTIVE
+    return endDate >= today ? ClientStatus.ACTIVE : ClientStatus.INACTIVE;
   }
 
-  // Rule 4: Has paid but no meal plan created yet → ACTIVE (awaiting diet plan)
+  // Rule 4: Has paid but no end date known yet → ACTIVE (subscription just created)
   return ClientStatus.ACTIVE;
 }
 
 /**
- * Helper to compute client status from raw database documents.
+ * Returns the latest (maximum) subscription end date across successful purchases.
+ * Prefers `expectedEndDate`, falling back to `endDate`. Returns null if none found.
+ */
+export function getLatestSubscriptionEndDate(
+  purchases: Array<{ expectedEndDate?: Date | string | null; endDate?: Date | string | null }>
+): Date | null {
+  let latest: Date | null = null;
+  for (const p of purchases) {
+    const raw = p.expectedEndDate ?? p.endDate;
+    if (!raw) continue;
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) continue;
+    if (!latest || d > latest) latest = d;
+  }
+  return latest;
+}
+
+/**
+ * Helper to compute client status from raw payment/purchase documents.
  *
- * @param payments - Array of payment documents (need at least `status` and `paymentStatus` fields)
- * @param mealPlans - Array of meal plan documents (need `startDate`, `endDate`, `status`)
+ * @param payments - Array of payment/purchase documents (need `status`/`paymentStatus`
+ *                   and `expectedEndDate`/`endDate` for ACTIVE/INACTIVE determination)
+ * @param isOnHold - Whether the client is currently on a manual hold
  * @returns The computed ClientStatus
  */
 export function computeClientStatusFromDocs(
-  payments: Array<{ status?: string; paymentStatus?: string }>,
-  mealPlans: Array<{ startDate: Date | string; endDate: Date | string; status: string }>
+  payments: Array<{ status?: string; paymentStatus?: string; expectedEndDate?: Date | string | null; endDate?: Date | string | null }>,
+  isOnHold?: boolean
 ): ClientStatus {
-  // Check for any successful payment
-  const hasSuccessfulPayment = payments.some(
+  // Filter to successful purchases
+  const successfulPurchases = payments.filter(
     p =>
       p.status === 'paid' ||
       p.status === 'completed' ||
@@ -74,41 +98,43 @@ export function computeClientStatusFromDocs(
       p.paymentStatus === 'paid'
   );
 
-  // Find an active plan with endDate in the future (including upcoming plans)
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const hasSuccessfulPayment = successfulPurchases.length > 0;
+  const subscriptionEndDate = getLatestSubscriptionEndDate(successfulPurchases);
 
-  const activePlan = mealPlans.find(plan => {
-    const end = new Date(plan.endDate);
-    end.setHours(23, 59, 59, 999);
-
-    // Plan is valid if status is 'active' and endDate is today or in the future
-    return plan.status === 'active' && end >= today;
-  }) || null;
-
-  return computeClientStatus({ hasSuccessfulPayment, activePlan });
+  return computeClientStatus({ hasSuccessfulPayment, isOnHold, subscriptionEndDate });
 }
 
 /**
- * Fetches meal plans and payments for a client, computes status, and updates the database.
- * This is the primary function to use whenever a meal plan changes (create/update/delete).
- * 
+ * Fetches payments and hold state for a client, computes status, and updates the database.
+ * Use this whenever any condition affecting status changes (payment, meal plan, dates, hold).
+ *
+ * NOTE: status is derived from the subscription Expected End Date — meal plan publication
+ * state does NOT affect it.
+ *
  * @param clientId - The client's MongoDB ObjectId as string
  * @returns The newly computed client status
  */
 export async function updateClientStatusFromMealPlan(clientId: string): Promise<ClientStatus> {
+  return recalculateAndPersistClientStatus(clientId);
+}
+
+/**
+ * Core: recompute a client's status from purchases + hold state and persist it.
+ * When the status changes, an audit entry is appended to `clientStatusHistory`.
+ *
+ * @param clientId - The client's MongoDB ObjectId as string
+ * @param meta - Optional audit metadata (trigger reason, who/what changed)
+ * @returns The newly computed client status
+ */
+export async function recalculateAndPersistClientStatus(
+  clientId: string,
+  meta?: { trigger?: string; changedBy?: string; isManual?: boolean; relatedEvent?: string }
+): Promise<ClientStatus> {
   // Dynamic imports to avoid circular dependencies
-  const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
   const { default: UnifiedPayment } = await import('@/lib/db/models/UnifiedPayment');
   const { default: User } = await import('@/lib/db/models/User');
 
-  // Fetch all meal plans for this client
-  const mealPlans = await ClientMealPlan.find(
-    { clientId },
-    { startDate: 1, endDate: 1, status: 1 }
-  ).lean();
-
-  // Fetch payment status for this client
+  // Fetch successful purchases (with the dates needed to determine ACTIVE/INACTIVE)
   const payments = await UnifiedPayment.find(
     {
       client: clientId,
@@ -117,31 +143,39 @@ export async function updateClientStatusFromMealPlan(clientId: string): Promise<
         { paymentStatus: 'paid' }
       ]
     },
-    { status: 1, paymentStatus: 1 }
+    { status: 1, paymentStatus: 1, expectedEndDate: 1, endDate: 1 }
   ).lean();
 
-  // Check for successful payment
-  const hasSuccessfulPayment = payments.length > 0;
+  // Read current status + manual hold flag
+  const clientDoc = await User.findById(clientId).select('clientStatus holdStatus').lean() as any;
+  if (!clientDoc) {
+    // Client no longer exists; nothing to do
+    return ClientStatus.LEAD;
+  }
+  const isOnHold = !!clientDoc?.holdStatus?.isOnHold;
 
-  // Find an active plan with endDate in the future (including upcoming plans)
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Compute new status (date-based + hold)
+  const newStatus = computeClientStatusFromDocs(payments as any[], isOnHold);
+  const previousStatus = clientDoc.clientStatus as ClientStatus | undefined;
 
-  const activePlan = mealPlans.find((plan: any) => {
-    const end = new Date(plan.endDate);
-    end.setHours(23, 59, 59, 999);
-
-    // Plan is valid if status is 'active' and endDate is today or in the future
-    return plan.status === 'active' && end >= today;
-  }) || null;
-
-  // Compute new status
-  const newStatus = computeClientStatus({ hasSuccessfulPayment, activePlan: activePlan as any });
-
-  // Update the user's clientStatus in database
-  await User.findByIdAndUpdate(clientId, { clientStatus: newStatus });
-
-  console.log(`[ClientStatus] Updated client ${clientId} status to: ${newStatus}`);
+  // Persist only when changed; append an audit trail entry
+  if (previousStatus !== newStatus) {
+    await User.findByIdAndUpdate(clientId, {
+      clientStatus: newStatus,
+      $push: {
+        clientStatusHistory: {
+          previousStatus: previousStatus || null,
+          newStatus,
+          changedBy: meta?.changedBy || null,
+          isManual: !!meta?.isManual,
+          trigger: meta?.trigger || 'auto',
+          relatedEvent: meta?.relatedEvent || null,
+          timestamp: new Date()
+        }
+      }
+    });
+    console.log(`[ClientStatus] ${clientId}: ${previousStatus || 'none'} → ${newStatus} (${meta?.trigger || 'auto'})`);
+  }
 
   return newStatus;
 }
@@ -169,11 +203,11 @@ export async function hasActiveMealPlan(clientId: string): Promise<boolean> {
 }
 
 /**
- * Gets the client status with computed active state based on meal plan validity.
+ * Gets the client status (computed from subscription Expected End Date + hold state).
  * Use this when fetching client data to ensure status is always correct.
  * 
  * @param clientId - The client's MongoDB ObjectId as string
- * @returns Object with clientStatus, hasActivePlan, and plan dates
+ * @returns Object with clientStatus, hasActivePlan, and subscription end date
  */
 export async function getClientStatusInfo(clientId: string): Promise<{
   clientStatus: ClientStatus;
@@ -183,35 +217,34 @@ export async function getClientStatusInfo(clientId: string): Promise<{
 }> {
   const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
   const { default: UnifiedPayment } = await import('@/lib/db/models/UnifiedPayment');
+  const { default: User } = await import('@/lib/db/models/User');
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Run both queries in PARALLEL for faster response
-  const [activePlan, hasPayment] = await Promise.all([
-    // Find active plan with endDate in the future (including upcoming plans)
+  // Run queries in PARALLEL for faster response
+  const [activePlan, payments, clientDoc] = await Promise.all([
+    // Active plan dates are returned for display only (not used for status)
     ClientMealPlan.findOne({
       clientId,
       status: 'active',
       endDate: { $gte: today }
     }).select('startDate endDate status').lean(),
-    // Check for payment
-    UnifiedPayment.exists({
+    // Successful purchases (with dates) drive ACTIVE/INACTIVE
+    UnifiedPayment.find({
       client: clientId,
       $or: [
         { status: { $in: ['paid', 'completed', 'active'] } },
         { paymentStatus: 'paid' }
       ]
-    })
+    }).select('status paymentStatus expectedEndDate endDate').lean(),
+    // Manual hold flag
+    User.findById(clientId).select('holdStatus').lean()
   ]);
 
-  const hasSuccessfulPayment = !!hasPayment;
   const hasActivePlan = !!activePlan;
-
-  const clientStatus = computeClientStatus({
-    hasSuccessfulPayment,
-    activePlan: activePlan as any
-  });
+  const isOnHold = !!(clientDoc as any)?.holdStatus?.isOnHold;
+  const clientStatus = computeClientStatusFromDocs(payments as any[], isOnHold);
 
   return {
     clientStatus,

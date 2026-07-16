@@ -74,6 +74,20 @@ export interface IUnifiedPayment extends Document {
   endDate?: Date;
   expectedStartDate?: Date;
   expectedEndDate?: Date;
+  // Preserved original Expected End Date (before any hold-based extensions)
+  originalExpectedEndDate?: Date;
+  // Cumulative milliseconds the client was on hold while this purchase was active
+  holdExtensionMs?: number;
+  // History of hold-based expected-end-date extensions applied to this purchase
+  holdExtensionHistory?: Array<{
+    holdStart?: Date;
+    holdEnd?: Date;
+    addedMs?: number;
+    previousExpectedEndDate?: Date;
+    newExpectedEndDate?: Date;
+    appliedBy?: mongoose.Types.ObjectId | string;
+    appliedAt?: Date;
+  }>;
   paidAt?: Date;
 
   // ========== MEAL PLAN TRACKING ==========
@@ -393,6 +407,26 @@ const unifiedPaymentSchema = new Schema<IUnifiedPayment>({
   expectedEndDate: {
     type: Date
   },
+  // Preserved original Expected End Date for audit (set once on first extension)
+  originalExpectedEndDate: {
+    type: Date
+  },
+  // Cumulative milliseconds added to expectedEndDate due to hold periods
+  holdExtensionMs: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  // Audit trail of each hold-based extension applied to this purchase
+  holdExtensionHistory: [{
+    holdStart: { type: Date },
+    holdEnd: { type: Date },
+    addedMs: { type: Number, default: 0 },
+    previousExpectedEndDate: { type: Date },
+    newExpectedEndDate: { type: Date },
+    appliedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    appliedAt: { type: Date, default: Date.now }
+  }],
   paidAt: {
     type: Date
   },
@@ -1204,18 +1238,26 @@ unifiedPaymentSchema.pre('save', async function (this: IUnifiedPayment, next) {
       this.status === 'completed' ||
       this.status === 'active'
     ) {
-      const inferredStartDate = this.startDate || this.paidAt || this.purchaseDate;
+      // Use IST-aligned window when possible (paidAt → start = next IST day, end = start + durationDays - 1)
+      const anchorDate = this.paidAt || this.purchaseDate || new Date();
+      const istWindow = (this.durationDays && this.durationDays > 0)
+        ? getNextDayPlanWindow(anchorDate, this.durationDays)
+        : null;
 
-      if (!this.expectedStartDate && inferredStartDate) {
-        this.expectedStartDate = inferredStartDate;
+      if (!this.expectedStartDate) {
+        // Prefer already-saved startDate; fall back to IST next-day window
+        this.expectedStartDate = this.startDate || istWindow?.startDate || anchorDate;
       }
 
       if (!this.expectedEndDate) {
         if (this.endDate) {
           this.expectedEndDate = this.endDate;
-        } else if (inferredStartDate && this.durationDays) {
-          const expectedEndDate = new Date(inferredStartDate);
-          expectedEndDate.setDate(expectedEndDate.getDate() + this.durationDays);
+        } else if (istWindow?.endDate) {
+          this.expectedEndDate = istWindow.endDate;
+        } else if (this.expectedStartDate && this.durationDays) {
+          // Inclusive end: start + (durationDays - 1)
+          const expectedEndDate = new Date(this.expectedStartDate);
+          expectedEndDate.setDate(expectedEndDate.getDate() + this.durationDays - 1);
           this.expectedEndDate = expectedEndDate;
         }
       }

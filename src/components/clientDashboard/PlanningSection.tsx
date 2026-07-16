@@ -222,6 +222,12 @@ const normalizePaymentCheckDates = (data: any) => ({
     : data?.allPurchasesNeedingMealPlan,
 });
 
+const toLocalDayStart = (value: string | Date): Date => {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
 export default function PlanningSection({ client, viewOnly = false, onRegisterReset }: PlanningSectionProps) {
   const { data: session } = useSession();
 
@@ -1106,6 +1112,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       newStartDate = expectedStartDate;
     }
 
+    // Never default to a past date for new plan creation.
+    if (newStartDate < today) {
+      newStartDate = today;
+    }
+
     // Validate against expected dates if set
     if (expectedStartDate && expectedEndDate) {
       // If calculated start date is before expected start, use expected start
@@ -1180,10 +1191,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       return;
     }
     if (!isEditMode && validationExpectedStart && validationExpectedEnd) {
-      const expectedStart = new Date(validationExpectedStart);
-      const expectedEnd = new Date(validationExpectedEnd);
-      const planStartDate = new Date(startDate);
-      const planEndDate = new Date(endDate);
+      const expectedStart = toLocalDayStart(validationExpectedStart);
+      const expectedEnd = toLocalDayStart(validationExpectedEnd);
+      const planStartDate = parseLocalDate(startDate);
+      const planEndDate = parseLocalDate(endDate);
 
       if (planStartDate < expectedStart) {
         toast.error(`Start date must be on or after expected start date (${format(expectedStart, 'dd MMM yyyy')})`);
@@ -1230,13 +1241,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         return;
       }
 
-      // Keep publish duration fixed to selected plan duration.
-      const targetDuration = Math.max(1, duration || 1);
-      const mealsForDuration = Array.isArray(mealsData)
-        ? mealsData.slice(0, targetDuration)
-        : [];
-      if (mealsForDuration.length !== targetDuration) {
-        console.warn('[Publish Plan] Duration/meals mismatch:', { targetDuration, mealsCount: mealsForDuration.length });
+      const mealsForDuration = Array.isArray(mealsData) ? mealsData : [];
+      if (mealsForDuration.length === 0) {
+        toast.error('No meal data to publish. Add meals first.');
+        return;
       }
 
       // Calculate proper dates for each day based on startDate
@@ -1258,7 +1266,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
       const finalMealTypes = mealTypesData && mealTypesData.length > 0 ? mealTypesData : initialMealTypes;
 
-      const actualDuration = targetDuration;
+      const actualDuration = mealsWithDates.length;
       const actualEndDate = actualDuration > 0
         ? format(addDays(parseLocalDate(startDate), actualDuration - 1), 'yyyy-MM-dd')
         : endDate;
@@ -1272,10 +1280,10 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           return;
         }
 
-        const expectedStart = new Date(purchaseExpectedStartDate);
-        const expectedEnd = new Date(purchaseExpectedEndDate);
-        const planStartDate = new Date(startDate);
-        const planFinalEndDate = new Date(actualEndDate);
+        const expectedStart = toLocalDayStart(purchaseExpectedStartDate);
+        const expectedEnd = toLocalDayStart(purchaseExpectedEndDate);
+        const planStartDate = parseLocalDate(startDate);
+        const planFinalEndDate = parseLocalDate(actualEndDate);
 
         if (planStartDate < expectedStart || planStartDate > expectedEnd) {
           toast.error(`Meal plan must start within the expected window (${format(expectedStart, 'dd MMM yyyy')} - ${format(expectedEnd, 'dd MMM yyyy')})`);
@@ -1602,11 +1610,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         mealTypesCount: mealTypesData?.length
       });
 
-      // Keep update duration fixed to selected plan duration.
-      const targetDuration = Math.max(1, duration || 1);
-      const mealsForDuration = Array.isArray(mealsData)
-        ? mealsData.slice(0, targetDuration)
-        : [];
+      const mealsForDuration = Array.isArray(mealsData) ? mealsData : [];
+      if (mealsForDuration.length === 0) {
+        toast.error('No meal data to update. Add meals first.');
+        return;
+      }
 
       // Calculate proper dates for each day based on startDate
       const startDateObj = parseLocalDate(startDate);
@@ -1627,7 +1635,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
       const finalMealTypes = mealTypesData && mealTypesData.length > 0 ? mealTypesData : initialMealTypes;
 
-      const actualDuration = targetDuration;
+      const actualDuration = mealsWithDates.length;
       const actualEndDate = actualDuration > 0
         ? format(addDays(parseLocalDate(startDate), actualDuration - 1), 'yyyy-MM-dd')
         : endDate;
@@ -1806,6 +1814,18 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     const startDate = planStartDate;
     const endDate = planEndDate;
     const durationDays = displayDurationDays;
+    const mealDateSet = useMemo(() => {
+      const set = new Set<string>();
+      const planMeals = Array.isArray(plan?.meals) ? plan.meals : [];
+
+      for (const mealDay of planMeals) {
+        if (!mealDay?.date) continue;
+        const mealDate = format(new Date(mealDay.date), 'yyyy-MM-dd');
+        set.add(mealDate);
+      }
+
+      return set;
+    }, [plan?.meals]);
 
     // Fetch freeze info when dialog opens
     const fetchFreezeInfo = async () => {
@@ -1859,15 +1879,18 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
 
     // Check if a date is selectable
     const isDateSelectable = (dateStr: string) => {
-      const date = new Date(dateStr);
+      const date = parseLocalDate(dateStr);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Can't select past dates
+      // Today and future dates are freezeable (only strictly past dates are blocked)
       if (date < today) return false;
 
       // Can't select dates outside plan range
       if (date < startDate || date > endDate) return false;
+
+      // Can only freeze dates that exist in this plan's created meal dates
+      if (!mealDateSet.has(dateStr)) return false;
 
       // Can't select already frozen dates
       if (isDateFrozen(dateStr)) return false;
@@ -2168,7 +2191,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       <div className="flex items-center justify-between mb-3">
                         <Label className="text-sm font-medium">Select Dates to Freeze</Label>
                         <span className="text-xs text-gray-500">
-                          Click on available dates within plan range
+                          Only future dates with existing meal plan entries are selectable
                         </span>
                       </div>
 
@@ -2192,7 +2215,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                           const isFrozen = isDateFrozen(dateStr);
                           const isSelectable = isDateSelectable(dateStr);
                           const isSelected = selectedDates.includes(dateStr);
-                          const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
+                          const todayAtStart = new Date(new Date().setHours(0, 0, 0, 0));
+                          const isPast = parseLocalDate(dateStr) < todayAtStart;
+                          const hasMealDate = mealDateSet.has(dateStr);
                           const frozenInfo = getFrozenDateInfo(dateStr);
 
                           return (
@@ -2207,6 +2232,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                                   ${isSelected ? 'bg-blue-500 text-white font-bold ring-2 ring-blue-300 shadow-md' : ''}
                                   ${isFrozen ? 'bg-blue-100 text-blue-700 border-2 border-blue-400' : ''}
                                   ${isPast && !isFrozen ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : ''}
+                                  ${!hasMealDate && !isFrozen ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : ''}
                                   ${isSelectable && !isSelected ? 'hover:bg-green-100 hover:border-green-400 cursor-pointer border border-green-200 bg-green-50 text-green-800' : ''}
                                   ${!isSelectable && !isFrozen && !isPast ? 'opacity-50 cursor-not-allowed' : ''}
                                 `}
@@ -2251,7 +2277,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                         </div>
                         <div className="flex items-center gap-1.5">
                           <div className="w-4 h-4 bg-gray-100 rounded" />
-                          <span>Past/Unavailable</span>
+                          <span>Past/No Meal</span>
                         </div>
                       </div>
                     </div>
@@ -3731,9 +3757,9 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       const formExpectedStart = selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate;
                       const formExpectedEnd = selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate;
                       if (!isEditMode && formExpectedStart && formExpectedEnd) {
-                        const expectedStart = new Date(formExpectedStart);
-                        const expectedEnd = new Date(formExpectedEnd);
-                        const selectedDate = new Date(newStartDate);
+                        const expectedStart = toLocalDayStart(formExpectedStart);
+                        const expectedEnd = toLocalDayStart(formExpectedEnd);
+                        const selectedDate = parseLocalDate(newStartDate);
 
                         if (selectedDate < expectedStart) {
                           toast.error(`Start date cannot be before expected start date (${format(expectedStart, 'dd MMM yyyy')})`);
@@ -3746,7 +3772,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       }
                       setStartDate(newStartDate);
                     }}
-                    min={!isEditMode && (selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate) ? format(new Date(selectedPurchase?.expectedStartDate || paymentCheck!.purchase!.expectedStartDate!), 'yyyy-MM-dd') : undefined}
+                    min={!isEditMode
+                      ? (() => {
+                        const today = format(new Date(), 'yyyy-MM-dd');
+                        const expectedStartRaw = selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate;
+                        if (!expectedStartRaw) return today;
+                        const expectedStart = format(toLocalDayStart(expectedStartRaw), 'yyyy-MM-dd');
+                        return expectedStart > today ? expectedStart : today;
+                      })()
+                      : undefined}
                     max={!isEditMode && (selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate) ? format(new Date(selectedPurchase?.expectedEndDate || paymentCheck!.purchase!.expectedEndDate!), 'yyyy-MM-dd') : undefined}
                   />
                   {!isEditMode && (selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate) && (selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate) && (

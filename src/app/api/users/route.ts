@@ -3,13 +3,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
-import { UserRole, ClientStatus } from '@/types';
+import { UserRole } from '@/types';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
-import { computeClientStatus } from '@/lib/status/computeClientStatus';
+import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { validateOptionalEmail, validatePhoneNumber } from '@/lib/validations/contact';
 import { Types } from 'mongoose';
 
@@ -45,51 +44,36 @@ function normalizeObjectId(id: unknown): string | null {
 
 // Helper function to recompute client statuses for a list of clients
 async function recomputeClientStatuses(clients: any[]): Promise<any[]> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   const clientIds = clients.filter(u => u.role === UserRole.CLIENT).map(u => u._id.toString());
   if (clientIds.length === 0) return clients;
 
-  // Batch fetch payments and meal plans for all clients
-  const [payments, mealPlans] = await Promise.all([
-    UnifiedPayment.find({
-      client: { $in: clientIds },
-      $or: [
-        { status: { $in: ['paid', 'completed', 'active'] } },
-        { paymentStatus: 'paid' }
-      ]
-    }).select('client').lean(),
-    ClientMealPlan.find({
-      clientId: { $in: clientIds },
-      status: 'active',
-      endDate: { $gte: today }
-    }).select('clientId startDate endDate status').lean()
-  ]);
+  // Batch fetch successful purchases (with dates) for all clients.
+  // Status is derived from the subscription Expected End Date — not meal plans.
+  const purchases = await UnifiedPayment.find({
+    client: { $in: clientIds },
+    $or: [
+      { status: { $in: ['paid', 'completed', 'active'] } },
+      { paymentStatus: 'paid' }
+    ]
+  }).select('client status paymentStatus expectedEndDate endDate').lean();
 
-  // Create lookup maps
-  const clientPayments = new Set(payments.map((p: any) => p.client.toString()));
-  const clientMealPlansMap = new Map<string, any>();
-  mealPlans.forEach((plan: any) => {
-    clientMealPlansMap.set(plan.clientId.toString(), plan);
+  // Group purchases by client
+  const purchasesByClient = new Map<string, any[]>();
+  purchases.forEach((p: any) => {
+    const cid = p.client.toString();
+    if (!purchasesByClient.has(cid)) purchasesByClient.set(cid, []);
+    purchasesByClient.get(cid)!.push(p);
   });
 
-  // Recompute status for each client
+  // Recompute status for each client (manual HOLD overrides computed status)
   const updatedClients = clients.map((user: any) => {
     if (user.role !== UserRole.CLIENT) return user;
 
     const clientIdStr = user._id.toString();
-    const hasSuccessfulPayment = clientPayments.has(clientIdStr);
-    const activePlan = clientMealPlansMap.get(clientIdStr) || null;
+    const clientPurchases = purchasesByClient.get(clientIdStr) || [];
+    const isOnHold = !!user.holdStatus?.isOnHold;
 
-    const newStatus = computeClientStatus({
-      hasSuccessfulPayment,
-      activePlan: activePlan ? {
-        startDate: activePlan.startDate,
-        endDate: activePlan.endDate,
-        status: activePlan.status
-      } : null
-    });
+    const newStatus = computeClientStatusFromDocs(clientPurchases, isOnHold);
 
     // Update in background if status changed (don't await)
     if (user.clientStatus !== newStatus) {
@@ -126,6 +110,12 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const viewAll = searchParams.get('viewAll') === 'true';
     const noCache = searchParams.get('noCache') === 'true';
+
+    const computedClientStatuses = new Set(['lead', 'active', 'inactive', 'hold']);
+    const shouldFilterByComputedClientStatus =
+      session.user.role === UserRole.ADMIN &&
+      !!statusFilter &&
+      computedClientStatuses.has(statusFilter);
 
     let query: any = {};
 
@@ -197,7 +187,7 @@ export async function GET(request: NextRequest) {
     // Admin-level filters: status, date range, assigned dietitian, assigned health counselor
     if (session.user.role === UserRole.ADMIN) {
       // Status filter (supports clientStatus for clients, account status for staff)
-      if (statusFilter) {
+      if (statusFilter && !shouldFilterByComputedClientStatus) {
         if (!query.$and) query.$and = [];
         query.$and.push({
           $or: [
@@ -309,12 +299,16 @@ export async function GET(request: NextRequest) {
     const selectFields = session.user.role === UserRole.ADMIN ? '+clientStatus' : '-password +clientStatus';
 
     const loadUsersData = async () => {
-      const rawUsers = await User.find(query)
+      const usersQuery = User.find(query)
         .select(selectFields)
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .skip((page - 1) * limit)
-        .lean();
+        .sort({ createdAt: -1 });
+
+      const rawUsers = shouldFilterByComputedClientStatus
+        ? await usersQuery.lean()
+        : await usersQuery
+          .limit(limit)
+          .skip((page - 1) * limit)
+          .lean();
 
       const relatedUserIds = new Set<string>();
 
@@ -427,13 +421,29 @@ export async function GET(request: NextRequest) {
     // Recompute client statuses to ensure accuracy (for clients in the list)
     const usersWithFreshStatus = await recomputeClientStatuses(serializedUsers);
 
+    let responseUsers = usersWithFreshStatus;
+    let responseTotal = total;
+
+    // For client status filters, apply filter AFTER recompute so stale persisted
+    // values don't cause missing rows; then paginate in-memory.
+    if (shouldFilterByComputedClientStatus && statusFilter) {
+      const filteredUsers = usersWithFreshStatus.filter((user: any) => {
+        const userRoleValue = String(user?.role || '');
+        return userRoleValue === UserRole.CLIENT && String(user?.clientStatus || '').toLowerCase() === statusFilter;
+      });
+
+      responseTotal = filteredUsers.length;
+      const start = (page - 1) * limit;
+      responseUsers = filteredUsers.slice(start, start + limit);
+    }
+
     return NextResponse.json({
-      users: usersWithFreshStatus,
+      users: responseUsers,
       pagination: {
         page,
         limit,
-        total,
-        pages: Math.ceil(total / limit)
+        total: responseTotal,
+        pages: Math.ceil(responseTotal / limit)
       },
       roleCounts: {
         admin: adminsCount,

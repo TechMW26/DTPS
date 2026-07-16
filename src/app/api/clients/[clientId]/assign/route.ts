@@ -112,6 +112,22 @@ export async function PATCH(
                 primaryDietitianId !== undefined ||
                 (Array.isArray(secondaryDietitianIds) && secondaryDietitianIds.length > 0);
 
+            if (assignAction === 'primary_secondary' && hasDietitianPayload) {
+                const hasPrimaryDietitian = typeof primaryDietitianId === 'string' && primaryDietitianId.trim() !== '';
+                const normalizedSecondaryDietitianIds = (Array.isArray(secondaryDietitianIds) ? secondaryDietitianIds : [])
+                    .filter((id: unknown): id is string => typeof id === 'string' && id.trim() !== '' && id !== primaryDietitianId);
+
+                if (!hasPrimaryDietitian || normalizedSecondaryDietitianIds.length === 0) {
+                    return NextResponse.json(
+                        {
+                            error: 'Please select the primary and secondary dietitian first, then assign to the dietitians (primary and secondary)',
+                            code: 'PRIMARY_SECONDARY_REQUIRED',
+                        },
+                        { status: 400 }
+                    );
+                }
+            }
+
             if (hasDietitianPayload) {
                 const hasExistingPrimary = !!client.assignedDietitian;
 
@@ -253,45 +269,89 @@ export async function PATCH(
         // ===== Handle primary_secondary mode (explicit primary and secondary assignment) =====
         // This mode is used by both admin and health counselors for precise control
         if (assignAction === 'primary_secondary') {
+            const normalizedPrimaryDietitianId = typeof primaryDietitianId === 'string' ? primaryDietitianId.trim() : '';
+            const normalizedSecondaryDietitianIds = (secondaryDietitianIds || [])
+                .filter((id: unknown): id is string => typeof id === 'string' && id.trim() !== '')
+                .map((id: string) => id.trim())
+                .filter((id: string) => id !== normalizedPrimaryDietitianId);
+
+            const normalizedPrimaryHealthCounselorId = typeof primaryHealthCounselorId === 'string' ? primaryHealthCounselorId.trim() : '';
+            const normalizedSecondaryHealthCounselorIds = (secondaryHealthCounselorIds || [])
+                .filter((id: unknown): id is string => typeof id === 'string' && id.trim() !== '')
+                .map((id: string) => id.trim())
+                .filter((id: string) => id !== normalizedPrimaryHealthCounselorId);
+
+            // Validate dietitian IDs in one query (faster than per-id lookups)
+            const dietitianIdSet = new Set<string>();
+            if (normalizedPrimaryDietitianId) dietitianIdSet.add(normalizedPrimaryDietitianId);
+            for (const id of normalizedSecondaryDietitianIds) dietitianIdSet.add(id);
+
+            if (dietitianIdSet.size > 0) {
+                const validDietitians = await User.find({
+                    _id: { $in: Array.from(dietitianIdSet) },
+                    role: UserRole.DIETITIAN,
+                })
+                    .select('_id')
+                    .lean();
+
+                const validDietitianIds = new Set(validDietitians.map((d: any) => String(d._id)));
+                if (normalizedPrimaryDietitianId && !validDietitianIds.has(normalizedPrimaryDietitianId)) {
+                    return NextResponse.json({ error: 'Invalid primary dietitian' }, { status: 400 });
+                }
+
+                for (const id of normalizedSecondaryDietitianIds) {
+                    if (!validDietitianIds.has(id)) {
+                        return NextResponse.json({ error: `Invalid secondary dietitian: ${id}` }, { status: 400 });
+                    }
+                }
+            }
+
+            // Validate health counselor IDs in one query
+            const healthCounselorIdSet = new Set<string>();
+            if (normalizedPrimaryHealthCounselorId) healthCounselorIdSet.add(normalizedPrimaryHealthCounselorId);
+            for (const id of normalizedSecondaryHealthCounselorIds) healthCounselorIdSet.add(id);
+
+            if (healthCounselorIdSet.size > 0) {
+                const validHealthCounselors = await User.find({
+                    _id: { $in: Array.from(healthCounselorIdSet) },
+                    role: UserRole.HEALTH_COUNSELOR,
+                })
+                    .select('_id')
+                    .lean();
+
+                const validHealthCounselorIds = new Set(validHealthCounselors.map((h: any) => String(h._id)));
+                if (normalizedPrimaryHealthCounselorId && !validHealthCounselorIds.has(normalizedPrimaryHealthCounselorId)) {
+                    return NextResponse.json({ error: 'Invalid primary health counselor' }, { status: 400 });
+                }
+
+                for (const id of normalizedSecondaryHealthCounselorIds) {
+                    if (!validHealthCounselorIds.has(id)) {
+                        return NextResponse.json({ error: `Invalid secondary health counselor: ${id}` }, { status: 400 });
+                    }
+                }
+            }
+
             // Handle primary dietitian
             if (primaryDietitianId !== undefined) {
                 if (primaryDietitianId === null || primaryDietitianId === '') {
                     setFields.assignedDietitian = null;
                 } else {
-                    const dietitian = await User.findById(primaryDietitianId);
-                    if (!dietitian || dietitian.role !== UserRole.DIETITIAN) {
-                        return NextResponse.json({ error: 'Invalid primary dietitian' }, { status: 400 });
-                    }
-                    setFields.assignedDietitian = primaryDietitianId;
+                    setFields.assignedDietitian = normalizedPrimaryDietitianId;
                 }
             }
 
             // Handle secondary dietitians - CRITICAL: Exclude primary from secondary list
             if (secondaryDietitianIds !== undefined) {
-                const validSecondaryIds: string[] = [];
-                for (const dId of secondaryDietitianIds || []) {
-                    // Skip if this is the primary dietitian (prevent overlap)
-                    if (dId === primaryDietitianId) {
-                        console.log(`[ASSIGN] Skipping ${dId} from secondary - already primary`);
-                        continue;
-                    }
-                    if (dId && dId.trim() !== '') {
-                        const dietitian = await User.findById(dId);
-                        if (!dietitian || dietitian.role !== UserRole.DIETITIAN) {
-                            return NextResponse.json({ error: `Invalid secondary dietitian: ${dId}` }, { status: 400 });
-                        }
-                        validSecondaryIds.push(dId);
-                    }
-                }
+                const validSecondaryIds = normalizedSecondaryDietitianIds;
                 // Build assignedDietitians array: primary first (if set), then secondaries
                 // Primary is stored separately in assignedDietitian, but also included in assignedDietitians
-                const allDietitianIds = primaryDietitianId && primaryDietitianId !== ''
-                    ? [primaryDietitianId, ...validSecondaryIds]
+                const allDietitianIds = normalizedPrimaryDietitianId
+                    ? [normalizedPrimaryDietitianId, ...validSecondaryIds]
                     : validSecondaryIds;
                 setFields.assignedDietitians = allDietitianIds;
             } else if (primaryDietitianId !== undefined) {
                 // If only primary is set (no secondary provided), set assignedDietitians to just primary
-                setFields.assignedDietitians = primaryDietitianId ? [primaryDietitianId] : [];
+                setFields.assignedDietitians = normalizedPrimaryDietitianId ? [normalizedPrimaryDietitianId] : [];
             }
 
             // Handle primary health counselor
@@ -299,29 +359,16 @@ export async function PATCH(
                 if (primaryHealthCounselorId === null || primaryHealthCounselorId === '') {
                     setFields.assignedHealthCounselor = null;
                 } else {
-                    const hc = await User.findById(primaryHealthCounselorId);
-                    if (!hc || hc.role !== UserRole.HEALTH_COUNSELOR) {
-                        return NextResponse.json({ error: 'Invalid primary health counselor' }, { status: 400 });
-                    }
-                    setFields.assignedHealthCounselor = primaryHealthCounselorId;
+                    setFields.assignedHealthCounselor = normalizedPrimaryHealthCounselorId;
                 }
             }
 
             // Handle secondary health counselors
             if (secondaryHealthCounselorIds !== undefined) {
-                const validSecondaryHCIds: string[] = [];
-                for (const hcId of secondaryHealthCounselorIds || []) {
-                    if (hcId && hcId.trim() !== '') {
-                        const hc = await User.findById(hcId);
-                        if (!hc || hc.role !== UserRole.HEALTH_COUNSELOR) {
-                            return NextResponse.json({ error: `Invalid secondary health counselor: ${hcId}` }, { status: 400 });
-                        }
-                        validSecondaryHCIds.push(hcId);
-                    }
-                }
+                const validSecondaryHCIds = normalizedSecondaryHealthCounselorIds;
                 // Include primary in the assignedHealthCounselors array if set
-                const allHCIds = primaryHealthCounselorId && primaryHealthCounselorId !== ''
-                    ? [primaryHealthCounselorId, ...validSecondaryHCIds.filter(id => id !== primaryHealthCounselorId)]
+                const allHCIds = normalizedPrimaryHealthCounselorId
+                    ? [normalizedPrimaryHealthCounselorId, ...validSecondaryHCIds]
                     : validSecondaryHCIds;
                 setFields.assignedHealthCounselors = allHCIds;
             }
@@ -343,10 +390,8 @@ export async function PATCH(
             return NextResponse.json({ error: 'No valid assignment changes provided' }, { status: 400 });
         }
 
-        await User.findByIdAndUpdate(clientId, updateOps);
-
-        // Fetch updated client with populated fields
-        const updatedClient = await User.findById(clientId)
+        // Update and fetch populated client in one round trip
+        const updatedClient = await User.findByIdAndUpdate(clientId, updateOps, { new: true })
             .populate('assignedDietitian', 'firstName lastName email avatar')
             .populate('assignedDietitians', 'firstName lastName email avatar')
             .populate('assignedHealthCounselor', 'firstName lastName email avatar')
@@ -354,19 +399,18 @@ export async function PATCH(
             .lean();
 
         if (updatedClient) {
-            try {
-                const afterAssignmentSnapshot = buildAssignmentSnapshot(updatedClient as Record<string, unknown>);
-                const clientName = `${String((updatedClient as any).firstName || '').trim()} ${String((updatedClient as any).lastName || '').trim()}`.trim() || 'Client';
+            const afterAssignmentSnapshot = buildAssignmentSnapshot(updatedClient as Record<string, unknown>);
+            const clientName = `${String((updatedClient as any).firstName || '').trim()} ${String((updatedClient as any).lastName || '').trim()}`.trim() || 'Client';
 
-                await notifyAssignmentChanges({
-                    clientId,
-                    clientName,
-                    before: beforeAssignmentSnapshot,
-                    after: afterAssignmentSnapshot,
-                });
-            } catch (notificationError) {
+            // Do not block response on notifications/cache updates.
+            void notifyAssignmentChanges({
+                clientId,
+                clientName,
+                before: beforeAssignmentSnapshot,
+                after: afterAssignmentSnapshot,
+            }).catch((notificationError) => {
                 console.error('Error sending assignment notifications:', notificationError);
-            }
+            });
         }
 
         // Emit Socket.io update
@@ -381,7 +425,7 @@ export async function PATCH(
 
         // Clear cache
         try {
-            await clearCacheByTag('clients');
+            clearCacheByTag('clients');
         } catch (cacheError) {
             console.error('Error clearing cache:', cacheError);
         }

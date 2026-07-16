@@ -4,6 +4,8 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
 import Appointment from '@/lib/db/models/Appointment';
+import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
+import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
 import { AppointmentStatus, UserRole } from '@/types';
 
 // GET /api/admin/health-counselors/[counselorId] - Get full health counselor details with client progress
@@ -44,8 +46,27 @@ export async function GET(
         { assignedHealthCounselors: counselorId }
       ]
     })
-      .select('firstName lastName email avatar phone status createdAt weight height healthGoals generalGoal onboardingCompleted')
+      .select('firstName lastName email avatar phone status clientStatus holdStatus createdAt weight height healthGoals generalGoal onboardingCompleted')
       .sort({ createdAt: -1 });
+
+    const assignedClientIds = assignedClients.map(c => c._id);
+
+    // Compute client status from successful payments + hold state for accurate
+    // Lead/Active/Inactive/Hold display in admin views.
+    const paymentDocs = await UnifiedPayment.find(
+      {
+        client: { $in: assignedClientIds },
+        $or: [{ status: { $in: ['paid', 'completed', 'active'] } }, { paymentStatus: 'paid' }],
+      },
+      { client: 1, status: 1, paymentStatus: 1, expectedEndDate: 1, endDate: 1 }
+    ).lean();
+
+    const paymentsByClient = new Map<string, any[]>();
+    paymentDocs.forEach((payment: any) => {
+      const key = String(payment.client);
+      if (!paymentsByClient.has(key)) paymentsByClient.set(key, []);
+      paymentsByClient.get(key)!.push(payment);
+    });
 
     // Get client progress stats
     const clientsWithProgress = await Promise.all(
@@ -68,8 +89,14 @@ export async function GET(
           status: AppointmentStatus.COMPLETED
         }).sort({ scheduledAt: -1 });
 
+        const computedClientStatus = computeClientStatusFromDocs(
+          paymentsByClient.get(String(client._id)) || [],
+          !!client?.holdStatus?.isOnHold
+        );
+
         return {
           ...client.toObject(),
+          clientStatus: computedClientStatus,
           progress: {
             appointmentCount,
             upcomingAppointment: upcomingAppointment ? {
@@ -87,13 +114,12 @@ export async function GET(
 
     // Get statistics
     const totalClients = assignedClients.length;
-    const activeClients = assignedClients.filter(c => c.status === 'active').length;
+    const activeClients = clientsWithProgress.filter(c => c.clientStatus === 'active').length;
 
-    const assignedClientIds = assignedClients.map(c => c._id);
     const totalAppointments = await Appointment.countDocuments({
       client: { $in: assignedClientIds }
     });
-    
+
     const completedAppointments = await Appointment.countDocuments({
       client: { $in: assignedClientIds },
       status: AppointmentStatus.COMPLETED
@@ -189,7 +215,7 @@ export async function DELETE(
 
     if (action === 'delete') {
       if (assignedClientsCount > 0) {
-        return NextResponse.json({ 
+        return NextResponse.json({
           error: 'Cannot delete health counselor with assigned clients. Please reassign clients first.',
           assignedClientsCount
         }, { status: 400 });
@@ -207,8 +233,8 @@ export async function DELETE(
         return NextResponse.json({ error: 'Health Counselor not found' }, { status: 404 });
       }
 
-      return NextResponse.json({ 
-        counselor, 
+      return NextResponse.json({
+        counselor,
         message: 'Health Counselor deactivated successfully',
         warning: assignedClientsCount > 0 ? `This health counselor has ${assignedClientsCount} assigned clients` : null
       });

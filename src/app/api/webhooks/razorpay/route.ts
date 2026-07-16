@@ -4,10 +4,8 @@ import connectDB from '@/lib/db/connection';
 import ClientSubscription from '@/lib/db/models/ClientSubscription';
 import PaymentLink from '@/lib/db/models/PaymentLink';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import User from '@/lib/db/models/User';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { PaymentStatus, PaymentType, UserRole } from '@/types';
-import { computeClientStatus } from '@/lib/status/computeClientStatus';
+import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
 //
 import { clearCacheByTag } from '@/lib/api/utils';
 import { sendInvoiceOnPayment } from '@/lib/services/invoiceSender';
@@ -149,23 +147,14 @@ async function handlePaymentSuccess(payload: any) {
       console.error('Error syncing UnifiedPayment record:', paymentError);
     }
 
-    // Update client status on successful payment
+    // Update client status on successful payment (date-based: Expected End Date + hold)
     try {
       const clientId = subscription.client?.toString();
       if (clientId) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        // Find active plan with endDate in the future (regardless of startDate)
-        const activePlan = await ClientMealPlan.findOne({
-          clientId,
-          status: 'active',
-          endDate: { $gte: today }
+        await recalculateAndPersistClientStatus(clientId, {
+          trigger: 'payment_success',
+          relatedEvent: `razorpay:${orderId}`,
         });
-        const newStatus = computeClientStatus({
-          hasSuccessfulPayment: true,
-          activePlan: activePlan ? { startDate: activePlan.startDate, endDate: activePlan.endDate, status: activePlan.status } : null
-        });
-        await User.findByIdAndUpdate(clientId, { clientStatus: newStatus });
       }
     } catch (statusError) {
       console.error('Error updating client status after payment:', statusError);

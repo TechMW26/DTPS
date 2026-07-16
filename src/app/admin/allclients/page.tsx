@@ -591,12 +591,27 @@ export default function AdminAllClientsPage() {
       case 'active':
         return 'bg-green-100 text-green-800';
       case 'inactive':
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-red-100 text-red-800';
+      case 'hold':
+        return 'bg-yellow-100 text-yellow-800';
       case 'lead':
       case 'leading':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-gray-100 text-gray-800';
       default:
         return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'active':
+        return 'Active';
+      case 'inactive':
+        return 'Inactive';
+      case 'hold':
+        return 'On Hold';
+      default:
+        return 'Lead';
     }
   };
 
@@ -771,6 +786,7 @@ export default function AdminAllClientsPage() {
                   <SelectItem value="lead">Lead</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="hold">On Hold</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -1222,7 +1238,7 @@ export default function AdminAllClientsPage() {
                           </td>
                           <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
                             <Badge className={getStatusColor(client.clientStatus || 'lead')}>
-                              {(client.clientStatus || 'lead') === 'lead' ? 'Lead' : (client.clientStatus || 'lead') === 'active' ? 'Active' : 'Inactive'}
+                              {getStatusLabel(client.clientStatus || 'lead')}
                             </Badge>
                           </td>
                           <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
@@ -1977,7 +1993,7 @@ export default function AdminAllClientsPage() {
                     <div>
                       <p className="text-xs text-gray-500 uppercase tracking-wide">Status</p>
                       <Badge className={getStatusColor(detailClient.clientStatus || 'lead')}>
-                        {(detailClient.clientStatus || 'lead') === 'lead' ? 'Lead' : (detailClient.clientStatus || 'lead') === 'active' ? 'Active' : 'Inactive'}
+                        {getStatusLabel(detailClient.clientStatus || 'lead')}
                       </Badge>
                     </div>
                   </div>

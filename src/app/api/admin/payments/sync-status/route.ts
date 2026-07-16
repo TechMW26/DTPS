@@ -59,25 +59,19 @@ export async function PUT(request: NextRequest) {
     // Process each payment
     for (const payment of paymentsToSync) {
       result.processed++;
-      
+
       try {
         const paymentId = (payment as any)._id?.toString() || 'unknown';
 
         // Sync status fields
         const isPaid = payment.paymentStatus === 'paid' || payment.paymentStatus === 'completed' || payment.status === 'paid';
-        
-        const updateResult = await UnifiedPayment.findByIdAndUpdate(
-          payment._id,
-          {
-            $set: {
-              status: isPaid ? 'paid' : payment.status,
-              paymentStatus: isPaid ? 'paid' : payment.paymentStatus
-            }
-          },
-          { new: true }
-        ).lean();
 
-        if (updateResult) {
+        // Fetch and save (triggers pre-save hook which auto-sets expectedStartDate/expectedEndDate)
+        const doc = await UnifiedPayment.findById(payment._id);
+        if (doc) {
+          doc.status = isPaid ? 'paid' : doc.status;
+          doc.paymentStatus = isPaid ? 'paid' : doc.paymentStatus;
+          await doc.save();
           result.updated++;
           console.log(`[Payment Sync] ✓ Updated UnifiedPayment ${paymentId}`);
         } else {
@@ -108,10 +102,10 @@ export async function PUT(request: NextRequest) {
   } catch (error: any) {
     console.error('Payment sync error:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: 'Server error',
-        message: error.message 
+        message: error.message
       },
       { status: 500 }
     );

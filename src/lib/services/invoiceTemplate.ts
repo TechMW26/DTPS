@@ -14,6 +14,9 @@ const DTPS_TAGLINE = 'Dietitian Poonam Sagar';
 const DTPS_LOGO_URL = 'https://dtps.tech/icons/icon-192x192.png';
 const DTPS_SUPPORT_EMAIL = 'support@dtps.tech';
 const DTPS_SUPPORT_PHONE = '+91 98930 27688';
+const DTPS_ANDROID_APP_URL = 'https://play.google.com/store/apps/details?id=mw.dtps.app';
+const DTPS_IOS_APP_URL = 'https://apps.apple.com/in/app/dtps-nutrition/id6759550995';
+const GST_MENTION_PERCENT = 18;
 
 const DTPS_ADDRESS = 'Lalghati, Bhopal, Madhya Pradesh, India - 462001';
 
@@ -85,6 +88,7 @@ function formatINR(amount: number): string {
 export function generatePrintableInvoiceHTML(data: InvoiceData): string {
     const isPaid = data.status === 'paid' || data.status === 'completed';
     const taxableAmount = data.baseAmount - data.discountAmount;
+    const gstDisplayPercent = data.taxPercent > 0 ? data.taxPercent : GST_MENTION_PERCENT;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -438,15 +442,17 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
                     <span>Taxable Amount:</span>
                     <span>${formatINR(taxableAmount)}</span>
                 </div>
-                ${data.taxAmount > 0 ? `
                 <div class="totals-row">
-                    <span>GST (${data.taxPercent}%):</span>
-                    <span>${formatINR(data.taxAmount)}</span>
+                  <span>GST (${gstDisplayPercent}%):</span>
+                  <span>${formatINR(data.taxAmount || 0)}</span>
                 </div>
-                ` : ''}
                 <div class="totals-total">
                     <span>Total Payable:</span>
                     <span>${formatINR(data.finalAmount)}</span>
+                </div>
+                <div class="totals-row" style="margin-top: 8px; font-size: 11px; color: #6b7280;">
+                  <span>GST Rate Mention:</span>
+                  <span>${GST_MENTION_PERCENT}%</span>
                 </div>
             </div>
         </div>
@@ -469,6 +475,7 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
 export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; html: string; text: string } {
     const isPaid = data.status === 'paid' || data.status === 'completed';
     const taxableAmount = data.baseAmount - data.discountAmount;
+    const gstDisplayPercent = data.taxPercent > 0 ? data.taxPercent : GST_MENTION_PERCENT;
 
     const subject = `Invoice #${data.invoiceNumber} - ${data.planName || 'Payment Receipt'} - DTPS`;
 
@@ -569,18 +576,20 @@ export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; 
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">Taxable Amount:</td>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(taxableAmount)}</td>
                 </tr>
-                ${data.taxAmount > 0 ? `
                 <tr>
-                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">GST (${data.taxPercent}%):</td>
-                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(data.taxAmount)}</td>
+                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">GST (${gstDisplayPercent}%):</td>
+                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(data.taxAmount || 0)}</td>
                 </tr>
-                ` : ''}
                 <tr>
                   <td colspan="2" style="padding: 0;"><div style="border-top: 2px solid #d1d5db; margin: 8px 0;"></div></td>
                 </tr>
                 <tr>
                   <td style="padding: 4px 0; font-size: 14px; font-weight: 700; color: #1f2937;">Total Payable:</td>
                   <td style="padding: 4px 0; font-size: 14px; font-weight: 700; color: #1f2937; text-align: right;">${formatINR(data.finalAmount)}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0 0 0; font-size: 11px; color: #6b7280;">GST Rate Mention:</td>
+                  <td style="padding: 8px 0 0 0; font-size: 11px; color: #6b7280; text-align: right;">${GST_MENTION_PERCENT}%</td>
                 </tr>
               </table>
             </td>
@@ -601,6 +610,18 @@ export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; 
           </tr>
 
           <!-- Footer -->
+          <tr>
+            <td style="padding: 0 32px 20px 32px;">
+              <div style="padding: 14px 16px; border: 1px solid #dbeafe; border-radius: 10px; background-color: #f8fbff;">
+                <div style="font-size: 12px; font-weight: 600; color: #1f2937; margin-bottom: 8px;">Install DTPS App</div>
+                <div style="font-size: 12px; color: #374151; line-height: 1.7;">
+                  Android DTPS app link: <a href="${DTPS_ANDROID_APP_URL}" style="color: #2563eb; text-decoration: none;">${DTPS_ANDROID_APP_URL}</a><br>
+                  iOS DTPS app link: <a href="${DTPS_IOS_APP_URL}" style="color: #2563eb; text-decoration: none;">${DTPS_IOS_APP_URL}</a>
+                </div>
+              </div>
+            </td>
+          </tr>
+
           <tr>
             <td style="background-color: #f8fafc; padding: 20px 32px; border-top: 1px solid #e5e7eb;">
               <table role="presentation" style="width: 100%;">
@@ -637,10 +658,14 @@ ${data.duration ? `Duration: ${data.duration}` : ''}
 Amount: ${formatINR(data.baseAmount)}
 ${data.discountAmount > 0 ? `Discount (${data.discountPercent}%): -${formatINR(data.discountAmount)}` : ''}
 Taxable Amount: ${formatINR(taxableAmount)}
-${data.taxAmount > 0 ? `GST (${data.taxPercent}%): ${formatINR(data.taxAmount)}` : ''}
+GST (${gstDisplayPercent}%): ${formatINR(data.taxAmount || 0)}
+GST Rate Mention: ${GST_MENTION_PERCENT}%
 Total Payable: ${formatINR(data.finalAmount)}
 
 ${data.transactionId ? `Transaction ID: ${data.transactionId}` : ''}
+
+Android DTPS app link: ${DTPS_ANDROID_APP_URL}
+iOS DTPS app link: ${DTPS_IOS_APP_URL}
 
 For support: ${DTPS_SUPPORT_EMAIL} | ${DTPS_SUPPORT_PHONE}
 Address: ${DTPS_ADDRESS}

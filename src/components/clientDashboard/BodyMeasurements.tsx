@@ -60,7 +60,7 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
 
   const fetchMeasurements = async () => {
     try {
-      const response = await fetch(`/api/admin/clients/${clientId}/measurements`);
+      const response = await fetch(`/api/journal/measurements?clientId=${clientId}`);
       if (response.ok) {
         const data = await response.json();
         setMeasurements(data.measurements || []);
@@ -83,10 +83,11 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
 
     setSaving(true);
     try {
-      const response = await fetch(`/api/admin/clients/${clientId}/measurements`, {
+      const response = await fetch('/api/journal/measurements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clientId,
           arm: parseFloat(newMeasurement.arm) || 0,
           waist: parseFloat(newMeasurement.waist) || 0,
           abd: parseFloat(newMeasurement.abd) || 0,
@@ -117,7 +118,7 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
     if (!confirm('Are you sure you want to delete this measurement?')) return;
 
     try {
-      const response = await fetch(`/api/admin/clients/${clientId}/measurements?id=${measurementId}`, {
+      const response = await fetch(`/api/journal/measurements?entryId=${measurementId}&clientId=${clientId}`, {
         method: 'DELETE'
       });
 

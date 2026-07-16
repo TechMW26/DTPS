@@ -467,6 +467,17 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // Check if client is on hold - prevent publishing meal plans to held clients
+    const isCreatingDraft = validatedData.status === 'draft';
+    const clientData = client as any;
+    if (!isCreatingDraft && clientData.holdStatus?.isOnHold) {
+      return NextResponse.json({
+        error: 'Client on hold',
+        code: 'CLIENT_ON_HOLD',
+        message: `Cannot publish meal plan to "${client.firstName} ${client.lastName}" - client is currently on hold. Either save as draft or activate the client first.`
+      }, { status: 403 });
+    }
+
     // Validate template if provided - check both DietTemplate and MealPlanTemplate
     let template = null;
     let templateType = null;

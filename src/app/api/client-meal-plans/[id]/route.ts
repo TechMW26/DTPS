@@ -9,7 +9,7 @@ import { authOptions } from '@/lib/auth';
 import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { logHistoryServer } from '@/lib/server/history';
 import { logActivity } from '@/lib/utils/activityLogger';
-import { format, startOfDay } from 'date-fns';
+import { addDays, differenceInDays, format, startOfDay } from 'date-fns';
 import { UserRole } from '@/types';
 
 const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
@@ -83,6 +83,212 @@ const applyFrozenFlagsFromFreezedDays = (plan: any) => {
     ...plan,
     meals: normalizedMeals,
   };
+};
+
+/**
+ * Merge incoming meals with existing meals while ALWAYS preserving freeze
+ * recovery days and frozen flags. The MealGridTable client may serialize the
+ * meals array without the recovery days (or strip metadata flags) when the
+ * dietitian edits and re-publishes — this helper guarantees recovery days
+ * never disappear and frozen-flag metadata stays intact.
+ *
+ * Rules:
+ *   1. Every recovery day (addedDate in existingPlan.freezedDays) that is
+ *      missing from incoming meals is re-attached from existing meals.
+ *   2. For incoming meals at a recovery date, the recovery metadata
+ *      (`isFreezeRecovery`, `originalFreezeDate`, `originalFreezeDateLabel`)
+ *      is force-restored from existing data even if the client dropped it.
+ *   3. For incoming meals at an originally-frozen date, `isFrozen: true` is
+ *      re-applied.
+ *   4. The merged array is sorted by `date`.
+ */
+const mergeMealsPreservingFreezeRecovery = (
+  incomingMeals: any[],
+  existingPlan: any
+): any[] => {
+  const safeIncoming = Array.isArray(incomingMeals) ? incomingMeals : [];
+  const existingMeals: any[] = Array.isArray(existingPlan?.meals) ? existingPlan.meals : [];
+  const freezedDays: any[] = Array.isArray(existingPlan?.freezedDays) ? existingPlan.freezedDays : [];
+
+  if (freezedDays.length === 0) {
+    return safeIncoming;
+  }
+
+  const recoveryDateSet = new Set<string>();
+  const frozenDateSet = new Set<string>();
+  for (const fd of freezedDays) {
+    const addedKey = dateKey(fd?.addedDate);
+    if (addedKey) recoveryDateSet.add(addedKey);
+    const origKey = dateKey(fd?.date);
+    if (origKey) frozenDateSet.add(origKey);
+  }
+
+  const existingByDate = new Map<string, any>();
+  for (const meal of existingMeals) {
+    const key = dateKey(meal?.date);
+    if (key) existingByDate.set(key, meal);
+  }
+
+  const incomingByDate = new Map<string, any>();
+  for (const meal of safeIncoming) {
+    const key = dateKey(meal?.date);
+    if (key) incomingByDate.set(key, meal);
+  }
+
+  const merged: any[] = [];
+
+  // 1. Walk incoming meals first (preserves caller-provided ordering hints).
+  for (const meal of safeIncoming) {
+    const key = dateKey(meal?.date);
+    if (!key) {
+      merged.push(meal);
+      continue;
+    }
+
+    let next = meal;
+    if (recoveryDateSet.has(key)) {
+      const existing = existingByDate.get(key) || {};
+      // Force-restore recovery metadata that the client may have stripped.
+      next = {
+        ...meal,
+        isFreezeRecovery: true,
+        originalFreezeDate: meal?.originalFreezeDate || existing?.originalFreezeDate,
+        originalFreezeDateLabel:
+          meal?.originalFreezeDateLabel || existing?.originalFreezeDateLabel,
+      };
+    }
+
+    if (frozenDateSet.has(key)) {
+      next = { ...next, isFrozen: true };
+    }
+
+    merged.push(next);
+  }
+
+  // 2. Re-attach any recovery day the client dropped entirely.
+  for (const fd of freezedDays) {
+    const addedKey = dateKey(fd?.addedDate);
+    if (!addedKey) continue;
+    if (incomingByDate.has(addedKey)) continue;
+
+    const existing = existingByDate.get(addedKey);
+    if (existing) {
+      merged.push({ ...existing, isFreezeRecovery: true });
+    }
+  }
+
+  // 3. Sort by date so the timeline is contiguous.
+  merged.sort((a: any, b: any) => {
+    const aTime = a?.date ? new Date(a.date).getTime() : 0;
+    const bTime = b?.date ? new Date(b.date).getTime() : 0;
+    return aTime - bTime;
+  });
+
+  return merged;
+};
+
+/**
+ * After merging meals, the resulting end date must encompass every recovery
+ * day. If the caller sent a shorter endDate (or omitted it), expand it to the
+ * latest meal date in the merged array.
+ */
+const resolveEndDateCoveringMeals = (
+  candidateEndDate: Date | null,
+  mergedMeals: any[]
+): Date | null => {
+  if (!Array.isArray(mergedMeals) || mergedMeals.length === 0) return candidateEndDate;
+
+  let latest: Date | null = null;
+  for (const meal of mergedMeals) {
+    if (!meal?.date) continue;
+    const d = new Date(meal.date);
+    if (Number.isNaN(d.getTime())) continue;
+    if (!latest || d.getTime() > latest.getTime()) latest = d;
+  }
+
+  if (!latest) return candidateEndDate;
+  if (!candidateEndDate) return latest;
+  return candidateEndDate.getTime() >= latest.getTime() ? candidateEndDate : latest;
+};
+
+const shiftDateValue = (value: any, deltaDays: number): Date | null => {
+  if (!value || deltaDays === 0) return value ? new Date(value) : null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return addDays(startOfDay(date), deltaDays);
+};
+
+const sortPhasesForCascade = (a: any, b: any): number => {
+  const aPhase = typeof a?.phaseNumber === 'number' ? a.phaseNumber : Number.MAX_SAFE_INTEGER;
+  const bPhase = typeof b?.phaseNumber === 'number' ? b.phaseNumber : Number.MAX_SAFE_INTEGER;
+  if (aPhase !== bPhase) return aPhase - bPhase;
+
+  const aStart = new Date(a?.startDate || 0).getTime();
+  const bStart = new Date(b?.startDate || 0).getTime();
+  if (aStart !== bStart) return aStart - bStart;
+
+  const aCreated = new Date(a?.createdAt || 0).getTime();
+  const bCreated = new Date(b?.createdAt || 0).getTime();
+  return aCreated - bCreated;
+};
+
+const buildPhaseScopeQuery = (anchorPlan: any) => {
+  const baseQuery: Record<string, any> = {
+    _id: { $ne: anchorPlan._id },
+    isDeleted: { $ne: true },
+    status: { $ne: 'draft' },
+  };
+
+  if (anchorPlan?.purchaseId) {
+    baseQuery.purchaseId = anchorPlan.purchaseId;
+  } else {
+    baseQuery.clientId = anchorPlan.clientId;
+  }
+
+  return baseQuery;
+};
+
+const cascadeShiftLinkedPhases = async (anchorPlan: any, deltaDays: number): Promise<void> => {
+  if (!anchorPlan || deltaDays === 0) return;
+
+  const scopeQuery = buildPhaseScopeQuery(anchorPlan);
+  const siblingPlans: any[] = await ClientMealPlan.find(scopeQuery);
+  if (siblingPlans.length === 0) return;
+
+  const orderedPlans = [anchorPlan, ...siblingPlans].sort(sortPhasesForCascade);
+  const anchorIndex = orderedPlans.findIndex((plan) => String(plan._id) === String(anchorPlan._id));
+  if (anchorIndex < 0 || anchorIndex >= orderedPlans.length - 1) return;
+
+  for (let i = anchorIndex + 1; i < orderedPlans.length; i += 1) {
+    const plan = orderedPlans[i];
+
+    const shiftedStartDate = shiftDateValue(plan.startDate, deltaDays);
+    const shiftedEndDate = shiftDateValue(plan.endDate, deltaDays);
+    if (shiftedStartDate) plan.startDate = shiftedStartDate;
+    if (shiftedEndDate) plan.endDate = shiftedEndDate;
+
+    if (Array.isArray(plan.meals)) {
+      plan.meals = plan.meals.map((meal: any) => {
+        if (!meal?.date) return meal;
+        const shiftedMealDate = shiftDateValue(meal.date, deltaDays);
+        if (!shiftedMealDate) return meal;
+        return {
+          ...meal,
+          date: shiftedMealDate
+        };
+      });
+    }
+
+    if (Array.isArray(plan.freezedDays)) {
+      plan.freezedDays = plan.freezedDays.map((fd: any) => ({
+        ...fd,
+        date: shiftDateValue(fd?.date, deltaDays) || fd?.date,
+        addedDate: fd?.addedDate ? (shiftDateValue(fd.addedDate, deltaDays) || fd.addedDate) : fd?.addedDate
+      }));
+    }
+
+    await plan.save();
+  }
 };
 
 const getNormalizedRole = (role: unknown): string => String(role || '').toLowerCase();
@@ -327,6 +533,24 @@ export async function PUT(
     const isStatusChange = status !== undefined && status !== existingPlan.status;
 
     // ------------------------------------------------------------------
+    // HOLD STATUS CHECK: Block publishing meal plans to clients on hold
+    // ------------------------------------------------------------------
+    if (isPublishing) {
+      const clientUser = await User.findById(existingPlan.clientId).select('holdStatus firstName lastName').lean() as any;
+      if (clientUser?.holdStatus?.isOnHold) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'CLIENT_ON_HOLD',
+            error: 'Cannot publish meal plan - client is on hold',
+            message: `Client "${clientUser.firstName} ${clientUser.lastName}" is currently on hold. Activate the client first to publish meal plans.`
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // ------------------------------------------------------------------
     // PERMANENT FIX: Lifecycle state-machine + publish immutability guards
     // ------------------------------------------------------------------
     // Block any non-draft -> draft transition (prevents silent demotion of
@@ -437,7 +661,14 @@ export async function PUT(
     // Build update object — only include fields explicitly provided
     const updateData: Record<string, any> = {};
     const resultingStatus = status !== undefined ? status : existingPlan.status;
-    const resultingMeals = Array.isArray(meals) ? meals : existingPlan.meals;
+
+    // Merge incoming meals with existing meals so freeze recovery days and
+    // frozen flags are never silently dropped on edit/publish.
+    let mergedIncomingMeals: any[] | null = null;
+    if (Array.isArray(meals)) {
+      mergedIncomingMeals = mergeMealsPreservingFreezeRecovery(meals, existingPlan);
+    }
+    const resultingMeals = mergedIncomingMeals ?? existingPlan.meals;
 
     if (resultingStatus === 'active' && !hasPublishableMealData(resultingMeals)) {
       return NextResponse.json(
@@ -467,7 +698,7 @@ export async function PUT(
 
     // For meals: accept the full structured array as-is (preserves nested meal data)
     if (meals !== undefined && Array.isArray(meals)) {
-      updateData.meals = meals;
+      updateData.meals = mergedIncomingMeals ?? meals;
     }
 
     // For mealTypes: accept the array of { name, time } configs
@@ -478,6 +709,18 @@ export async function PUT(
     if (customizations !== undefined) updateData.customizations = customizations;
     if (goals !== undefined) updateData.goals = goals;
     if (status !== undefined) updateData.status = status;
+
+    // Guarantee endDate covers every meal (including freeze recovery days).
+    if (Array.isArray(updateData.meals) && updateData.meals.length > 0) {
+      const candidateEndDate: Date | null =
+        updateData.endDate instanceof Date
+          ? updateData.endDate
+          : (existingPlan?.endDate ? new Date(existingPlan.endDate) : null);
+      const safeEndDate = resolveEndDateCoveringMeals(candidateEndDate, updateData.meals);
+      if (safeEndDate) {
+        updateData.endDate = safeEndDate;
+      }
+    }
 
     if (isStatusChange && status === 'cancelled') {
       const reasonText = typeof statusReason === 'string' ? statusReason.trim() : '';
@@ -606,6 +849,17 @@ export async function PUT(
         { success: false, error: 'Meal plan not found' },
         { status: 404 }
       );
+    }
+
+    // Keep linked phases contiguous when a plan's end-date boundary changes.
+    const previousEndDate = existingPlan?.endDate ? startOfDay(new Date(existingPlan.endDate)) : null;
+    const updatedEndDate = updatedPlan?.endDate ? startOfDay(new Date(updatedPlan.endDate)) : null;
+    const deltaDays = previousEndDate && updatedEndDate
+      ? differenceInDays(updatedEndDate, previousEndDate)
+      : 0;
+
+    if (deltaDays !== 0) {
+      await cascadeShiftLinkedPhases(updatedPlan, deltaDays);
     }
 
     // Clear cached responses so subsequent GETs return fresh data

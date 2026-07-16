@@ -1,7 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="1" failures="0" errors="0" time="2.122">
-  <testsuite name="tests/integration/custom-meal-completion-image-flow.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-06-01T10:20:26" time="1.977" tests="1">
-    <testcase classname="Custom Meal Type Completion With Image Flow" name="supports custom meal type completion with image and returns it in documents" time="0.783">
+<testsuites name="jest tests" tests="10" failures="0" errors="0" time="10.845">
+  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-06-17T12:28:09" time="8.97" tests="9">
+    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="1.049">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.899">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.85">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="returns correct remaining days when days counters exist but duration metadata is missing" time="0.843">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="keeps client-purchases GET aligned with check-route stored counters" time="0.857">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="clamps inconsistent stored remaining days so used plus remaining never exceeds total duration" time="0.848">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="prioritizes the relevant in-progress purchase when multiple partially used purchases exist" time="0.848">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="does not overwrite stored counters when Fix Days recalculation is triggered" time="0.843">
+    </testcase>
+    <testcase classname="payment flow integrations (supertest + jest)" name="synchronizes remaining days when updating days used through client purchases PUT" time="0.843">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/hold-unhold-expected-end-sync.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-06-17T12:28:18" time="1.659" tests="1">
+    <testcase classname="unhold extends expected end dates across payment models (supertest)" name="extends expectedEndDate for UnifiedPayment and ClientPurchase on unhold" time="0.922">
     </testcase>
   </testsuite>
 </testsuites>

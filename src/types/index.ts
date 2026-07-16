@@ -17,8 +17,9 @@ export enum UserStatus {
 // Client-specific status for tracking engagement (different from account status)
 export enum ClientStatus {
   LEAD = 'lead',          // Registered but no successful payment yet
-  ACTIVE = 'active',      // Has successful payment AND a currently valid (non-expired) plan
-  INACTIVE = 'inactive'   // Has paid in the past but all plans are expired
+  ACTIVE = 'active',      // Has successful payment AND subscription period still valid (today <= expectedEndDate)
+  INACTIVE = 'inactive',  // Has paid but subscription period has ended (today > expectedEndDate)
+  HOLD = 'hold'           // Manual override — program paused; overrides ACTIVE/INACTIVE
 }
 
 export interface IUser extends Document {
@@ -31,6 +32,29 @@ export interface IUser extends Document {
   status: UserStatus;
   clientStatus?: ClientStatus; // For tracking client engagement
   clientId?: string; // Sequential client ID (C-1, C-2, etc.) for clients only
+
+  // Client Hold Status
+  holdStatus?: {
+    isOnHold: boolean;
+    holdDate?: Date;
+    holdTime?: string;
+    activatedDate?: Date;
+    activatedTime?: string;
+    totalHoldDurationMs?: number;
+    holdCount?: number;
+    heldBy?: string;
+    activatedBy?: string;
+  };
+  holdStatusHistory?: Array<{
+    action: 'hold' | 'activate';
+    performedBy: string;
+    performedByName: string;
+    performedByRole: string;
+    timestamp: Date;
+    reason?: string;
+    holdDurationMs?: number;
+  }>;
+
   phone?: string;
   avatar?: string;
   emailVerified: boolean;

@@ -5,6 +5,7 @@ import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
+import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
 import { UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
@@ -136,8 +137,26 @@ export async function GET(
       .sort({ createdAt: -1 })
       .lean();
 
+    // Compute status from payments + hold state so admin UI always shows the
+    // same status logic used across clients lists (lead/active/inactive/hold).
+    const computedClientStatus = computeClientStatusFromDocs(
+      payments as any[],
+      !!client?.holdStatus?.isOnHold
+    );
+
+    // Keep persisted clientStatus aligned (best-effort; do not fail request).
+    if (client?.clientStatus !== computedClientStatus) {
+      await User.updateOne(
+        { _id: new mongoose.Types.ObjectId(clientId) },
+        { $set: { clientStatus: computedClientStatus } }
+      ).catch(() => undefined);
+    }
+
     return NextResponse.json({
-      client,
+      client: {
+        ...client,
+        clientStatus: computedClientStatus,
+      },
       mealPlans,
       payments
     });

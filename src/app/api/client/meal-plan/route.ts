@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import Recipe from '@/lib/db/models/Recipe';
+import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { startOfDay, endOfDay, parseISO, format, isValid } from 'date-fns';
 import { withCache } from '@/lib/api/utils';
@@ -81,6 +82,17 @@ export async function GET(request: NextRequest) {
 
     if (session.user.role !== UserRole.CLIENT) {
       return NextResponse.json({ error: 'Only clients can access this endpoint' }, { status: 403 });
+    }
+
+    // Check if client is on hold - if so, hide meal plans
+    const clientUser = await User.findById(session.user.id).select('holdStatus').lean() as any;
+    if (clientUser?.holdStatus?.isOnHold) {
+      return NextResponse.json({
+        success: true,
+        hasPlan: false,
+        isOnHold: true,
+        message: 'Your account is currently on hold. Please contact your administrator.'
+      });
     }
 
     const { searchParams } = new URL(request.url);
@@ -217,6 +229,7 @@ export async function GET(request: NextRequest) {
           isFrozen,
           freezeInfo: freezeInfo ? {
             date: freezeInfo.date,
+            addedDate: freezeInfo.addedDate || null,
             reason: freezeInfo.reason || 'Day frozen by dietitian',
             frozenAt: freezeInfo.createdAt
           } : null,

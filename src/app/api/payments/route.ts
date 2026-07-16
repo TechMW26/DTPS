@@ -10,6 +10,7 @@ import { logHistoryServer } from '@/lib/server/history';
 import { logActivity, logPaymentFailure } from '@/lib/utils/activityLogger';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { socketManager } from '@/lib/realtime/socket-manager';
+import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2025-08-27.basil',
@@ -189,7 +190,7 @@ export async function POST(request: NextRequest) {
         status: payment.status,
         createdAt: payment.createdAt,
       });
-    } catch {}
+    } catch { }
 
     return NextResponse.json({
       payment,
@@ -213,17 +214,9 @@ export async function PUT(request: NextRequest) {
 
     await connectDB();
 
-    // Find and update payment using syncRazorpayPayment
-    const payment = await UnifiedPayment.findOneAndUpdate(
-      { transactionId: { $regex: paymentIntentId } },
-      {
-        status: status === 'completed' ? 'paid' : status,
-        paymentStatus: status === 'completed' ? 'paid' : status,
-        paidAt: status === 'completed' ? new Date() : undefined
-      },
-      { new: true }
-    );
-    
+    // Find payment then save via Mongoose (triggers pre-save hook for auto expectedStartDate/expectedEndDate)
+    const payment = await UnifiedPayment.findOne({ transactionId: { $regex: paymentIntentId } });
+
     if (!payment) {
       return NextResponse.json(
         { error: 'Payment not found' },
@@ -231,7 +224,26 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    payment.status = status === 'completed' ? 'paid' : status;
+    payment.paymentStatus = status === 'completed' ? 'paid' : status;
+    if (status === 'completed') {
+      payment.paidAt = new Date();
+    }
+    await payment.save();
+
     clearCacheByTag('payments');
+
+    // Recompute client engagement status (single source of truth: Expected End Date + hold).
+    if (payment.client) {
+      try {
+        await recalculateAndPersistClientStatus(String(payment.client), {
+          trigger: 'payment_status_update',
+          relatedEvent: `payment:${payment._id}`,
+        });
+      } catch (statusError) {
+        console.error('Error recalculating client status after payment update:', statusError);
+      }
+    }
 
     // Best-effort realtime notify involved users.
     try {
@@ -244,7 +256,7 @@ export async function PUT(request: NextRequest) {
         status: payment.status,
         paidAt: payment.paidAt,
       });
-    } catch {}
+    } catch { }
 
     // Record status update in history for the client
     await logHistoryServer({
@@ -300,10 +312,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       payment,
-      message: 'Payment updated successfully' 
+      message: 'Payment updated successfully'
     });
 
   } catch (error) {

@@ -49,6 +49,36 @@ interface Client {
     email?: string;
   }>;
   status: string;
+  clientStatus?: 'lead' | 'active' | 'inactive' | 'hold' | string;
+}
+
+// Client status (lead / active / inactive / hold) badge styling + labels
+function getClientStatusColor(status?: string) {
+  switch (status) {
+    case 'active':
+      return 'bg-green-100 text-green-800';
+    case 'inactive':
+      return 'bg-red-100 text-red-800';
+    case 'hold':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'lead':
+    case 'leading':
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+}
+
+function getClientStatusLabel(status?: string) {
+  switch (status) {
+    case 'active':
+      return 'Active';
+    case 'inactive':
+      return 'Inactive';
+    case 'hold':
+      return 'On Hold';
+    default:
+      return 'Lead';
+  }
 }
 
 export default function AdminClientsPage() {
@@ -311,6 +341,7 @@ export default function AdminClientsPage() {
                 <SelectItem value="lead">Lead</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="hold">On Hold</SelectItem>
               </SelectContent>
             </Select>
             <Button onClick={openCreate}>New Client</Button>
@@ -335,6 +366,7 @@ export default function AdminClientsPage() {
                       <th className="text-left p-3">Email</th>
                       <th className="text-left p-3">Phone</th>
                       <th className="text-left p-3">Gender</th>
+                      <th className="text-left p-3">Status</th>
                       <th className="text-left p-3">Onboarding</th>
                       <th className="text-left p-3">Dietitians (Primary + Secondary)</th>
                       <th className="text-left p-3">Health Counselors (Primary + Secondary)</th>
@@ -355,6 +387,11 @@ export default function AdminClientsPage() {
                         <td className="p-3">{u.email}</td>
                         <td className="p-3">{u.phone || '-'}</td>
                         <td className="p-3 capitalize">{u.gender || '-'}</td>
+                        <td className="p-3">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getClientStatusColor(u.clientStatus)}`}>
+                            {getClientStatusLabel(u.clientStatus)}
+                          </span>
+                        </td>
                         <td className="p-3">
                           {u.onboardingCompleted ? (
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">

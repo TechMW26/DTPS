@@ -5,10 +5,8 @@ import dbConnect from '@/lib/db/connect';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import PaymentLink from '@/lib/db/models/PaymentLink';
 import User from '@/lib/db/models/User';
-import MealPlan from '@/lib/db/models/MealPlan';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import Razorpay from 'razorpay';
-import { computeClientStatus } from '@/lib/status/computeClientStatus';
 import { checkPermission } from '@/lib/permissions/check';
 import { PermissionKey } from '@/lib/db/models/Permission';
 import { UserRole } from '@/types';
@@ -146,52 +144,13 @@ function hasPaymentProof(paymentLink: any): boolean {
   );
 }
 
-// Helper function to update client status based on payments + plans
+// Helper function to update client status based on payments (date-based) + hold
 async function updateClientStatusBasedOnMealPlan(clientId: string): Promise<string> {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Check for any successful payment (UnifiedPayment uses 'client' field, not 'clientId')
-    const hasSuccessfulPayment = await UnifiedPayment.exists({
-      client: clientId,
-      $or: [
-        { status: { $in: ['paid', 'completed', 'active'] } },
-        { paymentStatus: 'paid' }
-      ]
-    });
-
-    // Check both MealPlan and ClientMealPlan for active plans
-    // A plan is valid if status is 'active' AND endDate is in the future (regardless of startDate)
-    const activeMealPlan = await MealPlan.findOne({
-      client: clientId,
-      status: 'active',
-      endDate: { $gte: today }
-    });
-
-    const activeClientMealPlan = !activeMealPlan ? await ClientMealPlan.findOne({
-      clientId,
-      status: 'active',
-      endDate: { $gte: today }
-    }) : null;
-
-    const currentActivePlan = activeMealPlan || activeClientMealPlan;
-
-    const newStatus = computeClientStatus({
-      hasSuccessfulPayment: !!hasSuccessfulPayment,
-      activePlan: currentActivePlan ? {
-        startDate: currentActivePlan.startDate,
-        endDate: currentActivePlan.endDate,
-        status: currentActivePlan.status
-      } : null
-    });
-
-    const client = await User.findById(clientId).select('clientStatus');
-    if (client && client.clientStatus !== newStatus) {
-      await User.findByIdAndUpdate(clientId, { clientStatus: newStatus });
-    }
-
-    return newStatus;
+    // Recompute from the single source of truth: subscription Expected End Date + manual hold.
+    // Meal plan publication state does NOT affect the status.
+    const { recalculateAndPersistClientStatus } = await import('@/lib/status/computeClientStatus');
+    return await recalculateAndPersistClientStatus(clientId, { trigger: 'purchase_check' });
   } catch (error) {
     console.error('Error updating client status:', error);
     return 'lead';

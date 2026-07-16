@@ -206,32 +206,6 @@ export async function POST(request: NextRequest) {
     // Convert userId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(userId);
 
-    // Find or create journal entry for this date
-    let journal = await JournalTracking.findOne({
-      client: clientObjectId,
-      date: measurementDate
-    });
-
-    if (!journal) {
-      journal = new JournalTracking({
-        client: clientObjectId,
-        date: measurementDate,
-        activities: [],
-        steps: [],
-        water: [],
-        sleep: [],
-        meals: [],
-        progress: [],
-        bca: [],
-        measurements: []
-      });
-    } else {
-      // Ensure arrays exist on existing documents
-      if (!journal.progress) journal.progress = [];
-      if (!journal.bca) journal.bca = [];
-      if (!journal.measurements) journal.measurements = [];
-    }
-
     // Add new measurement entry
     const newMeasurement = {
       arm: arm || 0,
@@ -244,8 +218,36 @@ export async function POST(request: NextRequest) {
       createdAt: new Date()
     };
 
-    journal.measurements.push(newMeasurement);
-    await journal.save();
+    // Use atomic update so legacy invalid fields (e.g. old sleep enum values)
+    // do not block adding measurements.
+    const journal = await JournalTracking.findOneAndUpdate(
+      {
+        client: clientObjectId,
+        date: measurementDate,
+      },
+      {
+        $setOnInsert: {
+          client: clientObjectId,
+          date: measurementDate,
+          activities: [],
+          steps: [],
+          water: [],
+          sleep: [],
+          meals: [],
+          progress: [],
+          bca: [],
+        },
+        $push: {
+          measurements: newMeasurement,
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+        runValidators: false,
+      }
+    );
 
     // Also save to ProgressEntry model so it shows on client app
     // Map journal fields to ProgressEntry types

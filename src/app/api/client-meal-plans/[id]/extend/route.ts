@@ -8,6 +8,7 @@ import ServicePlan, { ClientPurchase } from '@/lib/db/models/ServicePlan';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { logHistoryServer } from '@/lib/server/history';
 import { addDays, format } from 'date-fns';
+import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
 
 const PURCHASE_TRACKING_FIELDS = [
     '_id',
@@ -90,6 +91,77 @@ function resolveBaselineExpectedEndDate(records: any[], fallbackDate?: Date | nu
     }
 
     return fallbackDate || null;
+}
+
+function shiftDateValue(value: any, deltaDays: number): Date | null {
+    if (!value || deltaDays === 0) return value ? new Date(value) : null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return addDays(date, deltaDays);
+}
+
+function sortPhasesForCascade(a: any, b: any): number {
+    const aPhase = typeof a?.phaseNumber === 'number' ? a.phaseNumber : Number.MAX_SAFE_INTEGER;
+    const bPhase = typeof b?.phaseNumber === 'number' ? b.phaseNumber : Number.MAX_SAFE_INTEGER;
+    if (aPhase !== bPhase) return aPhase - bPhase;
+
+    const aStart = new Date(a?.startDate || 0).getTime();
+    const bStart = new Date(b?.startDate || 0).getTime();
+    if (aStart !== bStart) return aStart - bStart;
+
+    const aCreated = new Date(a?.createdAt || 0).getTime();
+    const bCreated = new Date(b?.createdAt || 0).getTime();
+    return aCreated - bCreated;
+}
+
+async function cascadeShiftLinkedPhases(
+    purchaseId: string | null,
+    anchorPlanId: string,
+    deltaDays: number
+): Promise<void> {
+    if (!purchaseId || deltaDays === 0) return;
+
+    const linkedPlans: any[] = await ClientMealPlan.find({
+        purchaseId,
+        isDeleted: { $ne: true }
+    });
+
+    if (linkedPlans.length <= 1) return;
+
+    const orderedPlans = [...linkedPlans].sort(sortPhasesForCascade);
+    const anchorIndex = orderedPlans.findIndex((plan) => String(plan._id) === String(anchorPlanId));
+    if (anchorIndex < 0 || anchorIndex >= orderedPlans.length - 1) return;
+
+    for (let i = anchorIndex + 1; i < orderedPlans.length; i += 1) {
+        const plan = orderedPlans[i];
+
+        const shiftedStartDate = shiftDateValue(plan.startDate, deltaDays);
+        const shiftedEndDate = shiftDateValue(plan.endDate, deltaDays);
+        if (shiftedStartDate) plan.startDate = shiftedStartDate;
+        if (shiftedEndDate) plan.endDate = shiftedEndDate;
+
+        if (Array.isArray(plan.meals)) {
+            plan.meals = plan.meals.map((meal: any) => {
+                if (!meal?.date) return meal;
+                const shiftedMealDate = shiftDateValue(meal.date, deltaDays);
+                if (!shiftedMealDate) return meal;
+                return {
+                    ...meal,
+                    date: shiftedMealDate
+                };
+            });
+        }
+
+        if (Array.isArray(plan.freezedDays)) {
+            plan.freezedDays = plan.freezedDays.map((fd: any) => ({
+                ...fd,
+                date: shiftDateValue(fd?.date, deltaDays) || fd?.date,
+                addedDate: fd?.addedDate ? (shiftDateValue(fd.addedDate, deltaDays) || fd.addedDate) : fd?.addedDate
+            }));
+        }
+
+        await plan.save();
+    }
 }
 
 async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<{
@@ -223,7 +295,7 @@ async function getExtendDaysFromPurchase(purchaseId: string | null, durationDays
 }
 
 // POST - Extend the linked purchase allocation and expected end date.
-// This does NOT modify the current meal plan end date.
+// This also extends the current phase timeline and shifts later linked phases.
 export async function POST(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
@@ -326,15 +398,20 @@ export async function POST(
             );
         }
 
-        // Keep the current meal plan timeline unchanged.
-        // Extend should only update the linked purchase allocation/expected dates,
-        // not the end date or duration of the meal plan where the action was triggered.
+        // Extend current phase timeline and shift later linked phases by the same delta.
         const previousMealPlanEndDate = new Date(mealPlan.endDate);
         const currentMealPlanDuration = toPositiveDurationDays(mealPlan.duration) ||
             Math.max(1, Math.ceil((new Date(mealPlan.endDate).getTime() - new Date(mealPlan.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
 
+        const newMealPlanEndDate = addDays(previousMealPlanEndDate, extendDays);
+        mealPlan.endDate = newMealPlanEndDate;
+        await mealPlan.save();
+
+        await cascadeShiftLinkedPhases(purchaseId, String(mealPlan._id), extendDays);
+
         console.log(`[EXTEND_DEBUG] Meal plan ${id}:`, {
             mealPlanEndDate: format(previousMealPlanEndDate, 'yyyy-MM-dd'),
+            newMealPlanEndDate: format(newMealPlanEndDate, 'yyyy-MM-dd'),
             mealPlanDuration: currentMealPlanDuration,
             purchaseId: purchaseId,
             extendDays: extendDays
@@ -383,7 +460,9 @@ export async function POST(
 
             if (previousExpectedEndDate) {
                 newExpectedEndDate = addDays(previousExpectedEndDate, extendDays);
+                // Keep both expectedEndDate and endDate in sync when extending
                 purchaseUpdate.$set.expectedEndDate = newExpectedEndDate;
+                purchaseUpdate.$set.endDate = newExpectedEndDate;
             }
 
             const unifiedTargetIds = linkedPurchaseTargets.unifiedTargets.map((record: any) => String(record._id));
@@ -423,6 +502,20 @@ export async function POST(
         clearCacheByTag('client_purchases');
         clearCacheByTag(`client:${mealPlan.clientId}`);
 
+        // Extending the Expected End Date may flip the client between ACTIVE/INACTIVE —
+        // recompute from the single source of truth.
+        if (newExpectedEndDate && mealPlan.clientId) {
+            try {
+                await recalculateAndPersistClientStatus(String(mealPlan.clientId), {
+                    trigger: 'meal_plan_extended',
+                    changedBy: session.user.id,
+                    relatedEvent: `mealPlan:${id}`,
+                });
+            } catch (statusError) {
+                console.error('Error recalculating client status after meal plan extend:', statusError);
+            }
+        }
+
         // Log history
         await logHistoryServer({
             userId: mealPlan.clientId.toString(),
@@ -436,6 +529,7 @@ export async function POST(
                 previousExpectedEndDate: previousExpectedEndDate ? format(previousExpectedEndDate, 'yyyy-MM-dd') : null,
                 newExpectedEndDate: newExpectedEndDate ? format(newExpectedEndDate, 'yyyy-MM-dd') : null,
                 mealPlanEndDate: format(previousMealPlanEndDate, 'yyyy-MM-dd'),
+                newMealPlanEndDate: format(newMealPlanEndDate, 'yyyy-MM-dd'),
                 mealPlanDuration: currentMealPlanDuration,
                 remainingExtendDays: remainingExtendDays - extendDays
             }
@@ -445,6 +539,7 @@ export async function POST(
             previousExpectedEndDate: previousExpectedEndDate ? format(previousExpectedEndDate, 'yyyy-MM-dd') : null,
             newExpectedEndDate: newExpectedEndDate ? format(newExpectedEndDate, 'yyyy-MM-dd') : null,
             mealPlanEndDate: format(previousMealPlanEndDate, 'yyyy-MM-dd'),
+            newMealPlanEndDate: format(newMealPlanEndDate, 'yyyy-MM-dd'),
             remainingExtendDaysLeft: remainingExtendDays - extendDays
         });
 
@@ -457,7 +552,7 @@ export async function POST(
                 _id: mealPlan._id,
                 name: mealPlan.name,
                 startDate: mealPlan.startDate,
-                endDate: previousMealPlanEndDate,
+                endDate: newMealPlanEndDate,
                 duration: currentMealPlanDuration,
                 status: mealPlan.status
             },
@@ -467,7 +562,7 @@ export async function POST(
                 remainingExtendDays: remainingExtendDays - extendDays,
                 previousExpectedEndDate,
                 newExpectedEndDate,
-                mealPlanEndDate: previousMealPlanEndDate,
+                mealPlanEndDate: newMealPlanEndDate,
                 mealPlanDuration: currentMealPlanDuration
             }
         });

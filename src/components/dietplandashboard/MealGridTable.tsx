@@ -25,8 +25,9 @@ type FoodDatabaseItem = {
   recipeUuid?: string; // Legacy UUID
 };
 import { DatePicker } from './DatePicker';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import React from 'react';
+import { createPortal } from 'react-dom';
 
 type MealTypeConfigLocal = {
   name: string;
@@ -286,6 +287,16 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const [replaceSearchFilter, setReplaceSearchFilter] = useState('');
   const [showFindDropdown, setShowFindDropdown] = useState(false);
   const [showReplaceDropdown, setShowReplaceDropdown] = useState(false);
+  // Food name autocomplete/suggestions state
+  const [foodSuggestions, setFoodSuggestions] = useState<{ _id: string; name: string; nutrition?: { calories: number; protein: number; carbs: number; fat: number }; servings?: string | number }[]>([]);
+  const [foodSuggestionsLoading, setFoodSuggestionsLoading] = useState(false);
+  const [foodSuggestionsLoadingMore, setFoodSuggestionsLoadingMore] = useState(false);
+  const [showFoodSuggestionsFor, setShowFoodSuggestionsFor] = useState<string | null>(null); // key like "day-meal-opt-food"
+  const [activeFoodSuggestionFilter, setActiveFoodSuggestionFilter] = useState('');
+  const [foodSuggestionPage, setFoodSuggestionPage] = useState(1);
+  const [foodSuggestionHasMore, setFoodSuggestionHasMore] = useState(false);
+  const [foodSuggestionTotal, setFoodSuggestionTotal] = useState(0);
+  const [foodSuggestionPos, setFoodSuggestionPos] = useState<{ top: number; left: number; width: number } | null>(null);
   // Bulk meal-type editor state
   const [bulkTimeEditorOpen, setBulkTimeEditorOpen] = useState(false);
   const [mealTypeEditsForBulk, setMealTypeEditsForBulk] = useState<BulkMealTypeEdit[]>([]);
@@ -555,6 +566,72 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
         }
       })
       .finally(() => setReplaceRecipesLoading(false));
+  };
+
+  // Capture input element rect for portal positioning of suggestions dropdown
+  const captureInputRect = useCallback((el: HTMLInputElement | null) => {
+    if (!el) { setFoodSuggestionPos(null); return; }
+    const rect = el.getBoundingClientRect();
+    setFoodSuggestionPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+  }, []);
+
+  // Debounced food name autocomplete — fetches recipe suggestions while typing a food name
+  useEffect(() => {
+    const term = activeFoodSuggestionFilter.trim();
+    if (!term || !showFoodSuggestionsFor) {
+      setFoodSuggestions([]);
+      setFoodSuggestionsLoading(false);
+      setFoodSuggestionTotal(0);
+      setFoodSuggestionHasMore(false);
+      setFoodSuggestionPage(1);
+      return;
+    }
+
+    const controller = new AbortController();
+    setFoodSuggestionsLoading(true);
+    setFoodSuggestionPage(1);
+    const timer = setTimeout(() => {
+      fetchRecipeSuggestions(term, 1, controller.signal)
+        .then(({ results, hasNext }) => {
+          // Cap initial results to 6 for faster load / less server strain
+          const initialBatch = results.slice(0, 6);
+          setFoodSuggestions(initialBatch);
+          setFoodSuggestionTotal(results.length);
+          setFoodSuggestionHasMore(results.length > 6);
+        })
+        .catch((err) => {
+          if (err?.name !== 'AbortError') {
+            console.error('Failed to fetch food suggestions:', err);
+          }
+        })
+        .finally(() => setFoodSuggestionsLoading(false));
+    }, 200);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeFoodSuggestionFilter, showFoodSuggestionsFor]);
+
+  const loadMoreFoodSuggestions = async () => {
+    const term = activeFoodSuggestionFilter.trim();
+    if (!term || foodSuggestionsLoadingMore) return;
+
+    const nextPage = foodSuggestionPage + 1;
+    setFoodSuggestionsLoadingMore(true);
+    try {
+      const { results, hasNext } = await fetchRecipeSuggestions(term, nextPage, new AbortController().signal);
+      setFoodSuggestions(prev => [...prev, ...results]);
+      setFoodSuggestionPage(nextPage);
+      setFoodSuggestionTotal(prev => prev + results.length);
+      setFoodSuggestionHasMore(hasNext);
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.error('Failed to load more food suggestions:', err);
+      }
+    } finally {
+      setFoodSuggestionsLoadingMore(false);
+    }
   };
 
   const createNewMeal = (mealType: string): Meal => ({
@@ -2270,21 +2347,25 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                             {/* Food Name Row with Badge */}
                                             <div className="flex items-start justify-between gap-2">
                                               <div className="flex-1 space-y-1">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 relative flex-1">
                                                   <Input
                                                     value={foodItem.food}
                                                     onChange={(e) => {
                                                       if (readOnly || !onUpdate || isFrozenDay) return;
+                                                      const nextFoodName = e.target.value;
+                                                      const suggestionKey = `${actualDayIndex}-${mealType}-${optionIndex}-${foodIndex}`;
+                                                      setActiveFoodSuggestionFilter(nextFoodName);
+                                                      setShowFoodSuggestionsFor(suggestionKey);
+                                                      captureInputRect(e.target as HTMLInputElement);
+
                                                       const newWeekPlan = cloneWeekPlan(weekPlan);
                                                       const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                       if (meal?.foodOptions[optionIndex]?.foods?.[foodIndex]) {
-                                                        const nextFoodName = e.target.value;
                                                         const foodRow = meal.foodOptions[optionIndex].foods![foodIndex];
                                                         const prevFoodName = (foodRow.food || '').trim();
                                                         foodRow.food = nextFoodName;
 
                                                         if (nextFoodName.trim() !== prevFoodName) {
-                                                          // Manual rename means previous recipe mapping is no longer valid.
                                                           foodRow.recipeId = undefined;
                                                           foodRow.recipeUuid = undefined;
                                                           foodRow.cal = '';
@@ -2304,10 +2385,97 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                         onUpdate(newWeekPlan);
                                                       }
                                                     }}
+                                                    onFocus={(e) => {
+                                                      const suggestionKey = `${actualDayIndex}-${mealType}-${optionIndex}-${foodIndex}`;
+                                                      if (e.target.value.trim()) {
+                                                        setActiveFoodSuggestionFilter(e.target.value);
+                                                        setShowFoodSuggestionsFor(suggestionKey);
+                                                        captureInputRect(e.target as HTMLInputElement);
+                                                      }
+                                                    }}
+                                                    onBlur={() => {
+                                                      // Delay to allow click on suggestion
+                                                      setTimeout(() => setShowFoodSuggestionsFor(null), 200);
+                                                    }}
                                                     placeholder="Food item"
                                                     className="h-9 text-sm bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500 font-medium flex-1"
                                                     disabled={isFrozenDay}
+                                                    autoComplete="off"
                                                   />
+                                                  {/* Food suggestion dropdown — rendered via portal to avoid clipping */}
+                                                  {showFoodSuggestionsFor === `${actualDayIndex}-${mealType}-${optionIndex}-${foodIndex}` && activeFoodSuggestionFilter.trim() && foodSuggestionPos && createPortal(
+                                                    <div
+                                                      className="fixed z-[9999] w-72 bg-white border border-gray-300 rounded-md shadow-lg max-h-56 overflow-y-auto"
+                                                      style={{ top: foodSuggestionPos.top, left: foodSuggestionPos.left, minWidth: Math.max(foodSuggestionPos.width, 288) }}
+                                                    >
+                                                      {/* Header with count */}
+                                                      <div className="px-3 py-1.5 bg-gray-50 border-b text-[10px] text-gray-500 font-medium sticky top-0 flex items-center justify-between">
+                                                        <span>Recipes matching "{activeFoodSuggestionFilter}"</span>
+                                                        {!foodSuggestionsLoading && (
+                                                          <span>{foodSuggestions.length} shown{foodSuggestionTotal > foodSuggestions.length ? ` of ${foodSuggestionTotal}+` : ''}</span>
+                                                        )}
+                                                      </div>
+                                                      {foodSuggestionsLoading && (
+                                                        <div className="px-3 py-2 text-xs text-gray-500 text-center">Searching recipes...</div>
+                                                      )}
+                                                      {!foodSuggestionsLoading && foodSuggestions.length === 0 && (
+                                                        <div className="px-3 py-2 text-xs text-gray-500 text-center">No matching recipes found</div>
+                                                      )}
+                                                      {foodSuggestions.map((r) => (
+                                                        <div
+                                                          key={`suggest-${r._id}`}
+                                                          className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 flex items-center justify-between"
+                                                          onMouseDown={(e) => {
+                                                            e.preventDefault();
+                                                            const newWeekPlan = cloneWeekPlan(weekPlan);
+                                                            const meal = newWeekPlan[actualDayIndex].meals[mealType];
+                                                            const foodRow = meal?.foodOptions[optionIndex]?.foods?.[foodIndex];
+                                                            if (foodRow) {
+                                                              foodRow.food = r.name;
+                                                              foodRow.recipeId = r._id;
+                                                              foodRow.recipeUuid = (r as any).uuid;
+                                                              const servingMultiplier = r.servings ? (1 / (parseFloat(String(r.servings)) || 1)) : 1;
+                                                              const nut = r.nutrition || {};
+                                                              foodRow.cal = formatNum(Math.round((nut.calories || 0) * servingMultiplier));
+                                                              foodRow.carbs = formatNum(Math.round((nut.carbs || 0) * servingMultiplier));
+                                                              foodRow.fats = formatNum(Math.round((nut.fat || 0) * servingMultiplier));
+                                                              foodRow.protein = formatNum(Math.round((nut.protein || 0) * servingMultiplier));
+                                                              foodRow.unit = r.servings ? `${r.servings} serving` : '';
+
+                                                              const allFoods = meal.foodOptions[optionIndex].foods!;
+                                                              meal.foodOptions[optionIndex].food = allFoods.map(f => f.food).join(' + ');
+                                                              meal.foodOptions[optionIndex].cal = formatNum(allFoods.reduce((sum, f) => sum + (parseFloat(f.cal) || 0), 0));
+                                                              meal.foodOptions[optionIndex].carbs = formatNum(allFoods.reduce((sum, f) => sum + (parseFloat(f.carbs) || 0), 0));
+                                                              meal.foodOptions[optionIndex].fats = formatNum(allFoods.reduce((sum, f) => sum + (parseFloat(f.fats) || 0), 0));
+                                                              meal.foodOptions[optionIndex].protein = formatNum(allFoods.reduce((sum, f) => sum + (parseFloat(f.protein) || 0), 0));
+                                                              meal.foodOptions[optionIndex].unit = allFoods.length > 1 ? 'Multiple' : allFoods[0]?.unit || '';
+                                                              onUpdate(newWeekPlan);
+                                                            }
+                                                            setShowFoodSuggestionsFor(null);
+                                                            setActiveFoodSuggestionFilter('');
+                                                            setFoodSuggestionPos(null);
+                                                          }}
+                                                        >
+                                                          <span>🍽️ {r.name}</span>
+                                                          <span className="text-[10px] text-gray-400">
+                                                            {r.nutrition?.calories != null ? `${Math.round(r.nutrition.calories)} cal` : ''}
+                                                          </span>
+                                                        </div>
+                                                      ))}
+                                                      {/* Load more button */}
+                                                      {foodSuggestionHasMore && (
+                                                        <button
+                                                          type="button"
+                                                          onMouseDown={(e) => { e.preventDefault(); loadMoreFoodSuggestions(); }}
+                                                          className="w-full px-3 py-2 text-xs font-medium text-blue-600 hover:bg-blue-50 text-center border-t border-gray-100 transition-colors"
+                                                          disabled={foodSuggestionsLoadingMore}
+                                                        >
+                                                          {foodSuggestionsLoadingMore ? 'Loading...' : 'Load more results'}
+                                                        </button>
+                                                      )}
+                                                    </div>,
+                                                    document.body
+                                                  )}
                                                   {option.isAlternative && (
                                                     <span className="px-2.5 py-1 text-xs font-semibold text-orange-700 bg-orange-100 rounded-full whitespace-nowrap">
                                                       Alternative
@@ -2506,13 +2674,99 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                     ) : (
                                       /* Single Food Display (backward compatible) */
                                       <>
-                                        <div className='flex gap-1 items-center justify-between'>
+                                        <div className='flex gap-1 items-center justify-between relative'>
                                           <Input
                                             value={option.food}
-                                            onChange={(e) => updateFoodOption(actualDayIndex, mealType, optionIndex, 'food', e.target.value)}
+                                            onChange={(e) => {
+                                              const nextFoodName = e.target.value;
+                                              const suggestionKey = `${actualDayIndex}-${mealType}-${optionIndex}-single`;
+                                              setActiveFoodSuggestionFilter(nextFoodName);
+                                              setShowFoodSuggestionsFor(suggestionKey);
+                                              captureInputRect(e.target as HTMLInputElement);
+                                              updateFoodOption(actualDayIndex, mealType, optionIndex, 'food', nextFoodName);
+                                            }}
+                                            onFocus={(e) => {
+                                              const suggestionKey = `${actualDayIndex}-${mealType}-${optionIndex}-single`;
+                                              if (e.target.value.trim()) {
+                                                setActiveFoodSuggestionFilter(e.target.value);
+                                                setShowFoodSuggestionsFor(suggestionKey);
+                                                captureInputRect(e.target as HTMLInputElement);
+                                              }
+                                            }}
+                                            onBlur={() => {
+                                              setTimeout(() => setShowFoodSuggestionsFor(null), 200);
+                                            }}
                                             placeholder="Food item"
-                                            className="h-9 text-xs bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500 font-medium"
+                                            className="h-9 text-xs bg-white border-gray-300 focus:border-slate-500 focus:ring-slate-500 font-medium flex-1"
+                                            autoComplete="off"
                                           />
+                                          {/* Food suggestion dropdown for single food — rendered via portal to avoid clipping */}
+                                          {showFoodSuggestionsFor === `${actualDayIndex}-${mealType}-${optionIndex}-single` && activeFoodSuggestionFilter.trim() && foodSuggestionPos && createPortal(
+                                            <div
+                                              className="fixed z-[9999] w-72 bg-white border border-gray-300 rounded-md shadow-lg max-h-56 overflow-y-auto"
+                                              style={{ top: foodSuggestionPos.top, left: foodSuggestionPos.left, minWidth: Math.max(foodSuggestionPos.width, 288) }}
+                                            >
+                                              {/* Header with count */}
+                                              <div className="px-3 py-1.5 bg-gray-50 border-b text-[10px] text-gray-500 font-medium sticky top-0 flex items-center justify-between">
+                                                <span>Recipes matching "{activeFoodSuggestionFilter}"</span>
+                                                {!foodSuggestionsLoading && (
+                                                  <span>{foodSuggestions.length} shown{foodSuggestionTotal > foodSuggestions.length ? ` of ${foodSuggestionTotal}+` : ''}</span>
+                                                )}
+                                              </div>
+                                              {foodSuggestionsLoading && (
+                                                <div className="px-3 py-2 text-xs text-gray-500 text-center">Searching recipes...</div>
+                                              )}
+                                              {!foodSuggestionsLoading && foodSuggestions.length === 0 && (
+                                                <div className="px-3 py-2 text-xs text-gray-500 text-center">No matching recipes found</div>
+                                              )}
+                                              {foodSuggestions.map((r) => (
+                                                <div
+                                                  key={`suggest-single-${r._id}`}
+                                                  className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 flex items-center justify-between"
+                                                  onMouseDown={(e) => {
+                                                    e.preventDefault();
+                                                    if (readOnly || !onUpdate || isDayFrozen(actualDayIndex)) return;
+                                                    const newWeekPlan = cloneWeekPlan(weekPlan);
+                                                    const actualKey = resolveActualMealKey(newWeekPlan[actualDayIndex], mealType);
+                                                    const opt = newWeekPlan[actualDayIndex].meals[actualKey]?.foodOptions[optionIndex];
+                                                    if (opt) {
+                                                      opt.food = r.name;
+                                                      opt.recipeId = r._id;
+                                                      opt.recipeUuid = (r as any).uuid;
+                                                      const servingMultiplier = r.servings ? (1 / (parseFloat(String(r.servings)) || 1)) : 1;
+                                                      const nut = r.nutrition || {};
+                                                      opt.cal = formatNum(Math.round((nut.calories || 0) * servingMultiplier));
+                                                      opt.carbs = formatNum(Math.round((nut.carbs || 0) * servingMultiplier));
+                                                      opt.fats = formatNum(Math.round((nut.fat || 0) * servingMultiplier));
+                                                      opt.protein = formatNum(Math.round((nut.protein || 0) * servingMultiplier));
+                                                      opt.unit = r.servings ? `${r.servings} serving` : '';
+                                                      onUpdate(newWeekPlan);
+                                                    }
+                                                    setShowFoodSuggestionsFor(null);
+                                                    setActiveFoodSuggestionFilter('');
+                                                    setFoodSuggestionPos(null);
+                                                  }}
+                                                >
+                                                  <span>🍽️ {r.name}</span>
+                                                  <span className="text-[10px] text-gray-400">
+                                                    {r.nutrition?.calories != null ? `${Math.round(r.nutrition.calories)} cal` : ''}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                              {/* Load more button */}
+                                              {foodSuggestionHasMore && (
+                                                <button
+                                                  type="button"
+                                                  onMouseDown={(e) => { e.preventDefault(); loadMoreFoodSuggestions(); }}
+                                                  className="w-full px-3 py-2 text-xs font-medium text-blue-600 hover:bg-blue-50 text-center border-t border-gray-100 transition-colors"
+                                                  disabled={foodSuggestionsLoadingMore}
+                                                >
+                                                  {foodSuggestionsLoadingMore ? 'Loading...' : 'Load more results'}
+                                                </button>
+                                              )}
+                                            </div>,
+                                            document.body
+                                          )}
                                         </div>
 
 

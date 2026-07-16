@@ -69,7 +69,6 @@ export default function DashboardLayout({
           {/* Notification Permission Banner for staff dashboard roles */}
           <NotificationPermissionBanner
             allowedRoles={['admin', 'dietitian', 'health_counselor']}
-            className="mx-4 mt-2"
           />
           <main className={cn(
             "flex-1 overflow-y-auto",

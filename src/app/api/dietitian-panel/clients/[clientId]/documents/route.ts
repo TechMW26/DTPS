@@ -153,13 +153,18 @@ async function listImageKitFilesForClient(path: string, clientId: string) {
         return cachedFiles;
     }
 
-    const ik = getImageKit();
-
     const normalizeFiles = (files: unknown): ImageKitFileLite[] => {
         return Array.isArray(files)
             ? (files as ImageKitFileLite[]).filter((file) => file.name?.startsWith(clientId))
             : [];
     };
+
+    let ik;
+    try {
+        ik = getImageKit();
+    } catch {
+        return [];
+    }
 
     try {
         const result = await withTimeout(
@@ -249,12 +254,13 @@ export async function GET(
             `dietitian-panel:clients:${clientId}:documents:assembled`,
             async () => {
                 // Fetch remaining data sources in parallel to reduce tail latency.
+                // Each source is individually guarded so one failure doesn't crash the whole request.
                 const [medicalInfo, mealPlans, transformationFiles, completeMealFiles] = await Promise.all([
-                    MedicalInfo.findOne({ userId: clientId }).lean<MedicalInfoLite | null>(),
+                    MedicalInfo.findOne({ userId: clientId }).lean<MedicalInfoLite | null>().catch(() => null),
                     ClientMealPlan.find({
                         clientId,
                         'mealCompletions.imagePath': { $exists: true, $ne: '' }
-                    }).select('mealCompletions name').lean<MealPlanLite[]>(),
+                    }).select('mealCompletions name').lean<MealPlanLite[]>().catch(() => []),
                     listImageKitFilesForClient('/transformation', clientId),
                     listImageKitFilesForClient('/complete-meal', clientId),
                 ]);
@@ -482,8 +488,12 @@ export async function GET(
                 lastName: user.lastName
             }
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching client documents:', error);
-        return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 });
+        return NextResponse.json({
+            error: 'Failed to fetch documents',
+            details: error?.message || String(error),
+            stack: process.env.NODE_ENV !== 'production' ? error?.stack : undefined,
+        }, { status: 500 });
     }
 }

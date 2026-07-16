@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useRealtime } from '@/hooks/useRealtime';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -244,6 +245,56 @@ export default function AdminDietitianDetailPage() {
     }
   }, [dietitianId]);
 
+  const fetchDietitianDetailsQuiet = useCallback(async () => {
+    if (!dietitianId) return;
+    try {
+      const response = await fetch(`/api/admin/dietitians/${encodeURIComponent(dietitianId)}`);
+      if (!response.ok) return;
+
+      const data = await response.json();
+      setDietitian(data.dietitian);
+      setClients(data.clients || []);
+      setAppointments(data.appointments || []);
+      setPayments(data.payments || []);
+      setNotes(data.notes || []);
+      setTasks(data.tasks || []);
+      setMealPlans(data.mealPlans || []);
+      setStats(data.stats);
+    } catch {
+      // Silent fail for background refresh.
+    }
+  }, [dietitianId]);
+
+  // Refresh this page in near real-time when domain updates happen.
+  useRealtime({
+    onMessage: (event) => {
+      if (
+        event.type === 'payment_updated' ||
+        event.type === 'payment_link_updated' ||
+        event.type === 'other_platform_payment_updated' ||
+        event.type === 'appointment_booked' ||
+        event.type === 'appointment_updated' ||
+        event.type === 'appointment_cancelled' ||
+        event.type === 'task_created' ||
+        event.type === 'task_updated' ||
+        event.type === 'task_deleted' ||
+        event.type === 'client_updated' ||
+        event.type === 'client_added'
+      ) {
+        fetchDietitianDetailsQuiet();
+      }
+    },
+  });
+
+  // Fallback refresh in case an event is missed while reconnecting.
+  useEffect(() => {
+    if (!dietitianId) return;
+    const interval = setInterval(() => {
+      fetchDietitianDetailsQuiet();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [dietitianId, fetchDietitianDetailsQuiet]);
+
   const fetchDietitianDetails = async () => {
     try {
       setLoading(true);
@@ -360,10 +411,24 @@ export default function AdminDietitianDetailPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
-      case 'inactive': return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400';
-      case 'lead': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
+      case 'inactive': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'hold': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
+      case 'lead': return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400';
       case 'suspended': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case 'active':
+        return 'Active';
+      case 'inactive':
+        return 'Inactive';
+      case 'hold':
+        return 'On Hold';
+      default:
+        return 'Lead';
     }
   };
 
@@ -813,7 +878,7 @@ export default function AdminDietitianDetailPage() {
                           </TableCell>
                           <TableCell>
                             <Badge className={getStatusColor(client.clientStatus || client.status)}>
-                              {client.clientStatus || client.status}
+                              {getStatusLabel(client.clientStatus || client.status)}
                             </Badge>
                           </TableCell>
                         </TableRow>

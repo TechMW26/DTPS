@@ -286,9 +286,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Add status filter
+    // Add status filter.
+    // For client engagement statuses, we filter after recomputation so stale
+    // persisted clientStatus values never hide valid records.
     const statusFilter = searchParams.get('status') || '';
-    if (statusFilter) {
+    const computedStatusFilters = new Set(['lead', 'active', 'inactive', 'hold']);
+    const shouldFilterByComputedStatus = computedStatusFilters.has(statusFilter);
+    if (statusFilter && !shouldFilterByComputedStatus) {
       query.clientStatus = statusFilter;
     }
 
@@ -336,7 +340,7 @@ export async function GET(request: NextRequest) {
           { $or: query.$or },
           searchCondition
         ];
-        if (statusFilter) {
+        if (statusFilter && !shouldFilterByComputedStatus) {
           andConditions.push({ clientStatus: statusFilter });
         }
         if (query._id) {
@@ -352,8 +356,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const clientsData = await User.find(query)
-      .select('firstName lastName email avatar phone dateOfBirth gender height weight activityLevel healthGoals medicalConditions allergies dietaryRestrictions assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors status clientStatus createdAt createdBy tags clientId onboardingCompleted')
+    const clientsQuery = User.find(query)
+      .select('firstName lastName email avatar phone dateOfBirth gender height weight activityLevel healthGoals medicalConditions allergies dietaryRestrictions assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors status clientStatus holdStatus createdAt createdBy tags clientId onboardingCompleted')
       .populate('assignedDietitian', 'firstName lastName email avatar')
       .populate('assignedDietitians', 'firstName lastName email avatar')
       .populate('assignedHealthCounselor', 'firstName lastName email avatar')
@@ -364,10 +368,14 @@ export async function GET(request: NextRequest) {
         select: 'firstName lastName role',
         strictPopulate: false
       })
-      .sort({ firstName: 1, lastName: 1 })
-      .limit(limit)
-      .skip((page - 1) * limit)
-      .lean();
+      .sort({ firstName: 1, lastName: 1 });
+
+    const clientsData = shouldFilterByComputedStatus
+      ? await clientsQuery.lean()
+      : await clientsQuery
+        .limit(limit)
+        .skip((page - 1) * limit)
+        .lean();
 
     // Fetch meal plan data for all clients to get programStart, programEnd, lastDiet
     const clientIds = clientsData.map((c: any) => c._id);
@@ -424,25 +432,19 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Fetch payment data for all clients to determine LEAD vs ACTIVE vs INACTIVE
-    const paymentData = await UnifiedPayment.aggregate([
-      { $match: { client: { $in: clientIds }, $or: [{ status: { $in: ['paid', 'completed', 'active'] } }, { paymentStatus: 'paid' }] } },
-      { $group: { _id: '$client', count: { $sum: 1 } } }
-    ]);
-    const paidClientIds = new Set(paymentData.map((p: any) => p._id.toString()));
-
-    // Fetch all active meal plans to check validity
-    const allMealPlans = await ClientMealPlan.find(
-      { clientId: { $in: clientIds } },
-      { clientId: 1, startDate: 1, endDate: 1, status: 1 }
+    // Fetch payment data (with dates) for all clients to determine LEAD vs ACTIVE vs INACTIVE.
+    // ACTIVE/INACTIVE is driven by the subscription Expected End Date — not meal plans.
+    const paymentDocs = await UnifiedPayment.find(
+      { client: { $in: clientIds }, $or: [{ status: { $in: ['paid', 'completed', 'active'] } }, { paymentStatus: 'paid' }] },
+      { client: 1, status: 1, paymentStatus: 1, expectedEndDate: 1, endDate: 1 }
     ).lean();
 
-    // Group meal plans by clientId
-    const mealPlansByClient = new Map<string, Array<{ startDate: Date | string; endDate: Date | string; status: string }>>();
-    allMealPlans.forEach((mp: any) => {
-      const cid = mp.clientId.toString();
-      if (!mealPlansByClient.has(cid)) mealPlansByClient.set(cid, []);
-      mealPlansByClient.get(cid)!.push({ startDate: mp.startDate, endDate: mp.endDate, status: mp.status });
+    // Group purchases by clientId
+    const purchasesByClient = new Map<string, any[]>();
+    paymentDocs.forEach((p: any) => {
+      const cid = p.client.toString();
+      if (!purchasesByClient.has(cid)) purchasesByClient.set(cid, []);
+      purchasesByClient.get(cid)!.push(p);
     });
 
     // Compute status and build bulk update ops
@@ -453,11 +455,10 @@ export async function GET(request: NextRequest) {
       const mealData = mealPlanMap.get(client._id.toString());
       const cid = client._id.toString();
 
-      // Compute status dynamically
-      const hasPaid = paidClientIds.has(cid);
-      const plans = mealPlansByClient.get(cid) || [];
-      const payments = hasPaid ? [{ status: 'paid' }] : [];
-      const computedStatus = computeClientStatusFromDocs(payments, plans);
+      // Compute status dynamically (manual HOLD overrides computed status)
+      const payments = purchasesByClient.get(cid) || [];
+      const isOnHold = !!client.holdStatus?.isOnHold;
+      const computedStatus = computeClientStatusFromDocs(payments, isOnHold);
 
       // Queue a DB update if status changed (fire-and-forget)
       if (client.clientStatus !== computedStatus) {
@@ -488,10 +489,19 @@ export async function GET(request: NextRequest) {
       User.bulkWrite(bulkOps).catch(err => console.error('Bulk status update error:', err));
     }
 
-    const total = await User.countDocuments(query);
+    let responseClients = clients;
+    let total = await User.countDocuments(query);
+
+    // Apply computed status filtering after recomputation, then paginate.
+    if (shouldFilterByComputedStatus) {
+      const filteredByComputedStatus = clients.filter((client: any) => client.clientStatus === statusFilter);
+      total = filteredByComputedStatus.length;
+      const start = (page - 1) * limit;
+      responseClients = filteredByComputedStatus.slice(start, start + limit);
+    }
 
     return NextResponse.json({
-      clients,
+      clients: responseClients,
       pagination: {
         page,
         limit,

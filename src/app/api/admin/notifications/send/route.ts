@@ -4,9 +4,11 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
 import Notification from '@/lib/db/models/Notification';
+import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { UserRole } from '@/types';
 import { z } from 'zod';
 import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
+import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
 
 const notificationTargetRoleSchema = z.enum([
   UserRole.CLIENT,
@@ -73,6 +75,7 @@ type RecipientUserRow = {
   avatar?: string;
   role?: string;
   status?: string;
+  clientStatus?: string;
   fcmTokens?: unknown;
 };
 
@@ -132,14 +135,23 @@ function getValidFcmTokenCount(rawTokens: unknown): number {
 
 function mapRecipient(user: RecipientUserRow) {
   const tokenCount = getValidFcmTokenCount(user?.fcmTokens);
+  const role = String(user.role || UserRole.CLIENT);
+
+  // For clients, expose the computed client status (lead/active/inactive/hold)
+  // so notification filters align with the rest of the app. Other roles fall
+  // back to their account status.
+  const status =
+    role === UserRole.CLIENT
+      ? String(user.clientStatus || user.status || '')
+      : String(user.status || '');
 
   return {
     id: String(user._id),
     name: `${String(user.firstName || '').trim()} ${String(user.lastName || '').trim()}`.trim() || 'Unnamed User',
     email: String(user.email || ''),
     avatar: user.avatar,
-    role: String(user.role || UserRole.CLIENT),
-    status: String(user.status || ''),
+    role,
+    status,
     hasFcmToken: tokenCount > 0,
     tokenCount,
   };
@@ -439,16 +451,53 @@ export async function GET(request: NextRequest) {
       const effectiveRoles = requestedRoles.length > 0 ? requestedRoles : DEFAULT_ADMIN_TARGET_ROLES;
 
       const users = await User.find({ role: { $in: effectiveRoles } })
-        .select('_id firstName lastName email avatar role status fcmTokens')
+        .select('_id firstName lastName email avatar role status clientStatus holdStatus fcmTokens')
         .sort({ firstName: 1, lastName: 1 });
 
       recipients = users.map(mapRecipient);
     } else {
       const clients = await User.find(getAccessibleClientQuery(session))
-        .select('_id firstName lastName email avatar role status fcmTokens')
+        .select('_id firstName lastName email avatar role status clientStatus holdStatus fcmTokens')
         .sort({ firstName: 1, lastName: 1 });
 
       recipients = clients.map(mapRecipient);
+    }
+
+    // Recompute client status dynamically from payment dates (same logic as the
+    // clients list) so the persisted clientStatus being stale doesn't cause
+    // inactive/hold clients to be missed by the notification status filter.
+    const clientRecipientIds = recipients
+      .filter((recipient) => recipient.role === UserRole.CLIENT)
+      .map((recipient) => recipient.id);
+
+    if (clientRecipientIds.length > 0) {
+      const paymentDocs = await UnifiedPayment.find(
+        {
+          client: { $in: clientRecipientIds },
+          $or: [{ status: { $in: ['paid', 'completed', 'active'] } }, { paymentStatus: 'paid' }],
+        },
+        { client: 1, status: 1, paymentStatus: 1, expectedEndDate: 1, endDate: 1 }
+      ).lean();
+
+      const purchasesByClient = new Map<string, any[]>();
+      paymentDocs.forEach((payment: any) => {
+        const cid = String(payment.client);
+        if (!purchasesByClient.has(cid)) purchasesByClient.set(cid, []);
+        purchasesByClient.get(cid)!.push(payment);
+      });
+
+      const holdById = new Map<string, boolean>(
+        clientUsers.map((user: any) => [String(user._id), !!user.holdStatus?.isOnHold])
+      );
+
+      recipients = recipients.map((recipient) => {
+        if (recipient.role !== UserRole.CLIENT) {
+          return recipient;
+        }
+        const payments = purchasesByClient.get(recipient.id) || [];
+        const isOnHold = holdById.get(recipient.id) || false;
+        return { ...recipient, status: computeClientStatusFromDocs(payments, isOnHold) };
+      });
     }
 
     const clients = recipients.filter((recipient) => recipient.role === UserRole.CLIENT);

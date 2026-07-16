@@ -3,7 +3,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
+import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { UserRole } from '@/types';
+import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { Types } from 'mongoose';
 
@@ -53,6 +55,9 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100); // Cap at 100
     const page = Math.max(parseInt(searchParams.get('page') || '1'), 1);
 
+    const computedStatusFilters = new Set(['lead', 'active', 'inactive', 'hold']);
+    const shouldFilterByComputedStatus = computedStatusFilters.has(status);
+
     // Build query using $and to avoid $or conflicts
     const andConditions: any[] = [{ role: UserRole.CLIENT }];
 
@@ -74,8 +79,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Filter by status (uses clientStatus: lead/active/inactive)
-    if (status) {
+    // Filter by status.
+    // For engagement statuses we filter after recomputation so stale persisted
+    // values don't create mismatch across admin pages.
+    if (status && !shouldFilterByComputedStatus) {
       andConditions.push({ clientStatus: status });
     }
 
@@ -181,23 +188,29 @@ export async function GET(request: NextRequest) {
       totalConditions: andConditions.length
     });
 
-    // Create cache key based on all query params
-    const cacheKey = `admin:clients:v4:${JSON.stringify(query)}:page=${page}:limit=${limit}`;
+    // Create cache key based on all query params.
+    // Include status explicitly because computed-status filters are applied
+    // post-query and may not be present in `query`.
+    const cacheKey = `admin:clients:v5:${JSON.stringify(query)}:status=${status || 'all'}:computedStatus=${shouldFilterByComputedStatus ? '1' : '0'}:page=${page}:limit=${limit}`;
 
     // Fetch clients with pagination - use 60s cache (shorter to reflect new clients faster)
     const clientsData = await withCache(
       cacheKey,
       async () => {
-        // Get total count and clients in parallel
-        const [total, rawClients] = await Promise.all([
-          User.countDocuments(query),
-          User.find(query)
-            .select('-password -__v')
-            .sort({ createdAt: -1 })
+        const clientsQuery = User.find(query)
+          .select('-password -__v')
+          .sort({ createdAt: -1 });
+
+        const rawClients = shouldFilterByComputedStatus
+          ? await clientsQuery.lean()
+          : await clientsQuery
             .limit(limit)
             .skip((page - 1) * limit)
-            .lean()
-        ]);
+            .lean();
+
+        let total = shouldFilterByComputedStatus
+          ? rawClients.length
+          : await User.countDocuments(query);
 
         const userIdsToHydrate = new Set<string>();
 
@@ -240,6 +253,25 @@ export async function GET(request: NextRequest) {
           (hydratedUsers as any[]).map((u) => [u._id.toString(), u])
         );
 
+        // Recompute status from payments + hold state for consistent display/filtering.
+        const clientIds = (rawClients as any[]).map((client: any) => client._id);
+        const paymentDocs = await UnifiedPayment.find(
+          {
+            client: { $in: clientIds },
+            $or: [{ status: { $in: ['paid', 'completed', 'active'] } }, { paymentStatus: 'paid' }],
+          },
+          { client: 1, status: 1, paymentStatus: 1, expectedEndDate: 1, endDate: 1 }
+        ).lean();
+
+        const purchasesByClient = new Map<string, any[]>();
+        paymentDocs.forEach((payment: any) => {
+          const key = String(payment.client);
+          if (!purchasesByClient.has(key)) purchasesByClient.set(key, []);
+          purchasesByClient.get(key)!.push(payment);
+        });
+
+        const bulkOps: any[] = [];
+
         const clients = (rawClients as any[]).map((client: any) => {
           const assignedDietitianId = normalizeObjectId(client.assignedDietitian);
           const assignedHealthCounselorId = normalizeObjectId(client.assignedHealthCounselor);
@@ -262,8 +294,23 @@ export async function GET(request: NextRequest) {
 
           const createdByUserId = normalizeObjectId(client?.createdBy?.userId);
 
+          const computedStatus = computeClientStatusFromDocs(
+            purchasesByClient.get(String(client._id)) || [],
+            !!client?.holdStatus?.isOnHold
+          );
+
+          if (client.clientStatus !== computedStatus) {
+            bulkOps.push({
+              updateOne: {
+                filter: { _id: client._id },
+                update: { $set: { clientStatus: computedStatus } }
+              }
+            });
+          }
+
           return {
             ...client,
+            clientStatus: computedStatus,
             assignedDietitian: assignedDietitianId ? hydratedUsersMap.get(assignedDietitianId) || null : null,
             assignedDietitians,
             assignedHealthCounselor: assignedHealthCounselorId ? hydratedUsersMap.get(assignedHealthCounselorId) || null : null,
@@ -277,8 +324,20 @@ export async function GET(request: NextRequest) {
           };
         });
 
+        if (bulkOps.length > 0) {
+          User.bulkWrite(bulkOps).catch(err => console.error('Bulk status update error:', err));
+        }
+
+        let responseClients = clients;
+        if (shouldFilterByComputedStatus && status) {
+          const filtered = clients.filter((client: any) => client.clientStatus === status);
+          total = filtered.length;
+          const start = (page - 1) * limit;
+          responseClients = filtered.slice(start, start + limit);
+        }
+
         console.log('[Admin Clients] Query:', JSON.stringify(query), 'Total found:', total, 'Page:', page, 'Limit:', limit);
-        return { clients, total };
+        return { clients: responseClients, total };
       },
       { ttl: 60000, tags: ['admin', 'clients'] } // 1 minute cache
     );

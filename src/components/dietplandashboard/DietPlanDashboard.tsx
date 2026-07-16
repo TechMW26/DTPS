@@ -117,6 +117,11 @@ export type DayPlan = {
   originalDayIndex?: number;
   wasHeld?: boolean;
   resumedDate?: string;
+  // Freeze-related fields
+  isFrozen?: boolean;
+  isFreezeRecovery?: boolean;
+  originalFreezeDate?: string;
+  originalFreezeDateLabel?: string;
 };
 
 const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -257,6 +262,29 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
     });
   };
 
+  // Derive {date, day} for a row using the meal's actual stored date when present.
+  // Falls back to the buildDays-computed date when the meal has no date (or no meal at this index).
+  // This prevents visual misalignment when plan.startDate drifts from meals[0].date
+  // (e.g. freeze recovery rows or phase-shifted plans), which previously caused freeze
+  // flags to appear on the wrong rows.
+  const deriveDayMeta = (meal: any, fallback: DayPlan, index: number): { date: string; day: string } => {
+    const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const rawMealDate = meal?.date;
+    if (rawMealDate) {
+      const mealDateObj = typeof rawMealDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawMealDate)
+        ? parseLocalDate(rawMealDate)
+        : new Date(rawMealDate);
+      if (!Number.isNaN(mealDateObj.getTime())) {
+        const dateStr = formatDateStr(mealDateObj);
+        const dayOfMonth = mealDateObj.getDate();
+        const dayName = fullDayNames[mealDateObj.getDay()];
+        const dayLabel = `${dayOfMonth} - Day ${index + 1} - ${dayName}`;
+        return { date: dateStr, day: dayLabel };
+      }
+    }
+    return { date: fallback.date, day: fallback.day };
+  };
+
   // Initialize weekPlan with the correct duration and initialMeals
   const [weekPlan, setWeekPlan] = useState<DayPlan[]>(() => {
 
@@ -269,23 +297,31 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
       if (initialMeals[0]) {
       }
 
-      return newDays.map((d, i) => ({
-        ...d,
-        // Preserve hold-related and specific fields from initialMeals, but KEEP recalculated day/date
-        isHeld: initialMeals[i]?.isHeld,
-        holdReason: initialMeals[i]?.holdReason,
-        holdDate: initialMeals[i]?.holdDate,
-        isCopiedFromHold: initialMeals[i]?.isCopiedFromHold,
-        originalDayIndex: initialMeals[i]?.originalDayIndex,
-        wasHeld: initialMeals[i]?.wasHeld,
-        resumedDate: initialMeals[i]?.resumedDate,
-        // Override with recalculated values from buildDays to fix date mismatch
-        day: d.day, // Use newly calculated day label with correct date
-        date: d.date, // Use newly calculated date
-        // Load meals and note from initialMeals
-        meals: normalizeMealKeys(initialMeals[i]?.meals || {}),
-        note: initialMeals[i]?.note || ''
-      }));
+      return newDays.map((d, i) => {
+        const meta = deriveDayMeta(initialMeals[i], d, i);
+        return {
+          ...d,
+          // Preserve hold-related and specific fields from initialMeals
+          isHeld: initialMeals[i]?.isHeld,
+          holdReason: initialMeals[i]?.holdReason,
+          holdDate: initialMeals[i]?.holdDate,
+          isCopiedFromHold: initialMeals[i]?.isCopiedFromHold,
+          originalDayIndex: initialMeals[i]?.originalDayIndex,
+          wasHeld: initialMeals[i]?.wasHeld,
+          resumedDate: initialMeals[i]?.resumedDate,
+          // Preserve freeze-related metadata from initialMeals
+          isFrozen: initialMeals[i]?.isFrozen,
+          isFreezeRecovery: initialMeals[i]?.isFreezeRecovery,
+          originalFreezeDate: initialMeals[i]?.originalFreezeDate,
+          originalFreezeDateLabel: initialMeals[i]?.originalFreezeDateLabel,
+          // Use the meal's actual date when available so freeze/recovery flags align
+          day: meta.day,
+          date: meta.date,
+          // Load meals and note from initialMeals
+          meals: normalizeMealKeys(initialMeals[i]?.meals || {}),
+          note: initialMeals[i]?.note || ''
+        };
+      });
     }
 
     return newDays;
@@ -296,23 +332,31 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
     if (weekPlan.length !== duration) {
       const newDays = buildDays(duration);
       setWeekPlan(prev => {
-        return newDays.map((d, i) => ({
-          ...d,
-          // Preserve hold-related and specific fields from previous state, but KEEP recalculated day/date
-          isHeld: prev[i]?.isHeld,
-          holdReason: prev[i]?.holdReason,
-          holdDate: prev[i]?.holdDate,
-          isCopiedFromHold: prev[i]?.isCopiedFromHold,
-          originalDayIndex: prev[i]?.originalDayIndex,
-          wasHeld: prev[i]?.wasHeld,
-          resumedDate: prev[i]?.resumedDate,
-          // Override with recalculated values from buildDays to fix date mismatch
-          day: d.day, // Use newly calculated day label with correct date
-          date: d.date, // Use newly calculated date
-          // Preserve meals and note from previous state
-          meals: prev[i]?.meals || {},
-          note: prev[i]?.note || ''
-        }));
+        return newDays.map((d, i) => {
+          const meta = deriveDayMeta(prev[i], d, i);
+          return {
+            ...d,
+            // Preserve hold-related and specific fields from previous state
+            isHeld: prev[i]?.isHeld,
+            holdReason: prev[i]?.holdReason,
+            holdDate: prev[i]?.holdDate,
+            isCopiedFromHold: prev[i]?.isCopiedFromHold,
+            originalDayIndex: prev[i]?.originalDayIndex,
+            wasHeld: prev[i]?.wasHeld,
+            resumedDate: prev[i]?.resumedDate,
+            // Preserve freeze-related metadata from previous state
+            isFrozen: prev[i]?.isFrozen,
+            isFreezeRecovery: prev[i]?.isFreezeRecovery,
+            originalFreezeDate: prev[i]?.originalFreezeDate,
+            originalFreezeDateLabel: prev[i]?.originalFreezeDateLabel,
+            // Use the previous row's actual date when available so freeze/recovery flags align
+            day: meta.day,
+            date: meta.date,
+            // Preserve meals and note from previous state
+            meals: prev[i]?.meals || {},
+            note: prev[i]?.note || ''
+          };
+        });
       });
     }
   }, [duration]);
@@ -331,23 +375,31 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
       const mealsLength = Math.max(duration, initialMeals.length);
       const adjustedDays = buildDays(mealsLength);
 
-      setWeekPlan(adjustedDays.map((d, i) => ({
-        ...d,
-        // Preserve hold-related and specific fields from initialMeals, but KEEP recalculated day/date
-        isHeld: initialMeals[i]?.isHeld,
-        holdReason: initialMeals[i]?.holdReason,
-        holdDate: initialMeals[i]?.holdDate,
-        isCopiedFromHold: initialMeals[i]?.isCopiedFromHold,
-        originalDayIndex: initialMeals[i]?.originalDayIndex,
-        wasHeld: initialMeals[i]?.wasHeld,
-        resumedDate: initialMeals[i]?.resumedDate,
-        // Override with recalculated values from buildDays to fix date mismatch
-        day: d.day, // Use newly calculated day label with correct date
-        date: d.date, // Use newly calculated date
-        // Load meals and note from initialMeals
-        meals: normalizeMealKeys(initialMeals[i]?.meals || {}),
-        note: initialMeals[i]?.note || ''
-      })));
+      setWeekPlan(adjustedDays.map((d, i) => {
+        const meta = deriveDayMeta(initialMeals[i], d, i);
+        return {
+          ...d,
+          // Preserve hold-related and specific fields from initialMeals
+          isHeld: initialMeals[i]?.isHeld,
+          holdReason: initialMeals[i]?.holdReason,
+          holdDate: initialMeals[i]?.holdDate,
+          isCopiedFromHold: initialMeals[i]?.isCopiedFromHold,
+          originalDayIndex: initialMeals[i]?.originalDayIndex,
+          wasHeld: initialMeals[i]?.wasHeld,
+          resumedDate: initialMeals[i]?.resumedDate,
+          // Preserve freeze-related metadata from initialMeals
+          isFrozen: initialMeals[i]?.isFrozen,
+          isFreezeRecovery: initialMeals[i]?.isFreezeRecovery,
+          originalFreezeDate: initialMeals[i]?.originalFreezeDate,
+          originalFreezeDateLabel: initialMeals[i]?.originalFreezeDateLabel,
+          // Use the meal's actual date when available so freeze/recovery flags align
+          day: meta.day,
+          date: meta.date,
+          // Load meals and note from initialMeals
+          meals: normalizeMealKeys(initialMeals[i]?.meals || {}),
+          note: initialMeals[i]?.note || ''
+        };
+      }));
     }
     // Note: Don't reset to empty days here - let the draft restore handle empty state
     // This prevents overwriting draft data that may have been restored

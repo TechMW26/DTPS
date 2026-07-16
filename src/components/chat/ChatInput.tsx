@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import dynamic from 'next/dynamic';
-import type { EmojiClickData } from 'emoji-picker-react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
-import { Send, Paperclip, Smile, Mic, X } from 'lucide-react';
-import { MediaUploadModal } from './MediaUploadModal';
-import { VoiceRecorder } from './VoiceRecorder';
+import { useState, useRef, useCallback, useEffect } from "react";
+import dynamic from "next/dynamic";
+import type { EmojiClickData } from "emoji-picker-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { Send, Paperclip, Smile, Mic, X } from "lucide-react";
+import { MediaUploadModal } from "./MediaUploadModal";
+import { VoiceRecorder } from "./VoiceRecorder";
 
 // Dynamic import for emoji picker to avoid SSR issues
-const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false });
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
 interface ChatAttachment {
   url: string;
@@ -32,11 +32,14 @@ interface SendMessageOptions {
 interface ChatInputProps {
   onSendMessage: (
     content: string,
-    type?: 'text' | 'image' | 'file' | 'video' | 'audio' | 'voice',
+    type?: "text" | "image" | "file" | "video" | "audio" | "voice",
     attachments?: ChatAttachment[],
-    options?: SendMessageOptions
+    options?: SendMessageOptions & { replyTo?: string },
   ) => Promise<void> | void;
-  onCreateVoicePlaceholder?: (payload: { content: string; attachment: ChatAttachment }) => string;
+  onCreateVoicePlaceholder?: (payload: {
+    content: string;
+    attachment: ChatAttachment;
+  }) => string;
   onVoiceUploadFailed?: (payload: {
     messageId: string;
     error: string;
@@ -48,6 +51,14 @@ interface ChatInputProps {
   placeholder?: string;
   className?: string;
   recipientId?: string; // Add recipient ID for voice messages
+  replyToMessage?: {
+    _id: string;
+    content: string;
+    type: string;
+    attachments?: ChatAttachment[];
+    sender: { firstName: string; lastName: string };
+  };
+  onCancelReply?: () => void;
 }
 
 export function ChatInput({
@@ -57,9 +68,11 @@ export function ChatInput({
   onTyping,
   disabled = false,
   placeholder = "Type a message...",
-  className
+  className,
+  replyToMessage,
+  onCancelReply,
 }: ChatInputProps) {
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showMediaUpload, setShowMediaUpload] = useState(false);
@@ -73,7 +86,7 @@ export function ChatInput({
   // Handle emoji selection
   const handleEmojiSelect = (emojiData: EmojiClickData) => {
     const emoji = emojiData.emoji;
-    setMessage(prev => prev + emoji);
+    setMessage((prev) => prev + emoji);
     setShowEmojiPicker(false);
 
     // Focus back to textarea
@@ -87,30 +100,30 @@ export function ChatInput({
     try {
       // Upload file to server
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'message');
+      formData.append("file", file);
+      formData.append("type", "message");
 
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
+      const uploadResponse = await fetch("/api/upload", {
+        method: "POST",
         body: formData,
       });
 
       if (!uploadResponse.ok) {
         // Try to parse error message from response
-        let errorMessage = 'Failed to upload file';
+        let errorMessage = "Failed to upload file";
         try {
           const errorData = await uploadResponse.json();
           errorMessage = errorData.error || errorMessage;
         } catch {
           // If response isn't JSON, use status text
           if (uploadResponse.status === 413) {
-            errorMessage = 'File is too large. Please select a smaller file.';
+            errorMessage = "File is too large. Please select a smaller file.";
           } else if (uploadResponse.status === 400) {
-            errorMessage = 'Invalid file type. Please select a supported file.';
+            errorMessage = "Invalid file type. Please select a supported file.";
           } else if (uploadResponse.status === 401) {
-            errorMessage = 'Session expired. Please refresh and try again.';
+            errorMessage = "Session expired. Please refresh and try again.";
           } else if (uploadResponse.status >= 500) {
-            errorMessage = 'Server error. Please try again later.';
+            errorMessage = "Server error. Please try again later.";
           }
         }
         throw new Error(errorMessage);
@@ -119,10 +132,10 @@ export function ChatInput({
       const uploadData = await uploadResponse.json();
 
       // Determine message type based on file type
-      let messageType: 'text' | 'image' | 'file' | 'video' | 'audio' = 'file';
-      if (file.type.startsWith('image/')) messageType = 'image';
-      else if (file.type.startsWith('video/')) messageType = 'video';
-      else if (file.type.startsWith('audio/')) messageType = 'audio';
+      let messageType: "text" | "image" | "file" | "video" | "audio" = "file";
+      if (file.type.startsWith("image/")) messageType = "image";
+      else if (file.type.startsWith("video/")) messageType = "video";
+      else if (file.type.startsWith("audio/")) messageType = "audio";
 
       // Create attachment data
       const attachment = {
@@ -137,23 +150,25 @@ export function ChatInput({
 
       setShowMediaUpload(false);
     } catch (error) {
-      console.error('Error uploading media:', error);
+      console.error("Error uploading media:", error);
       throw error;
     }
   };
 
   // Handle voice recording
   const handleVoiceRecording = async (audioBlob: Blob) => {
-    let placeholderMessageId = '';
+    let placeholderMessageId = "";
     let localAttachment: ChatAttachment | undefined;
 
     try {
-      const getAudioDuration = async (blob: Blob): Promise<number | undefined> => {
+      const getAudioDuration = async (
+        blob: Blob,
+      ): Promise<number | undefined> => {
         return new Promise((resolve) => {
           const previewUrl = URL.createObjectURL(blob);
-          const audioElement = document.createElement('audio');
+          const audioElement = document.createElement("audio");
 
-          audioElement.preload = 'metadata';
+          audioElement.preload = "metadata";
           audioElement.onloadedmetadata = () => {
             const duration = Number.isFinite(audioElement.duration)
               ? Math.max(1, Math.round(audioElement.duration))
@@ -172,20 +187,32 @@ export function ChatInput({
 
       const detectVoiceExtension = (mimeType: string) => {
         const normalized = mimeType.toLowerCase();
-        if (normalized.includes('mp4') || normalized.includes('m4a') || normalized.includes('aac')) return 'm4a';
-        if (normalized.includes('ogg') || normalized.includes('opus')) return 'ogg';
-        if (normalized.includes('wav')) return 'wav';
-        if (normalized.includes('mpeg') || normalized.includes('mp3')) return 'mp3';
-        return 'webm';
+        if (
+          normalized.includes("mp4") ||
+          normalized.includes("m4a") ||
+          normalized.includes("aac")
+        )
+          return "m4a";
+        if (normalized.includes("webm")) return "webm";
+        if (normalized.includes("ogg") || normalized.includes("opus"))
+          return "ogg";
+        if (normalized.includes("wav")) return "wav";
+        if (normalized.includes("mpeg") || normalized.includes("mp3"))
+          return "mp3";
+        return "webm";
       };
 
-      const resolvedMimeType = audioBlob.type || 'audio/webm';
+      const resolvedMimeType = audioBlob.type || "audio/webm";
       const voiceExtension = detectVoiceExtension(resolvedMimeType);
 
       // Keep file extension aligned with MIME type to avoid cross-browser playback issues.
-      const audioFile = new File([audioBlob], `voice_${Date.now()}.${voiceExtension}`, {
-        type: resolvedMimeType
-      });
+      const audioFile = new File(
+        [audioBlob],
+        `voice_${Date.now()}.${voiceExtension}`,
+        {
+          type: resolvedMimeType,
+        },
+      );
 
       const duration = await getAudioDuration(audioBlob);
 
@@ -194,28 +221,28 @@ export function ChatInput({
         filename: audioFile.name,
         size: audioFile.size,
         mimeType: audioFile.type,
-        duration
+        duration,
       };
 
       if (onCreateVoicePlaceholder) {
         placeholderMessageId = onCreateVoicePlaceholder({
-          content: 'Sending voice...',
-          attachment: localAttachment
+          content: "Sending voice...",
+          attachment: localAttachment,
         });
       }
 
       // Upload audio file
       const formData = new FormData();
-      formData.append('file', audioFile);
-      formData.append('type', 'message');
+      formData.append("file", audioFile);
+      formData.append("type", "message");
 
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
+      const uploadResponse = await fetch("/api/upload", {
+        method: "POST",
         body: formData,
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('Failed to upload voice message');
+        throw new Error("Failed to upload voice message");
       }
 
       const uploadData = await uploadResponse.json();
@@ -226,50 +253,55 @@ export function ChatInput({
         filename: uploadData.filename || audioFile.name,
         size: uploadData.size || audioFile.size,
         mimeType: uploadData.type || audioFile.type,
-        duration
+        duration,
       };
 
       // Send voice message using the onSendMessage callback
       await onSendMessage(
-        'Voice message',
-        'voice',
+        "Voice message",
+        "voice",
         [attachment],
         placeholderMessageId
           ? { replaceMessageId: placeholderMessageId, skipOptimistic: true }
-          : undefined
+          : undefined,
       );
 
       setShowVoiceRecorder(false);
     } catch (error) {
-      console.error('Error uploading voice message:', error);
+      console.error("Error uploading voice message:", error);
 
       if (placeholderMessageId && onVoiceUploadFailed && localAttachment) {
         onVoiceUploadFailed({
           messageId: placeholderMessageId,
-          error: error instanceof Error ? error.message : 'Voice upload failed',
+          error: error instanceof Error ? error.message : "Voice upload failed",
           blob: audioBlob,
-          attachment: localAttachment
+          attachment: localAttachment,
         });
       }
 
-      throw error instanceof Error ? error : new Error('Failed to send voice message');
+      throw error instanceof Error
+        ? error
+        : new Error("Failed to send voice message");
     }
   };
 
   // Handle click outside emoji picker
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target as Node)
+      ) {
         setShowEmojiPicker(false);
       }
     };
 
     if (showEmojiPicker) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showEmojiPicker]);
 
@@ -277,7 +309,7 @@ export function ChatInput({
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
+      textarea.style.height = "auto";
       textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
     }
   }, []);
@@ -309,30 +341,36 @@ export function ChatInput({
     const trimmedMessage = message.trim();
     if (!trimmedMessage && !attachedFile) return;
 
+    const sendOptions = replyToMessage
+      ? { replyTo: replyToMessage._id }
+      : undefined;
+
     if (attachedFile) {
       // Handle file upload
       const fileUrl = URL.createObjectURL(attachedFile);
-      const fileType = attachedFile.type.startsWith('image/') ? 'image' : 'file';
-      onSendMessage(fileUrl, fileType);
+      const fileType = attachedFile.type.startsWith("image/")
+        ? "image"
+        : "file";
+      onSendMessage(fileUrl, fileType, undefined, sendOptions);
       setAttachedFile(null);
     } else {
-      onSendMessage(trimmedMessage);
+      onSendMessage(trimmedMessage, "text", undefined, sendOptions);
     }
 
-    setMessage('');
+    setMessage("");
     if (onTyping) onTyping(false);
 
     // Reset textarea height
     setTimeout(() => {
       if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = "auto";
       }
     }, 0);
   };
 
   // Handle key press
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
@@ -364,6 +402,40 @@ export function ChatInput({
 
   return (
     <div className={cn("border-t bg-white p-4", className)}>
+      {/* Reply preview */}
+      {replyToMessage && (
+        <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-gray-800">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-blue-700">
+                Replying to {replyToMessage.sender.firstName}
+              </p>
+              <p className="truncate text-sm text-gray-700">
+                {replyToMessage.type === "image"
+                  ? "Photo"
+                  : replyToMessage.type === "video"
+                    ? "Video"
+                    : replyToMessage.type === "audio" ||
+                        replyToMessage.type === "voice"
+                      ? "Voice message"
+                      : replyToMessage.type === "file"
+                        ? replyToMessage.attachments?.[0]?.filename ||
+                          "Document"
+                        : replyToMessage.content}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onCancelReply?.()}
+              className="h-8 w-8 p-0"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* File attachment preview */}
       {attachedFile && (
         <div className="mb-3 p-3 bg-gray-50 rounded-lg border">
@@ -371,7 +443,7 @@ export function ChatInput({
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
                 <span className="text-blue-600 text-xs">
-                  {attachedFile.type.startsWith('image/') ? '🖼️' : '📎'}
+                  {attachedFile.type.startsWith("image/") ? "🖼️" : "📎"}
                 </span>
               </div>
               <div>
@@ -439,7 +511,7 @@ export function ChatInput({
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
             className={cn(
               "absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0",
-              showEmojiPicker && "bg-gray-100"
+              showEmojiPicker && "bg-gray-100",
             )}
             disabled={disabled}
           >
@@ -491,7 +563,7 @@ export function ChatInput({
             searchDisabled={false}
             skinTonesDisabled={false}
             previewConfig={{
-              showPreview: false
+              showPreview: false,
             }}
           />
         </div>

@@ -9,6 +9,7 @@ import { PaymentStatus, PaymentType, UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import User from '@/lib/db/models/User';
 import { socketManager } from '@/lib/realtime/socket-manager';
+import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
 
 // GET - Get single payment details
 export async function GET(
@@ -27,10 +28,10 @@ export async function GET(
     const payment = await withCache(
       `other-platform-payments:id:${JSON.stringify(id)}`,
       async () => await OtherPlatformPayment.findById(id)
-      .populate('client', 'firstName lastName email phone profilePicture')
-      .populate('dietitian', 'firstName lastName email phone')
-      .populate('paymentLink', 'planName planCategory durationDays amount finalAmount servicePlanId pricingTierId')
-      .populate('reviewedBy', 'firstName lastName email'),
+        .populate('client', 'firstName lastName email phone profilePicture')
+        .populate('dietitian', 'firstName lastName email phone')
+        .populate('paymentLink', 'planName planCategory durationDays amount finalAmount servicePlanId pricingTierId')
+        .populate('reviewedBy', 'firstName lastName email'),
       { ttl: 120000, tags: ['other_platform_payments'] }
     );
 
@@ -94,16 +95,24 @@ export async function PUT(
     if (status === 'approved') {
       // Get payment link details
       const paymentLinkData = otherPayment.paymentLink;
-      
+
       // Determine plan details from OtherPlatformPayment first, fallback to paymentLink
       const planName = otherPayment.planName || paymentLinkData?.planName || 'Service Plan';
       const planCategory = otherPayment.planCategory || paymentLinkData?.planCategory || 'general-wellness';
       const durationDays = otherPayment.durationDays || paymentLinkData?.durationDays || 30;
       const durationLabel = otherPayment.durationLabel || paymentLinkData?.duration || `${durationDays} Days`;
-      
-      const startDate = new Date();
-      const endDate = new Date();
-      endDate.setDate(endDate.getDate() + durationDays);
+
+      // IST-aligned window: start = next day IST midnight, end = start + durationDays - 1 (inclusive)
+      const paidAt = new Date();
+      const getStartOfDayIST = (d: Date): Date => {
+        const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
+        const [y, m, day] = fmt.format(d).split('-');
+        return new Date(`${y}-${m}-${day}T00:00:00+05:30`);
+      };
+      const expectedStartDate = getStartOfDayIST(paidAt);
+      expectedStartDate.setDate(expectedStartDate.getDate() + 1); // start from tomorrow IST
+      const expectedEndDate = new Date(expectedStartDate);
+      expectedEndDate.setDate(expectedEndDate.getDate() + durationDays - 1); // inclusive
 
       // Create/Update UnifiedPayment record (UPDATE existing, NO DUPLICATES)
       await UnifiedPayment.syncRazorpayPayment(
@@ -128,10 +137,12 @@ export async function PUT(
           paymentStatus: 'paid',
           paymentMethod: otherPayment.platform === 'other' ? otherPayment.customPlatform : otherPayment.platform,
           transactionId: `OPP-${otherPayment._id}-${otherPayment.transactionId}`,
-          purchaseDate: new Date(),
-          startDate,
-          endDate,
-          paidAt: new Date(),
+          purchaseDate: paidAt,
+          startDate: expectedStartDate,
+          endDate: expectedEndDate,
+          expectedStartDate,
+          expectedEndDate,
+          paidAt,
           mealPlanCreated: false,
           daysUsed: 0,
           description: `Other Platform Payment - ${otherPayment.platform === 'other' ? otherPayment.customPlatform : otherPayment.platform}`
@@ -144,6 +155,20 @@ export async function PUT(
           status: 'paid',
           paidAt: new Date(),
         });
+      }
+
+      // Approved payment establishes the subscription window — recompute client status
+      // (single source of truth: Expected End Date + manual hold).
+      if (otherPayment.client) {
+        try {
+          await recalculateAndPersistClientStatus(String(otherPayment.client), {
+            trigger: 'other_platform_payment_approved',
+            changedBy: session.user.id,
+            relatedEvent: `otherPlatformPayment:${otherPayment._id}`,
+          });
+        } catch (statusError) {
+          console.error('Error recalculating client status after other-platform approval:', statusError);
+        }
       }
     }
 
@@ -174,8 +199,8 @@ export async function PUT(
       .populate('paymentLink', 'planName planCategory durationDays amount finalAmount')
       .populate('reviewedBy', 'firstName lastName email');
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       payment: updatedPayment,
       message: status === 'approved' ? 'Payment approved successfully' : 'Payment rejected'
     });

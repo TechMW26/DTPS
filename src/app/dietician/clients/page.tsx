@@ -50,6 +50,7 @@ interface Dietitian {
   lastName: string;
   email: string;
   avatar?: string;
+  clientCount?: number;
 }
 
 interface HealthCounselor {
@@ -58,6 +59,7 @@ interface HealthCounselor {
   lastName: string;
   email: string;
   avatar?: string;
+  clientCount?: number;
 }
 
 interface TagOption {
@@ -115,7 +117,11 @@ interface Client {
   avatar?: string;
   phone?: string;
   status: string;
-  clientStatus?: 'lead' | 'active' | 'inactive';
+  clientStatus?: 'lead' | 'active' | 'inactive' | 'hold';
+  // Hold status
+  holdStatus?: {
+    isOnHold: boolean;
+  };
   createdAt: string;
   healthGoals?: string[];
   tags?: Array<{
@@ -162,11 +168,19 @@ interface Client {
   };
 }
 
-// Client status colors (3-state system: lead / active / inactive)
+// Client status colors (lead / active / inactive / hold)
 const clientStatusColors: Record<string, { bg: string; text: string }> = {
-  lead: { bg: 'bg-blue-100', text: 'text-blue-800' },
+  lead: { bg: 'bg-gray-100', text: 'text-gray-800' },
   active: { bg: 'bg-green-100', text: 'text-green-800' },
-  inactive: { bg: 'bg-gray-100', text: 'text-gray-800' },
+  inactive: { bg: 'bg-red-100', text: 'text-red-800' },
+  hold: { bg: 'bg-yellow-100', text: 'text-yellow-800' },
+};
+
+const clientStatusLabels: Record<string, string> = {
+  lead: 'Lead',
+  active: 'Active',
+  inactive: 'Inactive',
+  hold: 'On Hold',
 };
 
 export default function DieticianClientsPage() {
@@ -230,10 +244,12 @@ export default function DieticianClientsPage() {
   const [selectedClientForAssign, setSelectedClientForAssign] = useState<Client | null>(null);
   const [availableDietitians, setAvailableDietitians] = useState<Dietitian[]>([]);
   const [availableHealthCounselors, setAvailableHealthCounselors] = useState<HealthCounselor[]>([]);
-  const [selectedDietitianId, setSelectedDietitianId] = useState('');
+  const [primaryDietitianId, setPrimaryDietitianId] = useState('');
+  const [secondaryDietitianIds, setSecondaryDietitianIds] = useState<string[]>([]);
+  const [primaryDietitianSearchTerm, setPrimaryDietitianSearchTerm] = useState('');
+  const [dietitianSearchTerm, setDietitianSearchTerm] = useState('');
   const [selectedHealthCounselorId, setSelectedHealthCounselorId] = useState('');
   const [assigning, setAssigning] = useState(false);
-  const [assignMode, setAssignMode] = useState<'add' | 'replace'>('add');
 
   // Fetch available staff for assignment
   const fetchAvailableStaff = useCallback(async (clientId: string) => {
@@ -298,9 +314,18 @@ export default function DieticianClientsPage() {
   // Open assignment dialog
   const openAssignDialog = async (client: Client) => {
     setSelectedClientForAssign(client);
-    setSelectedDietitianId('');
+    const existingPrimaryDietitian = client.assignedDietitian && typeof client.assignedDietitian === 'object'
+      ? client.assignedDietitian._id : '';
+    setPrimaryDietitianId(existingPrimaryDietitian);
+
+    const existingSecondaryDietitians = (client.assignedDietitians || [])
+      .filter(d => d && typeof d === 'object' && d._id !== existingPrimaryDietitian)
+      .map(d => d._id);
+    setSecondaryDietitianIds(existingSecondaryDietitians);
+
+    setPrimaryDietitianSearchTerm('');
+    setDietitianSearchTerm('');
     setSelectedHealthCounselorId('');
-    setAssignMode('add');
     setAssignDialogOpen(true);
     await fetchAvailableStaff(client._id);
   };
@@ -311,13 +336,30 @@ export default function DieticianClientsPage() {
 
     try {
       setAssigning(true);
-      const payload: any = { mode: assignMode };
+      const payload: any = {};
 
-      if (selectedDietitianId && canAssignDietitians) {
-        payload.dietitianId = selectedDietitianId;
+      if (canAssignDietitians) {
+        payload.mode = 'primary_secondary';
+        payload.primaryDietitianId = primaryDietitianId || null;
+        payload.secondaryDietitianIds = secondaryDietitianIds;
       }
+
       if (selectedHealthCounselorId && canAssignHealthCounselors) {
-        payload.healthCounselorId = selectedHealthCounselorId;
+        if (payload.mode === 'primary_secondary') {
+          payload.primaryHealthCounselorId = selectedHealthCounselorId;
+          payload.secondaryHealthCounselorIds = [];
+        } else {
+          payload.mode = 'replace';
+          payload.healthCounselorId = selectedHealthCounselorId;
+        }
+      } else if (canAssignHealthCounselors && payload.mode === 'primary_secondary') {
+        payload.primaryHealthCounselorId = null;
+        payload.secondaryHealthCounselorIds = [];
+      }
+
+      if (!payload.mode) {
+        toast.error('No assignment changes selected');
+        return;
       }
 
       const response = await fetch(`/api/clients/${selectedClientForAssign._id}/assign`, {
@@ -768,6 +810,7 @@ export default function DieticianClientsPage() {
                 <SelectItem value="lead">Lead</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="hold">On Hold</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -866,22 +909,25 @@ export default function DieticianClientsPage() {
                               )}
                             </TableCell>
                             <TableCell className="dietitian-clients-cell px-3" data-label="Status">
-                              {/* Status is automatically computed: LEAD / ACTIVE / INACTIVE */}
-                              <Badge
-                                variant="outline"
-                                className={`text-xs px-2 py-0.5 ${client.clientStatus === 'active' ? 'bg-green-100 text-green-700 border-green-300' :
-                                  client.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700 border-gray-300' :
-                                    'bg-blue-100 text-blue-700 border-blue-300'
-                                  }`}
-                              >
-                                <span className="flex items-center gap-1.5">
-                                  <span className={`w-2 h-2 rounded-full ${client.clientStatus === 'active' ? 'bg-green-500' :
-                                    client.clientStatus === 'inactive' ? 'bg-gray-500' :
-                                      'bg-blue-500'
-                                    }`}></span>
-                                  {client.clientStatus === 'active' ? 'Active' : client.clientStatus === 'inactive' ? 'Inactive' : 'Lead'}
-                                </span>
-                              </Badge>
+                              {/* Status is automatically computed: LEAD / ACTIVE / INACTIVE / HOLD */}
+                              <div className="flex items-center gap-1.5">
+                                {(() => {
+                                  const cs = client.clientStatus || 'lead';
+                                  const colors = clientStatusColors[cs] || clientStatusColors.lead;
+                                  const dot = cs === 'active' ? 'bg-green-500' : cs === 'inactive' ? 'bg-red-500' : cs === 'hold' ? 'bg-yellow-500' : 'bg-gray-500';
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-xs px-2 py-0.5 ${colors.bg} ${colors.text} border-current`}
+                                    >
+                                      <span className="flex items-center gap-1.5">
+                                        <span className={`w-2 h-2 rounded-full ${dot}`}></span>
+                                        {clientStatusLabels[cs] || 'Lead'}
+                                      </span>
+                                    </Badge>
+                                  );
+                                })()}
+                              </div>
                             </TableCell>
                             <TableCell className="dietitian-clients-cell px-3 text-sm whitespace-nowrap" data-label="Plan Start">
                               {client.mealPlanStartDate ? formatDate(client.mealPlanStartDate) : (client.programStart ? formatDate(client.programStart) : '-')}
@@ -1010,7 +1056,7 @@ export default function DieticianClientsPage() {
                                   className="h-7 px-2 text-xs"
                                 >
                                   <UserPlus className="h-3.5 w-3.5 mr-1" />
-                                  Assign
+                                  <span>{client.assignedDietitian ? 'Reassign' : 'Assign'}</span>
                                 </Button>
                               </TableCell>
                             )}
@@ -1206,11 +1252,11 @@ export default function DieticianClientsPage() {
 
       {/* Assignment Dialog */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Assign Staff</DialogTitle>
+            <DialogTitle>Manage Professional Assignments</DialogTitle>
             <DialogDescription>
-              Assign this client to a dietitian or health counselor
+              Assign primary and secondary professionals for this client
             </DialogDescription>
           </DialogHeader>
 
@@ -1223,35 +1269,144 @@ export default function DieticianClientsPage() {
                 <p className="text-xs text-gray-500">{selectedClientForAssign.email}</p>
               </div>
 
-              <div>
-                <label className="text-sm font-medium">Assignment Mode</label>
-                <Select value={assignMode} onValueChange={(v: 'add' | 'replace') => setAssignMode(v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="add">Add to existing assignments</SelectItem>
-                    <SelectItem value="replace">Replace current assignments</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               {canAssignDietitians && (
-                <div>
-                  <label className="text-sm font-medium">Assign Dietitian</label>
-                  <Select value={selectedDietitianId} onValueChange={setSelectedDietitianId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a dietitian" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {availableDietitians.map(d => (
-                        <SelectItem key={d._id} value={d._id}>
-                          {d.firstName} {d.lastName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-3 border rounded-lg p-3 bg-green-50/50">
+                  <h4 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold">D</span>
+                    Dietitian Assignment
+                  </h4>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <span className="px-2 py-0.5 text-xs font-bold rounded bg-blue-500 text-white">PRIMARY</span>
+                      Select Primary Dietitian
+                      <span className="text-gray-400 font-normal">(saved to assignedDietitian)</span>
+                    </label>
+                    <div className="relative mb-2">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search primary dietitian..."
+                        value={primaryDietitianSearchTerm}
+                        onChange={(e) => setPrimaryDietitianSearchTerm(e.target.value)}
+                        className="pl-9 bg-white"
+                      />
+                    </div>
+                    <div className="max-h-40 overflow-y-auto border rounded-lg bg-white">
+                      <div
+                        className={`flex items-center gap-2 p-2 cursor-pointer transition-colors border-b ${!primaryDietitianId ? 'bg-green-100' : 'hover:bg-gray-50'}`}
+                        onClick={() => setPrimaryDietitianId('')}
+                      >
+                        <input type="radio" checked={!primaryDietitianId} onChange={() => { }} className="h-4 w-4 text-green-600" />
+                        <span className="text-gray-400">No primary dietitian</span>
+                      </div>
+                      {availableDietitians
+                        .filter(d => {
+                          if (!primaryDietitianSearchTerm.trim()) return true;
+                          const searchLower = primaryDietitianSearchTerm.toLowerCase();
+                          const fullName = `${d.firstName} ${d.lastName}`.toLowerCase();
+                          return fullName.includes(searchLower) || d.email?.toLowerCase().includes(searchLower);
+                        })
+                        .map((dietitian) => (
+                          <div
+                            key={dietitian._id}
+                            className={`flex items-center gap-2 p-2 cursor-pointer transition-colors ${primaryDietitianId === dietitian._id ? 'bg-green-100 border-l-4 border-l-green-500' : 'hover:bg-gray-50'}`}
+                            onClick={() => {
+                              setPrimaryDietitianId(dietitian._id);
+                              setSecondaryDietitianIds(prev => prev.filter(id => id !== dietitian._id));
+                            }}
+                          >
+                            <input type="radio" checked={primaryDietitianId === dietitian._id} onChange={() => { }} className="h-4 w-4 text-green-600" />
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={dietitian.avatar} />
+                              <AvatarFallback className="bg-green-200 text-green-800 text-xs">
+                                {dietitian.firstName?.[0]}{dietitian.lastName?.[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{dietitian.firstName} {dietitian.lastName}</p>
+                              <p className="text-xs text-gray-500">{dietitian.email}</p>
+                            </div>
+                            {typeof dietitian.clientCount === 'number' && (
+                              <Badge variant="outline" className="text-xs">
+                                {dietitian.clientCount} clients
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <span className="px-2 py-0.5 text-xs font-bold rounded bg-gray-400 text-white">SECONDARY</span>
+                      Select Secondary Dietitians
+                      <span className="text-gray-400 font-normal">(saved to assignedDietitians array)</span>
+                    </label>
+                    <div className="relative mb-2">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search dietitians..."
+                        value={dietitianSearchTerm}
+                        onChange={(e) => setDietitianSearchTerm(e.target.value)}
+                        className="pl-9 bg-white"
+                      />
+                    </div>
+                    <div className="max-h-32 overflow-y-auto border rounded-lg p-2 space-y-1 bg-white">
+                      {availableDietitians
+                        .filter(d => d._id !== primaryDietitianId)
+                        .filter(d => {
+                          if (!dietitianSearchTerm.trim()) return true;
+                          const searchLower = dietitianSearchTerm.toLowerCase();
+                          const fullName = `${d.firstName} ${d.lastName}`.toLowerCase();
+                          return fullName.includes(searchLower) || d.email?.toLowerCase().includes(searchLower);
+                        })
+                        .map((dietitian) => (
+                          <div
+                            key={dietitian._id}
+                            className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${secondaryDietitianIds.includes(dietitian._id)
+                              ? 'bg-green-100 border border-green-300'
+                              : 'hover:bg-gray-50 border border-transparent'
+                              }`}
+                            onClick={() => {
+                              setSecondaryDietitianIds(prev =>
+                                prev.includes(dietitian._id)
+                                  ? prev.filter(id => id !== dietitian._id)
+                                  : [...prev, dietitian._id]
+                              );
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={secondaryDietitianIds.includes(dietitian._id)}
+                                onChange={() => { }}
+                                className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              />
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={dietitian.avatar} />
+                                <AvatarFallback className="bg-green-200 text-green-800 text-xs">
+                                  {dietitian.firstName?.[0]}{dietitian.lastName?.[0]}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="text-sm font-medium">{dietitian.firstName} {dietitian.lastName}</p>
+                                <p className="text-xs text-gray-500">{dietitian.email}</p>
+                              </div>
+                            </div>
+                            {typeof dietitian.clientCount === 'number' && (
+                              <Badge variant="outline" className="text-xs">
+                                {dietitian.clientCount} clients
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                    {secondaryDietitianIds.length > 0 && (
+                      <div className="text-xs text-gray-600">
+                        {secondaryDietitianIds.length} secondary dietitian(s) selected
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1282,9 +1437,9 @@ export default function DieticianClientsPage() {
             </Button>
             <Button
               onClick={handleAssign}
-              disabled={assigning || (!selectedDietitianId && !selectedHealthCounselorId)}
+              disabled={assigning || (!canAssignDietitians && !selectedHealthCounselorId)}
             >
-              {assigning ? 'Assigning...' : 'Assign'}
+              {assigning ? 'Saving...' : 'Save Assignments'}
             </Button>
           </DialogFooter>
         </DialogContent>

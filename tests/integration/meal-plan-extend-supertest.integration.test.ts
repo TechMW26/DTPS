@@ -30,7 +30,7 @@ describe('meal plan extend expected-end integrations (supertest + jest)', () => 
         await ensureDatabaseConnection();
     });
 
-    it('extends linked purchase expected end date and keeps meal plan end date unchanged', async () => {
+    it('extends linked purchase expected end date and also shifts meal plan end date', async () => {
         const admin = await createUser({
             role: UserRole.ADMIN,
             email: 'admin-extend-expected-end@example.com',
@@ -158,9 +158,10 @@ describe('meal plan extend expected-end integrations (supertest + jest)', () => 
 
             const expectedEndAfterIso = new Date('2026-06-10T00:00:00.000Z').toISOString();
             expect(new Date(response.body.extendInfo.newExpectedEndDate).toISOString()).toBe(expectedEndAfterIso);
+            expect(new Date(response.body.extendInfo.mealPlanEndDate).toISOString()).toBe(expectedEndAfterIso);
 
             const refreshedMealPlan: any = await ClientMealPlan.findById(mealPlan._id).lean();
-            expect(new Date(refreshedMealPlan.endDate).toISOString()).toBe(mealPlanEndDate.toISOString());
+            expect(new Date(refreshedMealPlan.endDate).toISOString()).toBe(expectedEndAfterIso);
             expect(refreshedMealPlan.duration).toBe(30);
 
             const refreshedLegacyPurchase: any = await ClientPurchase.findById(legacyPurchase._id).lean();

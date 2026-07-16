@@ -267,6 +267,8 @@ export function getInvoiceEmailTemplate(data: {
   dietitianName?: string;
   dietitianEmail?: string;
 }): { subject: string; html: string; text: string } {
+  const androidAppUrl = 'https://play.google.com/store/apps/details?id=mw.dtps.app';
+  const iosAppUrl = 'https://apps.apple.com/in/app/dtps-nutrition/id6759550995';
   const subject = `Invoice #${data.invoiceNumber} - DTPS`;
 
   const html = `
@@ -367,6 +369,17 @@ export function getInvoiceEmailTemplate(data: {
                   </td>
                 </tr>
               </table>
+
+              <!-- App Links -->
+              <table role="presentation" style="width: 100%; margin-top: 20px; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 14px 16px; background-color: #f8fbff; border: 1px solid #dbeafe; border-radius: 8px; font-size: 13px; color: #334155; line-height: 1.7;">
+                    <strong style="color: #0f172a;">Install DTPS App</strong><br>
+                    Android DTPS app link: <a href="${androidAppUrl}" style="color: #2563eb; text-decoration: none;">${androidAppUrl}</a><br>
+                    iOS DTPS app link: <a href="${iosAppUrl}" style="color: #2563eb; text-decoration: none;">${iosAppUrl}</a>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
           
@@ -416,6 +429,9 @@ Total Paid: ₹${data.finalAmount.toLocaleString('en-IN')}
 Status: PAID
 ${data.paidAt ? `Paid on: ${data.paidAt}` : ''}
 ${data.paymentId ? `Transaction ID: ${data.paymentId}` : ''}
+
+Android DTPS app link: ${androidAppUrl}
+iOS DTPS app link: ${iosAppUrl}
 
 ${data.dietitianName ? `Issued by: ${data.dietitianName}` : ''}
 ${data.dietitianEmail ? `Contact: ${data.dietitianEmail}` : ''}

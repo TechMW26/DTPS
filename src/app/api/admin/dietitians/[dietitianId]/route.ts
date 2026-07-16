@@ -9,6 +9,7 @@ import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import Task from '@/lib/db/models/Task';
 import mongoose from 'mongoose';
 import { AppointmentStatus, UserRole, PaymentStatus } from '@/types';
+import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 const STAFF_ROLES = [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] as const;
@@ -130,10 +131,27 @@ export async function GET(
           { assignedDietitians: resolvedDietitianId }
         ]
       })
-        .select('firstName lastName email avatar phone status clientStatus createdAt weight height healthGoals generalGoal onboardingCompleted')
+        .select('firstName lastName email avatar phone status clientStatus holdStatus createdAt weight height healthGoals generalGoal onboardingCompleted')
         .sort({ createdAt: -1 }),
       { ttl: 120000, tags: ['admin'] }
     );
+
+    const assignedClientIds = assignedClients.map(c => c._id);
+
+    const paymentDocs = await UnifiedPayment.find(
+      {
+        client: { $in: assignedClientIds },
+        $or: [{ status: { $in: ['paid', 'completed', 'active'] } }, { paymentStatus: 'paid' }],
+      },
+      { client: 1, status: 1, paymentStatus: 1, expectedEndDate: 1, endDate: 1 }
+    ).lean();
+
+    const paymentsByClient = new Map<string, any[]>();
+    paymentDocs.forEach((payment: any) => {
+      const key = String(payment.client);
+      if (!paymentsByClient.has(key)) paymentsByClient.set(key, []);
+      paymentsByClient.get(key)!.push(payment);
+    });
 
     // Get client progress stats
     const clientsWithProgress = await Promise.all(
@@ -175,8 +193,14 @@ export async function GET(
           { ttl: 120000, tags: ['admin'] }
         );
 
+        const computedClientStatus = computeClientStatusFromDocs(
+          paymentsByClient.get(String(client._id)) || [],
+          !!client?.holdStatus?.isOnHold
+        );
+
         return {
           ...client.toObject(),
+          clientStatus: computedClientStatus,
           progress: {
             mealPlanCount,
             latestMealPlan: latestMealPlan ? {
@@ -196,7 +220,7 @@ export async function GET(
 
     // Get statistics
     const totalClients = assignedClients.length;
-    const activeClients = assignedClients.filter(c => c.status === 'active').length;
+    const activeClients = clientsWithProgress.filter(c => c.clientStatus === 'active').length;
     const totalAppointments = await Appointment.countDocuments({
       dietitian: resolvedDietitianId
     });

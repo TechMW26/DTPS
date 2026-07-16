@@ -38,6 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { ClientHoldStatus, HoldStatus } from '@/components/admin/ClientHoldStatus';
 import {
   ArrowLeft,
   Edit2,
@@ -147,6 +148,7 @@ interface Client {
   phone?: string;
   avatar?: string;
   status: string;
+  clientStatus?: 'lead' | 'active' | 'inactive' | 'hold' | string;
   dateOfBirth?: string;
   gender?: string;
   height?: number;
@@ -177,6 +179,26 @@ interface Client {
     firstName: string;
     lastName: string;
   };
+  // Hold Status
+  holdStatus?: {
+    isOnHold: boolean;
+    holdDate?: string;
+    holdTime?: string;
+    activatedDate?: string;
+    activatedTime?: string;
+    totalHoldDurationMs?: number;
+    holdCount?: number;
+    heldBy?: { _id: string; firstName: string; lastName: string };
+    activatedBy?: { _id: string; firstName: string; lastName: string };
+  };
+  holdStatusHistory?: Array<{
+    action: 'hold' | 'activate';
+    performedByName: string;
+    performedByRole: string;
+    timestamp: string;
+    reason?: string;
+    holdDurationMs?: number;
+  }>;
 }
 
 export default function AdminClientDetailPage() {
@@ -195,6 +217,9 @@ export default function AdminClientDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
+
+  // Hold status state
+  const [holdStatus, setHoldStatus] = useState<HoldStatus | null>(null);
 
   // Payment pagination & filter state
   const [paymentPage, setPaymentPage] = useState(1);
@@ -249,18 +274,40 @@ export default function AdminClientDetailPage() {
   const fetchClientDetails = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/admin/clients/${clientId}`);
-      if (!response.ok) throw new Error('Failed to fetch client details');
+      const [clientResponse, holdResponse] = await Promise.all([
+        fetch(`/api/admin/clients/${clientId}`),
+        fetch(`/api/admin/clients/${clientId}/hold`)
+      ]);
 
-      const data = await response.json();
+      if (!clientResponse.ok) throw new Error('Failed to fetch client details');
+
+      const data = await clientResponse.json();
       setClient(data.client);
       setMealPlans(data.mealPlans || []);
       setPayments(data.payments || []);
+
+      // Set hold status
+      if (holdResponse.ok) {
+        const holdData = await holdResponse.json();
+        setHoldStatus(holdData);
+      }
     } catch (error) {
       console.error('Error fetching client:', error);
       toast.error('Failed to load client details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchHoldStatus = async () => {
+    try {
+      const response = await fetch(`/api/admin/clients/${clientId}/hold`);
+      if (response.ok) {
+        const data = await response.json();
+        setHoldStatus(data);
+      }
+    } catch (error) {
+      console.error('Error fetching hold status:', error);
     }
   };
 
@@ -366,9 +413,27 @@ export default function AdminClientDetailPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
-      case 'inactive': return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400';
-      case 'suspended': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'inactive': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'hold': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
+      case 'lead':
+      case 'leading':
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400';
+      case 'suspended':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case 'active':
+        return 'Active';
+      case 'inactive':
+        return 'Inactive';
+      case 'hold':
+        return 'On Hold';
+      default:
+        return 'Lead';
     }
   };
 
@@ -507,9 +572,22 @@ export default function AdminClientDetailPage() {
               </div>
               <div>
                 <Label className="text-gray-500">Status</Label>
-                <Badge className={getStatusColor(client.status)}>
-                  {client.status}
+                <Badge className={getStatusColor(client.clientStatus || 'lead')}>
+                  {getStatusLabel(client.clientStatus)}
                 </Badge>
+              </div>
+              <div>
+                <Label className="text-gray-500">Hold Status</Label>
+                <ClientHoldStatus
+                  clientId={clientId}
+                  clientName={`${client.firstName} ${client.lastName}`}
+                  holdStatus={holdStatus || undefined}
+                  onStatusChange={() => {
+                    fetchHoldStatus();
+                    fetchClientDetailsQuiet();
+                  }}
+                  compact={true}
+                />
               </div>
               <div>
                 <Label className="text-gray-500">Joined</Label>

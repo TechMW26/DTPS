@@ -58,6 +58,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { logHistory, generateChangeDetails } from '@/lib/utils/history';
 import { BasicInfoForm, type BasicInfoData } from '@/components/clients/BasicInfoForm';
+import { ClientHoldStatus, HoldStatus } from '@/components/admin/ClientHoldStatus';
 import { MedicalForm, type MedicalData } from '@/components/clients/MedicalForm';
 import { LifestyleForm, type LifestyleData } from '@/components/clients/LifestyleForm';
 import { useDataRefresh, DataEventTypes, emitDataChange } from '@/lib/events/useDataRefresh';
@@ -104,6 +105,16 @@ interface ClientData {
   alternativePhone?: string;
   alternativeEmail?: string;
   anniversary?: string;
+  // Hold status
+  holdStatus?: {
+    isOnHold: boolean;
+    holdDate?: string;
+    holdTime?: string;
+    activatedDate?: string;
+    activatedTime?: string;
+    totalHoldDurationMs?: number;
+    holdCount?: number;
+  };
   assignedDietitian?: {
     _id: string;
     firstName: string;
@@ -272,6 +283,9 @@ export default function ClientDetailPage() {
   const [activeTab, setActiveTab] = useState('basic-details');
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<ClientData>>({});
+
+  // Hold status state
+  const [holdStatus, setHoldStatus] = useState<HoldStatus | undefined>(undefined);
 
 
   // Notes panel state
@@ -492,7 +506,7 @@ export default function ClientDetailPage() {
   const [recallEntries, setRecallEntries] = useState<RecallEntry[]>([]);
 
   // Backend-computed client status (lead / active / inactive)
-  const [clientComputedStatus, setClientComputedStatus] = useState<'lead' | 'active' | 'inactive'>('lead');
+  const [clientComputedStatus, setClientComputedStatus] = useState<'lead' | 'active' | 'inactive' | 'hold'>('lead');
   const [currentWeightKg, setCurrentWeightKg] = useState<number | null>(null);
   const [firstWeightKg, setFirstWeightKg] = useState<number | null>(null);
   const [weightLog, setWeightLog] = useState<ClientWeightLogEntry[]>([]);
@@ -525,6 +539,32 @@ export default function ClientDetailPage() {
     throw lastError instanceof Error ? lastError : new Error('Request failed');
   }, []);
 
+  // Fetch hold status
+  const fetchHoldStatus = async () => {
+    try {
+      const response = await fetch(`/api/admin/clients/${params.clientId}/hold`, { cache: 'no-store' });
+      if (response.ok) {
+        const data = await response.json();
+        setHoldStatus(data);
+        // Also update client object
+        setClient(prev => prev ? {
+          ...prev,
+          holdStatus: {
+            isOnHold: data.isOnHold,
+            holdDate: data.holdDate,
+            holdTime: data.holdTime,
+            activatedDate: data.activatedDate,
+            activatedTime: data.activatedTime,
+            totalHoldDurationMs: data.totalHoldDurationMs,
+            holdCount: data.holdCount
+          }
+        } : prev);
+      }
+    } catch (error) {
+      console.error('Error fetching hold status:', error);
+    }
+  };
+
   useEffect(() => {
     if (params.clientId) {
       fetchClientDetails();
@@ -533,6 +573,7 @@ export default function ClientDetailPage() {
       fetchActivePlan();
       fetchCurrentWeightSummary();
       fetchClientWeightLog();
+      fetchHoldStatus();
     }
   }, [params.clientId]);
 
@@ -759,7 +800,7 @@ export default function ClientDetailPage() {
         purchaseData = await purchaseRes.json();
         // Use backend-computed status as single source of truth
         if (purchaseData.clientStatus) {
-          setClientComputedStatus(purchaseData.clientStatus as 'lead' | 'active' | 'inactive');
+          setClientComputedStatus(purchaseData.clientStatus as 'lead' | 'active' | 'inactive' | 'hold');
         }
       }
 
@@ -2263,15 +2304,30 @@ export default function ClientDetailPage() {
                       <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-500">
                         <div className="flex items-center gap-1.5">
                           <span className={`inline-block h-2 w-2 rounded-full ${clientComputedStatus === 'active' ? 'bg-green-500' :
-                            clientComputedStatus === 'inactive' ? 'bg-gray-400' :
-                              'bg-blue-500'
+                            clientComputedStatus === 'inactive' ? 'bg-red-500' :
+                              clientComputedStatus === 'hold' ? 'bg-yellow-500' :
+                                'bg-gray-400'
                             }`} />
                           <span className="capitalize">
                             {clientComputedStatus === 'active' ? 'Active' :
                               clientComputedStatus === 'inactive' ? 'Inactive' :
-                                'Lead'}
+                                clientComputedStatus === 'hold' ? 'On Hold' :
+                                  'Lead'}
                           </span>
                         </div>
+                        <span className="text-gray-300">•</span>
+                        <ClientHoldStatus
+                          clientId={params.clientId as string}
+                          clientName={`${client?.firstName || ''} ${client?.lastName || ''}`.trim()}
+                          holdStatus={holdStatus}
+                          onStatusChange={() => {
+                            // Refresh both the hold status control and the computed
+                            // client status badge so the UI updates without a refresh.
+                            fetchHoldStatus();
+                            fetchActivePlan();
+                          }}
+                          compact={true}
+                        />
                         <span className="text-gray-300">•</span>
                         <span>Dietitian: {getDietitianDisplayName()}</span>
                         <span className="text-gray-300">•</span>
@@ -2539,18 +2595,21 @@ export default function ClientDetailPage() {
                         </div>
                       )}
                       <div className={`rounded-xl bg-linear-to-br ${clientComputedStatus === 'active' ? 'from-emerald-500 to-green-600' :
-                        clientComputedStatus === 'lead' ? 'from-blue-500 to-blue-600' :
-                          'from-gray-500 to-gray-600'
+                        clientComputedStatus === 'lead' ? 'from-gray-500 to-gray-600' :
+                          clientComputedStatus === 'hold' ? 'from-yellow-500 to-amber-600' :
+                            'from-red-500 to-red-600'
                         } px-4 py-3 shadow-md`}>
                         <p className={`text-xs font-medium uppercase tracking-wide ${clientComputedStatus === 'active' ? 'text-emerald-100' :
-                          clientComputedStatus === 'lead' ? 'text-blue-100' :
-                            'text-gray-100'
+                          clientComputedStatus === 'lead' ? 'text-gray-100' :
+                            clientComputedStatus === 'hold' ? 'text-yellow-50' :
+                              'text-red-100'
                           }`}>Status</p>
                         <Badge className={`mt-1.5 ${clientComputedStatus === 'active' ? 'bg-white/20' :
-                          clientComputedStatus === 'lead' ? 'bg-blue-500/20' :
-                            'bg-gray-500/20'
+                          clientComputedStatus === 'lead' ? 'bg-gray-500/20' :
+                            clientComputedStatus === 'hold' ? 'bg-yellow-500/20' :
+                              'bg-red-500/20'
                           } backdrop-blur-sm border border-white/30 text-[11px] text-white font-semibold`}>
-                          {clientComputedStatus === 'active' ? 'Active' : clientComputedStatus === 'inactive' ? 'Inactive' : 'Lead'}
+                          {clientComputedStatus === 'active' ? 'Active' : clientComputedStatus === 'inactive' ? 'Inactive' : clientComputedStatus === 'hold' ? 'On Hold' : 'Lead'}
                         </Badge>
                       </div>
                     </div>
@@ -2613,19 +2672,22 @@ export default function ClientDetailPage() {
                         <p className="text-xs font-medium text-gray-300 uppercase tracking-wide">Program dates</p>
                         <p className="mt-1.5 text-sm font-semibold text-white">No dates</p>
                       </div>
-                      <div className={`rounded-xl bg-linear-to-br ${clientComputedStatus === 'lead' ? 'from-blue-600 to-blue-700' :
+                      <div className={`rounded-xl bg-linear-to-br ${clientComputedStatus === 'lead' ? 'from-gray-600 to-gray-700' :
                         clientComputedStatus === 'inactive' ? 'from-red-600 to-red-700' :
-                          'from-green-600 to-green-700'
+                          clientComputedStatus === 'hold' ? 'from-yellow-500 to-amber-600' :
+                            'from-green-600 to-green-700'
                         } px-4 py-3 shadow-md`}>
-                        <p className={`text-xs font-medium uppercase tracking-wide ${clientComputedStatus === 'lead' ? 'text-blue-200' :
+                        <p className={`text-xs font-medium uppercase tracking-wide ${clientComputedStatus === 'lead' ? 'text-gray-200' :
                           clientComputedStatus === 'inactive' ? 'text-red-200' :
-                            'text-green-200'
+                            clientComputedStatus === 'hold' ? 'text-yellow-50' :
+                              'text-green-200'
                           }`}>Status</p>
-                        <Badge className={`mt-1.5 ${clientComputedStatus === 'lead' ? 'bg-blue-500/30' :
+                        <Badge className={`mt-1.5 ${clientComputedStatus === 'lead' ? 'bg-gray-500/30' :
                           clientComputedStatus === 'inactive' ? 'bg-red-500/30' :
-                            'bg-green-500/30'
+                            clientComputedStatus === 'hold' ? 'bg-yellow-500/30' :
+                              'bg-green-500/30'
                           } backdrop-blur-sm border border-white/30 text-[11px] text-white font-semibold`}>
-                          {clientComputedStatus === 'active' ? 'Active' : clientComputedStatus === 'inactive' ? 'Inactive' : 'Lead'}
+                          {clientComputedStatus === 'active' ? 'Active' : clientComputedStatus === 'inactive' ? 'Inactive' : clientComputedStatus === 'hold' ? 'On Hold' : 'Lead'}
                         </Badge>
                       </div>
                     </div>

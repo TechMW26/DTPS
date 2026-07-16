@@ -91,6 +91,7 @@ interface DayPlan {
   isFrozen?: boolean;
   freezeInfo?: {
     date: string;
+    addedDate?: string | null;
     reason: string;
     frozenAt: string;
   } | null;
@@ -1197,7 +1198,7 @@ export default function UserPlanPage() {
               </div>
             ))}
           </div>
-        ) : dayPlan?.isFrozen ? (
+        ) : dayPlan?.isFrozen && dayPlan?.hasPlan ? (
           /* Frozen Day Message */
           <div
             className={`p-8 text-center shadow-sm rounded-2xl border-2 relative overflow-hidden ${isDarkMode ? 'bg-gray-900 border-blue-500/40 ring-1 ring-white/10' : 'bg-white border-blue-200'

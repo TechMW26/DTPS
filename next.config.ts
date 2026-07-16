@@ -74,7 +74,9 @@ const nextConfig: NextConfig = {
   } as any,
 
   // Turbopack configuration for Next.js 16+
-  turbopack: {},
+  turbopack: {
+    root: process.cwd(),
+  },
 
   // Mark firebase-admin as external for server components (prevents Turbopack bundling issues)
   serverExternalPackages: ['firebase-admin'],

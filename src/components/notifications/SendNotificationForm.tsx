@@ -72,7 +72,7 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [clientStatusFilter, setClientStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [clientStatusFilter, setClientStatusFilter] = useState<'all' | 'active' | 'inactive' | 'hold'>('all');
 
   const [sendResult, setSendResult] = useState<{
     success: boolean;
@@ -694,6 +694,14 @@ export default function SendNotificationForm({ preselectedClientId, onSuccess }:
                       onClick={() => setClientStatusFilter('inactive')}
                     >
                       Inactive
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={clientStatusFilter === 'hold' ? 'default' : 'outline'}
+                      onClick={() => setClientStatusFilter('hold')}
+                    >
+                      On Hold
                     </Button>
                   </div>
 

@@ -20,7 +20,7 @@ export interface SendNotificationResult {
     invalidTokens: string[];
     responses: Array<{ token: string; success: boolean; error?: string }>;
     skippedNoToken?: boolean;
-    errorCode?: 'NO_TOKEN' | 'FIREBASE_UNAVAILABLE' | 'UNKNOWN';
+    errorCode?: 'NO_TOKEN' | 'FIREBASE_UNAVAILABLE' | 'CLIENT_ON_HOLD' | 'UNKNOWN';
     errorMessage?: string;
 }
 
@@ -76,6 +76,21 @@ export async function sendNotificationToUser(
 ): Promise<SendNotificationResult> {
     try {
         await connectDB();
+
+        // Check if user is a client on hold - skip notifications for held clients
+        const userForHoldCheck = await User.findById(userId).select('role holdStatus').lean() as any;
+        if (userForHoldCheck?.role === 'client' && userForHoldCheck?.holdStatus?.isOnHold) {
+            console.log(`[Notification] Skipping notification for client ${userId} - client is on hold`);
+            return {
+                successCount: 0,
+                failureCount: 0,
+                invalidTokens: [],
+                responses: [],
+                skippedNoToken: true,
+                errorCode: 'CLIENT_ON_HOLD',
+                errorMessage: 'Client is on hold - notifications are suppressed.',
+            };
+        }
 
         let notificationRecordId: string | undefined;
 

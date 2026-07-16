@@ -96,6 +96,12 @@ function getStatusDisplay(status: UserStatus, clientStatus?: string, role?: User
       bgColor: 'bg-orange-100',
       icon: <AlertCircle className="h-4 w-4" />
     },
+    'hold': {
+      label: 'On Hold',
+      color: 'text-yellow-800',
+      bgColor: 'bg-yellow-100',
+      icon: <Clock className="h-4 w-4" />
+    },
     'suspended': {
       label: 'Suspended',
       color: 'text-red-700',
@@ -614,6 +620,7 @@ export default function AdminUsersPage() {
                   <SelectItem value="lead">Lead</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="hold">On Hold</SelectItem>
                   <SelectItem value="suspended">Suspended</SelectItem>
                 </SelectContent>
               </Select>

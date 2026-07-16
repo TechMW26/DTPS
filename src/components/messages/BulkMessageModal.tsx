@@ -12,7 +12,7 @@ interface User {
   avatar?: string;
   role: string;
   email?: string;
-  clientStatus?: 'lead' | 'active' | 'inactive';
+  clientStatus?: 'lead' | 'active' | 'inactive' | 'hold';
 }
 
 interface BulkMessageModalProps {
@@ -182,17 +182,24 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
                 </button>
                 <button
                   onClick={() => setFilterStatus('inactive')}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'inactive' ? 'bg-gray-100 text-gray-700 border-2 border-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'inactive' ? 'bg-red-100 text-red-700 border-2 border-red-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                 >
                   Inactive
                 </button>
                 <button
                   onClick={() => setFilterStatus('lead')}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'lead' ? 'bg-blue-100 text-blue-700 border-2 border-blue-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'lead' ? 'bg-gray-100 text-gray-700 border-2 border-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                 >
                   Lead
+                </button>
+                <button
+                  onClick={() => setFilterStatus('hold')}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === 'hold' ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                  On Hold
                 </button>
               </div>
 
@@ -246,8 +253,8 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
                       }`}
                   >
                     <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${selectedUsers.includes(user._id)
-                        ? 'bg-green-600 border-green-600'
-                        : 'border-gray-300'
+                      ? 'bg-green-600 border-green-600'
+                      : 'border-gray-300'
                       }`}>
                       {selectedUsers.includes(user._id) && <Check className="h-3 w-3 text-white" />}
                     </div>
@@ -263,10 +270,11 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
                         <p className="font-medium text-gray-900 text-sm">{user.firstName} {user.lastName}</p>
                         {user.clientStatus && (
                           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${user.clientStatus === 'active' ? 'bg-green-100 text-green-700' :
-                              user.clientStatus === 'inactive' ? 'bg-gray-100 text-gray-700' :
-                                'bg-blue-100 text-blue-700'
+                            user.clientStatus === 'inactive' ? 'bg-red-100 text-red-700' :
+                              user.clientStatus === 'hold' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-gray-100 text-gray-700'
                             }`}>
-                            {user.clientStatus.charAt(0).toUpperCase() + user.clientStatus.slice(1)}
+                            {user.clientStatus === 'hold' ? 'On Hold' : user.clientStatus.charAt(0).toUpperCase() + user.clientStatus.slice(1)}
                           </span>
                         )}
                       </div>
