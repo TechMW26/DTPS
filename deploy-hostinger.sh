@@ -17,7 +17,7 @@ REPO_OWNER="TechMW26"
 REPO_NAME="DTPS"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
 REPO_DIR="/opt/dtps"
-GITHUB_TOKEN="${GITHUB_TOKEN:-}"  # from env, or set via --github-token
+GITHUB_TOKEN="${GITHUB_TOKEN:-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}"
 CONTAINER_NAME="dtps-app"
 NGINX_CONTAINER="dtps-nginx"
 
