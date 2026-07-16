@@ -313,6 +313,19 @@ check_env_file() {
     fi
     
     log_success "Environment configuration validated"
+
+    # Production sanity checks
+    local NEXT_URL
+    NEXT_URL=$(grep -E "^NEXTAUTH_URL=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '\r' | tr -d '"' | tr -d "'")
+    if echo "$NEXT_URL" | grep -q "localhost"; then
+        log_warning "NEXTAUTH_URL is set to localhost — update to https://${DOMAIN} for production!"
+    fi
+
+    local NODE_ENV_VAL
+    NODE_ENV_VAL=$(grep -E "^NODE_ENV=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '\r' | tr -d '"' | tr -d "'")
+    if [ "$NODE_ENV_VAL" != "production" ]; then
+        log_warning "NODE_ENV is '${NODE_ENV_VAL}' — set to 'production' for deployment!"
+    fi
 }
 
 # Create SSL directories
@@ -541,8 +554,18 @@ clone_or_update_repo() {
     local AUTH_URL
     AUTH_URL=$(build_repo_url)
 
+    # If already inside a git repo, stay here — don't force /opt/dtps
+    if [ -d ".git" ]; then
+        log_info "Using existing repository at $(pwd)"
+        log_info "Ensuring remote points to ${REPO_OWNER}/${REPO_NAME}..."
+        git remote set-url origin "$AUTH_URL" 2>/dev/null || true
+        log_success "Repository ready at $(pwd)"
+        return
+    fi
+
+    # If repo already cloned at REPO_DIR, cd there
     if [ -d "$REPO_DIR/.git" ]; then
-        log_info "Repository already exists at $REPO_DIR"
+        log_info "Repository found at $REPO_DIR"
         cd "$REPO_DIR"
         log_info "Ensuring remote points to ${REPO_OWNER}/${REPO_NAME}..."
         git remote set-url origin "$AUTH_URL" 2>/dev/null || true
@@ -552,14 +575,12 @@ clone_or_update_repo() {
             log_warning "No GITHUB_TOKEN set — repo is private, clone may fail!"
             log_warning "Set via: export GITHUB_TOKEN=ghp_xxx OR use --github-token flag"
         fi
-        log_info "Cloning from ${REPO_OWNER}/${REPO_NAME}..."
+        log_info "Cloning from ${REPO_OWNER}/${REPO_NAME} to ${REPO_DIR}..."
         mkdir -p "$(dirname "$REPO_DIR")"
         git clone "$AUTH_URL" "$REPO_DIR"
         cd "$REPO_DIR"
         log_success "Repository cloned to $REPO_DIR"
     fi
-
-    APP_DIR="$REPO_DIR"
 }
 
 # Pull latest code from git
