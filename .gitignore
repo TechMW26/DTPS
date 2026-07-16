@@ -22,6 +22,12 @@
 
 # Gradle / Android generated files
 **/.gradle/
+**/build/
+!.gradle/build/  # allow root gradle directory (not generated)
+
+# Android native build outputs
+Store Apps/android/build-output/
+mobile-app/android/app/build/
 
 # misc
 .DS_Store
@@ -49,3 +55,22 @@ next-env.d.ts
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Generated reports
+/reports/
+
+# Temp files and directories
+.tmp/
+*.tmp
+
+# Release binaries
+*.aab
+*.apk
+
+# Test scripts at root
+/test-*.js
+
+# IDE
+.idea/
+*.swp
+*.swo

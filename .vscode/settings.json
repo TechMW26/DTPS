@@ -26,5 +26,6 @@
   "js/ts.tsdk.promptToUseWorkspaceVersion": true,
   "editor.codeActionsOnSave": {
     "source.fixAll": "explicit"
-  }
+  },
+  "java.configuration.updateBuildConfiguration": "interactive"
 }
