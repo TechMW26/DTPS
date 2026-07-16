@@ -23,6 +23,8 @@ DOMAIN="dtps.tech"
 EMAIL="avi2001raj@gmail.com"
 APP_NAME="dtps"
 APP_DIR=$(pwd)
+REPO_URL="https://github.com/TechMW26/DTPS.git"
+REPO_DIR="/opt/dtps"
 CONTAINER_NAME="dtps-app"
 NGINX_CONTAINER="dtps-nginx"
 
@@ -519,15 +521,43 @@ EOF
     log_success "docker-compose.prod.yml created"
 }
 
+# Clone or update repository from GitHub
+clone_or_update_repo() {
+    log_step "Setting Up Repository"
+
+    if [ -d "$REPO_DIR/.git" ]; then
+        log_info "Repository already exists at $REPO_DIR"
+        cd "$REPO_DIR"
+        log_info "Ensuring remote is set to TechMW26/DTPS..."
+        git remote set-url origin "$REPO_URL" 2>/dev/null || true
+        log_success "Repository ready"
+    else
+        log_info "Cloning fresh repository from TechMW26/DTPS..."
+        mkdir -p "$(dirname "$REPO_DIR")"
+        git clone "$REPO_URL" "$REPO_DIR"
+        cd "$REPO_DIR"
+        log_success "Repository cloned to $REPO_DIR"
+    fi
+
+    APP_DIR="$REPO_DIR"
+}
+
 # Pull latest code from git
 pull_latest_code() {
     log_step "Pulling Latest Code"
-    
+
     if [ -d .git ]; then
-        log_info "Fetching latest changes from repository..."
+        # Ensure correct remote
+        CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+        if [ "$CURRENT_REMOTE" != "$REPO_URL" ]; then
+            log_info "Updating remote to TechMW26/DTPS..."
+            git remote set-url origin "$REPO_URL" 2>/dev/null || true
+        fi
+
+        log_info "Fetching latest changes from TechMW26/DTPS..."
         git fetch origin 2>/dev/null || true
-        git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || log_warning "Could not pull latest code"
-        log_success "Code updated"
+        git reset --hard origin/main 2>/dev/null || git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || log_warning "Could not pull latest code"
+        log_success "Code updated from TechMW26/DTPS"
     else
         log_warning "Not a git repository, skipping code pull"
     fi
@@ -726,11 +756,14 @@ main() {
     
     # Check root
     check_root
-    
+
+    # Clone or update the repository
+    clone_or_update_repo
+
     # ALWAYS stop conflicting web servers (LiteSpeed, Apache, etc.)
     # This is critical on Hostinger VPS where LiteSpeed is pre-installed
     stop_conflicting_servers
-    
+
     # Install dependencies
     if ! $SKIP_DEPS; then
         install_dependencies
@@ -740,10 +773,10 @@ main() {
         fi
         configure_firewall
     fi
-    
+
     # Check environment
     check_env_file
-    
+
     # Pull latest code
     pull_latest_code
     
