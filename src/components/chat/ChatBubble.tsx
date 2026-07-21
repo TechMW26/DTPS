@@ -19,7 +19,7 @@ import {
   RotateCcw,
   CornerDownRight,
 } from "lucide-react";
-import { ImageModal } from "./ImageModal";
+import { VoiceNotePlayer } from "./VoiceNotePlayer";
 import { MessageReactions } from "./MessageReactions";
 
 export interface ChatMessage {
@@ -96,7 +96,12 @@ export function ChatBubble({
   onResend,
   currentUserId,
 }: ChatBubbleProps) {
-  const [imageError, setImageError] = useState(false);
+  const [imageErrors, setImageErrors] = useState<Map<string, boolean>>(
+    new Map(),
+  );
+  const [imageRetryCount, setImageRetryCount] = useState<Map<string, number>>(
+    new Map(),
+  );
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImageUrl, setSelectedImageUrl] = useState("");
 
@@ -138,21 +143,87 @@ export function ChatBubble({
       const attachment = message.attachments[0]; // For now, handle single attachment
 
       switch (message.type) {
-        case "image":
+        case "image": {
+          const imageKey = attachment.url;
+          const hasError = imageErrors.get(imageKey) || false;
+          const retries = imageRetryCount.get(imageKey) || 0;
+
+          const handleImageError = () => {
+            const currentRetries = imageRetryCount.get(imageKey) || 0;
+
+            if (currentRetries === 0) {
+              // First failure: try via image proxy (adds CORS headers + handles CDN issues)
+              setImageRetryCount((prev) => {
+                const next = new Map(prev);
+                next.set(imageKey, 1);
+                return next;
+              });
+            } else if (currentRetries === 1) {
+              // Second failure: try the proxy endpoint directly
+              setImageRetryCount((prev) => {
+                const next = new Map(prev);
+                next.set(imageKey, 2);
+                return next;
+              });
+            } else {
+              // Third+ failure: give up
+              setImageErrors((prev) => {
+                const next = new Map(prev);
+                next.set(imageKey, true);
+                return next;
+              });
+            }
+          };
+
+          const handleRetry = () => {
+            setImageErrors((prev) => {
+              const next = new Map(prev);
+              next.delete(imageKey);
+              return next;
+            });
+            setImageRetryCount((prev) => {
+              const next = new Map(prev);
+              next.set(imageKey, 0);
+              return next;
+            });
+          };
+
+          // Determine image source based on retry count
+          const getImageSrc = () => {
+            const baseUrl = attachment.thumbnail || attachment.url;
+            if (retries === 1) {
+              // First retry: try via image proxy endpoint
+              return `/api/audio-proxy?url=${encodeURIComponent(baseUrl)}`;
+            }
+            if (retries >= 2) {
+              // Second retry: try direct URL again (may have been transient)
+              return baseUrl;
+            }
+            return baseUrl;
+          };
+
           return (
             <div className="relative max-w-xs">
-              {!imageError ? (
+              {!hasError ? (
                 <div
                   className="cursor-pointer group relative"
                   onClick={() => handleImageClick(attachment.url)}
                 >
                   <img
-                    src={attachment.thumbnail || attachment.url}
+                    src={getImageSrc()}
                     alt={attachment.filename}
                     className="rounded-lg max-w-full h-auto transition-opacity group-hover:opacity-90"
-                    onError={() => setImageError(true)}
+                    onError={handleImageError}
                     style={{ maxHeight: "300px", maxWidth: "250px" }}
+                    loading="lazy"
                   />
+                  {retries > 0 && (
+                    <div className="absolute inset-0 bg-gray-100/80 rounded-lg flex items-center justify-center">
+                      <div className="animate-pulse text-gray-400 text-xs">
+                        Loading...
+                      </div>
+                    </div>
+                  )}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center">
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="bg-black/50 rounded-full p-2">
@@ -176,11 +247,21 @@ export function ChatBubble({
               ) : (
                 <div className="bg-gray-100 rounded-lg p-4 text-center text-gray-500">
                   <AlertCircle className="w-8 h-8 mx-auto mb-2" />
-                  <p className="text-sm">Failed to load image</p>
+                  <p className="text-sm mb-2">Failed to load image</p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRetry();
+                    }}
+                    className="text-xs text-indigo-600 hover:text-indigo-700 font-medium underline"
+                  >
+                    Tap to retry
+                  </button>
                 </div>
               )}
             </div>
           );
+        }
 
         case "video":
           return (
@@ -211,24 +292,19 @@ export function ChatBubble({
                 : "Voice message"
               : attachment.filename;
 
+          // Normalize MIME type: strip codec suffix (e.g. "audio/webm;codecs=opus" → "audio/webm")
+          // so the browser's <source> type check doesn't reject the CDN-served Content-Type.
+          const normalizedMimeType = (attachment.mimeType || "audio/mpeg")
+            .replace(/;.*$/, "")
+            .trim();
+
           return (
             <div className="max-w-70 min-w-50">
-              {/* WhatsApp-style voice message */}
-              <div className="flex items-center gap-2">
-                <audio
-                  controls
-                  className="w-full h-8"
-                  style={{
-                    filter: isOwn ? "hue-rotate(80deg) saturate(1.2)" : "none",
-                  }}
-                >
-                  <source
-                    src={attachment.url}
-                    type={attachment.mimeType || "audio/mpeg"}
-                  />
-                  Your browser does not support audio.
-                </audio>
-              </div>
+              <VoiceNotePlayer
+                audioUrl={attachment.url}
+                mimeType={normalizedMimeType}
+                duration={attachment.duration}
+              />
               <div className="flex items-center justify-between mt-1 text-[10px] text-gray-500">
                 <span
                   className={cn(message.status === "failed" && "text-red-500")}

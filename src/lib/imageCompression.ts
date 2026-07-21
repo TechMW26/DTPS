@@ -7,14 +7,14 @@ export interface CompressionOptions {
   maxWidth?: number;
   maxHeight?: number;
   quality?: number; // 0 to 1
-  format?: 'image/jpeg' | 'image/png' | 'image/webp';
+  format?: "image/jpeg" | "image/png" | "image/webp";
 }
 
 const defaultOptions: CompressionOptions = {
   maxWidth: 1200,
   maxHeight: 1200,
   quality: 0.8,
-  format: 'image/jpeg'
+  format: "image/jpeg",
 };
 
 /**
@@ -25,86 +25,95 @@ const defaultOptions: CompressionOptions = {
  */
 export async function compressImage(
   file: File,
-  options: CompressionOptions = {}
-): Promise<{ blob: Blob; dataUrl: string; size: number; originalSize: number; compressedSize: number }> {
+  options: CompressionOptions = {},
+): Promise<{
+  blob: Blob;
+  dataUrl: string;
+  size: number;
+  originalSize: number;
+  compressedSize: number;
+}> {
   const opts = { ...defaultOptions, ...options };
-  
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = (event) => {
       const img = new Image();
-      
+
       img.onload = () => {
         // Calculate new dimensions while maintaining aspect ratio
         let { width, height } = img;
         const maxWidth = opts.maxWidth || 1200;
         const maxHeight = opts.maxHeight || 1200;
-        
+
         if (width > maxWidth) {
           height = (height * maxWidth) / width;
           width = maxWidth;
         }
-        
+
         if (height > maxHeight) {
           width = (width * maxHeight) / height;
           height = maxHeight;
         }
-        
+
         // Create canvas and draw image
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
+
+        const ctx = canvas.getContext("2d");
         if (!ctx) {
-          reject(new Error('Could not get canvas context'));
+          reject(new Error("Could not get canvas context"));
           return;
         }
-        
+
         // Draw white background for JPEG (to handle transparency)
-        if (opts.format === 'image/jpeg') {
-          ctx.fillStyle = '#FFFFFF';
+        if (opts.format === "image/jpeg") {
+          ctx.fillStyle = "#FFFFFF";
           ctx.fillRect(0, 0, width, height);
         }
-        
+
         ctx.drawImage(img, 0, 0, width, height);
-        
+
         // Convert to blob and dataUrl
-        const dataUrl = canvas.toDataURL(opts.format || 'image/jpeg', opts.quality || 0.8);
-        
+        const dataUrl = canvas.toDataURL(
+          opts.format || "image/jpeg",
+          opts.quality || 0.8,
+        );
+
         // Convert canvas to blob
         canvas.toBlob(
           (blob) => {
             if (!blob) {
-              reject(new Error('Failed to convert canvas to blob'));
+              reject(new Error("Failed to convert canvas to blob"));
               return;
             }
-            
+
             resolve({
               blob,
               dataUrl,
               size: blob.size,
               originalSize: file.size,
-              compressedSize: blob.size
+              compressedSize: blob.size,
             });
           },
-          opts.format || 'image/jpeg',
-          opts.quality || 0.8
+          opts.format || "image/jpeg",
+          opts.quality || 0.8,
         );
       };
-      
+
       img.onerror = () => {
-        reject(new Error('Failed to load image'));
+        reject(new Error("Failed to load image"));
       };
-      
+
       img.src = event.target?.result as string;
     };
-    
+
     reader.onerror = () => {
-      reject(new Error('Failed to read file'));
+      reject(new Error("Failed to read file"));
     };
-    
+
     reader.readAsDataURL(file);
   });
 }
@@ -117,52 +126,54 @@ export async function compressImage(
  */
 export async function compressBase64Image(
   base64String: string,
-  options: CompressionOptions = {}
+  options: CompressionOptions = {},
 ): Promise<string> {
   const opts = { ...defaultOptions, ...options };
-  
+
   return new Promise((resolve, reject) => {
     const img = new Image();
-    
+
     img.onload = () => {
       let { width, height } = img;
       const maxWidth = opts.maxWidth || 1200;
       const maxHeight = opts.maxHeight || 1200;
-      
+
       if (width > maxWidth) {
         height = (height * maxWidth) / width;
         width = maxWidth;
       }
-      
+
       if (height > maxHeight) {
         width = (width * maxHeight) / height;
         height = maxHeight;
       }
-      
-      const canvas = document.createElement('canvas');
+
+      const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
-      
-      const ctx = canvas.getContext('2d');
+
+      const ctx = canvas.getContext("2d");
       if (!ctx) {
-        reject(new Error('Could not get canvas context'));
+        reject(new Error("Could not get canvas context"));
         return;
       }
-      
-      if (opts.format === 'image/jpeg') {
-        ctx.fillStyle = '#FFFFFF';
+
+      if (opts.format === "image/jpeg") {
+        ctx.fillStyle = "#FFFFFF";
         ctx.fillRect(0, 0, width, height);
       }
-      
+
       ctx.drawImage(img, 0, 0, width, height);
-      
-      resolve(canvas.toDataURL(opts.format || 'image/jpeg', opts.quality || 0.8));
+
+      resolve(
+        canvas.toDataURL(opts.format || "image/jpeg", opts.quality || 0.8),
+      );
     };
-    
+
     img.onerror = () => {
-      reject(new Error('Failed to load image'));
+      reject(new Error("Failed to load image"));
     };
-    
+
     img.src = base64String;
   });
 }
@@ -199,15 +210,30 @@ export function extractBase64Data(dataUrl: string): string {
  */
 export function validateImageFile(
   file: File,
-  maxSizeMB: number = 10
+  maxSizeMB: number = 10,
 ): { valid: boolean; error?: string } {
-  const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  const validTypes = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+  ];
   const maxSizeBytes = maxSizeMB * 1024 * 1024;
 
-  if (!validTypes.includes(file.type)) {
+  // Check MIME type OR extension fallback (iOS/Android gallery pickers often
+  // report an empty or non-standard MIME type for HEIC/HEIF images)
+  const extension = (file.name.split(".").pop() || "").toLowerCase();
+  const imageExtensions = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+  const mimeValid = validTypes.includes((file.type || "").toLowerCase());
+  const extValid = imageExtensions.includes(extension);
+
+  if (!mimeValid && !extValid) {
     return {
       valid: false,
-      error: 'Invalid file type. Please upload JPG, PNG, or WebP image.',
+      error:
+        "Invalid file type. Please upload a JPG, PNG, WebP, or HEIC image.",
     };
   }
 
@@ -231,20 +257,20 @@ export function validateImageFile(
 export async function uploadCompressedImage(
   blob: Blob,
   fileName: string,
-  folder: string = 'recipes'
+  folder: string = "recipes",
 ): Promise<string> {
   const formData = new FormData();
-  formData.append('file', blob, fileName);
-  formData.append('folder', folder);
+  formData.append("file", blob, fileName);
+  formData.append("folder", folder);
 
-  const response = await fetch('/api/upload-image', {
-    method: 'POST',
+  const response = await fetch("/api/upload-image", {
+    method: "POST",
     body: formData,
   });
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to upload image');
+    throw new Error(error.error || "Failed to upload image");
   }
 
   const data = await response.json();

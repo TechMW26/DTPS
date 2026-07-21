@@ -44,9 +44,11 @@ type SendableMessageType =
   | "audio"
   | "voice";
 
-interface FailedVoiceUploadDraft {
+interface FailedMediaDraft {
   blob?: Blob;
+  file?: File;
   attachment: ChatAttachment;
+  messageType: "image" | "video" | "audio" | "voice" | "file";
 }
 
 export function ChatInterface({
@@ -77,32 +79,30 @@ export function ChatInterface({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const failedVoiceDraftsRef = useRef<Map<string, FailedVoiceUploadDraft>>(
-    new Map(),
-  );
+  const failedMediaDraftsRef = useRef<Map<string, FailedMediaDraft>>(new Map());
 
-  const clearFailedVoiceDraft = useCallback((messageId: string) => {
-    const draft = failedVoiceDraftsRef.current.get(messageId);
+  const clearFailedMediaDraft = useCallback((messageId: string) => {
+    const draft = failedMediaDraftsRef.current.get(messageId);
     if (draft?.attachment.url?.startsWith("blob:")) {
       URL.revokeObjectURL(draft.attachment.url);
     }
-    failedVoiceDraftsRef.current.delete(messageId);
+    failedMediaDraftsRef.current.delete(messageId);
   }, []);
 
-  const clearAllFailedVoiceDrafts = useCallback(() => {
-    failedVoiceDraftsRef.current.forEach((draft) => {
+  const clearAllFailedMediaDrafts = useCallback(() => {
+    failedMediaDraftsRef.current.forEach((draft) => {
       if (draft.attachment.url?.startsWith("blob:")) {
         URL.revokeObjectURL(draft.attachment.url);
       }
     });
-    failedVoiceDraftsRef.current.clear();
+    failedMediaDraftsRef.current.clear();
   }, []);
 
   useEffect(() => {
     return () => {
-      clearAllFailedVoiceDrafts();
+      clearAllFailedMediaDrafts();
     };
-  }, [clearAllFailedVoiceDrafts]);
+  }, [clearAllFailedMediaDrafts]);
 
   // Real-time connection
   const { onlineUsers, sendTyping } = useRealtime({
@@ -260,38 +260,55 @@ export function ChatInterface({
     [recipient._id],
   );
 
-  const uploadVoiceDraft = useCallback(
-    async (draft: FailedVoiceUploadDraft): Promise<ChatAttachment> => {
-      if (!draft.blob) {
-        throw new Error("No voice draft blob available for upload retry");
+  const uploadMediaDraft = useCallback(
+    async (draft: FailedMediaDraft): Promise<ChatAttachment> => {
+      const fileToUpload =
+        draft.file ||
+        (draft.blob
+          ? new File(
+              [draft.blob],
+              draft.attachment.filename || `media_${Date.now()}`,
+              { type: draft.attachment.mimeType || "application/octet-stream" },
+            )
+          : null);
+
+      if (!fileToUpload) {
+        throw new Error("No media file available for upload retry");
       }
 
       const draftMimeType = (
-        draft.attachment.mimeType || "audio/webm"
+        draft.attachment.mimeType ||
+        fileToUpload.type ||
+        "application/octet-stream"
       ).toLowerCase();
-      const fileExtension =
-        draftMimeType.includes("mp4") ||
-        draftMimeType.includes("m4a") ||
-        draftMimeType.includes("aac")
-          ? "m4a"
-          : draftMimeType.includes("webm")
-            ? "webm"
-            : draftMimeType.includes("ogg") || draftMimeType.includes("opus")
-              ? "ogg"
-              : draftMimeType.includes("wav")
-                ? "wav"
-                : "webm";
 
-      const voiceFile = new File(
-        [draft.blob],
-        `voice_${Date.now()}.${fileExtension}`,
-        {
-          type: draft.attachment.mimeType || "audio/webm",
-        },
-      );
+      // For audio voice drafts, ensure proper file extension
+      const isAudio =
+        draft.messageType === "voice" || draft.messageType === "audio";
+      let fileToUse = fileToUpload;
+      if (isAudio && draft.blob) {
+        const fileExtension =
+          draftMimeType.includes("mp4") ||
+          draftMimeType.includes("m4a") ||
+          draftMimeType.includes("aac")
+            ? "m4a"
+            : draftMimeType.includes("webm")
+              ? "webm"
+              : draftMimeType.includes("ogg") || draftMimeType.includes("opus")
+                ? "ogg"
+                : draftMimeType.includes("wav")
+                  ? "wav"
+                  : "webm";
+
+        fileToUse = new File(
+          [draft.blob],
+          `voice_${Date.now()}.${fileExtension}`,
+          { type: draft.attachment.mimeType || "audio/webm" },
+        );
+      }
 
       const formData = new FormData();
-      formData.append("file", voiceFile);
+      formData.append("file", fileToUse);
       formData.append("type", "message");
 
       const uploadResponse = await fetch("/api/upload", {
@@ -301,25 +318,40 @@ export function ChatInterface({
 
       if (!uploadResponse.ok) {
         const errorText = await uploadResponse.text();
-        throw new Error(errorText || "Failed to upload voice message");
+        throw new Error(errorText || "Failed to upload media");
       }
 
       const uploadData = await uploadResponse.json();
 
+      // Normalize MIME type: strip codec suffix so browsers don't reject
+      const normalizedMimeType = (
+        uploadData.type ||
+        fileToUse.type ||
+        draft.attachment.mimeType ||
+        "application/octet-stream"
+      )
+        .replace(/;.*$/, "")
+        .trim();
+
       return {
         url: uploadData.url,
-        filename: uploadData.filename || voiceFile.name,
-        size: uploadData.size || voiceFile.size,
-        mimeType: uploadData.type || voiceFile.type,
+        filename: uploadData.filename || fileToUse.name,
+        size: uploadData.size || fileToUse.size,
+        mimeType: normalizedMimeType,
         duration: draft.attachment.duration,
+        width: draft.attachment.width,
+        height: draft.attachment.height,
       };
     },
     [],
   );
 
+  // Keep backward compatibility alias
+  const uploadVoiceDraft = uploadMediaDraft;
+
   const replaceMessageWithServerVersion = useCallback(
     (localId: string, sentMessage: ChatMessage) => {
-      clearFailedVoiceDraft(localId);
+      clearFailedMediaDraft(localId);
 
       setMessages((prev) => {
         const withoutLocalAndDuplicates = prev.filter(
@@ -331,7 +363,7 @@ export function ChatInterface({
         ];
       });
     },
-    [clearFailedVoiceDraft],
+    [clearFailedMediaDraft],
   );
 
   const handleCreateVoicePlaceholder = useCallback(
@@ -359,8 +391,9 @@ export function ChatInterface({
         status: "sending",
       };
 
-      failedVoiceDraftsRef.current.set(tempMessageId, {
+      failedMediaDraftsRef.current.set(tempMessageId, {
         attachment: payload.attachment,
+        messageType: "voice",
       });
 
       setMessages((prev) => [...prev, tempMessage]);
@@ -368,6 +401,82 @@ export function ChatInterface({
       return tempMessageId;
     },
     [recipient, scrollToBottom, session?.user],
+  );
+
+  const handleCreateMediaPlaceholder = useCallback(
+    (payload: {
+      content: string;
+      attachment: ChatAttachment;
+      messageType: "image" | "video" | "audio" | "file";
+    }) => {
+      if (!session?.user?.id) {
+        return "";
+      }
+
+      const tempMessageId = `temp-media-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      const tempMessage: ChatMessage = {
+        _id: tempMessageId,
+        content: payload.content,
+        type: payload.messageType,
+        attachments: [payload.attachment],
+        sender: {
+          _id: session.user.id,
+          firstName: session.user.firstName,
+          lastName: session.user.lastName,
+          avatar: session.user.avatar,
+        },
+        receiver: recipient,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        status: "sending",
+      };
+
+      // Don't store blob here yet — that's done on failure
+      failedMediaDraftsRef.current.set(tempMessageId, {
+        attachment: payload.attachment,
+        messageType: payload.messageType,
+      });
+
+      setMessages((prev) => [...prev, tempMessage]);
+      scrollToBottom();
+      return tempMessageId;
+    },
+    [recipient, scrollToBottom, session?.user],
+  );
+
+  const handleMediaUploadFailed = useCallback(
+    (payload: {
+      messageId: string;
+      error: string;
+      file: File;
+      attachment: ChatAttachment;
+      messageType: "image" | "video" | "audio" | "file";
+    }) => {
+      if (!payload.messageId) {
+        return;
+      }
+
+      failedMediaDraftsRef.current.set(payload.messageId, {
+        file: payload.file,
+        attachment: payload.attachment,
+        messageType: payload.messageType,
+      });
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === payload.messageId
+            ? {
+                ...msg,
+                status: "failed",
+                content: `${payload.messageType.charAt(0).toUpperCase() + payload.messageType.slice(1)} upload failed. Tap resend.`,
+                attachments: [payload.attachment],
+              }
+            : msg,
+        ),
+      );
+    },
+    [],
   );
 
   const handleVoiceUploadFailed = useCallback(
@@ -381,9 +490,10 @@ export function ChatInterface({
         return;
       }
 
-      failedVoiceDraftsRef.current.set(payload.messageId, {
+      failedMediaDraftsRef.current.set(payload.messageId, {
         blob: payload.blob,
         attachment: payload.attachment,
+        messageType: "voice",
       });
 
       setMessages((prev) =>
@@ -458,7 +568,7 @@ export function ChatInterface({
 
         if (replyToId) {
           tempMessage.replyTo =
-            messages.find((msg) => msg._id === replyToId) || null;
+            messages.find((msg) => msg._id === replyToId) || undefined;
         }
 
         setMessages((prev) => [...prev, tempMessage]);
@@ -516,8 +626,12 @@ export function ChatInterface({
         }
       };
 
-      const failedVoiceDraft = failedVoiceDraftsRef.current.get(message._id);
-      const requiresVoiceUploadRetry = Boolean(failedVoiceDraft?.blob);
+      const failedMediaDraft = failedMediaDraftsRef.current.get(message._id);
+      const requiresUploadRetry = Boolean(
+        failedMediaDraft?.blob || failedMediaDraft?.file,
+      );
+      const isVoiceRetry =
+        requiresUploadRetry && failedMediaDraft?.messageType === "voice";
 
       setMessages((prev) =>
         prev.map((msg) =>
@@ -525,8 +639,10 @@ export function ChatInterface({
             ? {
                 ...msg,
                 status: "sending",
-                content: requiresVoiceUploadRetry
-                  ? "Sending voice..."
+                content: requiresUploadRetry
+                  ? isVoiceRetry
+                    ? "Sending voice..."
+                    : `Uploading ${failedMediaDraft?.messageType || "media"}...`
                   : msg.content,
               }
             : msg,
@@ -540,10 +656,12 @@ export function ChatInterface({
         );
         let resendAttachments = message.attachments;
 
-        if (requiresVoiceUploadRetry && failedVoiceDraft) {
-          const uploadedAttachment = await uploadVoiceDraft(failedVoiceDraft);
-          resendContent = "Voice message";
-          resendType = "voice";
+        if (requiresUploadRetry && failedMediaDraft) {
+          const uploadedAttachment = await uploadMediaDraft(failedMediaDraft);
+          resendContent = isVoiceRetry
+            ? "Voice message"
+            : message.content || uploadedAttachment.filename;
+          resendType = failedMediaDraft.messageType as SendableMessageType;
           resendAttachments = [uploadedAttachment];
         }
 
@@ -561,8 +679,10 @@ export function ChatInterface({
               ? {
                   ...msg,
                   status: "failed",
-                  content: requiresVoiceUploadRetry
-                    ? "Voice upload failed. Tap resend."
+                  content: requiresUploadRetry
+                    ? isVoiceRetry
+                      ? "Voice upload failed. Tap resend."
+                      : "Upload failed. Tap resend."
                     : msg.content,
                 }
               : msg,
@@ -574,7 +694,7 @@ export function ChatInterface({
       replaceMessageWithServerVersion,
       sendMessageToApi,
       session?.user?.id,
-      uploadVoiceDraft,
+      uploadMediaDraft,
     ],
   );
 
@@ -730,6 +850,8 @@ export function ChatInterface({
         onSendMessage={handleSendMessage}
         onCreateVoicePlaceholder={handleCreateVoicePlaceholder}
         onVoiceUploadFailed={handleVoiceUploadFailed}
+        onCreateMediaPlaceholder={handleCreateMediaPlaceholder}
+        onMediaUploadFailed={handleMediaUploadFailed}
         onTyping={handleTyping}
         disabled={!session?.user?.id}
         placeholder={`Message ${recipient.firstName}...`}

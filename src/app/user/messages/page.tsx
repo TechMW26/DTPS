@@ -207,10 +207,20 @@ export default function UserMessagesPage() {
       resolvedUrl = `${window.location.origin}${resolvedUrl}`;
     }
 
+    // Cache-bust ImageKit URLs to avoid serving stale CDN-cached error
+    // responses (e.g. from billing suspension periods).
+    const isImageKit = /ik\.imagekit\.io/i.test(resolvedUrl);
     const retryTick = attachmentRetryTick[messageId] || 0;
-    if (retryTick > 0) {
+    if (isImageKit || retryTick > 0) {
       const separator = resolvedUrl.includes("?") ? "&" : "?";
-      resolvedUrl = `${resolvedUrl}${separator}retry=${retryTick}`;
+      // Use a stable daily cache-buster for non-retried URLs so that
+      // the browser can still cache within a session, but stale CDN
+      // error pages from previous billing outages are skipped.
+      const bustParam =
+        retryTick > 0
+          ? `retry=${retryTick}`
+          : `ts=${Math.floor(Date.now() / 600000)}`; // ~10 min rotation
+      resolvedUrl = `${resolvedUrl}${separator}${bustParam}`;
     }
 
     return resolvedUrl;
@@ -1773,7 +1783,7 @@ export default function UserMessagesPage() {
                         // Check if URL is from ImageKit and appears to be an image
                         const isImageKitImage =
                           /ik\.imagekit\.io/i.test(lowerUrl) &&
-                          (/\/(messages|meal-completions|progress|transformation|profile|recipes)\//i.test(
+                          (/\/(messages|complete-meal|meal-completions|progress|transformation|profile|recipes)\//i.test(
                             lowerUrl,
                           ) ||
                             /tr:[^/]*\.(jpg|jpeg|png|webp)/i.test(lowerUrl));

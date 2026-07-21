@@ -1,10 +1,19 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { cn } from '@/lib/utils';
-import { Mic, MicOff, Send, Trash2, Square, AlertCircle, Loader2, RotateCcw } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
+import {
+  Mic,
+  MicOff,
+  Send,
+  Trash2,
+  Square,
+  AlertCircle,
+  Loader2,
+  RotateCcw,
+} from "lucide-react";
 
 interface VoiceRecorderProps {
   onSend: (audioBlob: Blob) => Promise<void> | void;
@@ -13,15 +22,22 @@ interface VoiceRecorderProps {
   className?: string;
 }
 
-export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }: VoiceRecorderProps) {
+export function VoiceRecorder({
+  onSend,
+  onCancel,
+  autoStart = false,
+  className,
+}: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string>('');
+  const [audioUrl, setAudioUrl] = useState<string>("");
   const [waveformData, setWaveformData] = useState<number[]>([]);
-  const [error, setError] = useState<string>('');
-  const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
+  const [error, setError] = useState<string>("");
+  const [permissionGranted, setPermissionGranted] = useState<boolean | null>(
+    null,
+  );
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -36,11 +52,6 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
   const stopRecordingInternals = useCallback(() => {
     recordingActiveRef.current = false;
 
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -49,6 +60,16 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
+    }
+
+    // NOTE: Do NOT stop stream tracks here — that must happen AFTER
+    // MediaRecorder.onstop fires, otherwise audio data is truncated.
+  }, []);
+
+  const releaseMediaStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
   }, []);
 
@@ -65,7 +86,7 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
       if (prev) {
         URL.revokeObjectURL(prev);
       }
-      return '';
+      return "";
     });
   }, []);
 
@@ -89,44 +110,52 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
     checkMicrophonePermission();
 
     return () => {
+      releaseMediaStream();
       stopRecordingInternals();
 
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
       }
 
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      if (
+        audioContextRef.current &&
+        audioContextRef.current.state !== "closed"
+      ) {
         audioContextRef.current.close();
       }
     };
-  }, [audioUrl, stopRecordingInternals]);
+  }, [audioUrl, stopRecordingInternals, releaseMediaStream]);
 
   const checkMicrophonePermission = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setError('Your browser does not support audio recording');
+        setError("Your browser does not support audio recording");
         setPermissionGranted(false);
         return;
       }
 
       // Check if we already have permission
       if (navigator.permissions) {
-        const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-        if (permission.state === 'granted') {
+        const permission = await navigator.permissions.query({
+          name: "microphone" as PermissionName,
+        });
+        if (permission.state === "granted") {
           setPermissionGranted(true);
-        } else if (permission.state === 'denied') {
-          setError('Microphone access denied. Please enable microphone permissions.');
+        } else if (permission.state === "denied") {
+          setError(
+            "Microphone access denied. Please enable microphone permissions.",
+          );
           setPermissionGranted(false);
         }
       }
     } catch (error) {
-      console.error('Error checking microphone permission:', error);
+      console.error("Error checking microphone permission:", error);
     }
   };
 
   const startRecording = useCallback(async () => {
     try {
-      setError('');
+      setError("");
 
       if (audioBlob) {
         clearRecordedAudio();
@@ -137,8 +166,8 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
-        }
+          autoGainControl: true,
+        },
       });
 
       streamRef.current = stream;
@@ -147,16 +176,17 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
       // Set up audio context for waveform visualization
       const AudioContextClass =
         window.AudioContext ||
-        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        (window as Window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
 
       if (!AudioContextClass) {
-        throw new Error('AudioContext not supported');
+        throw new Error("AudioContext not supported");
       }
 
       audioContextRef.current = new AudioContextClass();
 
       // Resume audio context if it's suspended (browser policy)
-      if (audioContextRef.current.state === 'suspended') {
+      if (audioContextRef.current.state === "suspended") {
         await audioContextRef.current.resume();
       }
 
@@ -167,14 +197,14 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
       analyserRef.current.smoothingTimeConstant = 0.8;
 
       // Determine the best audio format supported by the browser
-      let mimeType = 'audio/webm';
+      let mimeType = "audio/webm";
       const mimeTypes = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
-        'audio/ogg;codecs=opus',
-        'audio/ogg',
-        'audio/wav'
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+        "audio/ogg",
+        "audio/wav",
       ];
 
       for (const type of mimeTypes) {
@@ -184,11 +214,11 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
         }
       }
 
-      console.log('Using audio mimeType:', mimeType);
+      console.log("Using audio mimeType:", mimeType);
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType,
-        audioBitsPerSecond: 128000 // 128kbps for good quality
+        audioBitsPerSecond: 128000, // 128kbps for good quality
       });
       mediaRecorderRef.current = mediaRecorder;
 
@@ -202,9 +232,14 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
       };
 
       mediaRecorder.onstop = () => {
+        // Release the media stream NOW — after MediaRecorder has finished
+        // flushing all audio chunks. This must happen BEFORE creating the
+        // blob so we don't lose the final chunk of data (Chrome quirk).
+        releaseMediaStream();
+
         const blob = new Blob(chunksRef.current, { type: mimeType });
         if (blob.size === 0) {
-          setError('No audio captured. Please try again.');
+          setError("No audio captured. Please try again.");
           chunksRef.current = [];
           return;
         }
@@ -220,8 +255,9 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
       };
 
       mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-        setError('Recording failed. Please try again.');
+        console.error("MediaRecorder error:", event);
+        setError("Recording failed. Please try again.");
+        releaseMediaStream();
         stopRecordingInternals();
         setIsRecording(false);
       };
@@ -234,35 +270,45 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
 
       // Start timer
       intervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
+        setRecordingTime((prev) => prev + 1);
       }, 1000);
 
       // Start waveform animation
       updateWaveform();
     } catch (error: unknown) {
-      console.error('Error starting recording:', error);
+      console.error("Error starting recording:", error);
       setPermissionGranted(false);
 
-      const errorName = error instanceof DOMException ? error.name : '';
+      const errorName = error instanceof DOMException ? error.name : "";
 
-      if (errorName === 'NotAllowedError') {
-        setError('Microphone access denied. Please allow microphone access and try again.');
-      } else if (errorName === 'NotFoundError') {
-        setError('No microphone found. Please connect a microphone and try again.');
-      } else if (errorName === 'NotSupportedError') {
-        setError('Audio recording is not supported in your browser.');
+      if (errorName === "NotAllowedError") {
+        setError(
+          "Microphone access denied. Please allow microphone access and try again.",
+        );
+      } else if (errorName === "NotFoundError") {
+        setError(
+          "No microphone found. Please connect a microphone and try again.",
+        );
+      } else if (errorName === "NotSupportedError") {
+        setError("Audio recording is not supported in your browser.");
       } else {
-        setError('Failed to start recording. Please try again.');
+        setError("Failed to start recording. Please try again.");
       }
     }
-  }, [audioBlob, clearRecordedAudio, stopRecordingInternals, updateWaveform]);
+  }, [
+    audioBlob,
+    clearRecordedAudio,
+    stopRecordingInternals,
+    updateWaveform,
+    releaseMediaStream,
+  ]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       try {
         mediaRecorderRef.current.stop();
       } catch (error) {
-        console.error('Error stopping recording:', error);
+        console.error("Error stopping recording:", error);
       }
 
       setIsRecording(false);
@@ -281,12 +327,12 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
   const handleSend = async () => {
     if (audioBlob && !isSending) {
       setIsSending(true);
-      setError('');
+      setError("");
       try {
         await onSend(audioBlob);
       } catch (err) {
-        console.error('Failed to send voice message:', err);
-        setError('Failed to send voice message. Please try again.');
+        console.error("Failed to send voice message:", err);
+        setError("Failed to send voice message. Please try again.");
       } finally {
         setIsSending(false);
       }
@@ -297,7 +343,7 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
     if (isSending) return;
 
     clearRecordedAudio();
-    setError('');
+    setError("");
     await startRecording();
   };
 
@@ -307,14 +353,14 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
     }
 
     clearRecordedAudio();
-    setError('');
+    setError("");
     onCancel();
   };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   return (
@@ -337,10 +383,14 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
             disabled={permissionGranted === false || isSending}
             className={cn(
               "h-10 w-10 rounded-full p-0 transition-all",
-              isRecording && "animate-pulse"
+              isRecording && "animate-pulse",
             )}
           >
-            {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            {isRecording ? (
+              <Square className="w-4 h-4" />
+            ) : (
+              <Mic className="w-4 h-4" />
+            )}
           </Button>
         ) : (
           <div className="h-10 w-10 rounded-full border bg-gray-100 flex items-center justify-center text-gray-500">
@@ -351,50 +401,47 @@ export function VoiceRecorder({ onSend, onCancel, autoStart = false, className }
         {/* Waveform visualization */}
         <div className="flex-1 flex items-center justify-center h-10">
           {error ? (
-            <div className="text-sm text-red-500">
-              Recording unavailable
-            </div>
+            <div className="text-sm text-red-500">Recording unavailable</div>
           ) : isRecording ? (
             <div className="flex items-end space-x-1 h-8">
-              {waveformData.length > 0 ? (
-                waveformData.map((amplitude, index) => (
-                  <div
-                    key={index}
-                    className="bg-green-500 rounded-full transition-all duration-150 animate-pulse"
-                    style={{
-                      width: '2px',
-                      height: `${Math.max(2, amplitude * 24)}px`,
-                    }}
-                  />
-                ))
-              ) : (
-                // Fallback animation when no waveform data
-                Array.from({ length: 20 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="bg-green-400 rounded-full animate-pulse"
-                    style={{
-                      width: '2px',
-                      height: `${4 + Math.random() * 16}px`,
-                      animationDelay: `${index * 50}ms`,
-                    }}
-                  />
-                ))
-              )}
+              {waveformData.length > 0
+                ? waveformData.map((amplitude, index) => (
+                    <div
+                      key={index}
+                      className="bg-green-500 rounded-full transition-all duration-150 animate-pulse"
+                      style={{
+                        width: "2px",
+                        height: `${Math.max(2, amplitude * 24)}px`,
+                      }}
+                    />
+                  ))
+                : // Fallback animation when no waveform data
+                  Array.from({ length: 20 }).map((_, index) => (
+                    <div
+                      key={index}
+                      className="bg-green-400 rounded-full animate-pulse"
+                      style={{
+                        width: "2px",
+                        height: `${4 + Math.random() * 16}px`,
+                        animationDelay: `${index * 50}ms`,
+                      }}
+                    />
+                  ))}
             </div>
           ) : audioBlob ? (
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <MicOff className="w-4 h-4" />
-              <span>Recorded ({formatTime(recordingTime)}). Preview, then send or re-record.</span>
+              <span>
+                Recorded ({formatTime(recordingTime)}). Preview, then send or
+                re-record.
+              </span>
             </div>
           ) : permissionGranted === false ? (
             <div className="text-sm text-red-500">
               Microphone access required
             </div>
           ) : (
-            <div className="text-sm text-gray-500">
-              Tap to start recording
-            </div>
+            <div className="text-sm text-gray-500">Tap to start recording</div>
           )}
         </div>
 

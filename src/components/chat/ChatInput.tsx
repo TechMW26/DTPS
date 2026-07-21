@@ -46,6 +46,18 @@ interface ChatInputProps {
     blob: Blob;
     attachment: ChatAttachment;
   }) => void;
+  onMediaUploadFailed?: (payload: {
+    messageId: string;
+    error: string;
+    file: File;
+    attachment: ChatAttachment;
+    messageType: "image" | "video" | "audio" | "file";
+  }) => void;
+  onCreateMediaPlaceholder?: (payload: {
+    content: string;
+    attachment: ChatAttachment;
+    messageType: "image" | "video" | "audio" | "file";
+  }) => string;
   onTyping?: (isTyping: boolean) => void;
   disabled?: boolean;
   placeholder?: string;
@@ -65,6 +77,8 @@ export function ChatInput({
   onSendMessage,
   onCreateVoicePlaceholder,
   onVoiceUploadFailed,
+  onMediaUploadFailed,
+  onCreateMediaPlaceholder,
   onTyping,
   disabled = false,
   placeholder = "Type a message...",
@@ -97,10 +111,60 @@ export function ChatInput({
 
   // Handle media upload
   const handleMediaUpload = async (file: File, caption?: string) => {
+    let placeholderMessageId = "";
+    let fileForUpload = file;
+    let localAttachment: ChatAttachment | undefined;
+
     try {
+      // Determine message type based on file type
+      let messageType: "text" | "image" | "file" | "video" | "audio" = "file";
+      if (file.type.startsWith("image/")) messageType = "image";
+      else if (file.type.startsWith("video/")) messageType = "video";
+      else if (file.type.startsWith("audio/")) messageType = "audio";
+
+      // Client-side compression for images to speed up upload & reduce failures
+      if (messageType === "image" && file.size > 200 * 1024) {
+        try {
+          const { compressImage } = await import("@/lib/imageCompression");
+          const compressed = await compressImage(file, {
+            maxWidth: 1600,
+            maxHeight: 1600,
+            quality: 0.85,
+            format: "image/jpeg",
+          });
+          fileForUpload = new File(
+            [compressed.blob],
+            file.name.replace(/\.[^.]+$/, ".jpg"),
+            { type: "image/jpeg" },
+          );
+        } catch (compressionErr) {
+          // If compression fails, proceed with original file
+          console.warn(
+            "[ChatInput] Image compression failed, using original:",
+            compressionErr,
+          );
+        }
+      }
+
+      // Create placeholder for retry support
+      localAttachment = {
+        url: URL.createObjectURL(fileForUpload),
+        filename: fileForUpload.name,
+        size: fileForUpload.size,
+        mimeType: fileForUpload.type,
+      };
+
+      if (onCreateMediaPlaceholder) {
+        placeholderMessageId = onCreateMediaPlaceholder({
+          content: caption || file.name,
+          attachment: localAttachment,
+          messageType,
+        });
+      }
+
       // Upload file to server
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileForUpload);
       formData.append("type", "message");
 
       const uploadResponse = await fetch("/api/upload", {
@@ -131,18 +195,12 @@ export function ChatInput({
 
       const uploadData = await uploadResponse.json();
 
-      // Determine message type based on file type
-      let messageType: "text" | "image" | "file" | "video" | "audio" = "file";
-      if (file.type.startsWith("image/")) messageType = "image";
-      else if (file.type.startsWith("video/")) messageType = "video";
-      else if (file.type.startsWith("audio/")) messageType = "audio";
-
       // Create attachment data
       const attachment = {
         url: uploadData.url,
-        filename: uploadData.filename || file.name,
-        size: uploadData.size || file.size,
-        mimeType: uploadData.type || file.type,
+        filename: uploadData.filename || fileForUpload.name,
+        size: uploadData.size || fileForUpload.size,
+        mimeType: uploadData.type || fileForUpload.type,
       };
 
       // Send message with attachment data
@@ -151,6 +209,23 @@ export function ChatInput({
       setShowMediaUpload(false);
     } catch (error) {
       console.error("Error uploading media:", error);
+
+      // Notify parent for retry support
+      if (placeholderMessageId && onMediaUploadFailed && localAttachment) {
+        let messageType: "image" | "video" | "audio" | "file" = "file";
+        if (file.type.startsWith("image/")) messageType = "image";
+        else if (file.type.startsWith("video/")) messageType = "video";
+        else if (file.type.startsWith("audio/")) messageType = "audio";
+
+        onMediaUploadFailed({
+          messageId: placeholderMessageId,
+          error: error instanceof Error ? error.message : "Upload failed",
+          file: fileForUpload,
+          attachment: localAttachment,
+          messageType,
+        });
+      }
+
       throw error;
     }
   };
@@ -247,12 +322,22 @@ export function ChatInput({
 
       const uploadData = await uploadResponse.json();
 
+      // Normalize MIME type: strip codec suffix so browsers don't reject
+      // the source due to mismatched Content-Type from the CDN.
+      const normalizedMimeType = (
+        uploadData.type ||
+        audioFile.type ||
+        "audio/webm"
+      )
+        .replace(/;.*$/, "")
+        .trim();
+
       // Create attachment data
       const attachment: ChatAttachment = {
         url: uploadData.url,
         filename: uploadData.filename || audioFile.name,
         size: uploadData.size || audioFile.size,
-        mimeType: uploadData.type || audioFile.type,
+        mimeType: normalizedMimeType,
         duration,
       };
 

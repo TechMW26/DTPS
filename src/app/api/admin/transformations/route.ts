@@ -1,25 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import dbConnect from '@/lib/db/connection';
-import Transformation from '@/lib/db/models/Transformation';
-import { getImageKit } from '@/lib/imagekit';
-import { UserRole } from '@/types';
-import { compressBase64ImageServer } from '@/lib/imageCompressionServer';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth/config";
+import dbConnect from "@/lib/db/connection";
+import Transformation from "@/lib/db/models/Transformation";
+import { getImageKit } from "@/lib/imagekit";
+import { UserRole } from "@/types";
+import { compressBase64ImageServer } from "@/lib/imageCompressionServer";
+import { withCache, clearCacheByTag } from "@/lib/api/utils";
 
 // GET - Fetch all transformations
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
 
     const searchParams = request.nextUrl.searchParams;
-    const showInactive = searchParams.get('showInactive') === 'true';
+    const showInactive = searchParams.get("showInactive") === "true";
     const isAdmin = session.user.role === UserRole.ADMIN;
 
     // Build query - clients only see active, admin can see all
@@ -30,18 +30,20 @@ export async function GET(request: NextRequest) {
 
     const transformations = await withCache(
       `admin:transformations:${JSON.stringify(query)}`,
-      async () => await Transformation.find(query)
-      .sort({ displayOrder: 1, createdAt: -1 })
-      ,
-      { ttl: 120000, tags: ['admin'] }
+      async () =>
+        await Transformation.find(query).sort({
+          displayOrder: 1,
+          createdAt: -1,
+        }),
+      { ttl: 120000, tags: ["admin"] },
     );
 
     return NextResponse.json({ transformations });
   } catch (error) {
-    console.error('Error fetching transformations:', error);
+    console.error("Error fetching transformations:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch transformations' },
-      { status: 500 }
+      { error: "Failed to fetch transformations" },
+      { status: 500 },
     );
   }
 }
@@ -51,41 +53,41 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user || session.user.role !== UserRole.ADMIN) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
 
     const formData = await request.formData();
-    
-    const title = formData.get('title') as string;
-    const description = formData.get('description') as string | null;
-    const clientName = formData.get('clientName') as string | null;
-    const durationWeeks = formData.get('durationWeeks') as string | null;
-    const weightLoss = formData.get('weightLoss') as string | null;
-    const isActive = formData.get('isActive') === 'true';
-    const displayOrder = parseInt(formData.get('displayOrder') as string) || 0;
-    const beforeImageData = formData.get('beforeImage') as string;
-    const afterImageData = formData.get('afterImage') as string;
+
+    const title = formData.get("title") as string;
+    const description = formData.get("description") as string | null;
+    const clientName = formData.get("clientName") as string | null;
+    const durationWeeks = formData.get("durationWeeks") as string | null;
+    const weightLoss = formData.get("weightLoss") as string | null;
+    const isActive = formData.get("isActive") === "true";
+    const displayOrder = parseInt(formData.get("displayOrder") as string) || 0;
+    const beforeImageData = formData.get("beforeImage") as string;
+    const afterImageData = formData.get("afterImage") as string;
 
     if (!title || !beforeImageData || !afterImageData) {
       return NextResponse.json(
-        { error: 'Title, before image, and after image are required' },
-        { status: 400 }
+        { error: "Title, before image, and after image are required" },
+        { status: 400 },
       );
     }
 
     // Upload images to ImageKit
-    let beforeImageUrl = '';
-    let afterImageUrl = '';
+    let beforeImageUrl = "";
+    let afterImageUrl = "";
 
     try {
       // Extract base64 data from data URL
-      const beforeBase64 = beforeImageData.includes('base64,') 
-        ? beforeImageData.split('base64,')[1] 
+      const beforeBase64 = beforeImageData.includes("base64,")
+        ? beforeImageData.split("base64,")[1]
         : beforeImageData;
-      const afterBase64 = afterImageData.includes('base64,') 
-        ? afterImageData.split('base64,')[1] 
+      const afterBase64 = afterImageData.includes("base64,")
+        ? afterImageData.split("base64,")[1]
         : afterImageData;
 
       // Compress before image
@@ -93,7 +95,7 @@ export async function POST(request: NextRequest) {
         quality: 85,
         maxWidth: 1200,
         maxHeight: 1200,
-        format: 'jpeg'
+        format: "jpeg",
       });
 
       // Compress after image
@@ -101,30 +103,36 @@ export async function POST(request: NextRequest) {
         quality: 85,
         maxWidth: 1200,
         maxHeight: 1200,
-        format: 'jpeg'
+        format: "jpeg",
       });
 
       // Upload before image
       const imageKitInstance = getImageKit();
-      const beforeUpload = await imageKitInstance.upload({
-        file: compressedBefore,
-        fileName: `transformation_before_${Date.now()}.jpg`,
-        folder: '/TransformationBeforeAndAfter',
-      });
-      beforeImageUrl = beforeUpload.url;
+      if (!imageKitInstance) {
+        console.warn(
+          "[Transformations] ImageKit not configured — skipping image upload",
+        );
+      } else {
+        const beforeUpload = await imageKitInstance.upload({
+          file: compressedBefore,
+          fileName: `transformation_before_${Date.now()}.jpg`,
+          folder: "/TransformationBeforeAndAfter",
+        });
+        beforeImageUrl = beforeUpload.url;
 
-      // Upload after image
-      const afterUpload = await imageKitInstance.upload({
-        file: compressedAfter,
-        fileName: `transformation_after_${Date.now()}.jpg`,
-        folder: '/TransformationBeforeAndAfter',
-      });
-      afterImageUrl = afterUpload.url;
+        // Upload after image
+        const afterUpload = await imageKitInstance.upload({
+          file: compressedAfter,
+          fileName: `transformation_after_${Date.now()}.jpg`,
+          folder: "/TransformationBeforeAndAfter",
+        });
+        afterImageUrl = afterUpload.url;
+      }
     } catch (uploadError) {
-      console.error('Image upload failed:', uploadError);
+      console.error("Image upload failed:", uploadError);
       return NextResponse.json(
-        { error: 'Failed to upload images' },
-        { status: 500 }
+        { error: "Failed to upload images" },
+        { status: 500 },
       );
     }
 
@@ -139,18 +147,21 @@ export async function POST(request: NextRequest) {
       afterImage: afterImageUrl,
       isActive,
       displayOrder,
-      createdBy: session.user.id
+      createdBy: session.user.id,
     });
 
-    return NextResponse.json({ 
-      success: true, 
-      transformation 
-    }, { status: 201 });
-  } catch (error) {
-    console.error('Error creating transformation:', error);
     return NextResponse.json(
-      { error: 'Failed to create transformation' },
-      { status: 500 }
+      {
+        success: true,
+        transformation,
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    console.error("Error creating transformation:", error);
+    return NextResponse.json(
+      { error: "Failed to create transformation" },
+      { status: 500 },
     );
   }
 }

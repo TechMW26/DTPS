@@ -1,9 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import { getImageKit } from '@/lib/imagekit';
-import { compressImageServer, serverCompressionPresets } from '@/lib/imageCompressionServer';
-import { UserRole } from '@/types';
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth/config";
+import { getImageKit } from "@/lib/imagekit";
+import {
+  compressImageServer,
+  serverCompressionPresets,
+} from "@/lib/imageCompressionServer";
+import { UserRole } from "@/types";
 
 /**
  * POST /api/upload-image
@@ -16,30 +19,27 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions);
 
     if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Check if user is dietitian or admin
-    if (session.user.role !== UserRole.ADMIN && session.user.role !== UserRole.DIETITIAN) {
+    if (
+      session.user.role !== UserRole.ADMIN &&
+      session.user.role !== UserRole.DIETITIAN
+    ) {
       return NextResponse.json(
-        { error: 'Only dietitians and admins can upload images' },
-        { status: 403 }
+        { error: "Only dietitians and admins can upload images" },
+        { status: 403 },
       );
     }
 
     const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const folder = (formData.get('folder') as string) || 'recipes';
-    const skipCompression = formData.get('skipCompression') === 'true';
+    const file = formData.get("file") as File;
+    const folder = (formData.get("folder") as string) || "recipes";
+    const skipCompression = formData.get("skipCompression") === "true";
 
     if (!file) {
-      return NextResponse.json(
-        { error: 'No file provided' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     // Convert File to Buffer
@@ -48,15 +48,22 @@ export async function POST(request: NextRequest) {
     const originalSize = buffer.length;
 
     // Determine compression settings based on folder/use case
-    const compressionSettings = folder === 'profile' || folder === '/profile'
-      ? serverCompressionPresets.avatar
-      : folder === 'recipes' || folder === '/recipes'
-        ? serverCompressionPresets.recipe
-        : { quality: 85, maxWidth: 1600, maxHeight: 1600, format: 'webp' as const };
+    const compressionSettings =
+      folder === "profile" || folder === "/profile"
+        ? serverCompressionPresets.avatar
+        : folder === "recipes" || folder === "/recipes"
+          ? serverCompressionPresets.recipe
+          : {
+              quality: 85,
+              maxWidth: 1600,
+              maxHeight: 1600,
+              format: "webp" as const,
+            };
 
     // Compress image before upload (unless it's a GIF or compression is skipped)
-    const isGif = file.type === 'image/gif';
-    const shouldCompress = !skipCompression && !isGif && file.type.startsWith('image/');
+    const isGif = file.type === "image/gif";
+    const shouldCompress =
+      !skipCompression && !isGif && file.type.startsWith("image/");
 
     let uploadData: string;
     let finalFileName: string;
@@ -65,26 +72,40 @@ export async function POST(request: NextRequest) {
     if (shouldCompress) {
       try {
         uploadData = await compressImageServer(buffer, compressionSettings);
-        finalFileName = `${Date.now()}-${file.name.replace(/\.[^/.]+$/, '.webp')}`;
-        compressedSize = Buffer.from(uploadData, 'base64').length;
-        console.log(`[Upload] Compressed ${file.name}: ${(originalSize / 1024).toFixed(1)}KB -> ${(compressedSize / 1024).toFixed(1)}KB (${Math.round((1 - compressedSize / originalSize) * 100)}% reduction)`);
+        finalFileName = `${Date.now()}-${file.name.replace(/\.[^/.]+$/, ".webp")}`;
+        compressedSize = Buffer.from(uploadData, "base64").length;
+        console.log(
+          `[Upload] Compressed ${file.name}: ${(originalSize / 1024).toFixed(1)}KB -> ${(compressedSize / 1024).toFixed(1)}KB (${Math.round((1 - compressedSize / originalSize) * 100)}% reduction)`,
+        );
       } catch (compressionError) {
-        console.warn('[Upload] Compression failed, uploading original:', compressionError);
-        uploadData = buffer.toString('base64');
+        console.warn(
+          "[Upload] Compression failed, uploading original:",
+          compressionError,
+        );
+        uploadData = buffer.toString("base64");
         finalFileName = `${Date.now()}-${file.name}`;
       }
     } else {
-      uploadData = buffer.toString('base64');
+      uploadData = buffer.toString("base64");
       finalFileName = `${Date.now()}-${file.name}`;
     }
 
     // Upload to ImageKit
     try {
       const imagekit = getImageKit();
+      if (!imagekit) {
+        return NextResponse.json(
+          {
+            error:
+              "ImageKit is not configured. Please set IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, and IMAGEKIT_URL_ENDPOINT.",
+          },
+          { status: 500 },
+        );
+      }
       const result = await imagekit.upload({
         file: uploadData,
         fileName: finalFileName,
-        folder: folder.startsWith('/') ? folder : `/${folder}`,
+        folder: folder.startsWith("/") ? folder : `/${folder}`,
         isPrivateFile: false,
       });
 
@@ -98,17 +119,17 @@ export async function POST(request: NextRequest) {
         compressed: shouldCompress,
       });
     } catch (imagekitError) {
-      console.error('ImageKit upload error:', imagekitError);
+      console.error("ImageKit upload error:", imagekitError);
       return NextResponse.json(
-        { error: 'Failed to upload image to ImageKit' },
-        { status: 500 }
+        { error: "Failed to upload image to ImageKit" },
+        { status: 500 },
       );
     }
   } catch (error) {
-    console.error('Image upload error:', error);
+    console.error("Image upload error:", error);
     return NextResponse.json(
-      { error: 'Failed to process image upload' },
-      { status: 500 }
+      { error: "Failed to process image upload" },
+      { status: 500 },
     );
   }
 }

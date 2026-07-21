@@ -183,6 +183,19 @@ export async function GET(request: NextRequest) {
       query.$text = { $search: effectiveSearch };
       textSearchUsed = true;
       foodDbRelevanceFallbackOr = fallbackConditions;
+
+      // For multi-word searches, additionally require the recipe name to
+      // contain at least the first search word.  $text alone does OR matching
+      // (returns every recipe with ANY word), which buries the exact match
+      // in irrelevant results.  This filter keeps results tightly scoped.
+      const searchWords = effectiveSearch.trim().split(/\s+/);
+      if (searchWords.length >= 2 && searchWords[0].length >= 2) {
+        const firstWordEscaped = searchWords[0].replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&",
+        );
+        query.name = { $regex: firstWordEscaped, $options: "i" };
+      }
     }
 
     // Filter by category (tags)
@@ -453,7 +466,17 @@ export async function GET(request: NextRequest) {
         }
         break;
       default:
-        sortOptions = { name: 1, _id: 1 };
+        // When searching, default to relevance sorting via textScore or
+        // post-processing so exact matches (e.g. "boiled black chana")
+        // appear first instead of getting lost in A-Z results.
+        if (effectiveSearch && !isTypingSearchFastPath) {
+          isRelevanceSort = true;
+          sortOptions = isFoodDatabaseView
+            ? { score: { $meta: "textScore" }, _id: 1 }
+            : { _id: 1 };
+        } else {
+          sortOptions = { name: 1, _id: 1 };
+        }
     }
 
     // Generate cache key based on query params
@@ -641,14 +664,18 @@ export async function GET(request: NextRequest) {
                   .lean();
 
             let compactFinalRaw = compactRecipesRaw;
+
+            // Fallback for empty results: if the primary $text query returned
+            // nothing (e.g. stop-words ate the search), try regex-based
+            // matching on name / ingredients / UUID.
             if (
               compactRecipesRaw.length === 0 &&
               effectiveSearch &&
-              !isTypingSearchFastPath &&
               foodDbRelevanceFallbackOr
             ) {
               const fallbackQuery: any = { ...query };
               delete fallbackQuery.$text;
+              delete fallbackQuery.name; // drop the first-word name filter too
               fallbackQuery.$or = foodDbRelevanceFallbackOr;
 
               const fallbackProjection = {
@@ -1225,12 +1252,19 @@ export async function POST(request: NextRequest) {
         }
 
         const imageKit = getImageKit();
-        const uploadResponse = await imageKit.upload({
-          file: compressedBase64,
-          fileName: `recipe_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`,
-          folder: "/recipes",
-        });
-        recipeData.image = uploadResponse.url;
+        if (!imageKit) {
+          console.warn(
+            "[Recipes] ImageKit not configured — skipping image upload",
+          );
+          // Continue without image, recipe can be created without one
+        } else {
+          const uploadResponse = await imageKit.upload({
+            file: compressedBase64,
+            fileName: `recipe_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`,
+            folder: "/recipes",
+          });
+          recipeData.image = uploadResponse.url;
+        }
       } catch (err) {
         console.error("ImageKit upload failed:", err);
         return NextResponse.json(

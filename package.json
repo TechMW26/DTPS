@@ -48,7 +48,7 @@
     "firebase-admin": "^13.10.0",
     "googleapis": "^168.0.0",
     "html2canvas": "^1.4.1",
-    "imagekit": "^1.5.0",
+    "imagekit": "3.0.0",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.0.0",
     "lucide-react": "^0.541.0",
@@ -69,6 +69,7 @@
     "react-is": "^19.2.4",
     "react-webcam": "^7.2.0",
     "recharts": "^3.1.2",
+    "sharp": "^0.34.5",
     "simple-peer": "^9.11.1",
     "slugify": "^1.6.6",
     "socket.io": "^4.8.3",
@@ -77,6 +78,7 @@
     "stripe": "^18.4.0",
     "tailwind-merge": "^3.3.1",
     "uuid": "^13.0.0",
+    "wavesurfer.js": "^7.12.11",
     "zod": "^4.1.1"
   },
   "devDependencies": {
