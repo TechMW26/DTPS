@@ -49,19 +49,9 @@ function isMaintenanceExemptRoute(pathname: string): boolean {
   return maintenanceExemptRoutes.some(route => pathname.startsWith(route));
 }
 
-// Add cache control headers to response
-function addCacheControlHeaders(response: NextResponse, isApiRoute: boolean): NextResponse {
-  // Always add app version header
+// Add app version header to response
+function addAppVersionHeader(response: NextResponse): NextResponse {
   response.headers.set('X-App-Version', APP_VERSION);
-
-  if (isApiRoute) {
-    // For authenticated API routes, prevent caching
-    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    response.headers.set('Pragma', 'no-cache');
-    response.headers.set('Expires', '0');
-    response.headers.set('Surrogate-Control', 'no-store');
-  }
-
   return response;
 }
 
@@ -70,7 +60,6 @@ export default withAuth(
     const token = req.nextauth.token;
     const pathname = req.nextUrl.pathname;
     const fullUrl = req.nextUrl.href;
-    const isApiRoute = pathname.startsWith('/api');
 
     // ─────────────────────────────────────────────────────────────────────────
     // MAINTENANCE MODE CHECK - runs first for all requests
@@ -91,7 +80,7 @@ export default withAuth(
       const response = NextResponse.next();
       response.headers.set('x-pathname', pathname);
       response.headers.set('x-url', fullUrl);
-      return addCacheControlHeaders(response, isApiRoute);
+      return addAppVersionHeader(response);
     }
 
     // If no token and accessing client-facing routes, redirect to /client-auth/signin
@@ -110,7 +99,7 @@ export default withAuth(
       }
 
       const response = NextResponse.next();
-      return addCacheControlHeaders(response, isApiRoute);
+      return addAppVersionHeader(response);
     }
 
     // Normalize role to lowercase for comparison
@@ -216,7 +205,7 @@ export default withAuth(
     // Allow access to the route - add pathname header for layout detection
     const response = NextResponse.next();
     response.headers.set('x-pathname', pathname);
-    return addCacheControlHeaders(response, pathname.startsWith('/api'));
+    return addAppVersionHeader(response);
   },
   {
     callbacks: {

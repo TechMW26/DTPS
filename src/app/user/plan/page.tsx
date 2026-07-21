@@ -25,6 +25,7 @@ import {
 import { format, addDays, startOfWeek, isToday, isSameDay } from 'date-fns';
 
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import MealCompletionCelebration from '@/components/engagement/MealCompletionCelebration';
 import { toast } from 'sonner';
 import { MEAL_TYPES, type MealTypeKey } from '@/lib/mealConfig';
 import { compressImage, validateImageFile } from '@/lib/imageCompression';
@@ -160,6 +161,12 @@ interface FoodItemSelectorModalData {
   isOpen: boolean;
 }
 
+interface MealDeepLinkRequest {
+  date: string;
+  mealId: string;
+  mealType: string;
+}
+
 // Default meal slots using canonical mealConfig - single source of truth for times
 const MEAL_TYPE_TO_CAMELCASE: Record<MealTypeKey, string> = {
   'EARLY_MORNING': 'earlyMorning',
@@ -244,6 +251,12 @@ export default function UserPlanPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const deepLinkHandledRef = useRef(false);
+  const [deepLinkRequest, setDeepLinkRequest] = useState<MealDeepLinkRequest | null>(null);
+  const [celebration, setCelebration] = useState({ open: false, mealLabel: '' });
+  const closeCelebration = useCallback(() => {
+    setCelebration((current) => ({ ...current, open: false }));
+  }, []);
 
   useEffect(() => {
     // Generate dates: today at START (index 0) + 30 future days + 15 previous days at end (for scrolling back)
@@ -261,14 +274,30 @@ export default function UserPlanPage() {
       dates.unshift(addDays(today, -i));
     }
 
+    const params = new URLSearchParams(window.location.search);
+    const deepLinkDate = params.get('date') || '';
+    const isCameraDeepLink = params.get('action') === 'camera';
+    const initialDate = isCameraDeepLink && /^\d{4}-\d{2}-\d{2}$/.test(deepLinkDate)
+      ? new Date(`${deepLinkDate}T00:00:00`)
+      : today;
+
+    if (isCameraDeepLink) {
+      setDeepLinkRequest({
+        date: deepLinkDate || format(today, 'yyyy-MM-dd'),
+        mealId: params.get('mealId') || '',
+        mealType: params.get('mealType') || '',
+      });
+    }
+
     setWeekDates(dates);
-    setDatePickerValue(format(today, 'yyyy-MM-dd'));
-    fetchDayPlan(today, true); // Fetch today's plan (initial load)
+    setSelectedDate(initialDate);
+    setDatePickerValue(format(initialDate, 'yyyy-MM-dd'));
+    fetchDayPlan(initialDate, true);
 
     // Pre-fetch next 3 days and previous 3 days for faster navigation
     setTimeout(() => {
       [-3, -2, -1, 1, 2, 3].forEach(offset => {
-        const prefetchDate = addDays(today, offset);
+        const prefetchDate = addDays(initialDate, offset);
         prefetchDayPlan(prefetchDate);
       });
     }, 500);
@@ -710,7 +739,7 @@ export default function UserPlanPage() {
     setIsProcessingImage(true);
     try {
       // Client-side compression to reduce upload payload and submission time
-      const { blob, dataUrl } = await compressImage(file, {
+      const { blob } = await compressImage(file, {
         maxWidth: 1280,
         maxHeight: 1280,
         quality: 0.78,
@@ -724,16 +753,14 @@ export default function UserPlanPage() {
       );
 
       setCompletionImage(compressedFile);
-      setCompletionImagePreview(dataUrl);
+      if (completionImagePreview?.startsWith('blob:')) URL.revokeObjectURL(completionImagePreview);
+      setCompletionImagePreview(URL.createObjectURL(compressedFile));
     } catch (error) {
       // Fallback to original file if compression fails
       console.error('Image compression failed, using original file:', error);
       setCompletionImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCompletionImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      if (completionImagePreview?.startsWith('blob:')) URL.revokeObjectURL(completionImagePreview);
+      setCompletionImagePreview(URL.createObjectURL(file));
     } finally {
       setIsProcessingImage(false);
     }
@@ -766,9 +793,6 @@ export default function UserPlanPage() {
       closeCompletionModal();
     });
 
-    // Show immediate toast confirmation
-    toast.success('Meal marked as complete!');
-
     try {
       const formData = new FormData();
       formData.append('mealId', mealId);
@@ -793,6 +817,11 @@ export default function UserPlanPage() {
         window.dispatchEvent(new CustomEvent('user-data-changed', {
           detail: { dataType: 'meal' }
         }));
+        setCelebration({
+          open: true,
+          mealLabel: getMealLabel(mealType),
+        });
+        toast.success('Meal completed — fantastic work!');
       } else {
         const data = await response.json();
         // Revert optimistic update on failure
@@ -1027,6 +1056,37 @@ export default function UserPlanPage() {
     return { isCompleted, index };
   });
 
+  useEffect(() => {
+    if (!deepLinkRequest || deepLinkHandledRef.current || !dayPlan || isChangingDate) return;
+    if (format(selectedDate, 'yyyy-MM-dd') !== deepLinkRequest.date) return;
+
+    const compareKey = (value: string) => value.toLowerCase().replace(/[\s_-]+/g, '');
+    const meal = allMealSlots.find((entry) => entry.id === deepLinkRequest.mealId)
+      || allMealSlots.find((entry) => compareKey(entry.type) === compareKey(deepLinkRequest.mealType));
+
+    deepLinkHandledRef.current = true;
+    setDeepLinkRequest(null);
+    const params = new URLSearchParams(window.location.search);
+    ['action', 'mealId', 'mealType', 'date'].forEach((key) => params.delete(key));
+    const nextUrl = `${window.location.pathname}${params.size ? `?${params}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', nextUrl);
+
+    if (!meal) {
+      toast.error('This meal could not be found in your plan.');
+      return;
+    }
+    if (meal.isCompleted) {
+      toast.success(`${getMealLabel(meal.type)} is already completed.`);
+      return;
+    }
+    if (meal.items.length === 0) {
+      toast.info('No food has been assigned to this meal yet.');
+      return;
+    }
+
+    openCompletionModal(meal);
+  }, [allMealSlots, dayPlan, deepLinkRequest, isChangingDate, selectedDate]);
+
   if (status === 'loading' || loading) {
     return (
       <div
@@ -1040,6 +1100,12 @@ export default function UserPlanPage() {
 
   return (
     <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+
+      <MealCompletionCelebration
+        open={celebration.open}
+        mealLabel={celebration.mealLabel}
+        onClose={closeCelebration}
+      />
 
       {/* Header */}
       <div className={`px-4 py-4 border-b transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>

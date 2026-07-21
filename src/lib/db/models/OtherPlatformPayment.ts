@@ -1,10 +1,11 @@
-import mongoose, { Document, Schema, Types } from 'mongoose';
+import mongoose, { Document, Schema, Types } from "mongoose";
 
 export interface IOtherPlatformPayment extends Document {
   _id: Types.ObjectId;
   client: Types.ObjectId;
   dietitian: Types.ObjectId;
-  platform: 'upi' | 'bank_transfer' | 'cash' | 'phonepe' | 'gpay' | 'paytm' | 'other';
+  platform:
+    "upi" | "bank_transfer" | "cash" | "phonepe" | "gpay" | "paytm" | "other";
   customPlatform?: string;
   transactionId: string;
   amount: number;
@@ -16,7 +17,8 @@ export interface IOtherPlatformPayment extends Document {
   durationLabel?: string;
   receiptImage?: string;
   receiptImageUrl?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  receiptImageFileId?: string;
+  status: "pending" | "approved" | "rejected";
   reviewedBy?: Types.ObjectId;
   reviewedAt?: Date;
   reviewNotes?: string;
@@ -30,17 +32,25 @@ const OtherPlatformPaymentSchema = new Schema<IOtherPlatformPayment>(
   {
     client: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
     },
     dietitian: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
     },
     platform: {
       type: String,
-      enum: ['upi', 'bank_transfer', 'cash', 'phonepe', 'gpay', 'paytm', 'other'],
+      enum: [
+        "upi",
+        "bank_transfer",
+        "cash",
+        "phonepe",
+        "gpay",
+        "paytm",
+        "other",
+      ],
       required: true,
     },
     customPlatform: {
@@ -59,7 +69,7 @@ const OtherPlatformPaymentSchema = new Schema<IOtherPlatformPayment>(
     },
     paymentLink: {
       type: Schema.Types.ObjectId,
-      ref: 'PaymentLink',
+      ref: "PaymentLink",
     },
     // Locked plan details from payment link
     planName: {
@@ -83,14 +93,17 @@ const OtherPlatformPaymentSchema = new Schema<IOtherPlatformPayment>(
     receiptImageUrl: {
       type: String,
     },
+    receiptImageFileId: {
+      type: String,
+    },
     status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected'],
-      default: 'pending',
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
     },
     reviewedBy: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
     },
     reviewedAt: {
       type: Date,
@@ -109,7 +122,7 @@ const OtherPlatformPaymentSchema = new Schema<IOtherPlatformPayment>(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Indexes for efficient queries
@@ -120,6 +133,9 @@ OtherPlatformPaymentSchema.index({ createdAt: -1 });
 
 const OtherPlatformPayment =
   mongoose.models.OtherPlatformPayment ||
-  mongoose.model<IOtherPlatformPayment>('OtherPlatformPayment', OtherPlatformPaymentSchema);
+  mongoose.model<IOtherPlatformPayment>(
+    "OtherPlatformPayment",
+    OtherPlatformPaymentSchema,
+  );
 
 export default OtherPlatformPayment;

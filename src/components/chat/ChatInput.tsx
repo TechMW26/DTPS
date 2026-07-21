@@ -6,15 +6,17 @@ import type { EmojiClickData } from "emoji-picker-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Send, Paperclip, Smile, Mic, X } from "lucide-react";
+import { Send, Paperclip, Smile, Mic, X, Image } from "lucide-react";
 import { MediaUploadModal } from "./MediaUploadModal";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { toast } from "sonner";
 
 // Dynamic import for emoji picker to avoid SSR issues
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
 interface ChatAttachment {
   url: string;
+  fileId?: string;
   filename: string;
   size: number;
   mimeType: string;
@@ -178,6 +180,14 @@ export function ChatInput({
         try {
           const errorData = await uploadResponse.json();
           errorMessage = errorData.error || errorMessage;
+
+          // Show downtime toast for media service outages
+          if (errorData.code === "MEDIA_SERVICE_DOWN") {
+            toast.error("Media uploads temporarily unavailable", {
+              description: "Our media service is experiencing downtime. Your chats and messages still work — media uploads will resume shortly.",
+              duration: 8000,
+            });
+          }
         } catch {
           // If response isn't JSON, use status text
           if (uploadResponse.status === 413) {
@@ -198,6 +208,7 @@ export function ChatInput({
       // Create attachment data
       const attachment = {
         url: uploadData.url,
+        fileId: uploadData.fileId,
         filename: uploadData.filename || fileForUpload.name,
         size: uploadData.size || fileForUpload.size,
         mimeType: uploadData.type || fileForUpload.type,
@@ -335,6 +346,7 @@ export function ChatInput({
       // Create attachment data
       const attachment: ChatAttachment = {
         url: uploadData.url,
+        fileId: uploadData.fileId,
         filename: uploadData.filename || audioFile.name,
         size: uploadData.size || audioFile.size,
         mimeType: normalizedMimeType,
@@ -528,7 +540,7 @@ export function ChatInput({
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
                 <span className="text-blue-600 text-xs">
-                  {attachedFile.type.startsWith("image/") ? "🖼️" : "📎"}
+                  {attachedFile.type.startsWith("image/") ? <><Image className="h-4 w-4" /> </> : <><Paperclip className="h-4 w-4" /> </>}
                 </span>
               </div>
               <div>

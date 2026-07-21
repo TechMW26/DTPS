@@ -25,6 +25,7 @@ const messageSchema = z.object({
     filename: z.string().min(1, 'Filename is required'),
     size: z.number().min(1, 'File size must be positive'),
     mimeType: z.string().min(1, 'MIME type is required'),
+    fileId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
     thumbnail: z.string().optional(),
     duration: z.number().optional(),
     width: z.number().optional(),

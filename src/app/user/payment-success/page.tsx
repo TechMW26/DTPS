@@ -135,10 +135,15 @@ export default function PaymentSuccessPage() {
         useCORS: true
       });
 
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(value => value ? resolve(value) : reject(new Error('Receipt rendering failed')), 'image/png')
+      );
+      const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.download = `DTPS-Receipt-${payment?._id?.slice(-8) || 'payment'}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.href = objectUrl;
       link.click();
+      URL.revokeObjectURL(objectUrl);
 
       toast.success('Receipt downloaded!');
     } catch (error) {

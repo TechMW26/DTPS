@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
 import { authOptions } from '@/lib/auth/config';
 import { UserRole } from '@/types';
+import { StaffSystemStatus } from '@/components/providers/StaffSystemStatus';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -13,6 +14,11 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   if (!session?.user || session.user.role !== UserRole.ADMIN) {
     redirect('/');
   }
-  return <>{children}</>;
+  return (
+    <>
+      <StaffSystemStatus />
+      {children}
+    </>
+  );
 }
 

@@ -159,7 +159,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) {
         let userInfo = response.notification.request.content.userInfo
         print("[DTPS] Notification tapped: \(userInfo)")
-        if let urlString = userInfo["url"] as? String, let url = URL(string: urlString) {
+        let urlString = (userInfo["url"] as? String) ?? (userInfo["clickAction"] as? String)
+        let baseURL = URL(string: "https://dtps.tech")!
+        if let urlString,
+           let url = URL(string: urlString, relativeTo: baseURL)?.absoluteURL,
+           url.scheme == "https",
+           url.host == "dtps.tech" || url.host?.hasSuffix(".dtps.tech") == true {
             NotificationCenter.default.post(name: .notificationTapped, object: url)
         }
         completionHandler()

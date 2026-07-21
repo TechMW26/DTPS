@@ -3,9 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
 import connectDB from "@/lib/db/connection";
 import { File as FileModel } from "@/lib/db/models/File";
-import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { getImageKit } from "@/lib/imagekit";
+import { deleteImageKitAsset } from "@/lib/imagekit-storage";
 import {
   compressImageServer,
   serverCompressionPresets,
@@ -32,7 +32,7 @@ async function uploadToImageKit(
     }
     const isImage = mimeType.startsWith("image/") && !mimeType.includes("gif");
 
-    let uploadData: string;
+    let uploadData: Buffer;
     let finalMimeType: string;
     let finalFileName: string;
 
@@ -43,13 +43,12 @@ async function uploadToImageKit(
         maxHeight: 1600,
         quality: 85,
       };
-      const compressedBase64 = await compressImageServer(buffer, settings);
-      uploadData = compressedBase64;
+      uploadData = await compressImageServer(buffer, settings);
       finalMimeType = "image/webp";
       finalFileName = fileName.replace(/\.[^/.]+$/, ".webp");
     } else {
       // Upload as-is for non-images or GIFs
-      uploadData = buffer.toString("base64");
+      uploadData = buffer;
       finalMimeType = mimeType;
       finalFileName = fileName;
     }
@@ -333,15 +332,13 @@ export async function POST(request: NextRequest) {
       const responseMimeType = (imageKitResult.mimeType || file.type || "")
         .replace(/;.*$/, "")
         .trim();
-      // Save file reference to MongoDB (NO base64 data stored - saves space!)
+      // Save metadata only; file bytes live exclusively in ImageKit.
       const savedFile = await FileModel.create({
         filename: fileName,
         originalName: file.name,
         mimeType: responseMimeType,
         size: file.size,
-        data: "", // Never store base64 data in MongoDB
         type: fileType,
-        localPath: imageKitResult.url,
         imageKitFileId: imageKitResult.fileId,
         imageKitUrl: imageKitResult.url,
         uploadedBy: session.user.id,
@@ -349,8 +346,10 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         url: imageKitResult.url,
+        canonicalUrl: `/api/files/${savedFile._id}`,
         dbUrl: `/api/files/${savedFile._id}`,
-        localUrl: imageKitResult.url,
+        imageKitUrl: imageKitResult.url,
+        storage: "imagekit",
         filename: fileName,
         size: file.size,
         type: responseMimeType,
@@ -359,50 +358,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Fallback: Save file locally if ImageKit fails (but still don't store in MongoDB)
-    console.warn(
-      `[Upload] ImageKit failed for ${fileType}, falling back to local storage`,
+    // ImageKit failed — no local fallback; return service unavailable
+    console.error(
+      `[Upload] ImageKit unavailable for ${fileType}/${fileName} — upload rejected`,
     );
-
-    let localUrl = "";
-    try {
-      const uploadDir = path.join(process.cwd(), "public", "uploads", fileType);
-      await mkdir(uploadDir, { recursive: true });
-      const localPath = path.join(uploadDir, fileName);
-      await writeFile(localPath, buffer);
-      localUrl = `/uploads/${fileType}/${fileName}`;
-    } catch (localError) {
-      console.error("Error saving file locally:", localError);
-      return NextResponse.json(
-        {
-          error:
-            "Failed to upload file - both ImageKit and local storage failed",
-        },
-        { status: 500 },
-      );
-    }
-
-    // Save file reference to MongoDB (local path only, no base64)
-    const savedFile = await FileModel.create({
-      filename: fileName,
-      originalName: file.name,
-      mimeType: file.type,
-      size: file.size,
-      data: "", // Never store base64 data
-      type: fileType,
-      localPath: localUrl,
-      uploadedBy: session.user.id,
-    });
-
-    return NextResponse.json({
-      url: localUrl,
-      dbUrl: `/api/files/${savedFile._id}`,
-      localUrl: localUrl,
-      filename: fileName,
-      size: file.size,
-      type: file.type,
-      fileId: savedFile._id,
-    });
+    return NextResponse.json(
+      {
+        error:
+          "Media service temporarily unavailable. Please try again shortly.",
+        code: "MEDIA_SERVICE_DOWN",
+        retryAfter: 60,
+      },
+      { status: 503 },
+    );
   } catch (error) {
     console.error("Error uploading file:", error);
     const errorMessage =
@@ -431,7 +399,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Find the file first to get ImageKit fileId
-    const fileRecord = await File.findOne({
+    const fileRecord = await FileModel.findOne({
       _id: fileId,
       uploadedBy: session.user.id,
     });
@@ -443,21 +411,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Try to delete from ImageKit if it was uploaded there
-    if (fileRecord.imageKitFileId) {
-      try {
-        const ik = getImageKit();
-        if (ik) {
-          await ik.deleteFile(fileRecord.imageKitFileId);
-        }
-      } catch (ikError) {
-        console.warn("Failed to delete from ImageKit:", ikError);
-        // Continue with DB deletion even if ImageKit fails
-      }
-    }
+    await deleteImageKitAsset({
+      fileId: fileRecord.imageKitFileId,
+      url: fileRecord.imageKitUrl,
+    });
 
     // Delete from MongoDB
-    await File.findByIdAndDelete(fileId);
+    await FileModel.findByIdAndDelete(fileId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

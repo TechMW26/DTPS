@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db/connection';
 import { File as FileModel } from '@/lib/db/models/File';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { withCache } from '@/lib/api/utils';
 import mongoose from 'mongoose';
 
 export async function GET(
@@ -23,21 +23,14 @@ export async function GET(
     if (!fileDoc) {
       return new NextResponse('File not found', { status: 404 });
     }
-    const buffer = Buffer.from(fileDoc.data, 'base64');
+    const storedUrl = fileDoc.imageKitUrl || fileDoc.localPath;
+    if (storedUrl) {
+      const resolverUrl = new URL('/api/media/resolve', request.url);
+      resolverUrl.searchParams.set('url', storedUrl);
+      return NextResponse.redirect(resolverUrl, 307);
+    }
 
-    // Sanitize filename for Content-Disposition header
-    const sanitizedFilename = fileDoc.originalName
-      .replace(/[^\x20-\x7E]/g, '_') // Replace non-ASCII chars
-      .replace(/"/g, '\\"'); // Escape quotes
-
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        'Content-Type': fileDoc.mimeType,
-        'Content-Disposition': `inline; filename="${sanitizedFilename}"`,
-        'Content-Length': buffer.length.toString(),
-      },
-    });
+    return new NextResponse('ImageKit media reference not found', { status: 404 });
   } catch (error) {
     console.error('Error serving file:', error);
     return new NextResponse('Error serving file', { status: 500 });

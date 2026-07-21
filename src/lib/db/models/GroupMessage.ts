@@ -8,6 +8,7 @@ export interface IGroupMessage extends Document {
   content: string;
   attachments?: {
     url: string;
+    fileId?: mongoose.Types.ObjectId;
     filename: string;
     size: number;
     mimeType: string;
@@ -34,6 +35,7 @@ export interface IGroupMessage extends Document {
 
 const groupMessageAttachmentSchema = new Schema({
   url: { type: String, required: true },
+  fileId: { type: Schema.Types.ObjectId, ref: 'File' },
   filename: { type: String, required: true },
   size: { type: Number, required: true },
   mimeType: { type: String, required: true },

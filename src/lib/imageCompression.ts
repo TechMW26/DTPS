@@ -21,14 +21,13 @@ const defaultOptions: CompressionOptions = {
  * Compress an image file using canvas
  * @param file - The image file to compress
  * @param options - Compression options
- * @returns Promise with compressed blob, dataUrl, and metadata
+ * @returns Promise with compressed blob and metadata
  */
 export async function compressImage(
   file: File,
   options: CompressionOptions = {},
 ): Promise<{
   blob: Blob;
-  dataUrl: string;
   size: number;
   originalSize: number;
   compressedSize: number;
@@ -36,9 +35,9 @@ export async function compressImage(
   const opts = { ...defaultOptions, ...options };
 
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (event) => {
+    const objectUrl = URL.createObjectURL(file);
+    const cleanup = () => URL.revokeObjectURL(objectUrl);
+    {
       const img = new Image();
 
       img.onload = () => {
@@ -64,6 +63,7 @@ export async function compressImage(
 
         const ctx = canvas.getContext("2d");
         if (!ctx) {
+          cleanup();
           reject(new Error("Could not get canvas context"));
           return;
         }
@@ -76,27 +76,22 @@ export async function compressImage(
 
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Convert to blob and dataUrl
-        const dataUrl = canvas.toDataURL(
-          opts.format || "image/jpeg",
-          opts.quality || 0.8,
-        );
-
         // Convert canvas to blob
         canvas.toBlob(
           (blob) => {
             if (!blob) {
+              cleanup();
               reject(new Error("Failed to convert canvas to blob"));
               return;
             }
 
             resolve({
               blob,
-              dataUrl,
               size: blob.size,
               originalSize: file.size,
               compressedSize: blob.size,
             });
+            cleanup();
           },
           opts.format || "image/jpeg",
           opts.quality || 0.8,
@@ -104,102 +99,13 @@ export async function compressImage(
       };
 
       img.onerror = () => {
+        cleanup();
         reject(new Error("Failed to load image"));
       };
 
-      img.src = event.target?.result as string;
-    };
-
-    reader.onerror = () => {
-      reject(new Error("Failed to read file"));
-    };
-
-    reader.readAsDataURL(file);
+      img.src = objectUrl;
+    }
   });
-}
-
-/**
- * Compress image from a base64 string
- * @param base64String - The base64 encoded image
- * @param options - Compression options
- * @returns Promise with compressed base64 string
- */
-export async function compressBase64Image(
-  base64String: string,
-  options: CompressionOptions = {},
-): Promise<string> {
-  const opts = { ...defaultOptions, ...options };
-
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-
-    img.onload = () => {
-      let { width, height } = img;
-      const maxWidth = opts.maxWidth || 1200;
-      const maxHeight = opts.maxHeight || 1200;
-
-      if (width > maxWidth) {
-        height = (height * maxWidth) / width;
-        width = maxWidth;
-      }
-
-      if (height > maxHeight) {
-        width = (width * maxHeight) / height;
-        height = maxHeight;
-      }
-
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("Could not get canvas context"));
-        return;
-      }
-
-      if (opts.format === "image/jpeg") {
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillRect(0, 0, width, height);
-      }
-
-      ctx.drawImage(img, 0, 0, width, height);
-
-      resolve(
-        canvas.toDataURL(opts.format || "image/jpeg", opts.quality || 0.8),
-      );
-    };
-
-    img.onerror = () => {
-      reject(new Error("Failed to load image"));
-    };
-
-    img.src = base64String;
-  });
-}
-
-/**
- * Convert File to base64 string
- * @param file - The file to convert
- * @returns Promise with base64 string
- */
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Extract base64 data from a data URL
- * @param dataUrl - The data URL (e.g., "data:image/jpeg;base64,...")
- * @returns The base64 data without the prefix
- */
-export function extractBase64Data(dataUrl: string): string {
-  const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  return matches ? matches[2] : dataUrl;
 }
 
 /**

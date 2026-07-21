@@ -18,9 +18,19 @@ import {
   Reply,
   RotateCcw,
   CornerDownRight,
+  Eye,
 } from "lucide-react";
 import { VoiceNotePlayer } from "./VoiceNotePlayer";
+import { ImageModal } from "./ImageModal";
 import { MessageReactions } from "./MessageReactions";
+import { DocumentViewerModal } from "./DocumentViewerModal";
+import {
+  getMediaKind,
+  getMediaProxyUrl,
+  getMediaUrl,
+  isViewableDocument,
+  normalizeMediaUrl,
+} from "@/lib/media";
 
 export interface ChatMessage {
   _id: string;
@@ -39,6 +49,7 @@ export interface ChatMessage {
     | "call_missed";
   attachments?: {
     url: string;
+    fileId?: string;
     filename: string;
     size: number;
     mimeType: string;
@@ -104,6 +115,18 @@ export function ChatBubble({
   );
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImageUrl, setSelectedImageUrl] = useState("");
+  const [showDocModal, setShowDocModal] = useState(false);
+  const [docModalUrl, setDocModalUrl] = useState("");
+  const [docModalFilename, setDocModalFilename] = useState("");
+  const [docModalMimeType, setDocModalMimeType] = useState("");
+
+  // Open document in lightbox modal
+  const openDocumentViewer = (attachmentUrl: string, filename: string, mimeType: string) => {
+    setDocModalUrl(normalizeMediaUrl(attachmentUrl));
+    setDocModalFilename(filename);
+    setDocModalMimeType(mimeType);
+    setShowDocModal(true);
+  };
 
   const getStatusIcon = () => {
     if (!isOwn) return null;
@@ -141,10 +164,18 @@ export function ChatBubble({
     // Handle attachments first
     if (message.attachments && message.attachments.length > 0) {
       const attachment = message.attachments[0]; // For now, handle single attachment
+      const attachmentUrl = getMediaUrl(attachment);
+      const mediaKind = getMediaKind(attachment.filename, attachment.mimeType, attachmentUrl);
+      const resolvedMessageType =
+        message.type === "text" || message.type === "file"
+          ? ["image", "video", "audio"].includes(mediaKind)
+            ? mediaKind
+            : "file"
+          : message.type;
 
-      switch (message.type) {
+      switch (resolvedMessageType) {
         case "image": {
-          const imageKey = attachment.url;
+          const imageKey = attachmentUrl;
           const hasError = imageErrors.get(imageKey) || false;
           const retries = imageRetryCount.get(imageKey) || 0;
 
@@ -190,16 +221,12 @@ export function ChatBubble({
 
           // Determine image source based on retry count
           const getImageSrc = () => {
-            const baseUrl = attachment.thumbnail || attachment.url;
-            if (retries === 1) {
-              // First retry: try via image proxy endpoint
-              return `/api/audio-proxy?url=${encodeURIComponent(baseUrl)}`;
+            if (retries === 0 && attachment.thumbnail) {
+              return getMediaProxyUrl(attachment.thumbnail);
             }
-            if (retries >= 2) {
-              // Second retry: try direct URL again (may have been transient)
-              return baseUrl;
-            }
-            return baseUrl;
+            return retries >= 2
+              ? normalizeMediaUrl(attachmentUrl)
+              : getMediaProxyUrl(attachmentUrl);
           };
 
           return (
@@ -207,7 +234,7 @@ export function ChatBubble({
               {!hasError ? (
                 <div
                   className="cursor-pointer group relative"
-                  onClick={() => handleImageClick(attachment.url)}
+                  onClick={() => handleImageClick(getMediaProxyUrl(attachmentUrl))}
                 >
                   <img
                     src={getImageSrc()}
@@ -217,13 +244,6 @@ export function ChatBubble({
                     style={{ maxHeight: "300px", maxWidth: "250px" }}
                     loading="lazy"
                   />
-                  {retries > 0 && (
-                    <div className="absolute inset-0 bg-gray-100/80 rounded-lg flex items-center justify-center">
-                      <div className="animate-pulse text-gray-400 text-xs">
-                        Loading...
-                      </div>
-                    </div>
-                  )}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center">
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="bg-black/50 rounded-full p-2">
@@ -267,11 +287,11 @@ export function ChatBubble({
           return (
             <div className="relative max-w-xs">
               <video
-                src={attachment.url}
+                src={getMediaProxyUrl(attachmentUrl)}
                 controls
                 className="rounded-lg max-w-full h-auto"
                 style={{ maxHeight: "300px", maxWidth: "250px" }}
-                poster={attachment.thumbnail}
+                poster={attachment.thumbnail ? getMediaProxyUrl(attachment.thumbnail) : undefined}
               >
                 Your browser does not support the video tag.
               </video>
@@ -301,7 +321,7 @@ export function ChatBubble({
           return (
             <div className="max-w-70 min-w-50">
               <VoiceNotePlayer
-                audioUrl={attachment.url}
+                audioUrl={getMediaProxyUrl(attachmentUrl)}
                 mimeType={normalizedMimeType}
                 duration={attachment.duration}
               />
@@ -324,32 +344,74 @@ export function ChatBubble({
           );
         }
 
-        case "file":
+        case "file": {
+          const isViewable = isViewableDocument(attachment.filename, attachment.mimeType, attachmentUrl);
+          const isPdf = attachment.mimeType === "application/pdf" || (attachment.filename || "").endsWith(".pdf");
+          const previewUrl = isPdf ? `${resolveUrl(attachmentUrl)}#page=1&toolbar=0&navpanes=0&scrollbar=0` : "";
+
+          const handleFileClick = () => {
+            if (isViewable) {
+              openDocumentViewer(attachmentUrl, attachment.filename, attachment.mimeType);
+            } else {
+              window.open(getMediaProxyUrl(attachmentUrl), "_blank", "noopener,noreferrer");
+            }
+          };
           return (
-            <div className="bg-gray-50 rounded-lg p-3 border max-w-xs">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+            <div
+              className="bg-gray-50 rounded-lg border overflow-hidden w-full max-w-xs sm:max-w-md lg:max-w-lg cursor-pointer"
+              onClick={handleFileClick}
+            >
+              {/* PDF first-page preview */}
+              {isPdf && previewUrl && (
+                <div className="w-full h-36 bg-gray-200 relative overflow-hidden">
+                  <iframe
+                    src={previewUrl}
+                    className="w-[200%] h-[200%] absolute top-0 left-0 scale-50 origin-top-left pointer-events-none"
+                    title={attachment.filename}
+                    loading="lazy"
+                  />
+                </div>
+              )}
+
+              {/* File info row */}
+              <div className="p-3 flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
                   <FileText className="w-5 h-5 text-blue-600" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">
-                    {attachment.filename}
+                    {attachment.filename.length > 28
+                      ? attachment.filename.slice(0, 22) + "..." + attachment.filename.slice(-8)
+                      : attachment.filename}
                   </p>
                   <p className="text-xs text-gray-500">
                     {formatFileSize(attachment.size)}
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => window.open(attachment.url, "_blank")}
-                  className="h-8 w-8 p-0"
-                >
-                  <Download className="w-4 h-4" />
-                </Button>
               </div>
+
+              {/* Action button — full width */}
+              <button
+                type="button"
+                className={`w-full px-3 py-2 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors border-t ${
+                  isViewable
+                    ? "text-blue-600 hover:bg-blue-50"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {isViewable ? (
+                  <>
+                    <Eye className="w-4 h-4" /> View Document
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" /> Download File
+                  </>
+                )}
+              </button>
             </div>
           );
+        }
       }
     }
 
@@ -570,6 +632,15 @@ export function ChatBubble({
         onClose={() => setShowImageModal(false)}
         imageUrl={selectedImageUrl}
         filename={message.attachments?.[0]?.filename}
+      />
+
+      {/* Document Viewer Modal */}
+      <DocumentViewerModal
+        isOpen={showDocModal}
+        onClose={() => setShowDocModal(false)}
+        url={docModalUrl}
+        filename={docModalFilename}
+        mimeType={docModalMimeType}
       />
     </>
   );

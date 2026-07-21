@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
     const data = await request.json();
-    const { recipientId, content, type = 'text', attachments } = data;
+    const { recipientId, content, type = 'text', attachments, replyTo } = data;
 
     // Content is required for text messages; media messages can have empty content
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
@@ -193,6 +193,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let replyToId: mongoose.Types.ObjectId | undefined;
+    if (replyTo) {
+      if (typeof replyTo !== 'string' || !mongoose.isValidObjectId(replyTo)) {
+        return NextResponse.json({ error: 'Invalid reply message' }, { status: 400 });
+      }
+
+      const replyExists = await Message.exists({
+        _id: replyTo,
+        deletedAt: { $exists: false },
+        $or: [
+          { sender: session.user.id, receiver: recipientId },
+          { sender: recipientId, receiver: session.user.id }
+        ]
+      });
+
+      if (!replyExists) {
+        return NextResponse.json(
+          { error: 'The message you are replying to is unavailable' },
+          { status: 400 }
+        );
+      }
+
+      replyToId = new mongoose.Types.ObjectId(replyTo);
+    }
+
     // Create the message
     const message = new Message({
       sender: session.user.id,
@@ -200,6 +225,7 @@ export async function POST(request: NextRequest) {
       content,
       type,
       attachments: attachments || [],
+      replyTo: replyToId,
       status: 'sent',
       isRead: false
     });
@@ -211,6 +237,14 @@ export async function POST(request: NextRequest) {
     // Populate sender and receiver info
     await message.populate('sender', 'firstName lastName avatar role');
     await message.populate('receiver', 'firstName lastName avatar role');
+    await message.populate({
+      path: 'replyTo',
+      select: 'content type attachments sender createdAt',
+      populate: {
+        path: 'sender',
+        select: 'firstName lastName avatar'
+      }
+    });
 
     // Send real-time notification to BOTH sender and recipient via Socket.io
     const msgJson = message.toJSON();

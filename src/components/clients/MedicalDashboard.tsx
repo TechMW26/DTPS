@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Pencil, Eye, Droplets, Stethoscope, FileText } from 'lucide-react';
 import type { MedicalData, UploadedReport } from './MedicalForm';
+import { openMediaInApp } from '@/lib/media';
 
 const fmtLabel = (v: string) => v?.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || '—';
 
@@ -62,8 +63,7 @@ export default function MedicalDashboard({ data, onEdit, clientGender }: Medical
 
   const handleViewReport = (report: UploadedReport) => {
     if (!report.url) return;
-    const url = report.url.startsWith('/') ? window.location.origin + report.url : report.url;
-    window.open(url, '_blank');
+    openMediaInApp(report.url, report.fileName, report.fileType);
   };
 
   return (

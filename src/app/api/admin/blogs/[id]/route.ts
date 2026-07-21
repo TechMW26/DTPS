@@ -4,8 +4,9 @@ import { authOptions } from "@/lib/auth/config";
 import dbConnect from "@/lib/db/connection";
 import Blog, { IBlog } from "@/lib/db/models/Blog";
 import { getImageKit } from "@/lib/imagekit";
+import { deleteImageKitAsset } from "@/lib/imagekit-storage";
 import { UserRole } from "@/types";
-import { compressBase64ImageServer } from "@/lib/imageCompressionServer";
+import { compressImageServer } from "@/lib/imageCompressionServer";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
 
 // GET - Get single blog (admin)
@@ -120,7 +121,7 @@ export async function PUT(
     const isFeatured = formData.get("isFeatured") === "true";
     const isActive = formData.get("isActive") === "true";
     const displayOrder = parseInt(formData.get("displayOrder") as string) || 0;
-    const featuredImageData = formData.get("featuredImage") as string | null;
+    const featuredImage = formData.get("featuredImage");
     const metaTitle = formData.get("metaTitle") as string | null;
     const metaDescription = formData.get("metaDescription") as string | null;
 
@@ -147,23 +148,27 @@ export async function PUT(
       blog.metaDescription = metaDescription || undefined;
 
     // Upload new image if provided - single upload only
-    if (featuredImageData && featuredImageData.includes("base64")) {
+    if (featuredImage instanceof File) {
       try {
-        const imageBase64 = featuredImageData.split("base64,")[1];
-
-        // Compress image once
-        const compressedImage = await compressBase64ImageServer(imageBase64, {
-          quality: 85,
-          maxWidth: 1920,
-          maxHeight: 1080,
-          format: "jpeg",
-        });
+        const compressedImage = await compressImageServer(
+          Buffer.from(await featuredImage.arrayBuffer()),
+          {
+            quality: 85,
+            maxWidth: 1920,
+            maxHeight: 1080,
+            format: "jpeg",
+          },
+        );
 
         // Upload single image to ImageKit
         const imageKitInstance = getImageKit();
         if (!imageKitInstance) {
-          console.warn(
-            "[Blogs] ImageKit not configured — skipping image upload",
+          return NextResponse.json(
+            {
+              error: "ImageKit media service is unavailable",
+              code: "MEDIA_SERVICE_DOWN",
+            },
+            { status: 503 },
           );
         } else {
           const uploadResult = await imageKitInstance.upload({
@@ -174,6 +179,7 @@ export async function PUT(
 
           // Use the same URL for featured image
           blog.featuredImage = uploadResult.url;
+          blog.featuredImageFileId = uploadResult.fileId;
 
           // Generate thumbnail URL using ImageKit's URL transformation
           const filePath = (uploadResult as any).filePath as string | undefined;
@@ -186,6 +192,10 @@ export async function PUT(
         }
       } catch (uploadError) {
         console.error("Image upload failed:", uploadError);
+        return NextResponse.json(
+          { error: "Failed to upload image to ImageKit" },
+          { status: 503 },
+        );
       }
     }
 
@@ -216,13 +226,16 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const blog = await Blog.findByIdAndDelete(id);
+    const blog = await Blog.findById(id);
     if (!blog) {
       return NextResponse.json({ error: "Blog not found" }, { status: 404 });
     }
 
-    // Note: Images on ImageKit are not deleted to save on API calls
-    // You can implement image cleanup if needed
+    await deleteImageKitAsset({
+      fileId: blog.featuredImageFileId,
+      url: blog.featuredImage,
+    });
+    await Blog.findByIdAndDelete(id);
 
     return NextResponse.json({
       success: true,

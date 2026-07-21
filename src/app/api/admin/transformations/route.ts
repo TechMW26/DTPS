@@ -5,7 +5,7 @@ import dbConnect from "@/lib/db/connection";
 import Transformation from "@/lib/db/models/Transformation";
 import { getImageKit } from "@/lib/imagekit";
 import { UserRole } from "@/types";
-import { compressBase64ImageServer } from "@/lib/imageCompressionServer";
+import { compressImageServer } from "@/lib/imageCompressionServer";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
 
 // GET - Fetch all transformations
@@ -67,10 +67,14 @@ export async function POST(request: NextRequest) {
     const weightLoss = formData.get("weightLoss") as string | null;
     const isActive = formData.get("isActive") === "true";
     const displayOrder = parseInt(formData.get("displayOrder") as string) || 0;
-    const beforeImageData = formData.get("beforeImage") as string;
-    const afterImageData = formData.get("afterImage") as string;
+    const beforeImage = formData.get("beforeImage");
+    const afterImage = formData.get("afterImage");
 
-    if (!title || !beforeImageData || !afterImageData) {
+    if (
+      !title ||
+      !(beforeImage instanceof File) ||
+      !(afterImage instanceof File)
+    ) {
       return NextResponse.json(
         { error: "Title, before image, and after image are required" },
         { status: 400 },
@@ -80,37 +84,36 @@ export async function POST(request: NextRequest) {
     // Upload images to ImageKit
     let beforeImageUrl = "";
     let afterImageUrl = "";
+    let beforeImageFileId = "";
+    let afterImageFileId = "";
 
     try {
-      // Extract base64 data from data URL
-      const beforeBase64 = beforeImageData.includes("base64,")
-        ? beforeImageData.split("base64,")[1]
-        : beforeImageData;
-      const afterBase64 = afterImageData.includes("base64,")
-        ? afterImageData.split("base64,")[1]
-        : afterImageData;
-
-      // Compress before image
-      const compressedBefore = await compressBase64ImageServer(beforeBase64, {
+      const compressionOptions = {
         quality: 85,
         maxWidth: 1200,
         maxHeight: 1200,
-        format: "jpeg",
-      });
-
-      // Compress after image
-      const compressedAfter = await compressBase64ImageServer(afterBase64, {
-        quality: 85,
-        maxWidth: 1200,
-        maxHeight: 1200,
-        format: "jpeg",
-      });
+        format: "jpeg" as const,
+      };
+      const [compressedBefore, compressedAfter] = await Promise.all([
+        compressImageServer(
+          Buffer.from(await beforeImage.arrayBuffer()),
+          compressionOptions,
+        ),
+        compressImageServer(
+          Buffer.from(await afterImage.arrayBuffer()),
+          compressionOptions,
+        ),
+      ]);
 
       // Upload before image
       const imageKitInstance = getImageKit();
       if (!imageKitInstance) {
-        console.warn(
-          "[Transformations] ImageKit not configured — skipping image upload",
+        return NextResponse.json(
+          {
+            error: "ImageKit media service is unavailable",
+            code: "MEDIA_SERVICE_DOWN",
+          },
+          { status: 503 },
         );
       } else {
         const beforeUpload = await imageKitInstance.upload({
@@ -119,6 +122,7 @@ export async function POST(request: NextRequest) {
           folder: "/TransformationBeforeAndAfter",
         });
         beforeImageUrl = beforeUpload.url;
+        beforeImageFileId = beforeUpload.fileId;
 
         // Upload after image
         const afterUpload = await imageKitInstance.upload({
@@ -127,6 +131,7 @@ export async function POST(request: NextRequest) {
           folder: "/TransformationBeforeAndAfter",
         });
         afterImageUrl = afterUpload.url;
+        afterImageFileId = afterUpload.fileId;
       }
     } catch (uploadError) {
       console.error("Image upload failed:", uploadError);
@@ -145,6 +150,8 @@ export async function POST(request: NextRequest) {
       weightLoss: weightLoss ? parseFloat(weightLoss) : undefined,
       beforeImage: beforeImageUrl,
       afterImage: afterImageUrl,
+      beforeImageFileId,
+      afterImageFileId,
       isActive,
       displayOrder,
       createdBy: session.user.id,

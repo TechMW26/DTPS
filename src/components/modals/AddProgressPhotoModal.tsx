@@ -59,12 +59,8 @@ export function AddProgressPhotoModal({ isOpen, onClose, onAdd }: AddProgressPho
 
       setSelectedFile(file);
       
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      if (preview?.startsWith('blob:')) URL.revokeObjectURL(preview);
+      setPreview(URL.createObjectURL(file));
     }
   };
 

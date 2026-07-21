@@ -87,9 +87,6 @@ const medicalInfoSchema = new Schema<IMedicalInfo>({
   timestamps: true,
 });
 
-// Query pattern: MedicalInfo.findOne({ userId }) in client documents API.
-medicalInfoSchema.index({ userId: 1 }, { unique: true });
-
 // Delete existing model to ensure schema updates are applied
 if (mongoose.models.MedicalInfo) {
   delete mongoose.models.MedicalInfo;

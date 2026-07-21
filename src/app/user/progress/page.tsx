@@ -583,7 +583,7 @@ export default function UserProgressPage() {
         format: 'image/webp'
       });
 
-      // Use the compressed blob directly (compressImage returns { blob, dataUrl, ... })
+      // Use the compressed blob directly.
       const compressedFile = new File([compressed.blob], `transformation-${Date.now()}.webp`, { type: 'image/webp' });
 
       // Upload the compressed file

@@ -70,6 +70,7 @@ export default function CaloriesSection({ clientId, selectedDate }: CaloriesSect
   const [mealNotes, setMealNotes] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Lightbox state
@@ -240,6 +241,7 @@ export default function CaloriesSection({ clientId, selectedDate }: CaloriesSect
     if (meal.consumed) return; // Already consumed, don't allow changes
     setSelectedMeal(meal);
     setMealNotes('');
+    setSelectedPhotoFile(null);
     setPreviewPhoto(null);
     setPhotoDialogOpen(true);
   };
@@ -253,11 +255,9 @@ export default function CaloriesSection({ clientId, selectedDate }: CaloriesSect
         return;
       }
       
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewPhoto(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      if (previewPhoto?.startsWith('blob:')) URL.revokeObjectURL(previewPhoto);
+      setSelectedPhotoFile(file);
+      setPreviewPhoto(URL.createObjectURL(file));
     }
   };
 
@@ -267,9 +267,21 @@ export default function CaloriesSection({ clientId, selectedDate }: CaloriesSect
 
     try {
       setUploadingPhoto(true);
-      await toggleMealConsumed(selectedMeal, true, previewPhoto || '', mealNotes);
+      let photoUrl = '';
+      if (selectedPhotoFile) {
+        const uploadData = new FormData();
+        uploadData.append('file', selectedPhotoFile);
+        uploadData.append('type', 'progress');
+        const uploadResponse = await fetch('/api/upload', { method: 'POST', body: uploadData });
+        const uploadResult = await uploadResponse.json();
+        if (!uploadResponse.ok) throw new Error(uploadResult.error || 'Meal photo upload failed');
+        photoUrl = uploadResult.url;
+      }
+      await toggleMealConsumed(selectedMeal, true, photoUrl, mealNotes);
       setPhotoDialogOpen(false);
       setSelectedMeal(null);
+      setSelectedPhotoFile(null);
+      if (previewPhoto?.startsWith('blob:')) URL.revokeObjectURL(previewPhoto);
       setPreviewPhoto(null);
       setMealNotes('');
     } catch (error) {

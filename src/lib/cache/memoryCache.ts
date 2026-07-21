@@ -200,8 +200,8 @@ export const serverCache = {
    * @example
    * const recipes = await serverCache.getOrSet('all-recipes', () => Recipe.find(), { ttl: 300 });
    */
-  getOrSet: <T>(key: string, fetcher: () => Promise<T>, options?: CacheOptions) =>
-    getCache().getOrSet(key, fetcher, options),
+  getOrSet: <T>(_key: string, fetcher: () => Promise<T>, _options?: CacheOptions) =>
+    fetcher(),
 
   /**
    * Set a value in cache
@@ -296,35 +296,13 @@ const tagToKeys: Map<string, Set<string>> = new Map();
  *   { ttl: 120000, tags: ['users'] }
  * );
  */
+// Caching disabled — always fetches fresh data
 export async function withCache<T>(
-  key: string,
+  _key: string,
   fetcher: () => Promise<T>,
-  options: { ttl?: number; tags?: string[] } = {}
+  _options: { ttl?: number; tags?: string[] } = {}
 ): Promise<T> {
-  const { ttl = 60000, tags = [] } = options;
-  const ttlSeconds = Math.floor(ttl / 1000); // Convert ms to seconds
-  
-  // Check if data is already cached
-  const cached = serverCache.get<T>(key);
-  if (cached !== null) {
-    return cached;
-  }
-  
-  // Fetch fresh data
-  const data = await fetcher();
-  
-  // Store in cache
-  serverCache.set(key, data, ttlSeconds);
-  
-  // Track tags for invalidation
-  for (const tag of tags) {
-    if (!tagToKeys.has(tag)) {
-      tagToKeys.set(tag, new Set());
-    }
-    tagToKeys.get(tag)!.add(key);
-  }
-  
-  return data;
+  return fetcher();
 }
 
 /**
@@ -337,23 +315,9 @@ export async function withCache<T>(
  * // After creating/updating a user
  * clearCacheByTag('users');
  */
-export function clearCacheByTag(tag: string): number {
-  const keys = tagToKeys.get(tag);
-  if (!keys) {
-    return 0;
-  }
-  
-  let cleared = 0;
-  for (const key of keys) {
-    if (serverCache.delete(key)) {
-      cleared++;
-    }
-  }
-  
-  // Clear the tag tracking
-  tagToKeys.delete(tag);
-  
-  return cleared;
+// Cache disabled — no-op
+export function clearCacheByTag(_tag: string): number {
+  return 0;
 }
 
 export default serverCache;

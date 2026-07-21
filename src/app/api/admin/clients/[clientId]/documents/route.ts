@@ -1,15 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
-import { unlink } from 'fs/promises';
-import { join } from 'path';
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth/config";
+import connectDB from "@/lib/db/connection";
+import User from "@/lib/db/models/User";
+import { unlink } from "fs/promises";
+import { join } from "path";
+import mongoose from "mongoose";
+import { File as FileModel } from "@/lib/db/models/File";
+import { deleteImageKitAsset } from "@/lib/imagekit-storage";
 
 // DELETE /api/admin/clients/[clientId]/documents - Delete a document
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ clientId: string }> }
+  { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
     const [session, , { clientId }] = await Promise.all([
@@ -18,45 +21,66 @@ export async function DELETE(
       params,
     ]);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const userRole = session.user.role?.toLowerCase();
-    if (!userRole || !userRole.includes('admin')) {
-      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+    if (!userRole || !userRole.includes("admin")) {
+      return NextResponse.json(
+        { error: "Forbidden - Admin access required" },
+        { status: 403 },
+      );
     }
 
     const { searchParams } = new URL(request.url);
-    const documentId = searchParams.get('documentId');
-    const filePath = searchParams.get('filePath');
+    const documentId = searchParams.get("documentId");
+    const filePath = searchParams.get("filePath");
 
     if (!documentId) {
-      return NextResponse.json({ error: 'Document ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Document ID is required" },
+        { status: 400 },
+      );
     }
 
     const client = await User.findById(clientId);
     if (!client) {
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
     // Find and remove the document
     const documentIndex = client.documents?.findIndex(
-      (doc: any) => doc._id.toString() === documentId
+      (doc: any) => doc._id.toString() === documentId,
     );
 
     if (documentIndex === -1 || documentIndex === undefined) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: "Document not found" },
+        { status: 404 },
+      );
     }
 
     const document = client.documents[documentIndex];
 
-    // Try to delete the actual file if it exists locally
-    if (document.filePath && !document.filePath.startsWith('http')) {
+    const storedFileId = document.filePath?.split("/").pop();
+    if (storedFileId && mongoose.Types.ObjectId.isValid(storedFileId)) {
+      const storedFile = await FileModel.findById(storedFileId);
+      if (storedFile) {
+        await deleteImageKitAsset({
+          fileId: storedFile.imageKitFileId,
+          url: storedFile.imageKitUrl,
+        });
+        await FileModel.findByIdAndDelete(storedFileId);
+      }
+    }
+
+    // Legacy cleanup only. New uploads are never written to local storage.
+    if (document.filePath?.startsWith("/uploads/")) {
       try {
-        const fullPath = join(process.cwd(), 'public', document.filePath);
+        const fullPath = join(process.cwd(), "public", document.filePath);
         await unlink(fullPath);
       } catch (fileError) {
-        console.log('File might not exist or is external:', fileError);
+        console.log("File might not exist or is external:", fileError);
       }
     }
 
@@ -65,12 +89,14 @@ export async function DELETE(
     await client.save();
 
     return NextResponse.json({
-      message: 'Document deleted successfully',
-      documentsCount: client.documents.length
+      message: "Document deleted successfully",
+      documentsCount: client.documents.length,
     });
-
   } catch (error) {
-    console.error('Error deleting document:', error);
-    return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 });
+    console.error("Error deleting document:", error);
+    return NextResponse.json(
+      { error: "Failed to delete document" },
+      { status: 500 },
+    );
   }
 }

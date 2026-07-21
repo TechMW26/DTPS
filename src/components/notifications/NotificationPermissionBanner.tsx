@@ -59,7 +59,7 @@ export function NotificationPermissionBanner({
             toast.dismiss(toastIdRef.current);
             toastIdRef.current = null;
           }
-          toast.success('Push notifications enabled! You will receive alerts for new appointments and messages.');
+          toast.success('Push notifications enabled! You will receive timely alerts and reminders.');
         }
       }
     } catch (error) {

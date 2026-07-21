@@ -18,6 +18,10 @@ const attachmentSchema = new Schema({
     type: String,
     required: true
   },
+  fileId: {
+    type: Schema.Types.ObjectId,
+    ref: 'File'
+  },
   thumbnail: {
     type: String
   },

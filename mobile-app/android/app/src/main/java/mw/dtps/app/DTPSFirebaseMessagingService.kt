@@ -232,7 +232,7 @@ class DTPSFirebaseMessagingService : FirebaseMessagingService() {
             "new_message", "message" -> CHANNEL_ID_MESSAGES
             "appointment", "appointment_booked", "appointment_cancelled", "appointment_reminder" -> CHANNEL_ID_APPOINTMENTS
             "payment_link", "payment_link_created", "payment" -> CHANNEL_ID_PAYMENTS
-            "task_assigned", "meal_plan", "meal_plan_created", "meal_plan_updated" -> CHANNEL_ID_TASKS
+            "task_assigned", "meal_plan", "meal_plan_created", "meal_plan_updated", "meal_upcoming", "meal_photo_prompt" -> CHANNEL_ID_TASKS
             "call", "incoming_call" -> CHANNEL_ID_CALLS
             else -> CHANNEL_ID_DEFAULT
         }
@@ -289,7 +289,7 @@ class DTPSFirebaseMessagingService : FirebaseMessagingService() {
                 notificationBuilder.setColor(Color.parseColor("#FF9800"))
                 notificationBuilder.setCategory(NotificationCompat.CATEGORY_PROMO)
             }
-            "task_assigned", "meal_plan", "meal_plan_created" -> {
+            "task_assigned", "meal_plan", "meal_plan_created", "meal_upcoming", "meal_photo_prompt" -> {
                 notificationBuilder.setColor(Color.MAGENTA)
                 notificationBuilder.setCategory(NotificationCompat.CATEGORY_REMINDER)
             }

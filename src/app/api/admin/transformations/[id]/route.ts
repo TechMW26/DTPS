@@ -4,8 +4,9 @@ import { authOptions } from "@/lib/auth/config";
 import dbConnect from "@/lib/db/connection";
 import Transformation from "@/lib/db/models/Transformation";
 import { getImageKit } from "@/lib/imagekit";
+import { deleteImageKitAssets } from "@/lib/imagekit-storage";
 import { UserRole } from "@/types";
-import { compressBase64ImageServer } from "@/lib/imageCompressionServer";
+import { compressImageServer } from "@/lib/imageCompressionServer";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
 
 // GET - Get single transformation
@@ -79,8 +80,8 @@ export async function PUT(
     const weightLoss = formData.get("weightLoss") as string | null;
     const isActive = formData.get("isActive") === "true";
     const displayOrder = parseInt(formData.get("displayOrder") as string) || 0;
-    const beforeImageData = formData.get("beforeImage") as string | null;
-    const afterImageData = formData.get("afterImage") as string | null;
+    const beforeImage = formData.get("beforeImage");
+    const afterImage = formData.get("afterImage");
 
     // Update basic fields
     if (title) transformation.title = title;
@@ -102,17 +103,19 @@ export async function PUT(
     // Upload new images if provided (with compression)
     const imageKitInstance = getImageKit();
 
-    if (beforeImageData && beforeImageData.includes("base64")) {
+    if (beforeImage instanceof File) {
       try {
         if (!imageKitInstance) {
-          console.warn(
-            "[Transformations] ImageKit not configured — skipping image upload",
+          return NextResponse.json(
+            {
+              error: "ImageKit media service is unavailable",
+              code: "MEDIA_SERVICE_DOWN",
+            },
+            { status: 503 },
           );
         } else {
-          const beforeBase64 = beforeImageData.split("base64,")[1];
-          // Compress before upload
-          const compressedBefore = await compressBase64ImageServer(
-            beforeBase64,
+          const compressedBefore = await compressImageServer(
+            Buffer.from(await beforeImage.arrayBuffer()),
             {
               quality: 85,
               maxWidth: 1200,
@@ -126,36 +129,51 @@ export async function PUT(
             folder: "/TransformationBeforeAndAfter",
           });
           transformation.beforeImage = beforeUpload.url;
+          transformation.beforeImageFileId = beforeUpload.fileId;
         }
       } catch (uploadError) {
         console.error("Before image upload failed:", uploadError);
+        return NextResponse.json(
+          { error: "Failed to upload before image to ImageKit" },
+          { status: 503 },
+        );
       }
     }
 
-    if (afterImageData && afterImageData.includes("base64")) {
+    if (afterImage instanceof File) {
       try {
         if (!imageKitInstance) {
-          console.warn(
-            "[Transformations] ImageKit not configured — skipping image upload",
+          return NextResponse.json(
+            {
+              error: "ImageKit media service is unavailable",
+              code: "MEDIA_SERVICE_DOWN",
+            },
+            { status: 503 },
           );
         } else {
-          const afterBase64 = afterImageData.split("base64,")[1];
-          // Compress before upload
-          const compressedAfter = await compressBase64ImageServer(afterBase64, {
-            quality: 85,
-            maxWidth: 1200,
-            maxHeight: 1200,
-            format: "jpeg",
-          });
+          const compressedAfter = await compressImageServer(
+            Buffer.from(await afterImage.arrayBuffer()),
+            {
+              quality: 85,
+              maxWidth: 1200,
+              maxHeight: 1200,
+              format: "jpeg",
+            },
+          );
           const afterUpload = await imageKitInstance.upload({
             file: compressedAfter,
             fileName: `transformation_after_${Date.now()}.jpg`,
             folder: "/TransformationBeforeAndAfter",
           });
           transformation.afterImage = afterUpload.url;
+          transformation.afterImageFileId = afterUpload.fileId;
         }
       } catch (uploadError) {
         console.error("After image upload failed:", uploadError);
+        return NextResponse.json(
+          { error: "Failed to upload after image to ImageKit" },
+          { status: 503 },
+        );
       }
     }
 
@@ -185,13 +203,25 @@ export async function DELETE(
     const { id } = await params;
     await dbConnect();
 
-    const transformation = await Transformation.findByIdAndDelete(id);
+    const transformation = await Transformation.findById(id);
     if (!transformation) {
       return NextResponse.json(
         { error: "Transformation not found" },
         { status: 404 },
       );
     }
+
+    await deleteImageKitAssets([
+      {
+        fileId: transformation.beforeImageFileId,
+        url: transformation.beforeImage,
+      },
+      {
+        fileId: transformation.afterImageFileId,
+        url: transformation.afterImage,
+      },
+    ]);
+    await Transformation.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

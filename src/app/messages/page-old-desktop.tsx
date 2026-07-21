@@ -58,6 +58,7 @@ import {
   Play,
   Pause,
   Download,
+  Eye,
   Volume2,
   VolumeX,
   User,
@@ -72,6 +73,8 @@ import {
 } from "lucide-react";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import BulkMessageModal from "@/components/messages/BulkMessageModal";
+import { DocumentViewerModal } from "@/components/chat/DocumentViewerModal";
+import { getDocumentViewerUrl, getMediaProxyUrl, getMediaUrl, isViewableDocument } from "@/lib/media";
 
 // Dynamic import for emoji picker to avoid SSR issues
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
@@ -84,6 +87,7 @@ interface Message {
   createdAt: string;
   attachments?: {
     url: string;
+    fileId?: string;
     filename: string;
     size: number;
     mimeType: string;
@@ -106,6 +110,7 @@ interface Message {
     type: "text" | "image" | "file" | "video" | "audio" | "voice";
     attachments?: {
       url: string;
+      fileId?: string;
       filename: string;
       size: number;
       mimeType: string;
@@ -175,6 +180,11 @@ function MessagesContent() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [documentViewer, setDocumentViewer] = useState<{
+    url: string;
+    filename: string;
+    mimeType: string;
+  } | null>(null);
   const [isVideoCall, setIsVideoCall] = useState(false);
   const [isAudioCall, setIsAudioCall] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -857,6 +867,7 @@ function MessagesContent() {
 
       const attachment = {
         url: uploadData.url,
+        fileId: uploadData.fileId,
         filename: uploadData.filename || file.name,
         size: uploadData.size || file.size,
         mimeType: uploadData.type || file.type,
@@ -924,6 +935,7 @@ function MessagesContent() {
             const uploadData = await uploadResponse.json();
             const attachment = {
               url: uploadData.url,
+              fileId: uploadData.fileId,
               filename: uploadData.filename,
               size: uploadData.size,
               mimeType: uploadData.type,
@@ -1905,7 +1917,7 @@ function MessagesContent() {
                                   : conversation.lastMessage?.type === "voice"
                                     ? "🎤 Voice message"
                                     : conversation.lastMessage?.type === "file"
-                                      ? "📄 Document"
+                                      ? "Document"
                                       : conversation.lastMessage?.content ||
                                         "Start conversation..."}
                           </p>
@@ -2182,12 +2194,12 @@ function MessagesContent() {
                                   message.attachments?.[0] && (
                                     <div className="mb-2">
                                       <img
-                                        src={message.attachments[0].url}
+                                        src={getMediaProxyUrl(message.attachments[0])}
                                         alt="Shared image"
-                                        className="rounded-lg max-w-xs h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                        className="rounded-lg max-w-xs sm:max-w-sm h-auto cursor-pointer hover:opacity-90 transition-opacity"
                                         onClick={() =>
                                           setPreviewImage(
-                                            message.attachments?.[0]?.url || "",
+                                            getMediaUrl(message.attachments?.[0]),
                                           )
                                         }
                                         onError={(e) => {
@@ -2219,7 +2231,7 @@ function MessagesContent() {
                                   message.attachments?.[0] && (
                                     <div className="mb-2">
                                       <video
-                                        src={message.attachments[0].url}
+                                        src={getMediaProxyUrl(message.attachments[0])}
                                         controls
                                         className="rounded-lg max-w-xs h-auto"
                                         preload="metadata"
@@ -2242,14 +2254,14 @@ function MessagesContent() {
                                         preload="metadata"
                                       >
                                         <source
-                                          src={message.attachments[0].url}
+                                          src={getMediaProxyUrl(message.attachments[0])}
                                           type={
                                             message.attachments[0].mimeType ||
                                             "audio/*"
                                           }
                                         />
                                         <a
-                                          href={message.attachments[0].url}
+                                          href={getDocumentViewerUrl(message.attachments[0], message.attachments[0].filename, message.attachments[0].mimeType)}
                                           target="_blank"
                                           rel="noopener noreferrer"
                                         >
@@ -2261,31 +2273,54 @@ function MessagesContent() {
 
                                 {/* File Messages */}
                                 {message.type === "file" &&
-                                  message.attachments?.[0] && (
-                                    <a
-                                      href={message.attachments[0].url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      download={message.attachments[0].filename}
-                                      className="flex items-center space-x-2 mb-2 p-2 bg-gray-100 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors"
+                                  message.attachments?.[0] && (() => {
+                                    const att = message.attachments[0];
+                                    const viewable = isViewableDocument(att.filename || "", att.mimeType || "", att.url || "");
+                                    const mediaUrl = getMediaUrl(att);
+                                    const isPdf = (att.mimeType || "") === "application/pdf" || (att.filename || "").endsWith(".pdf");
+                                    return (
+                                    <div
+                                      className="w-full max-w-xs sm:max-w-md lg:max-w-lg mb-2 bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer"
+                                      onClick={() => {
+                                        if (viewable) {
+                                          setDocumentViewer({ url: mediaUrl, filename: att.filename, mimeType: att.mimeType });
+                                        } else {
+                                          window.open(getMediaProxyUrl(att, { download: true, filename: att.filename }), "_blank", "noopener,noreferrer");
+                                        }
+                                      }}
                                     >
-                                      <FileIcon className="h-4 w-4 text-gray-600" />
-                                      <div className="flex-1">
-                                        <span className="text-sm font-medium">
-                                          {message.attachments[0].filename}
-                                        </span>
-                                        <p className="text-xs text-gray-500">
-                                          {(
-                                            message.attachments[0].size /
-                                            1024 /
-                                            1024
-                                          ).toFixed(2)}{" "}
-                                          MB
-                                        </p>
+                                      {isPdf && (
+                                        <div className="w-full h-32 bg-gray-200 overflow-hidden">
+                                          <iframe
+                                            src={`${mediaUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0`}
+                                            className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
+                                            title={att.filename}
+                                            loading="lazy"
+                                          />
+                                        </div>
+                                      )}
+                                      <div className="p-3 flex items-center gap-3">
+                                        <div className="h-10 w-10 shrink-0 rounded-lg bg-blue-50 flex items-center justify-center">
+                                          <FileIcon className="h-5 w-5 text-blue-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <span className="block text-sm font-semibold text-gray-900 truncate">
+                                            {att.filename}
+                                          </span>
+                                          <p className="text-xs text-gray-500">
+                                            {(att.size / 1024 / 1024).toFixed(2)} MB
+                                          </p>
+                                        </div>
                                       </div>
-                                      <Download className="h-4 w-4 text-gray-600" />
-                                    </a>
-                                  )}
+                                      <button
+                                        type="button"
+                                        className={`w-full px-3 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 border-t transition-colors ${viewable ? "text-blue-600 hover:bg-blue-50" : "text-gray-600 hover:bg-gray-50"}`}
+                                      >
+                                        {viewable ? <><Eye className="h-4 w-4" /> View Document</> : <><Download className="h-4 w-4" /> Download File</>}
+                                      </button>
+                                    </div>
+                                    );
+                                  })()}
                                 <p className="text-sm">{message.content}</p>
                                 <div
                                   className={`flex items-center ${isOwn ? "justify-end" : "justify-start"} space-x-1 mt-1`}
@@ -2518,7 +2553,7 @@ function MessagesContent() {
                     </DialogHeader>
                     <div className="flex justify-center">
                       <img
-                        src={previewImage || undefined}
+                        src={getMediaProxyUrl(previewImage)}
                         alt="Preview"
                         className="max-w-full max-h-96 object-contain rounded-lg"
                       />
@@ -2569,6 +2604,14 @@ function MessagesContent() {
       />
 
       {/* Delete Message Dialog */}
+      <DocumentViewerModal
+        isOpen={Boolean(documentViewer)}
+        onClose={() => setDocumentViewer(null)}
+        url={documentViewer?.url || ""}
+        filename={documentViewer?.filename || "Document"}
+        mimeType={documentViewer?.mimeType || ""}
+      />
+
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

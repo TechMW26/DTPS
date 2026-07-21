@@ -85,6 +85,7 @@
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/html2canvas": "^0.5.35",
+    "@types/imagekit": "3.1.5",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/nodemailer": "^7.0.4",

@@ -93,12 +93,10 @@ export async function PUT(request: NextRequest) {
 // Handle reminder settings
 async function handleReminderSettings(userId: string, settings: any) {
   try {
-    // If meal reminders enabled, schedule meal reminders
-    if (settings.mealReminders) {
-      // Store reminder preferences - these will be used by a cron job
+    if (settings.mealReminders !== undefined) {
       await User.findByIdAndUpdate(userId, {
         $set: {
-          'reminderPreferences.mealReminders': true,
+          'reminderPreferences.mealReminders': Boolean(settings.mealReminders),
           'reminderPreferences.mealTimes': settings.mealTimes || ['8:00 AM', '1:00 PM', '7:00 PM']
         }
       });

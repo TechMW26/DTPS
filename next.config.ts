@@ -1,11 +1,5 @@
 import type { NextConfig } from "next";
 
-const noCacheHeaders = [
-  { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, proxy-revalidate' },
-  { key: 'Pragma', value: 'no-cache' },
-  { key: 'Expires', value: '0' },
-];
-
 const nextConfig: NextConfig = {
   // Docker deployment configuration
   output: 'standalone',
@@ -33,7 +27,6 @@ const nextConfig: NextConfig = {
       },
     ],
     formats: ['image/webp', 'image/avif'],
-    minimumCacheTTL: 2592000, // 30 days for image cache
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
@@ -66,11 +59,6 @@ const nextConfig: NextConfig = {
       'jspdf',
       'sonner',
     ],
-    // Client-side router cache — keep prefetched pages alive longer
-    staleTimes: {
-      dynamic: 30,  // Cache dynamic pages for 30s on client router
-      static: 300,  // Cache static pages for 5min on client router
-    },
   } as any,
 
   // Turbopack configuration for Next.js 16+
@@ -104,31 +92,7 @@ const nextConfig: NextConfig = {
   // Allow embedding in iframes from any origin (app-level)
   headers: async () => {
     return [
-      // Disable caching for ALL API routes — ensures fresh data
-      {
-        source: '/api/:path*',
-        headers: noCacheHeaders,
-      },
-      // Pages: no caching — prevents stale HTML from being served after deployments
-      // This is critical for WebViews (Android app) which can aggressively cache HTML
-      {
-        source: '/(admin|dashboard|dietician|health-counselor|messages|appointments|clients|recipes|meal-plans|meal-plan-templates|billing|subscriptions|analytics|profile|settings|revenue-report|user)/:path*',
-        headers: noCacheHeaders,
-      },
-      // Cache static assets aggressively (production only - don't override in development)
-      ...(process.env.NODE_ENV === 'production' ? [{
-        source: '/_next/static/:path*',
-        headers: [
-          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
-        ],
-      }] : []),
-      {
-        source: '/favicon.ico',
-        headers: [
-          { key: 'Cache-Control', value: 'public, max-age=86400' },
-        ],
-      },
-      // Service worker must not be cached long to allow updates
+      // Service worker: allow updates
       {
         source: '/sw.js',
         headers: [

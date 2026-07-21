@@ -1224,42 +1224,38 @@ export async function POST(request: NextRequest) {
     if (validatedData.image && validatedData.image.trim() !== "") {
       const imageValue = cleanDoubleEncodedString(validatedData.image);
       try {
-        let compressedBase64: string;
-
-        if (imageValue.startsWith("data:image/")) {
-          // Base64 image - extract and compress
-          const base64Data = imageValue.split(",")[1];
-          const buffer = Buffer.from(base64Data, "base64");
-          const compressed = await compressImageServer(buffer, {
-            quality: 85,
-            maxWidth: 1200,
-            maxHeight: 1200,
-            format: "jpeg",
-          });
-          compressedBase64 = `data:image/jpeg;base64,${compressed}`;
-        } else {
-          // URL - fetch, compress, and convert to base64
-          const response = await fetch(imageValue);
-          const arrayBuffer = await response.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          const compressed = await compressImageServer(buffer, {
-            quality: 85,
-            maxWidth: 1200,
-            maxHeight: 1200,
-            format: "jpeg",
-          });
-          compressedBase64 = `data:image/jpeg;base64,${compressed}`;
+        if (imageValue.startsWith("data:")) {
+          return NextResponse.json(
+            { error: "Embedded image data is not supported. Upload the file to ImageKit first." },
+            { status: 400 },
+          );
         }
+
+        const response = await fetch(imageValue);
+        if (!response.ok) throw new Error(`Could not read recipe image (${response.status})`);
+        const compressedImage = await compressImageServer(
+          Buffer.from(await response.arrayBuffer()),
+          {
+            quality: 85,
+            maxWidth: 1200,
+            maxHeight: 1200,
+            format: "jpeg",
+          },
+        );
 
         const imageKit = getImageKit();
         if (!imageKit) {
-          console.warn(
-            "[Recipes] ImageKit not configured — skipping image upload",
+          return NextResponse.json(
+            {
+              error: "Media service temporarily unavailable",
+              message: "ImageKit is required for recipe images",
+              code: "MEDIA_SERVICE_DOWN",
+            },
+            { status: 503 },
           );
-          // Continue without image, recipe can be created without one
         } else {
           const uploadResponse = await imageKit.upload({
-            file: compressedBase64,
+            file: compressedImage,
             fileName: `recipe_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`,
             folder: "/recipes",
           });

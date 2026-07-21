@@ -30,6 +30,14 @@ export const getImageKit = (): ImageKit | null => {
       privateKey,
       urlEndpoint,
     });
+    if (
+      typeof imagekitInstance.upload !== "function" ||
+      typeof imagekitInstance.listFiles !== "function"
+    ) {
+      throw new Error(
+        "Incompatible ImageKit SDK installed. Run npm install to restore the locked dependency version.",
+      );
+    }
     return imagekitInstance;
   } catch (error) {
     initError = `ImageKit initialization failed: ${error instanceof Error ? error.message : "Unknown error"}`;

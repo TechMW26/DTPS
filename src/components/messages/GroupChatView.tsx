@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format, isToday, isYesterday } from 'date-fns';
 import ImageLightbox from '@/components/ui/image-lightbox';
+import { getDocumentViewerUrl, getMediaKind, getMediaProxyUrl, getMediaUrl } from '@/lib/media';
 
 interface GroupMessage {
   _id: string;
@@ -346,16 +347,16 @@ export default function GroupChatView({
                       <div className="mb-1">
                         {msg.attachments.map((att, attIdx) => (
                           <div key={attIdx}>
-                            {att.mimeType?.startsWith('image/') ? (
+                            {getMediaKind(att.filename, att.mimeType, getMediaUrl(att)) === 'image' ? (
                               <img
-                                src={att.url}
+                                src={getMediaProxyUrl(att)}
                                 alt={att.filename}
                                 className="rounded max-w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                onClick={() => openLightbox(att.url)}
+                                onClick={() => openLightbox(getMediaUrl(att))}
                               />
                             ) : (
                               <a
-                                href={att.url}
+                                href={getDocumentViewerUrl(att, att.filename, att.mimeType)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-blue-600 underline text-sm"

@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     const shouldCompress =
       !skipCompression && !isGif && file.type.startsWith("image/");
 
-    let uploadData: string;
+    let uploadData: Buffer;
     let finalFileName: string;
     let compressedSize = originalSize;
 
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       try {
         uploadData = await compressImageServer(buffer, compressionSettings);
         finalFileName = `${Date.now()}-${file.name.replace(/\.[^/.]+$/, ".webp")}`;
-        compressedSize = Buffer.from(uploadData, "base64").length;
+        compressedSize = uploadData.length;
         console.log(
           `[Upload] Compressed ${file.name}: ${(originalSize / 1024).toFixed(1)}KB -> ${(compressedSize / 1024).toFixed(1)}KB (${Math.round((1 - compressedSize / originalSize) * 100)}% reduction)`,
         );
@@ -82,11 +82,11 @@ export async function POST(request: NextRequest) {
           "[Upload] Compression failed, uploading original:",
           compressionError,
         );
-        uploadData = buffer.toString("base64");
+        uploadData = buffer;
         finalFileName = `${Date.now()}-${file.name}`;
       }
     } else {
-      uploadData = buffer.toString("base64");
+      uploadData = buffer;
       finalFileName = `${Date.now()}-${file.name}`;
     }
 
@@ -96,10 +96,10 @@ export async function POST(request: NextRequest) {
       if (!imagekit) {
         return NextResponse.json(
           {
-            error:
-              "ImageKit is not configured. Please set IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, and IMAGEKIT_URL_ENDPOINT.",
+            error: "ImageKit media service is unavailable",
+            code: "MEDIA_SERVICE_DOWN",
           },
-          { status: 500 },
+          { status: 503 },
         );
       }
       const result = await imagekit.upload({
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
       console.error("ImageKit upload error:", imagekitError);
       return NextResponse.json(
         { error: "Failed to upload image to ImageKit" },
-        { status: 500 },
+        { status: 503 },
       );
     }
   } catch (error) {

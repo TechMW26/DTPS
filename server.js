@@ -36,6 +36,13 @@ const criticalSlowApiThresholdMs = parseInt(
   10,
 );
 const runtimeMonitorBaseUrl = process.env.NEXTAUTH_URL;
+const configuredMealEngagementIntervalMs = parseInt(
+  process.env.MEAL_ENGAGEMENT_INTERVAL_MS || "60000",
+  10,
+);
+const mealEngagementIntervalMs = Number.isFinite(configuredMealEngagementIntervalMs)
+  ? Math.max(30_000, configuredMealEngagementIntervalMs)
+  : 60_000;
 
 if (!process.env.RUNTIME_MONITOR_SECRET) {
   process.env.RUNTIME_MONITOR_SECRET = crypto.randomBytes(24).toString("hex");
@@ -140,6 +147,42 @@ async function postRuntimeAlert(payload) {
       "[server] Failed to persist runtime alert:",
       error?.message || error,
     );
+  }
+}
+
+let mealEngagementRunInProgress = false;
+
+async function runMealEngagementNotifications() {
+  if (
+    process.env.MEAL_ENGAGEMENT_NOTIFICATIONS_ENABLED === "false" ||
+    mealEngagementRunInProgress
+  ) {
+    return;
+  }
+
+  mealEngagementRunInProgress = true;
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/internal/meal-engagement`,
+      {
+        method: "POST",
+        headers: {
+          "x-runtime-monitor-secret": process.env.RUNTIME_MONITOR_SECRET,
+        },
+      },
+    );
+    if (!response.ok) {
+      console.warn(
+        `[server] Meal engagement scheduler returned ${response.status}`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "[server] Meal engagement scheduler failed:",
+      error?.message || error,
+    );
+  } finally {
+    mealEngagementRunInProgress = false;
   }
 }
 
@@ -265,5 +308,18 @@ app.prepare().then(() => {
     console.log(`> Ready on http://${displayHost}:${port}`);
     console.log(`> Socket.io attached on /socket.io`);
     console.log(`> CORS origins: ${allowedOrigins.join(", ")}`);
+
+    if (process.env.MEAL_ENGAGEMENT_NOTIFICATIONS_ENABLED !== "false") {
+      const initialRun = setTimeout(runMealEngagementNotifications, 10_000);
+      initialRun.unref();
+      const scheduler = setInterval(
+        runMealEngagementNotifications,
+        mealEngagementIntervalMs,
+      );
+      scheduler.unref();
+      console.log(
+        `> Meal engagement scheduler every ${mealEngagementIntervalMs}ms`,
+      );
+    }
   });
 });

@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
 
     let receiptImagePath = "";
     let receiptImageUrl = "";
+    let receiptImageFileId = "";
 
     // Handle receipt image upload - compress and upload to ImageKit
     if (receiptImage && receiptImage.size > 0) {
@@ -128,7 +129,7 @@ export async function POST(request: NextRequest) {
         const buffer = Buffer.from(bytes);
 
         // Compress image before uploading (server-side compression)
-        const compressedBase64 = await compressImageServer(buffer, {
+        const compressedImage = await compressImageServer(buffer, {
           quality: 75,
           maxWidth: 1200,
           maxHeight: 1200,
@@ -141,26 +142,34 @@ export async function POST(request: NextRequest) {
         // Upload to ImageKit in the otherplatform folder
         const imageKit = getImageKit();
         if (!imageKit) {
-          console.warn(
-            "[Payments] ImageKit not configured — skipping receipt upload",
+          return NextResponse.json(
+            {
+              error:
+                "Media service temporarily unavailable. Please try again shortly.",
+              code: "MEDIA_SERVICE_DOWN",
+            },
+            { status: 503 },
           );
         } else {
           const uploadResponse = await imageKit.upload({
-            file: compressedBase64,
+            file: compressedImage,
             fileName: `${filename}.webp`,
             folder: "/otherplatform",
-            useUniqueFileName: true,
           });
 
           receiptImagePath = uploadResponse.filePath;
           receiptImageUrl = uploadResponse.url;
+          receiptImageFileId = uploadResponse.fileId;
         }
       } catch (uploadError) {
         console.error(
           "Error uploading receipt image to ImageKit:",
           uploadError,
         );
-        // Continue without image if upload fails
+        return NextResponse.json(
+          { error: "Failed to upload receipt to ImageKit" },
+          { status: 503 },
+        );
       }
     }
 
@@ -178,6 +187,7 @@ export async function POST(request: NextRequest) {
       durationLabel: durationLabel || undefined,
       receiptImage: receiptImagePath,
       receiptImageUrl,
+      receiptImageFileId,
       paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
       notes,
       status: "pending",

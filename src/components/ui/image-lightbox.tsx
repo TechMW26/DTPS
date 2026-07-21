@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { X, Download, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getMediaProxyUrl } from '@/lib/media';
 
 interface ImageLightboxProps {
   isOpen: boolean;
@@ -45,7 +46,7 @@ export default function ImageLightbox({ isOpen, onClose, src, alt = 'Image' }: I
 
   const handleDownload = () => {
     const link = document.createElement('a');
-    link.href = src;
+    link.href = getMediaProxyUrl(src, { download: true, filename: alt || 'image' });
     link.download = alt || 'image';
     link.target = '_blank';
     document.body.appendChild(link);
@@ -112,7 +113,7 @@ export default function ImageLightbox({ isOpen, onClose, src, alt = 'Image' }: I
         onClick={(e) => e.stopPropagation()}
       >
         <img
-          src={src}
+          src={getMediaProxyUrl(src)}
           alt={alt}
           className="max-w-full max-h-[90vh] object-contain"
           style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}

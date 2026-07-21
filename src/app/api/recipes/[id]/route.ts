@@ -7,6 +7,7 @@ import User from '@/lib/db/models/User';
 import mongoose from 'mongoose';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { normalizeToArray, normalizeNutritionValue } from '@/lib/recipe-normalize';
+import { deleteImageKitAssets } from '@/lib/imagekit-storage';
 
 function jsonNoStore(body: unknown, init?: ResponseInit) {
   const response = NextResponse.json(body, init);
@@ -394,6 +395,11 @@ export async function DELETE(
     // Clear cache for recipes
     clearCacheByTag('recipes');
 
+    await deleteImageKitAssets([
+      { url: recipe.image },
+      ...(recipe.images || []).map((url: string) => ({ url })),
+      { url: recipe.videoUrl },
+    ]);
     await Recipe.findByIdAndDelete(id);
     return NextResponse.json({ success: true });
   } catch (error: any) {

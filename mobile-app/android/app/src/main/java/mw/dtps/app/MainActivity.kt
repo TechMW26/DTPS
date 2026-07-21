@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private var permissionCallback: PermissionRequest? = null
     private var splashComplete = false
+    private var pendingNotificationUrl: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     
     // Camera photo URI
@@ -106,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "MainActivity"
         private const val APP_URL = "https://dtps.tech/user"
         private const val SPLASH_URL = "file:///android_asset/splash.html"
-        private val ALLOWED_HOSTS = listOf("dtps.tech")
+        private val ALLOWED_HOSTS = listOf("dtps.tech", "ik.imagekit.io", "docs.google.com")
     }
 
     // File picker launcher for gallery
@@ -204,6 +205,8 @@ class MainActivity : AppCompatActivity() {
         offlineText = findViewById(R.id.offlineText)
         retryButton = findViewById(R.id.retryButton)
 
+        pendingNotificationUrl = resolveNotificationUrl(intent)
+
         setupSplashWebView()
         setupWebView()
         setupBackHandler()
@@ -267,7 +270,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 // Start loading main content in background
-                webView.loadUrl(APP_URL)
+                webView.loadUrl(consumePendingNotificationUrl() ?: APP_URL)
             }
         }
     }
@@ -391,6 +394,7 @@ class MainActivity : AppCompatActivity() {
             builtInZoomControls = true
             displayZoomControls = false
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            userAgentString = "$userAgentString DTPSApp/Android"
             
             // Enable modern web features
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -594,7 +598,46 @@ class MainActivity : AppCompatActivity() {
     private fun loadUrl() {
         offlineView.visibility = View.GONE
         webView.visibility = View.VISIBLE
-        webView.loadUrl(APP_URL)
+        webView.loadUrl(consumePendingNotificationUrl() ?: APP_URL)
+    }
+
+    private fun resolveNotificationUrl(sourceIntent: Intent?): String? {
+        val rawUrl = sourceIntent?.getStringExtra("url")
+            ?: sourceIntent?.getStringExtra("clickAction")
+            ?: return null
+        val candidate = rawUrl.trim()
+        if (candidate.isEmpty()) return null
+
+        val absoluteUrl = if (candidate.startsWith("/")) {
+            "https://dtps.tech$candidate"
+        } else {
+            candidate
+        }
+        val parsed = Uri.parse(absoluteUrl)
+        val host = parsed.host?.lowercase(Locale.ROOT) ?: return null
+        if (parsed.scheme != "https" || (host != "dtps.tech" && !host.endsWith(".dtps.tech"))) {
+            Log.w(TAG, "Rejected untrusted notification URL")
+            return null
+        }
+        return absoluteUrl
+    }
+
+    private fun consumePendingNotificationUrl(): String? {
+        val target = pendingNotificationUrl
+        pendingNotificationUrl = null
+        return target
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val target = resolveNotificationUrl(intent) ?: return
+        if (::webView.isInitialized) {
+            offlineView.visibility = View.GONE
+            webView.loadUrl(target)
+        } else {
+            pendingNotificationUrl = target
+        }
     }
 
     private fun showOfflineView() {

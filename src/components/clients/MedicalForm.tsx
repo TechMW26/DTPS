@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Save, Eye, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { openMediaInApp } from '@/lib/media';
 import { compressImage, validateImageFile } from '@/lib/imageCompression';
 
 export interface MedicalData {
@@ -225,9 +226,7 @@ export function MedicalForm({ medicalConditions, allergies, dietaryRestrictions,
       return;
     }
 
-    // Open file in new tab - let the browser handle errors
-    const url = report.url.startsWith('/') ? window.location.origin + report.url : report.url;
-    window.open(url, '_blank');
+    openMediaInApp(report.url, report.fileName, report.fileType);
   };
 
   const handleDeleteReport = async (report: UploadedReport) => {

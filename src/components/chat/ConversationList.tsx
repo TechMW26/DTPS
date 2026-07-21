@@ -87,9 +87,9 @@ export function ConversationList({
 
     switch (message.type) {
       case 'image':
-        return '📷 Photo';
+        return 'Photo';
       case 'file':
-        return '📎 File';
+        return 'File';
       default:
         return message.content.length > 50
           ? `${message.content.substring(0, 50)}...`

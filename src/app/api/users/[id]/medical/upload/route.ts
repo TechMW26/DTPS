@@ -3,8 +3,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import { MedicalInfo } from '@/lib/db/models';
-import mongoose from 'mongoose';
+import { File as FileModel } from '@/lib/db/models/File';
 import { clearCacheByTag } from '@/lib/api/utils';
+import { getImageKit } from '@/lib/imagekit';
 
 // POST /api/users/[id]/medical/upload - Upload medical report file
 export async function POST(
@@ -29,32 +30,43 @@ export async function POST(
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Stream file to MongoDB GridFS
-    const db = mongoose.connection.db;
-    if (!db) {
-      return NextResponse.json({ error: 'Database not connected' }, { status: 500 });
-    }
-
-    const bucket = new (mongoose as any).mongo.GridFSBucket(db, { bucketName: 'medicalReports' });
     const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
     const contentType = file.type || 'application/octet-stream';
     const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    const imageKit = getImageKit();
+    if (!imageKit) {
+      return NextResponse.json(
+        { error: 'ImageKit media service is unavailable', code: 'MEDIA_SERVICE_DOWN' },
+        { status: 503 }
+      );
+    }
 
-    const uploadStream = bucket.openUploadStream(uniqueFileName, {
-      contentType,
-      metadata: { userId: id, originalName: file.name },
+    const uploaded = await imageKit.upload({
+      file: Buffer.from(bytes),
+      fileName: uniqueFileName,
+      folder: '/medical-reports',
     });
 
-    await new Promise<void>((resolve, reject) => {
-      uploadStream.end(buffer, (err?: Error) => {
-        if (err) reject(err);
-        else resolve();
+    let savedFile;
+    try {
+      savedFile = await FileModel.create({
+        filename: uploaded.name || uniqueFileName,
+        originalName: file.name,
+        mimeType: contentType,
+        size: file.size,
+        type: 'medical-report',
+        imageKitFileId: uploaded.fileId,
+        imageKitUrl: uploaded.url,
+        uploadedBy: session.user.id,
+        metadata: { userId: id, category },
       });
-    });
+    } catch (databaseError) {
+      await imageKit.deleteFile(uploaded.fileId).catch(() => undefined);
+      throw databaseError;
+    }
 
-    const fileId = (uploadStream.id as mongoose.Types.ObjectId).toString();
-    const publicUrl = `/api/reports/${fileId}`;
+    const fileId = String(savedFile._id);
+    const publicUrl = `/api/files/${fileId}`;
 
     // Save to database
     let medicalInfo = await MedicalInfo.findOne({ userId: id });

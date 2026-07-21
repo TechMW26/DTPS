@@ -13,6 +13,7 @@ import { UnreadCountProvider, useUnreadCountsSafe } from '@/contexts/UnreadCount
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import PageTransition from '@/components/animations/PageTransition';
 import { useScrollRestoration } from '@/hooks/useScrollRestoration';
+import { NotificationPermissionBanner } from '@/components/notifications/NotificationPermissionBanner';
 
 interface UserLayoutClientProps {
   children: ReactNode;
@@ -169,6 +170,8 @@ function UserLayoutContent({
 
   return (
     <div className={`relative flex flex-col min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
+      <NotificationPermissionBanner allowedRoles={['client']} />
+
       {/* Sidebar — self-contained overlay (handles its own backdrop + positioning) */}
       <UserSidebar
         isOpen={sidebarOpen}

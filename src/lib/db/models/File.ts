@@ -1,10 +1,5 @@
 import mongoose from 'mongoose';
 
-// Delete cached model if it exists to ensure schema updates are applied
-if (mongoose.models.File) {
-  delete mongoose.models.File;
-}
-
 const FileSchema = new mongoose.Schema({
   filename: {
     type: String,
@@ -22,22 +17,15 @@ const FileSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  // DEPRECATED: No longer store base64 data in MongoDB to save space
-  // All files should be uploaded to ImageKit instead
-  // Keeping field for backward compatibility with old records
-  data: {
-    type: String,
-    default: '' // Empty by default - don't store file content in MongoDB
-  },
   type: {
     type: String,
     enum: ['avatar', 'document', 'recipe-image', 'message', 'progress-photo', 'progress', 'note-attachment', 'medical-report', 'ecommerce', 'bug', 'transformation'],
     required: true
   },
-  // Primary storage location - prefer ImageKit URL
+  // DEPRECATED: retained only to resolve historical local-storage records.
   localPath: {
     type: String,
-    default: null
+    default: undefined
   },
   // ImageKit file ID for management (delete, update)
   imageKitFileId: {
@@ -73,13 +61,13 @@ FileSchema.index({ imageKitFileId: 1 });
 
 // Virtual to get the best available URL
 FileSchema.virtual('url').get(function() {
-  return this.imageKitUrl || this.localPath || (this.data ? `/api/files/${this._id}` : null);
+  return this.imageKitUrl || this.localPath || null;
 });
 
 // Ensure virtuals are included when converting to JSON
 FileSchema.set('toJSON', { virtuals: true });
 FileSchema.set('toObject', { virtuals: true });
 
-export const File = mongoose.model('File', FileSchema);
+export const File = mongoose.models.File || mongoose.model('File', FileSchema);
 
 export default File;

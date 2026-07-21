@@ -5,6 +5,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { X, Download, ZoomIn, ZoomOut, RotateCw, Share } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getMediaProxyUrl } from '@/lib/media';
 
 interface ImageModalProps {
   isOpen: boolean;
@@ -83,7 +84,7 @@ export function ImageModal({
     } else {
       // Default download behavior
       const link = document.createElement('a');
-      link.href = imageUrl;
+      link.href = getMediaProxyUrl(imageUrl, { download: true, filename: filename || 'image' });
       link.download = filename || 'image';
       document.body.appendChild(link);
       link.click();
@@ -197,7 +198,7 @@ export function ImageModal({
           
           {!error && (
             <img
-              src={imageUrl}
+          src={getMediaProxyUrl(imageUrl)}
               alt={filename || 'Image'}
               className={cn(
                 "max-w-full max-h-full object-contain transition-transform duration-200",

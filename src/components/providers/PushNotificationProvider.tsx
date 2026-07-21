@@ -31,12 +31,12 @@ function normalizeRoleValue(role: unknown): string {
  * Add this to your layout or a high-level component
  * 
  * Handles both:
- * 1. Web push notifications (via Firebase Messaging) - for staff dashboards
+ * 1. Web push notifications (via Firebase Messaging) - for staff and clients
  * 2. Native Android app FCM token registration (via WebView bridge) - for clients in native app
  * 
  * Note: 
- * - User/Client panel: No web push registration here, native app handles client notifications
- * - Dietitian/Health Counselor/Admin panels: Web push enabled with role-aware routing
+ * - Clients receive meal reminders on web and native apps
+ * - Dietitian/Health Counselor/Admin panels retain role-aware routing
  */
 export function PushNotificationProvider({
     children,
@@ -49,8 +49,15 @@ export function PushNotificationProvider({
     const userRole = normalizeRoleValue(session?.user?.role);
     const isDietitianOrCounselor = userRole === 'dietitian' || userRole === 'health_counselor';
     const isAdmin = userRole === 'admin';
-    const isStaffWebPushRole = isAdmin || isDietitianOrCounselor;
+    const isWebPushRole = isAdmin || isDietitianOrCounselor || userRole === 'client';
     const shouldShowInAppBanner = isDietitianOrCounselor;
+
+    const shouldShowNotificationBanner = useCallback((payload: any): boolean => {
+        if (shouldShowInAppBanner) return true;
+        if (userRole !== 'client') return false;
+        const type = String(payload?.data?.type || payload?.notificationType || '').toLowerCase();
+        return type === 'meal_upcoming' || type === 'meal_photo_prompt';
+    }, [shouldShowInAppBanner, userRole]);
 
     // Track last notification to prevent duplicates
     const lastNotificationRef = useRef<{ id: string; timestamp: number } | null>(null);
@@ -75,7 +82,7 @@ export function PushNotificationProvider({
     }, []);
 
     const syncUnreadNotificationBadge = useCallback(async () => {
-        if (typeof window === 'undefined' || !('navigator' in window) || !isStaffWebPushRole) return;
+        if (typeof window === 'undefined' || !('navigator' in window) || !isWebPushRole) return;
 
         try {
             const response = await fetch('/api/client/notifications/unread-count', {
@@ -98,7 +105,7 @@ export function PushNotificationProvider({
         } catch {
             // Best effort only - badge API is optional
         }
-    }, [isStaffWebPushRole]);
+    }, [isWebPushRole]);
 
     const getNotificationIcon = useCallback((notificationType: string) => {
         switch (notificationType) {
@@ -114,6 +121,8 @@ export function PushNotificationProvider({
             case 'meal_plan':
             case 'meal_plan_created':
             case 'meal_plan_updated':
+            case 'meal_upcoming':
+            case 'meal_photo_prompt':
                 return '🍽️';
             case 'payment':
             case 'payment_link':
@@ -205,8 +214,8 @@ export function PushNotificationProvider({
             return userRole === 'client' ? '/user/appointments' : '/appointments';
         }
 
-        if (normalizedType === 'meal' || normalizedType === 'meal_plan' || normalizedType === 'meal_plan_created' || normalizedType === 'meal_plan_updated') {
-            if (userRole === 'client') return '/my-plan';
+        if (normalizedType === 'meal' || normalizedType === 'meal_plan' || normalizedType === 'meal_plan_created' || normalizedType === 'meal_plan_updated' || normalizedType === 'meal_upcoming' || normalizedType === 'meal_photo_prompt') {
+            if (userRole === 'client') return '/user/plan';
             const clientId = String(data.clientId || data.client_id || '').trim();
             if (clientId && userRole === 'dietitian') return `/dietician/clients/${clientId}`;
             if (clientId && userRole === 'health_counselor') return `/health-counselor/clients/${clientId}`;
@@ -330,7 +339,7 @@ export function PushNotificationProvider({
 
     // Handle foreground notification display with toast for staff roles
     const handleForegroundNotification = useCallback((payload: any) => {
-        if (!shouldShowInAppBanner) {
+        if (!shouldShowNotificationBanner(payload)) {
             return;
         }
 
@@ -355,13 +364,13 @@ export function PushNotificationProvider({
         if (onNotification) {
             onNotification(payload);
         }
-    }, [extractNotificationMeta, onNotification, isDuplicateNotification, shouldShowInAppBanner, syncUnreadNotificationBadge, showPushBanner]);
+    }, [extractNotificationMeta, onNotification, isDuplicateNotification, shouldShowNotificationBanner, syncUnreadNotificationBadge, showPushBanner]);
 
     // Enable web push for staff dashboard roles
     const { isSupported, permission, registerToken } = usePushNotifications({
         autoRegister: false, // We'll handle it manually
         onNotification: handleForegroundNotification,
-        enabled: isStaffWebPushRole,
+        enabled: isWebPushRole,
     });
 
     // Native app hook - handles FCM token registration for Android WebView
@@ -374,9 +383,9 @@ export function PushNotificationProvider({
         onForegroundNotification: setNativeForegroundHandler
     } = useNativeApp();
 
-    // Handle native app foreground notifications - NO toast for clients (user panel)
+    // Clients see foreground banners only for engagement reminders.
     const handleNativeForegroundNotification = useCallback((notification: ForegroundNotification) => {
-        if (!shouldShowInAppBanner) {
+        if (!shouldShowNotificationBanner(notification)) {
             return;
         }
 
@@ -406,7 +415,7 @@ export function PushNotificationProvider({
                 data: notification.data
             });
         }
-    }, [onNotification, isDuplicateNotification, shouldShowInAppBanner, showPushBanner]);
+    }, [onNotification, isDuplicateNotification, shouldShowNotificationBanner, showPushBanner]);
 
     // Set up native foreground notification handler
     useEffect(() => {
@@ -564,7 +573,7 @@ export function PushNotificationProvider({
         };
     }, [showPreviewBanner, userRole]);
 
-    // Web push notification registration for staff roles (admin/dietitian/health-counselor)
+    // Web push notification registration for supported authenticated roles.
     useEffect(() => {
         // Only register for web if not in native app
         if (isNativeApp) {
@@ -576,21 +585,21 @@ export function PushNotificationProvider({
         // 2. User is authenticated
         // 3. Notifications are supported
         // 4. Permission is already granted (don't prompt automatically)
-        // 5. User is staff role (admin/dietitian/health counselor)
+        // 5. User has a supported role
         if (
             autoRegister &&
             status === 'authenticated' &&
             isSupported &&
             permission === 'granted' &&
-            isStaffWebPushRole
+            isWebPushRole
         ) {
             registerToken();
         }
-    }, [autoRegister, status, isSupported, permission, registerToken, isNativeApp, isStaffWebPushRole]);
+    }, [autoRegister, status, isSupported, permission, registerToken, isNativeApp, isWebPushRole]);
 
     // Sync unread badge when tab becomes active
     useEffect(() => {
-        if (status !== 'authenticated' || !isStaffWebPushRole || isNativeApp) return;
+        if (status !== 'authenticated' || !isWebPushRole || isNativeApp) return;
 
         syncUnreadNotificationBadge();
 
@@ -611,7 +620,7 @@ export function PushNotificationProvider({
             window.removeEventListener('focus', onFocus);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-    }, [status, isStaffWebPushRole, isNativeApp, syncUnreadNotificationBadge]);
+    }, [status, isWebPushRole, isNativeApp, syncUnreadNotificationBadge]);
 
     // Native app - log token registration status
     useEffect(() => {

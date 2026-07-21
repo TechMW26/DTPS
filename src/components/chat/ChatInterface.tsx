@@ -335,6 +335,7 @@ export function ChatInterface({
 
       return {
         url: uploadData.url,
+        fileId: uploadData.fileId,
         filename: uploadData.filename || fileToUse.name,
         size: uploadData.size || fileToUse.size,
         mimeType: normalizedMimeType,

@@ -3,8 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import connectDB from "@/lib/db/connection";
 import Message from "@/lib/db/models/Message";
+import GroupMessage from "@/lib/db/models/GroupMessage";
 import { File } from "@/lib/db/models/File";
-import { getImageKit } from "@/lib/imagekit";
+import { deleteImageKitAssets } from "@/lib/imagekit-storage";
 import { socketManager } from "@/lib/realtime/socket-manager";
 
 // DELETE /api/client/messages/[messageId] - Delete a message
@@ -44,46 +45,48 @@ export async function DELETE(
       );
     }
 
-    // If message has attachments, delete them from ImageKit
-    if (message.attachments && message.attachments.length > 0) {
-      for (const attachment of message.attachments) {
-        try {
-          // Try to find the file record to get ImageKit fileId
-          const fileRecord = await File.findOne({
+    const attachmentQueries = (message.attachments || []).map(
+      (attachment: any) => ({
+        $or: [
+          ...(attachment.fileId ? [{ _id: attachment.fileId }] : []),
+          { imageKitUrl: attachment.url },
+          { localPath: attachment.url },
+        ],
+      }),
+    );
+    const fileRecords = attachmentQueries.length
+      ? await File.find({ $or: attachmentQueries })
+      : [];
+    const unreferencedFiles = (
+      await Promise.all(
+        fileRecords.map(async (file) => {
+          const attachmentMatch = {
             $or: [
-              { imageKitUrl: attachment.url },
-              { localPath: attachment.url },
+              { "attachments.fileId": file._id },
+              ...(file.imageKitUrl
+                ? [{ "attachments.url": file.imageKitUrl }]
+                : []),
             ],
-          });
+          };
+          const [directReference, groupReference] = await Promise.all([
+            Message.exists({ _id: { $ne: message._id }, ...attachmentMatch }),
+            GroupMessage.exists(attachmentMatch),
+          ]);
+          return directReference || groupReference ? null : file;
+        }),
+      )
+    ).filter(Boolean) as typeof fileRecords;
 
-          if (fileRecord?.imageKitFileId) {
-            try {
-              const ik = getImageKit();
-              if (ik) {
-                await ik.deleteFile(fileRecord.imageKitFileId);
-                console.log(
-                  `[Delete Message] Deleted file from ImageKit: ${fileRecord.imageKitFileId}`,
-                );
-              }
-            } catch (ikError) {
-              console.warn(
-                "[Delete Message] Failed to delete from ImageKit:",
-                ikError,
-              );
-              // Continue even if ImageKit deletion fails
-            }
-
-            // Delete the file record from database
-            await File.findByIdAndDelete(fileRecord._id);
-          }
-        } catch (fileError) {
-          console.error(
-            "[Delete Message] Error handling attachment deletion:",
-            fileError,
-          );
-          // Continue with message deletion even if attachment deletion fails
-        }
-      }
+    await deleteImageKitAssets(
+      unreferencedFiles.map((file) => ({
+        fileId: file.imageKitFileId,
+        url: file.imageKitUrl,
+      })),
+    );
+    if (unreferencedFiles.length) {
+      await File.deleteMany({
+        _id: { $in: unreferencedFiles.map((file) => file._id) },
+      });
     }
 
     // Delete the message

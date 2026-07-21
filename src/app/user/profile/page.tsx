@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { getDocumentViewerUrl } from '@/lib/media';
 
 interface ProfileData {
   name: string;
@@ -539,7 +540,7 @@ export default function ProfilePage() {
                             </td>
                             <td className="py-3 px-2 text-center">
                               <a
-                                href={report.url}
+                                href={getDocumentViewerUrl(report.url, report.name || report.fileName || 'Medical Report', report.fileType || '')}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"

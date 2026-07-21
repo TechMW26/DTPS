@@ -27,6 +27,7 @@ import {
 import Link from "next/link";
 import { toast } from "sonner";
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { getMediaProxyUrl } from '@/lib/media';
 
 interface MedicalReport {
   id?: string;
@@ -819,7 +820,7 @@ export default function MedicalInfoPage() {
           >
             {isImageFile(lightboxImage) ? (
               <img
-                src={lightboxImage.url}
+                src={getMediaProxyUrl(lightboxImage.url)}
                 alt={getReportName(lightboxImage)}
                 loading="lazy"
                 style={{ transform: `scale(${lightboxZoom})` }}
@@ -827,7 +828,7 @@ export default function MedicalInfoPage() {
               />
             ) : (
               <iframe
-                src={lightboxImage.url}
+                src={getMediaProxyUrl(lightboxImage.url)}
                 className="w-[90vw] h-[85vh] bg-white rounded-lg"
                 title={getReportName(lightboxImage)}
               />

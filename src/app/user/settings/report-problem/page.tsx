@@ -79,17 +79,11 @@ export default function ReportProblemPage() {
 
     setScreenshots(prev => [...prev, ...validFiles]);
     
-    // Create preview URLs
-    validFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPreviewUrls(prev => [...prev, e.target?.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
+    setPreviewUrls(prev => [...prev, ...validFiles.map(file => URL.createObjectURL(file))]);
   };
 
   const removeScreenshot = (index: number) => {
+    URL.revokeObjectURL(previewUrls[index]);
     setScreenshots(prev => prev.filter((_, i) => i !== index));
     setPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };

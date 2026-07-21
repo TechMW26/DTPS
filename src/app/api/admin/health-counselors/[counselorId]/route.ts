@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
+import { deleteUserAvatarImageKitMedia } from '@/lib/client-media-cleanup';
 import Appointment from '@/lib/db/models/Appointment';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
@@ -220,6 +221,11 @@ export async function DELETE(
           assignedClientsCount
         }, { status: 400 });
       }
+      const counselor = await User.findById(counselorId).select('avatar').lean();
+      if (!counselor) {
+        return NextResponse.json({ error: 'Health Counselor not found' }, { status: 404 });
+      }
+      await deleteUserAvatarImageKitMedia(counselor as any);
       await User.findByIdAndDelete(counselorId);
       return NextResponse.json({ message: 'Health Counselor deleted permanently' });
     } else {

@@ -29,7 +29,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { compressImage, extractBase64Data } from '@/lib/imageCompression';
+import { compressImage } from '@/lib/imageCompression';
 import { useBodyScrollLock } from '@/hooks';
 import { useDataRefresh, emitDataChange, DataEventTypes } from '@/lib/events/useDataRefresh';
 
@@ -69,6 +69,8 @@ export default function TransformationsManagement() {
   });
   const [beforePreview, setBeforePreview] = useState<string | null>(null);
   const [afterPreview, setAfterPreview] = useState<string | null>(null);
+  const [beforeImageFile, setBeforeImageFile] = useState<File | null>(null);
+  const [afterImageFile, setAfterImageFile] = useState<File | null>(null);
 
   // Prevent body scroll when dialog is open
   useBodyScrollLock(isDialogOpen);
@@ -98,6 +100,8 @@ export default function TransformationsManagement() {
   useDataRefresh(DataEventTypes.TRANSFORMATIONS_UPDATED, fetchTransformations, [fetchTransformations]);
 
   const handleOpenDialog = (transformation?: Transformation) => {
+    setBeforeImageFile(null);
+    setAfterImageFile(null);
     if (transformation) {
       setEditingTransformation(transformation);
       setFormData({
@@ -133,6 +137,8 @@ export default function TransformationsManagement() {
   };
 
   const handleCloseDialog = () => {
+    if (beforePreview?.startsWith('blob:')) URL.revokeObjectURL(beforePreview);
+    if (afterPreview?.startsWith('blob:')) URL.revokeObjectURL(afterPreview);
     setIsDialogOpen(false);
     setEditingTransformation(null);
     setBeforePreview(null);
@@ -155,12 +161,19 @@ export default function TransformationsManagement() {
         format: 'image/jpeg'
       });
 
+      const compressedFile = new File(
+        [compressed.blob],
+        file.name.replace(/\.[^.]+$/, '.jpg'),
+        { type: 'image/jpeg' },
+      );
       if (type === 'before') {
-        setBeforePreview(compressed.base64);
-        setFormData(prev => ({ ...prev, beforeImage: compressed.base64 }));
+        if (beforePreview?.startsWith('blob:')) URL.revokeObjectURL(beforePreview);
+        setBeforeImageFile(compressedFile);
+        setBeforePreview(URL.createObjectURL(compressedFile));
       } else {
-        setAfterPreview(compressed.base64);
-        setFormData(prev => ({ ...prev, afterImage: compressed.base64 }));
+        if (afterPreview?.startsWith('blob:')) URL.revokeObjectURL(afterPreview);
+        setAfterImageFile(compressedFile);
+        setAfterPreview(URL.createObjectURL(compressedFile));
       }
 
       // Show compression stats
@@ -179,7 +192,7 @@ export default function TransformationsManagement() {
     }
 
     if (!editingTransformation) {
-      if (!formData.beforeImage || !formData.afterImage) {
+      if (!beforeImageFile || !afterImageFile) {
         toast.error('Both before and after images are required');
         return;
       }
@@ -197,13 +210,8 @@ export default function TransformationsManagement() {
       submitData.append('isActive', formData.isActive.toString());
       submitData.append('displayOrder', formData.displayOrder.toString());
       
-      // Only send images if they're base64 (new uploads)
-      if (formData.beforeImage.includes('base64')) {
-        submitData.append('beforeImage', formData.beforeImage);
-      }
-      if (formData.afterImage.includes('base64')) {
-        submitData.append('afterImage', formData.afterImage);
-      }
+      if (beforeImageFile) submitData.append('beforeImage', beforeImageFile);
+      if (afterImageFile) submitData.append('afterImage', afterImageFile);
 
       if (editingTransformation) {
         const response = await fetch(`/api/admin/transformations/${editingTransformation._id}`, {
@@ -218,8 +226,8 @@ export default function TransformationsManagement() {
         toast.success('Transformation updated successfully');
         emitDataChange(DataEventTypes.TRANSFORMATIONS_UPDATED);
       } else {
-        submitData.append('beforeImage', formData.beforeImage);
-        submitData.append('afterImage', formData.afterImage);
+        submitData.append('beforeImage', beforeImageFile!);
+        submitData.append('afterImage', afterImageFile!);
 
         const response = await fetch('/api/admin/transformations', {
           method: 'POST',

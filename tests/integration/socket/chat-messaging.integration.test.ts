@@ -4,6 +4,7 @@ import { UserRole } from '@/types';
 import { entityId, expectISTISOString } from '../../utils/assertions';
 import {
     createAssignedDietitianClientPair,
+    createMessageRecord,
     createUser,
     ensureDatabaseConnection,
 } from '../../utils/database';
@@ -192,5 +193,65 @@ describe('Socket.io chat messaging delivery', () => {
         expect(result.status).toBe(200);
         expect(storedMessage).not.toBeNull();
         expect(storedMessage?.content).toBe('Persist even offline');
+    });
+
+    it('persists and returns a populated reply for a message in the same conversation', async () => {
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+        const original = await createMessageRecord({
+            sender: dietitian._id,
+            receiver: client._id,
+            content: 'Please share your meal photo',
+        });
+        const route = await import('@/app/api/client/messages/route');
+
+        const result = await invokeRoute(route.POST, {
+            method: 'POST',
+            url: 'http://localhost/api/client/messages',
+            user: client,
+            body: {
+                recipientId: entityId(dietitian),
+                content: 'Here it is',
+                replyTo: entityId(original),
+            },
+        });
+
+        const storedReply = await Message.findOne({ content: 'Here it is' });
+
+        expect(result.status).toBe(200);
+        expect(result.json.message.replyTo).toEqual(
+            expect.objectContaining({
+                _id: entityId(original),
+                content: 'Please share your meal photo',
+            }),
+        );
+        expect(String(storedReply?.replyTo)).toBe(entityId(original));
+    });
+
+    it('rejects replies to messages outside the assigned conversation', async () => {
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+        const unrelatedUser = await createUser({ role: UserRole.ADMIN });
+        const unrelatedMessage = await createMessageRecord({
+            sender: unrelatedUser._id,
+            receiver: client._id,
+            content: 'Unrelated message',
+        });
+        const route = await import('@/app/api/client/messages/route');
+
+        const result = await invokeRoute(route.POST, {
+            method: 'POST',
+            url: 'http://localhost/api/client/messages',
+            user: client,
+            body: {
+                recipientId: entityId(dietitian),
+                content: 'Invalid reply',
+                replyTo: entityId(unrelatedMessage),
+            },
+        });
+
+        expect(result.status).toBe(400);
+        expect(result.json.error).toBe(
+            'The message you are replying to is unavailable',
+        );
+        expect(await Message.exists({ content: 'Invalid reply' })).toBeNull();
     });
 });

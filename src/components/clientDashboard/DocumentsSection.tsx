@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { getMediaProxyUrl, openMediaInApp } from "@/lib/media";
 
 export interface ClientDocument {
   id: string;
@@ -182,13 +183,13 @@ export default function DocumentsSection({
     return name.substring(0, maxLength) + (ext ? `.${ext}` : "...");
   };
 
-  const viewFile = (filePath: string) => {
-    window.open(filePath, "_blank");
+  const viewFile = (filePath: string, fileName: string) => {
+    openMediaInApp(filePath, fileName);
   };
 
   const downloadFile = (filePath: string, fileName: string) => {
     const link = document.createElement("a");
-    link.href = filePath;
+    link.href = getMediaProxyUrl(filePath, { download: true, filename: fileName });
     link.download = fileName;
     link.click();
   };
@@ -439,7 +440,7 @@ export default function DocumentsSection({
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => viewFile(doc.filePath)}
+                          onClick={() => viewFile(doc.filePath, doc.fileName)}
                         >
                           View
                         </Button>

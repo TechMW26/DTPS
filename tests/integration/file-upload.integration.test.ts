@@ -10,16 +10,24 @@ import {
 } from '../utils/database';
 import { getServerSession } from 'next-auth';
 import { NextRequest } from 'next/server';
+import { getImageKit } from '@/lib/imagekit';
 
 // Mock next-auth
 jest.mock('next-auth', () => ({
     getServerSession: jest.fn(),
 }));
 
-// Mock ImageKit to avoid actual uploads during tests
+const mockImageKitUpload = jest.fn().mockImplementation(
+    async (options: { file: Buffer; fileName: string; folder: string }) => ({
+        url: `https://ik.imagekit.io/test-dtps${options.folder}/${options.fileName}`,
+        fileId: `imagekit-${options.fileName}`,
+    }),
+);
+
+// Mock durable ImageKit storage without making external network writes.
 jest.mock('@/lib/imagekit', () => ({
     getImageKit: jest.fn(() => ({
-        upload: jest.fn().mockRejectedValue(new Error('ImageKit mocked - use local storage')),
+        upload: mockImageKitUpload,
     })),
 }));
 
@@ -126,8 +134,11 @@ describe('File Upload Integration Tests', () => {
                 type: 'message',
             });
 
-            // Should succeed (either 200 with local fallback URL or ImageKit URL)
+            // All successful uploads must be durably stored in ImageKit.
             expect(result.status).toBe(200);
+            expect(result.json.storage).toBe('imagekit');
+            expect(result.json.url).toContain('https://ik.imagekit.io/');
+            expect(Buffer.isBuffer(mockImageKitUpload.mock.calls.at(-1)?.[0]?.file)).toBe(true);
             expect(result.json.url).toBeDefined();
             expect(result.json.filename).toBeDefined();
         });
@@ -408,6 +419,25 @@ describe('File Upload Integration Tests', () => {
 
             expect(result.status).toBe(200);
             expect(result.json.fileId).toBeDefined();
+        });
+    });
+
+    describe('ImageKit-only storage', () => {
+        it('rejects the upload instead of falling back to local or database storage', async () => {
+            const client = await createUser({
+                role: UserRole.CLIENT,
+                email: `upload-imagekit-required-${Date.now()}@test.com`,
+            });
+            (getImageKit as jest.Mock).mockReturnValueOnce(null);
+
+            const result = await invokeUploadRoute({
+                user: client,
+                file: createMockFile('test content', 'test.txt', 'text/plain'),
+                type: 'message',
+            });
+
+            expect(result.status).toBe(503);
+            expect(result.json.code).toBe('MEDIA_SERVICE_DOWN');
         });
     });
 });

@@ -225,6 +225,7 @@ export default function BlogsManagement() {
     metaDescription: '',
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [featuredImageFile, setFeaturedImageFile] = useState<File | null>(null);
 
   // Prevent body scroll when dialog is open
   useBodyScrollLock(isDialogOpen);
@@ -259,6 +260,7 @@ export default function BlogsManagement() {
   useDataRefresh(DataEventTypes.BLOGS_UPDATED, fetchBlogs, [fetchBlogs]);
 
   const handleOpenDialog = (blog?: Blog) => {
+    setFeaturedImageFile(null);
     if (blog) {
       setEditingBlog(blog);
       setFormData({
@@ -298,6 +300,7 @@ export default function BlogsManagement() {
   };
 
   const handleCloseDialog = () => {
+    if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
     setIsDialogOpen(false);
     setEditingBlog(null);
     setImagePreview(null);
@@ -315,8 +318,14 @@ export default function BlogsManagement() {
         format: 'image/jpeg'
       });
 
-      setImagePreview(compressed.base64);
-      setFormData(prev => ({ ...prev, featuredImage: compressed.base64 }));
+      if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
+      const compressedFile = new File(
+        [compressed.blob],
+        file.name.replace(/\.[^.]+$/, '.jpg'),
+        { type: 'image/jpeg' },
+      );
+      setFeaturedImageFile(compressedFile);
+      setImagePreview(URL.createObjectURL(compressedFile));
 
       const savedPercent = Math.round((1 - compressed.compressedSize / compressed.originalSize) * 100);
       toast.success(`Image compressed: ${savedPercent}% smaller`);
@@ -339,7 +348,7 @@ export default function BlogsManagement() {
       toast.error('Author is required');
       return;
     }
-    if (!editingBlog && !formData.featuredImage) {
+    if (!editingBlog && !featuredImageFile) {
       toast.error('Featured image is required');
       return;
     }
@@ -363,9 +372,7 @@ export default function BlogsManagement() {
 
       if (editingBlog) {
         // For editing, only append image if a new one was uploaded
-        if (formData.featuredImage && formData.featuredImage.includes('base64')) {
-          submitData.append('featuredImage', formData.featuredImage);
-        }
+        if (featuredImageFile) submitData.append('featuredImage', featuredImageFile);
 
         const response = await fetch(`/api/admin/blogs/${editingBlog._id}`, {
           method: 'PUT',
@@ -381,7 +388,7 @@ export default function BlogsManagement() {
         emitDataChange(DataEventTypes.BLOGS_UPDATED);
       } else {
         // For new blog, always append the image
-        submitData.append('featuredImage', formData.featuredImage);
+        submitData.append('featuredImage', featuredImageFile!);
 
         const response = await fetch('/api/admin/blogs', {
           method: 'POST',
@@ -762,7 +769,9 @@ export default function BlogsManagement() {
                         />
                         <button
                           onClick={() => {
+                            if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
                             setImagePreview(null);
+                            setFeaturedImageFile(null);
                             setFormData(prev => ({ ...prev, featuredImage: '' }));
                           }}
                           className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full"

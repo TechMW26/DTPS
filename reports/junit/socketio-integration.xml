@@ -1,27 +1,91 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="10" failures="0" errors="0" time="10.845">
-  <testsuite name="tests/integration/payment-flow-supertest.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-06-17T12:28:09" time="8.97" tests="9">
-    <testcase classname="payment flow integrations (supertest + jest)" name="reconciles paid-proof links to paid status in payment-links GET" time="1.049">
+<testsuites name="jest tests" tests="40" failures="0" errors="0" time="4.68">
+  <testsuite name="tests/integration/file-upload.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-07-21T13:35:49" time="2.663" tests="18">
+    <testcase classname="File Upload Integration Tests &gt; Authentication" name="should reject upload without authentication" time="0.209">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="backfills paid links into unified purchases and enables planning" time="0.899">
+    <testcase classname="File Upload Integration Tests &gt; Authentication" name="should allow upload with authenticated user" time="0.241">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="keeps payment-link status paid when unified payment is already paid" time="0.85">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should reject upload without file" time="0.004">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="returns correct remaining days when days counters exist but duration metadata is missing" time="0.843">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should reject invalid file type for avatar upload" time="0.004">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="keeps client-purchases GET aligned with check-route stored counters" time="0.857">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept valid image for avatar upload" time="0.016">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="clamps inconsistent stored remaining days so used plus remaining never exceeds total duration" time="0.848">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept PDF for message upload" time="0.005">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="prioritizes the relevant in-progress purchase when multiple partially used purchases exist" time="0.848">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept Word document for message upload" time="0.003">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="does not overwrite stored counters when Fix Days recalculation is triggered" time="0.843">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept Excel file for message upload" time="0.004">
     </testcase>
-    <testcase classname="payment flow integrations (supertest + jest)" name="synchronizes remaining days when updating days used through client purchases PUT" time="0.843">
+    <testcase classname="File Upload Integration Tests &gt; File Validation" name="should accept text file for message upload" time="0.004">
+    </testcase>
+    <testcase classname="File Upload Integration Tests &gt; File Size Limits" name="should reject avatar larger than 5MB" time="0.007">
+    </testcase>
+    <testcase classname="File Upload Integration Tests &gt; File Size Limits" name="should reject message file larger than 25MB" time="0.027">
+    </testcase>
+    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle image message upload" time="0.006">
+    </testcase>
+    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle video message upload" time="0.004">
+    </testcase>
+    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle audio message upload" time="0.003">
+    </testcase>
+    <testcase classname="File Upload Integration Tests &gt; Upload Types" name="should handle medical report upload" time="0.003">
+    </testcase>
+    <testcase classname="File Upload Integration Tests &gt; Response Format" name="should return all required fields in response" time="0.004">
+    </testcase>
+    <testcase classname="File Upload Integration Tests &gt; Response Format" name="should return file ID for database reference" time="0.004">
+    </testcase>
+    <testcase classname="File Upload Integration Tests &gt; ImageKit-only storage" name="rejects the upload instead of falling back to local or database storage" time="0.216">
     </testcase>
   </testsuite>
-  <testsuite name="tests/integration/hold-unhold-expected-end-sync.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-06-17T12:28:18" time="1.659" tests="1">
-    <testcase classname="unhold extends expected end dates across payment models (supertest)" name="extends expectedEndDate for UnifiedPayment and ClientPurchase on unhold" time="0.922">
+  <testsuite name="tests/integration/imagekit-storage.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-07-21T13:35:52" time="0.636" tests="4">
+    <testcase classname="ImageKit storage cleanup" name="extracts original paths from transformed account URLs only" time="0.032">
+    </testcase>
+    <testcase classname="ImageKit storage cleanup" name="uses durable file IDs without a lookup" time="0.004">
+    </testcase>
+    <testcase classname="ImageKit storage cleanup" name="recovers historical file IDs from exact ImageKit URLs" time="0.002">
+    </testcase>
+    <testcase classname="ImageKit storage cleanup" name="deduplicates batch deletion and treats already-missing files as success" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/media-resolver.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-07-21T13:35:53" time="0.635" tests="15">
+    <testcase classname="media resolver" name="normalizes legacy path uploads/messages/photo.jpg" time="0.033">
+    </testcase>
+    <testcase classname="media resolver" name="normalizes legacy path /public/uploads/reports/result.pdf" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="normalizes legacy path /srv/dtps/public/uploads/legacy/image.png" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="normalizes legacy path http://localhost:3000/uploads/old/photo.jpg" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="normalizes legacy path http://192.168.1.10/api/files/507f1f77bcf86cd799439011" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="normalizes legacy path http://localhost:3000/api/reports/507f1f77bcf86cd799439011" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="keeps external CDN URLs intact" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="keeps canonical DTPS media URLs intact for desktop recovery" time="0.001">
+    </testcase>
+    <testcase classname="media resolver" name="reads legacy media object fields" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="prefers a stable database file id over a transient storage URL" time="0.001">
+    </testcase>
+    <testcase classname="media resolver" name="detects media from MIME type or extension" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="opens PDFs and generic documents in the in-app viewer" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="builds a DTPS viewer URL" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="preserves a requested download filename" time="0.002">
+    </testcase>
+    <testcase classname="media resolver" name="rejects executable and local-file schemes" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/integration/media-recovery.integration.test.ts" errors="0" failures="0" skipped="0" timestamp="2026-07-21T13:35:53" time="0.611" tests="3">
+    <testcase classname="media resolver legacy recovery" name="recovers a missing local upload from its ImageKit File record" time="0.003">
+    </testcase>
+    <testcase classname="media resolver legacy recovery" name="resolves canonical file ids directly without proxying back into DTPS" time="0.002">
+    </testcase>
+    <testcase classname="media resolver legacy recovery" name="returns the public ImageKit source used by native in-app viewers" time="0.001">
     </testcase>
   </testsuite>
 </testsuites>

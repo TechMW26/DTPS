@@ -308,14 +308,15 @@ export default function CreateRecipePage() {
 
     try {
       // Compress image
-      const { blob, dataUrl, size } = await compressImage(file, {
+      const { blob } = await compressImage(file, {
         maxWidth: 1200,
         maxHeight: 1200,
         quality: 0.8,
       });
 
       // Show preview while uploading
-      setImagePreview(dataUrl);
+      if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
+      setImagePreview(URL.createObjectURL(blob));
 
       // Upload to ImageKit
       const uploadedUrl = await uploadCompressedImage(blob, file.name, 'recipes');

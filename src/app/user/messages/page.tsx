@@ -16,8 +16,25 @@ import { useRealtime } from "@/hooks/useRealtime";
 import { ResponsiveLayout } from "@/components/client/layouts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { compressImage } from "@/lib/imageCompression";
 import ImageLightbox from "@/components/ui/image-lightbox";
+import { DocumentViewerModal } from "@/components/chat/DocumentViewerModal";
 import {
   Send,
   Paperclip,
@@ -36,10 +53,23 @@ import {
   File as FileIcon,
   ChevronDown,
   X,
+  Eye,
+  Image as ImageIcon,
+  Video,
+  CornerDownRight,
+  MoreVertical,
+  Trash2,
 } from "lucide-react";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { toast } from "sonner";
 import SpoonGifLoader from "@/components/ui/SpoonGifLoader";
+import {
+  getMediaKind,
+  getMediaProxyUrl,
+  getMediaUrl,
+  isViewableDocument,
+  normalizeMediaUrl,
+} from "@/lib/media";
 
 interface MessageUser {
   _id: string;
@@ -107,6 +137,7 @@ interface UploadingMediaState {
   caption: string;
   progress: number;
   error: string | null;
+  replyToId?: string;
 }
 
 export default function UserMessagesPage() {
@@ -120,6 +151,12 @@ export default function UserMessagesPage() {
     useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(
+    null,
+  );
+  const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -149,6 +186,11 @@ export default function UserMessagesPage() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState("");
+  const [documentViewer, setDocumentViewer] = useState<{
+    url: string;
+    filename: string;
+    mimeType: string;
+  } | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<
     string | null
   >(null);
@@ -171,8 +213,10 @@ export default function UserMessagesPage() {
   const recordStreamRef = useRef<MediaStream | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordStartedAtRef = useRef<number>(0);
+  const recordingReplyToIdRef = useRef<string | undefined>(undefined);
   const isInitialLoadRef = useRef(false);
   const userPressedBackRef = useRef(false);
+  const lastTappedMessageRef = useRef<{ id: string; at: number } | null>(null);
 
   const openLightbox = (url: string) => {
     setLightboxImage(url);
@@ -198,14 +242,8 @@ export default function UserMessagesPage() {
   const resolveAttachmentUrl = (rawUrl: string, messageId: string) => {
     if (!rawUrl) return "";
 
-    let resolvedUrl = rawUrl.trim();
+    let resolvedUrl = normalizeMediaUrl(rawUrl);
     if (!resolvedUrl) return "";
-
-    if (/^\/\//.test(resolvedUrl) && typeof window !== "undefined") {
-      resolvedUrl = `${window.location.protocol}${resolvedUrl}`;
-    } else if (/^\//.test(resolvedUrl) && typeof window !== "undefined") {
-      resolvedUrl = `${window.location.origin}${resolvedUrl}`;
-    }
 
     // Cache-bust ImageKit URLs to avoid serving stale CDN-cached error
     // responses (e.g. from billing suspension periods).
@@ -345,6 +383,13 @@ export default function UserMessagesPage() {
             setMessages((prev) =>
               prev.filter((m) => m._id !== deletedMessageId),
             );
+            setReplyingToMessage((current) =>
+              current?._id === deletedMessageId ? null : current,
+            );
+            setMessageToDelete((current) =>
+              current?._id === deletedMessageId ? null : current,
+            );
+            setDeleteDialogOpen(false);
             // Refresh conversations to update last message if needed
             const now = Date.now();
             if (now - lastFetchTimeRef.current > 1000) {
@@ -476,6 +521,7 @@ export default function UserMessagesPage() {
       isInitialLoadRef.current = true;
       // Clear previous messages first for a clean slate
       setMessages([]);
+      setReplyingToMessage(null);
       fetchMessages(selectedConversation._id);
     }
   }, [selectedConversation]);
@@ -625,6 +671,7 @@ export default function UserMessagesPage() {
     if (!newMessage.trim() || !selectedConversation || sending) return;
 
     const messageContent = newMessage.trim();
+    const replyToId = replyingToMessage?._id;
     setSending(true);
     setNewMessage(""); // Optimistic clear
     if (inputRef.current) {
@@ -639,10 +686,16 @@ export default function UserMessagesPage() {
           recipientId: selectedConversation._id,
           content: messageContent,
           type: "text",
+          replyTo: replyToId,
         }),
       });
 
       if (response.ok) {
+        if (replyToId) {
+          setReplyingToMessage((current) =>
+            current?._id === replyToId ? null : current,
+          );
+        }
         // Message will appear via real-time SSE event
         inputRef.current?.focus();
         // Debounced refresh via SSE handler
@@ -996,6 +1049,7 @@ export default function UserMessagesPage() {
     caption?: string,
     duration?: number,
     onProgress?: (progress: number) => void,
+    replyToId = replyingToMessage?._id,
   ) => {
     if (!selectedConversation) return;
 
@@ -1092,6 +1146,7 @@ export default function UserMessagesPage() {
           content: caption?.trim() || mediaLabel,
           type: messageType,
           attachments: [attachment],
+          replyTo: replyToId,
         }),
       });
 
@@ -1101,6 +1156,11 @@ export default function UserMessagesPage() {
       }
 
       setShowAttachMenu(false);
+      if (replyToId) {
+        setReplyingToMessage((current) =>
+          current?._id === replyToId ? null : current,
+        );
+      }
       setTimeout(() => scrollToBottom(false), 30);
       return true;
     } catch (error) {
@@ -1171,6 +1231,8 @@ export default function UserMessagesPage() {
   const confirmMediaSend = async () => {
     if (!mediaPreview) return;
 
+    const replyToId = replyingToMessage?._id;
+
     setUploadingMedia({
       id: `upload-${Date.now()}`,
       file: mediaPreview.file,
@@ -1179,6 +1241,7 @@ export default function UserMessagesPage() {
       caption: mediaPreview.caption,
       progress: 0,
       error: null,
+      replyToId,
     });
 
     setMediaPreview(null);
@@ -1195,6 +1258,7 @@ export default function UserMessagesPage() {
             return { ...prev, progress };
           });
         },
+        replyToId,
       );
 
       setUploadingMedia((prev) => {
@@ -1231,6 +1295,7 @@ export default function UserMessagesPage() {
             return { ...prev, progress };
           });
         },
+        uploadingMedia.replyToId,
       );
 
       setUploadingMedia((prev) => {
@@ -1267,6 +1332,7 @@ export default function UserMessagesPage() {
       recorderRef.current = recorder;
       recordChunksRef.current = [];
       recordStartedAtRef.current = Date.now();
+      recordingReplyToIdRef.current = replyingToMessage?._id;
       setRecordingTime(0);
       setIsRecording(true);
 
@@ -1333,6 +1399,8 @@ export default function UserMessagesPage() {
             "voice",
             "Voice message",
             duration,
+            undefined,
+            recordingReplyToIdRef.current,
           );
         } catch (error) {
           toast.error(
@@ -1341,6 +1409,7 @@ export default function UserMessagesPage() {
               : "Failed to send voice message",
           );
         }
+        recordingReplyToIdRef.current = undefined;
         resolve();
       };
 
@@ -1402,6 +1471,68 @@ export default function UserMessagesPage() {
       return reply.attachments?.[0]?.filename || "Document";
 
     return (reply.content || "").trim() || "Message";
+  };
+
+  const handleReplyToMessage = (message: Message) => {
+    setReplyingToMessage(message);
+    setShowAttachMenu(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const handleMessageTouchEnd = (message: Message) => {
+    const now = Date.now();
+    const previousTap = lastTappedMessageRef.current;
+
+    if (
+      previousTap?.id === message._id &&
+      now - previousTap.at < 320
+    ) {
+      lastTappedMessageRef.current = null;
+      handleReplyToMessage(message);
+      return;
+    }
+
+    lastTappedMessageRef.current = { id: message._id, at: now };
+  };
+
+  const confirmDeleteMessage = (message: Message) => {
+    setMessageToDelete(message);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteMessage = async () => {
+    if (!messageToDelete || isDeleting) return;
+
+    const messageId = messageToDelete._id;
+    setIsDeleting(true);
+
+    try {
+      const response = await fetch(`/api/client/messages/${messageId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete message");
+      }
+
+      setMessages((current) =>
+        current.filter((message) => message._id !== messageId),
+      );
+      setReplyingToMessage((current) =>
+        current?._id === messageId ? null : current,
+      );
+      fetchConversationsRef.current();
+      toast.success("Message deleted");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete message",
+      );
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+      setMessageToDelete(null);
+    }
   };
 
   const jumpToOriginalMessage = (messageId?: string) => {
@@ -1658,6 +1789,7 @@ export default function UserMessagesPage() {
                       className="p-2 -ml-2 md:hidden hover:bg-white/10 rounded-full"
                       onClick={() => {
                         userPressedBackRef.current = true;
+                        setReplyingToMessage(null);
                         setSelectedConversation(null);
                       }}
                     >
@@ -1762,7 +1894,7 @@ export default function UserMessagesPage() {
                           .map((line) => line.trim())
                           .filter(Boolean);
                         const firstContentLine = contentLines[0] || "";
-                        const url = attachment?.url || "";
+                        const url = getMediaUrl(attachment);
                         const resolvedUrl = resolveAttachmentUrl(
                           url,
                           message._id,
@@ -1777,7 +1909,8 @@ export default function UserMessagesPage() {
                         const hasValidUrl =
                           !!resolvedUrl &&
                           (/^https?:\/\//i.test(resolvedUrl) ||
-                            /^blob:/i.test(resolvedUrl));
+                            /^blob:/i.test(resolvedUrl) ||
+                            /^\/(?!\/)/.test(resolvedUrl));
                         const failed = failedAttachments.has(message._id);
 
                         // Check if URL is from ImageKit and appears to be an image
@@ -1883,7 +2016,7 @@ export default function UserMessagesPage() {
                                     </span>
                                   )}
                                   <img
-                                    src={attachment.thumbnail || resolvedUrl}
+                                    src={getMediaProxyUrl(resolvedUrl)}
                                     alt="Image attachment"
                                     className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                                     onClick={() => openLightbox(resolvedUrl)}
@@ -1938,11 +2071,11 @@ export default function UserMessagesPage() {
                               return (
                                 <div className="relative">
                                   <video
-                                    src={resolvedUrl}
+                                    src={getMediaProxyUrl(resolvedUrl)}
                                     controls
                                     preload="metadata"
                                     playsInline
-                                    poster={attachment.thumbnail}
+                                    poster={attachment.thumbnail ? getMediaProxyUrl(attachment.thumbnail) : undefined}
                                     className="rounded-lg bg-black"
                                     style={{
                                       maxWidth: "220px",
@@ -1992,7 +2125,7 @@ export default function UserMessagesPage() {
                                         audioRefs.current[message._id] =
                                           element;
                                     }}
-                                    src={resolvedUrl}
+                                    src={getMediaProxyUrl(resolvedUrl)}
                                     preload="metadata"
                                     onTimeUpdate={(event) => {
                                       const audio = event.currentTarget;
@@ -2132,27 +2265,46 @@ export default function UserMessagesPage() {
                                   </button>
                                 );
                               }
+                              const kind = getMediaKind(attachment.filename, attachment.mimeType, resolvedUrl);
+                              const isViewableDoc = isViewableDocument(
+                                attachment.filename,
+                                attachment.mimeType,
+                                resolvedUrl,
+                              );
                               return (
-                                <div className="max-w-65">
-                                  <a
-                                    href={resolvedUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={`flex items-center gap-3 rounded-lg p-2.5 ${isOwn ? "bg-white/10 hover:bg-white/15" : isDarkMode ? "bg-white/5 hover:bg-white/10" : "bg-gray-100 hover:bg-gray-200"}`}
+                                <div className="max-w-65 sm:max-w-md lg:max-w-lg w-full">
+                                  <div
+                                    className={`rounded-2xl overflow-hidden cursor-pointer ${isOwn ? "bg-white/10" : isDarkMode ? "bg-white/5" : "bg-gray-100"}`}
+                                    onClick={() => {
+                                      if (isViewableDoc) {
+                                        setDocumentViewer({ url: resolvedUrl, filename: attachment.filename || "Document", mimeType: attachment.mimeType || "" });
+                                      } else {
+                                        window.open(getMediaProxyUrl(resolvedUrl, { download: true, filename: attachment.filename || "Document" }), "_blank", "noopener,noreferrer");
+                                      }
+                                    }}
                                   >
-                                    <div className="w-10 h-10 bg-blue-500/15 rounded-lg flex items-center justify-center shrink-0">
-                                      <FileText className="w-5 h-5 text-blue-500" />
+                                    {/* File info row */}
+                                    <div className="p-3 flex items-center gap-3">
+                                      <div className="w-10 h-10 bg-blue-500/15 rounded-lg flex items-center justify-center shrink-0">
+                                        <FileText className="w-5 h-5 text-blue-500" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">
+                                          {attachment.filename || "Document"}
+                                        </p>
+                                        <p className="text-[10px] opacity-55">
+                                          {formatFileSize(attachment.size)}
+                                        </p>
+                                      </div>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium truncate">
-                                        {attachment.filename || "Document"}
-                                      </p>
-                                      <p className="text-[10px] opacity-55">
-                                        {formatFileSize(attachment.size)}
-                                      </p>
-                                    </div>
-                                    <Download className="w-4 h-4 opacity-60 shrink-0" />
-                                  </a>
+                                    {/* Action button */}
+                                    <button
+                                      type="button"
+                                      className={`w-full px-3 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 border-t border-white/10 ${isViewableDoc ? "text-blue-500" : "opacity-70"}`}
+                                    >
+                                      {isViewableDoc ? <><Eye className="w-4 h-4" /> View Document</> : <><Download className="w-4 h-4" /> Download File</>}
+                                    </button>
+                                  </div>
                                   {hasCaption && (
                                     <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">
                                       {message.content}
@@ -2216,6 +2368,54 @@ export default function UserMessagesPage() {
                               </div>
                             )}
 
+                            {isOwn && (
+                              <div className="order-1 flex shrink-0 items-center gap-1">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className={`h-8 w-8 rounded-full border flex items-center justify-center active:scale-90 transition-colors ${
+                                        isDarkMode
+                                          ? "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                                          : "bg-white border-gray-200 text-gray-600 hover:bg-gray-100"
+                                      }`}
+                                      aria-label="Message options"
+                                      title="Message options"
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      className="cursor-pointer text-red-600 focus:text-red-600"
+                                      onClick={() =>
+                                        confirmDeleteMessage(message)
+                                      }
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReplyToMessage(message)}
+                                  onTouchEnd={(event) =>
+                                    event.stopPropagation()
+                                  }
+                                  className={`h-8 w-8 rounded-full border flex items-center justify-center active:scale-90 transition-colors ${
+                                    isDarkMode
+                                      ? "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-100"
+                                  }`}
+                                  title="Reply"
+                                  aria-label="Reply to message"
+                                >
+                                  <CornerDownRight className="h-4 w-4" />
+                                </button>
+                              </div>
+                            )}
+
                             <div
                               className={`max-w-[85%] sm:max-w-[75%] relative ${isOwn ? "order-2" : ""}`}
                             >
@@ -2229,6 +2429,12 @@ export default function UserMessagesPage() {
                                       ? "bg-[#202C33] text-white rounded-2xl rounded-tl-sm"
                                       : "bg-white text-gray-900 rounded-2xl rounded-tl-sm"
                                 } ${highlightedMessageId === message._id ? "ring-3 ring-yellow-300 ring-offset-2 ring-offset-transparent" : ""} transition-all duration-300`}
+                                onDoubleClick={() =>
+                                  handleReplyToMessage(message)
+                                }
+                                onTouchEnd={() =>
+                                  handleMessageTouchEnd(message)
+                                }
                               >
                                 {message.replyTo && (
                                   <button
@@ -2269,6 +2475,23 @@ export default function UserMessagesPage() {
                                 </div>
                               </div>
                             </div>
+
+                            {!isOwn && (
+                              <button
+                                type="button"
+                                onClick={() => handleReplyToMessage(message)}
+                                onTouchEnd={(event) => event.stopPropagation()}
+                                className={`shrink-0 h-8 w-8 rounded-full border flex items-center justify-center active:scale-90 transition-colors ${
+                                  isDarkMode
+                                    ? "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                                    : "bg-white border-gray-200 text-gray-600 hover:bg-gray-100"
+                                }`}
+                                title="Reply"
+                                aria-label="Reply to message"
+                              >
+                                <CornerDownRight className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -2398,7 +2621,7 @@ export default function UserMessagesPage() {
                           >
                             <FileIcon className="h-5 w-5 text-[#075E54]" />
                             <span className="text-xs text-gray-700">
-                              📄 Document
+                              Document
                             </span>
                           </button>
                           <button
@@ -2418,9 +2641,9 @@ export default function UserMessagesPage() {
                               }
                             }}
                           >
-                            <Paperclip className="h-5 w-5 text-[#075E54]" />
+                            <ImageIcon className="h-5 w-5 text-[#075E54]" />
                             <span className="text-xs text-gray-700">
-                              🖼 Image
+                              Image
                             </span>
                           </button>
                           <button
@@ -2440,9 +2663,9 @@ export default function UserMessagesPage() {
                               }
                             }}
                           >
-                            <Play className="h-5 w-5 text-[#075E54]" />
+                            <Video className="h-5 w-5 text-[#075E54]" />
                             <span className="text-xs text-gray-700">
-                              🎥 Video
+                              Video
                             </span>
                           </button>
                           <button
@@ -2461,10 +2684,43 @@ export default function UserMessagesPage() {
                           >
                             <Camera className="h-5 w-5 text-[#075E54]" />
                             <span className="text-xs text-gray-700">
-                              📷 Camera
+                              Camera
                             </span>
                           </button>
                         </div>
+                      </div>
+                    )}
+
+                    {replyingToMessage && (
+                      <div
+                        className={`mb-2 flex items-center gap-3 rounded-xl border-l-4 border-[#00A884] px-3 py-2 shadow-sm ${
+                          isDarkMode
+                            ? "bg-[#202C33] text-white"
+                            : "bg-white text-gray-900"
+                        }`}
+                        role="status"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-[#00A884]">
+                            {replyingToMessage.sender._id === session?.user?.id
+                              ? "You"
+                              : `${replyingToMessage.sender.firstName} ${replyingToMessage.sender.lastName}`.trim()}
+                          </p>
+                          <p
+                            className={`truncate text-xs ${isDarkMode ? "text-gray-300" : "text-gray-600"}`}
+                          >
+                            {getReplyPreviewText(replyingToMessage)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setReplyingToMessage(null)}
+                          className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center ${isDarkMode ? "hover:bg-white/10" : "hover:bg-gray-100"}`}
+                          aria-label="Cancel reply"
+                          title="Cancel reply"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
                     )}
 
@@ -2706,6 +2962,52 @@ export default function UserMessagesPage() {
         src={lightboxImage}
         alt="Message attachment"
       />
+
+      <DocumentViewerModal
+        isOpen={Boolean(documentViewer)}
+        onClose={() => setDocumentViewer(null)}
+        url={documentViewer?.url || ""}
+        filename={documentViewer?.filename || "Document"}
+        mimeType={documentViewer?.mimeType || ""}
+      />
+
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open && !isDeleting) setMessageToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete message?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This message will be permanently deleted for everyone. This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteMessage();
+              }}
+              disabled={isDeleting}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

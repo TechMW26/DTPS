@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Play, Pause, Download, Loader2, AlertCircle } from "lucide-react";
 import WaveSurfer from "wavesurfer.js";
+import { getMediaProxyUrl } from "@/lib/media";
 
 interface VoiceNotePlayerProps {
   audioUrl: string;
@@ -27,6 +28,7 @@ export function VoiceNotePlayer({
   className,
   compact = false,
 }: VoiceNotePlayerProps) {
+  const resolvedAudioUrl = getMediaProxyUrl(audioUrl);
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -65,10 +67,10 @@ export function VoiceNotePlayer({
       // Try fetching the audio as a blob first to bypass CORS issues
       // with Web Audio API on cross-origin CDN audio
       let blobUrl: string | null = null;
-      let sourceUrl = audioUrl;
+      let sourceUrl = resolvedAudioUrl;
 
       try {
-        const response = await fetch(audioUrl, { mode: "cors" });
+        const response = await fetch(resolvedAudioUrl, { mode: "cors" });
         if (response.ok) {
           const blob = await response.blob();
           blobUrl = URL.createObjectURL(blob);
@@ -77,7 +79,7 @@ export function VoiceNotePlayer({
       } catch {
         // Direct fetch failed, try through our audio proxy
         try {
-          const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(audioUrl)}`;
+          const proxyUrl = getMediaProxyUrl(audioUrl);
           const proxyResponse = await fetch(proxyUrl);
           if (proxyResponse.ok) {
             const blob = await proxyResponse.blob();
@@ -137,7 +139,7 @@ export function VoiceNotePlayer({
       setIsLoading(false);
       setUseFallback(true);
     }
-  }, [audioUrl, compact, useFallback]);
+  }, [audioUrl, compact, resolvedAudioUrl, useFallback]);
 
   useEffect(() => {
     if (!useFallback) {
@@ -211,7 +213,7 @@ export function VoiceNotePlayer({
           <p className="text-xs text-red-600 truncate">{error}</p>
         </div>
         <a
-          href={audioUrl}
+          href={getMediaProxyUrl(audioUrl, { download: true })}
           download
           target="_blank"
           rel="noopener noreferrer"

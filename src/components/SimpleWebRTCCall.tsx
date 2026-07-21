@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useSimpleWebRTC } from '@/hooks/useSimpleWebRTC';
 import { useRealtime } from '@/hooks/useRealtime';
+import { Mic } from 'lucide-react';
 
 interface SimpleWebRTCCallProps {
   remoteUserId?: string;
@@ -119,13 +120,13 @@ export default function SimpleWebRTCCall({ remoteUserId, onCallEnd }: SimpleWebR
                 onClick={handleAcceptCall}
                 className="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg"
               >
-                ✅ Accept
+                Accept
               </button>
               <button
                 onClick={handleRejectCall}
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg"
               >
-                ❌ Reject
+                Reject
               </button>
             </div>
           </div>
@@ -139,14 +140,12 @@ export default function SimpleWebRTCCall({ remoteUserId, onCallEnd }: SimpleWebR
             onClick={handleStartAudioCall}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2"
           >
-            <span>🎤</span>
             <span>Audio Call</span>
           </button>
           <button
             onClick={handleStartVideoCall}
             className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2"
           >
-            <span>📹</span>
             <span>Video Call</span>
           </button>
         </div>
@@ -168,7 +167,7 @@ export default function SimpleWebRTCCall({ remoteUserId, onCallEnd }: SimpleWebR
                 onClick={handleEndCall}
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg"
               >
-                📞 End Call
+                End Call
               </button>
             </div>
           </div>
@@ -192,7 +191,7 @@ export default function SimpleWebRTCCall({ remoteUserId, onCallEnd }: SimpleWebR
             ) : (
               <div className="w-full h-48 bg-blue-100 rounded-lg flex items-center justify-center">
                 <div className="text-center">
-                  <div className="text-4xl mb-2">🎤</div>
+                  <div className="text-4xl mb-2"><Mic className="w-10 h-10 mx-auto" /></div>
                   <div className="text-sm text-gray-600">Audio Only</div>
                 </div>
               </div>

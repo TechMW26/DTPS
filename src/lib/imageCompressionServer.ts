@@ -12,12 +12,12 @@ interface ServerCompressionOptions {
  * Compresses images before uploading to ImageKit
  * @param buffer - The image buffer to compress
  * @param options - Compression options
- * @returns Compressed image as base64 string
+ * @returns Compressed image bytes
  */
 export async function compressImageServer(
   buffer: Buffer,
   options: ServerCompressionOptions = {}
-): Promise<string> {
+): Promise<Buffer> {
   const {
     quality = 80,
     maxWidth = 1920,
@@ -63,41 +63,23 @@ export async function compressImageServer(
         break;
     }
 
-    // Return as base64
-    return compressedBuffer.toString('base64');
+    return compressedBuffer;
   } catch (error) {
     console.error('Error compressing image:', error);
-    // If compression fails, return original as base64
-    return buffer.toString('base64');
+    return buffer;
   }
-}
-
-/**
- * Compresses an image from base64 string (server-side)
- * @param base64 - Base64 encoded image string
- * @param options - Compression options
- * @returns Compressed image as base64 string
- */
-export async function compressBase64ImageServer(
-  base64: string,
-  options: ServerCompressionOptions = {}
-): Promise<string> {
-  // Remove data URL prefix if present
-  const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
-  const buffer = Buffer.from(base64Data, 'base64');
-  return compressImageServer(buffer, options);
 }
 
 /**
  * Compresses an image file from FormData (server-side)
  * @param file - File object from FormData
  * @param options - Compression options
- * @returns Compressed image as base64 string
+ * @returns Compressed image bytes
  */
 export async function compressFileImageServer(
   file: File,
   options: ServerCompressionOptions = {}
-): Promise<string> {
+): Promise<Buffer> {
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
   return compressImageServer(buffer, options);

@@ -5,7 +5,7 @@ import dbConnect from "@/lib/db/connection";
 import Blog from "@/lib/db/models/Blog";
 import { getImageKit } from "@/lib/imagekit";
 import { UserRole } from "@/types";
-import { compressBase64ImageServer } from "@/lib/imageCompressionServer";
+import { compressImageServer } from "@/lib/imageCompressionServer";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
 
 // GET - Fetch all blogs (admin)
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     const isFeatured = formData.get("isFeatured") === "true";
     const isActive = formData.get("isActive") === "true";
     const displayOrder = parseInt(formData.get("displayOrder") as string) || 0;
-    const featuredImageData = formData.get("featuredImage") as string;
+    const featuredImage = formData.get("featuredImage");
     const metaTitle = formData.get("metaTitle") as string | null;
     const metaDescription = formData.get("metaDescription") as string | null;
 
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       !content ||
       !category ||
       !author ||
-      !featuredImageData
+      !(featuredImage instanceof File)
     ) {
       return NextResponse.json(
         {
@@ -107,25 +107,29 @@ export async function POST(request: NextRequest) {
     // Upload image to ImageKit - single upload only
     let featuredImageUrl = "";
     let thumbnailImageUrl = "";
+    let featuredImageFileId = "";
 
     try {
-      // Extract base64 data from data URL
-      const imageBase64 = featuredImageData.includes("base64,")
-        ? featuredImageData.split("base64,")[1]
-        : featuredImageData;
-
-      // Compress image once (already compressed on client, but ensure server-side optimization)
-      const compressedImage = await compressBase64ImageServer(imageBase64, {
-        quality: 85,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        format: "jpeg",
-      });
+      const compressedImage = await compressImageServer(
+        Buffer.from(await featuredImage.arrayBuffer()),
+        {
+          quality: 85,
+          maxWidth: 1920,
+          maxHeight: 1080,
+          format: "jpeg",
+        },
+      );
 
       // Upload single image to ImageKit
       const imageKitInstance = getImageKit();
       if (!imageKitInstance) {
-        console.warn("[Blogs] ImageKit not configured — skipping image upload");
+        return NextResponse.json(
+          {
+            error: "ImageKit media service is unavailable",
+            code: "MEDIA_SERVICE_DOWN",
+          },
+          { status: 503 },
+        );
       } else {
         const uploadResult = await imageKitInstance.upload({
           file: compressedImage,
@@ -135,6 +139,7 @@ export async function POST(request: NextRequest) {
 
         // Use the same URL for featured image
         featuredImageUrl = uploadResult.url;
+        featuredImageFileId = uploadResult.fileId;
 
         // Generate thumbnail URL using ImageKit's URL transformation
         const filePath = (uploadResult as any).filePath as string | undefined;
@@ -168,6 +173,7 @@ export async function POST(request: NextRequest) {
       content,
       category,
       featuredImage: featuredImageUrl,
+      featuredImageFileId,
       thumbnailImage: thumbnailImageUrl,
       author,
       readTime,

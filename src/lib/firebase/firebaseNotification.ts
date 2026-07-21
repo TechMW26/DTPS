@@ -60,6 +60,8 @@ function mapNotificationType(dataType?: string): string {
         'task_assigned': 'task',
         'meal_plan_created': 'meal',
         'meal_plan_updated': 'meal',
+        'meal_upcoming': 'meal',
+        'meal_photo_prompt': 'meal',
         'payment_link_created': 'payment',
         'custom': 'custom',
     };
@@ -276,6 +278,17 @@ async function sendNotificationToTokens(
     let successCount = 0;
     let failureCount = 0;
 
+    // Keep routing metadata in the data payload so Android/iOS can deep-link
+    // even when the OS, rather than the app, displays the notification.
+    const messageData: Record<string, string> = {
+        ...(notification.data || {}),
+        title: notification.title,
+        body: notification.body,
+        ...(notification.clickAction
+            ? { clickAction: notification.clickAction, url: notification.clickAction }
+            : {}),
+    };
+
     // Build the message payload
     const baseMessage = {
         notification: {
@@ -283,7 +296,7 @@ async function sendNotificationToTokens(
             body: notification.body,
             ...(notification.image && { imageUrl: notification.image }),
         },
-        data: notification.data || {},
+        data: messageData,
         android: {
             priority: 'high' as const,
             notification: {
@@ -292,7 +305,6 @@ async function sendNotificationToTokens(
                 defaultSound: true,
                 defaultVibrateTimings: true,
                 ...(notification.icon && { icon: notification.icon }),
-                ...(notification.clickAction && { clickAction: notification.clickAction }),
             },
         },
         webpush: {

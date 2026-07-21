@@ -94,6 +94,16 @@ function getNotificationActions(type) {
                 { action: 'view', title: '📋 View Plan' },
                 { action: 'dismiss', title: 'Dismiss' }
             ];
+        case 'meal_upcoming':
+            return [
+                { action: 'view', title: '🍽️ View Meal' },
+                { action: 'dismiss', title: 'Dismiss' }
+            ];
+        case 'meal_photo_prompt':
+            return [
+                { action: 'camera', title: '📸 Add Photo' },
+                { action: 'later', title: 'Later' }
+            ];
         case 'task_assigned':
             return [
                 { action: 'view', title: '✓ View Task' },
@@ -191,7 +201,7 @@ self.addEventListener('notificationclick', (event) => {
             urlToOpen = '/user/appointments';
         } else if (type === 'payment_link' || type === 'payment_link_created' || action === 'pay') {
             urlToOpen = '/user/payments';
-        } else if (type === 'meal_plan' || type === 'meal_plan_created') {
+        } else if (type === 'meal_plan' || type === 'meal_plan_created' || type === 'meal_upcoming' || type === 'meal_photo_prompt') {
             urlToOpen = '/user/plan';
         } else if (type === 'task_assigned') {
             urlToOpen = '/user/tasks';

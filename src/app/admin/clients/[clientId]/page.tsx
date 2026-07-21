@@ -65,6 +65,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { openMediaInApp } from '@/lib/media';
 
 interface Document {
   _id: string;
@@ -874,7 +875,7 @@ export default function AdminClientDetailPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => window.open(doc.filePath, '_blank')}
+                          onClick={() => openMediaInApp(doc.filePath, doc.fileName)}
                         >
                           <Eye className="h-4 w-4" />
                         </Button>

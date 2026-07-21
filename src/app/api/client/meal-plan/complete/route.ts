@@ -339,6 +339,7 @@ export async function POST(request: NextRequest) {
 
     // Handle image upload - save to ImageKit
     let imagePath: string | undefined;
+    let imageKitFileId: string | undefined;
     if (imageFile) {
       try {
         // Generate unique filename
@@ -356,9 +357,9 @@ export async function POST(request: NextRequest) {
 
         // Skip server-side compression for already-small images to reduce latency
         // (client already compresses image before upload)
-        let uploadData: string;
+        let uploadData: Buffer;
         if (imageFile.size <= 1.2 * 1024 * 1024) {
-          uploadData = buffer.toString("base64");
+          uploadData = buffer;
         } else {
           uploadData = await compressImageServer(buffer, {
             quality: 85,
@@ -371,10 +372,14 @@ export async function POST(request: NextRequest) {
         // Upload to ImageKit in complete-meal folder
         const ik = getImageKit();
         if (!ik) {
-          console.warn(
-            "[CompleteMeal] ImageKit not configured — skipping image upload",
+          return NextResponse.json(
+            {
+              error:
+                "Media service temporarily unavailable. Please try again shortly.",
+              code: "MEDIA_SERVICE_DOWN",
+            },
+            { status: 503 },
           );
-          imagePath = "";
         } else {
           const uploadResponse = await ik.upload({
             file: uploadData,
@@ -384,6 +389,7 @@ export async function POST(request: NextRequest) {
 
           // Store the ImageKit URL
           imagePath = uploadResponse.url;
+          imageKitFileId = uploadResponse.fileId;
         }
       } catch (uploadError) {
         console.error("Error uploading meal image to ImageKit:", uploadError);
@@ -430,6 +436,8 @@ export async function POST(request: NextRequest) {
         isCustomMealType ? requestedMealTypeRaw : undefined;
       if (imagePath) {
         mealCompletions[existingCompletionIndex].imagePath = imagePath;
+        mealCompletions[existingCompletionIndex].imageKitFileId =
+          imageKitFileId;
       }
     } else {
       // Add new completion
@@ -440,6 +448,7 @@ export async function POST(request: NextRequest) {
         completed: true,
         notes: notes || undefined,
         imagePath: imagePath || undefined,
+        imageKitFileId: imageKitFileId || undefined,
       });
     }
 

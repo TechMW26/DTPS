@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useRealtime } from '@/hooks/useRealtime';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { DocumentViewerModal } from '@/components/chat/DocumentViewerModal';
 
 // Import the desktop version for non-clients
 const DesktopMessagesPage = dynamic(() => import('./page-old-desktop'), { ssr: false });
@@ -41,9 +42,11 @@ import {
   Loader2,
   X,
   Image as ImageIcon,
-  Play
+  Play,
+  Eye,
 } from 'lucide-react';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
+import { getDocumentViewerUrl, getMediaProxyUrl, getMediaUrl, isViewableDocument } from '@/lib/media';
 
 interface Message {
   _id: string;
@@ -53,6 +56,7 @@ interface Message {
   createdAt: string;
   attachments?: {
     url: string;
+    fileId?: string;
     filename: string;
     size: number;
     mimeType: string;
@@ -122,6 +126,11 @@ function ClientMessagesUI() {
   const [selectedChatUser, setSelectedChatUser] = useState<any>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [documentViewer, setDocumentViewer] = useState<{
+    url: string;
+    filename: string;
+    mimeType: string;
+  } | null>(null);
 
   // Call state management
   const [incomingCall, setIncomingCall] = useState<any>(null);
@@ -482,7 +491,7 @@ function ClientMessagesUI() {
 
     } catch (error) {
       console.error('Error initiating call:', error);
-      alert(`❌ Failed to start ${callType} call.\n\nPlease check your internet connection and try again.`);
+      alert(`Failed to start ${callType} call.\n\nPlease check your internet connection and try again.`);
     }
   };
 
@@ -790,6 +799,7 @@ function ClientMessagesUI() {
 
       const attachment = {
         url: uploadData.url,
+        fileId: uploadData.fileId,
         filename: uploadData.filename || file.name,
         size: uploadData.size || file.size,
         mimeType: uploadData.type || file.type
@@ -834,13 +844,14 @@ function ClientMessagesUI() {
 
       const attachment = {
         url: uploadData.url,
+        fileId: uploadData.fileId,
         filename: uploadData.filename || file.name,
         size: uploadData.size || file.size,
         mimeType: uploadData.type || file.type
       };
 
       // Send image message
-      await sendMessageWithAttachment('image', [attachment], '📷 Photo');
+      await sendMessageWithAttachment('image', [attachment], 'Photo');
     } catch (error) {
       console.error('Camera upload error:', error);
       alert('Failed to upload photo. Please try again.');
@@ -892,13 +903,13 @@ function ClientMessagesUI() {
       }, 1000);
 
       // In production, use MediaRecorder API to record audio
-      alert('🎤 Voice recording started!\n\nPress stop to send voice message.\n\nFeature will be fully implemented with MediaRecorder API.');
+      alert('Voice recording started!\n\nPress stop to send voice message.\n\nFeature will be fully implemented with MediaRecorder API.');
 
       // Stop tracks
       stream.getTracks().forEach(track => track.stop());
 
     } catch (error) {
-      alert('❌ Microphone access denied.\n\nPlease allow microphone access to send voice messages.');
+      alert('Microphone access denied.\n\nPlease allow microphone access to send voice messages.');
       console.error('Recording error:', error);
     }
   };
@@ -912,7 +923,7 @@ function ClientMessagesUI() {
     setIsRecording(false);
 
     if (recordingTime > 0) {
-      alert(`🎤 Voice message recorded!\n\nDuration: ${recordingTime} seconds\n\nWill be sent as audio message.`);
+      alert(`Voice message recorded!\n\nDuration: ${recordingTime} seconds\n\nWill be sent as audio message.`);
     }
 
     setRecordingTime(0);
@@ -1081,10 +1092,10 @@ function ClientMessagesUI() {
                         {message.type === 'image' && message.attachments?.[0] && (
                           <div className="mb-2">
                             <img
-                              src={message.attachments[0].url}
+                              src={getMediaProxyUrl(message.attachments[0])}
                               alt="Shared image"
                               className="rounded-lg max-w-full max-h-64 h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                              onClick={() => setPreviewImage(message.attachments?.[0]?.url || null)}
+                              onClick={() => setPreviewImage(getMediaUrl(message.attachments?.[0]) || null)}
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
@@ -1092,7 +1103,7 @@ function ClientMessagesUI() {
                                 if (parent && !parent.querySelector('.error-placeholder')) {
                                   const placeholder = document.createElement('div');
                                   placeholder.className = 'error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm';
-                                  placeholder.innerHTML = '<span>📷 Image could not be loaded</span>';
+                                  placeholder.innerHTML = '<span>Image could not be loaded</span>';
                                   parent.appendChild(placeholder);
                                 }
                               }}
@@ -1104,7 +1115,7 @@ function ClientMessagesUI() {
                         {message.type === 'video' && message.attachments?.[0] && (
                           <div className="mb-2">
                             <video
-                              src={message.attachments[0].url}
+                              src={getMediaProxyUrl(message.attachments[0])}
                               controls
                               className="rounded-lg max-w-full max-h-64 h-auto"
                               preload="metadata"
@@ -1120,10 +1131,10 @@ function ClientMessagesUI() {
                             <Volume2 className="h-5 w-5 text-gray-600 shrink-0" />
                             <audio controls className="flex-1 h-8" preload="metadata">
                               <source
-                                src={message.attachments[0].url}
+                                src={getMediaProxyUrl(message.attachments[0])}
                                 type={message.attachments[0].mimeType || 'audio/*'}
                               />
-                              <a href={message.attachments[0].url} target="_blank" rel="noopener noreferrer">
+                              <a href={getDocumentViewerUrl(message.attachments[0], message.attachments[0].filename, message.attachments[0].mimeType)} target="_blank" rel="noopener noreferrer">
                                 Open audio message
                               </a>
                             </audio>
@@ -1131,28 +1142,54 @@ function ClientMessagesUI() {
                         )}
 
                         {/* File/Document Messages */}
-                        {message.type === 'file' && message.attachments?.[0] && (
-                          <a
-                            href={message.attachments[0].url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download={message.attachments[0].filename}
-                            className="flex items-center space-x-3 mb-2 p-3 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                        {message.type === 'file' && message.attachments?.[0] && (() => {
+                          const att = message.attachments[0];
+                          const viewable = isViewableDocument(att.filename || "", att.mimeType || "", att.url || "");
+                          const mediaUrl = getMediaUrl(att);
+                          const isPdf = (att.mimeType || "") === "application/pdf" || (att.filename || "").endsWith(".pdf");
+                          return (
+                          <div
+                            className="w-full max-w-xs sm:max-w-md lg:max-w-lg mb-2 bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer"
+                            onClick={() => {
+                              if (viewable) {
+                                setDocumentViewer({ url: mediaUrl, filename: att.filename, mimeType: att.mimeType || "" });
+                              } else {
+                                window.open(getMediaProxyUrl(att, { download: true, filename: att.filename }), '_blank', 'noopener,noreferrer');
+                              }
+                            }}
                           >
-                            <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center shrink-0">
-                              <FileIcon className="h-5 w-5 text-white" />
+                            {isPdf && (
+                              <div className="w-full h-32 bg-gray-200 overflow-hidden">
+                                <iframe
+                                  src={`${mediaUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0`}
+                                  className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
+                                  title={att.filename}
+                                  loading="lazy"
+                                />
+                              </div>
+                            )}
+                            <div className="p-3 flex items-center gap-3">
+                              <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center shrink-0">
+                                <FileIcon className="h-5 w-5 text-white" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {att.filename}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {(att.size / 1024 / 1024).toFixed(2)} MB
+                                </p>
+                              </div>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {message.attachments[0].filename}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {(message.attachments[0].size / 1024 / 1024).toFixed(2)} MB
-                              </p>
-                            </div>
-                            <Download className="h-5 w-5 text-gray-500 shrink-0" />
-                          </a>
-                        )}
+                            <button
+                              type="button"
+                              className={`w-full px-3 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 border-t transition-colors ${viewable ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                            >
+                              {viewable ? <><Eye className="h-4 w-4" /> View Document</> : <><Download className="h-4 w-4" /> Download File</>}
+                            </button>
+                          </div>
+                          );
+                        })()}
 
                         {/* Text Content */}
                         {message.content && (
@@ -1219,7 +1256,7 @@ function ClientMessagesUI() {
               <X className="h-6 w-6 text-white" />
             </button>
             <img
-              src={previewImage}
+                              src={getMediaProxyUrl(previewImage)}
               alt="Preview"
               className="max-w-full max-h-full object-contain rounded-lg"
               onClick={(e) => e.stopPropagation()}
@@ -1237,6 +1274,14 @@ function ClientMessagesUI() {
             </div>
           </div>
         )}
+
+        <DocumentViewerModal
+          isOpen={Boolean(documentViewer)}
+          onClose={() => setDocumentViewer(null)}
+          url={documentViewer?.url || ''}
+          filename={documentViewer?.filename || 'Document'}
+          mimeType={documentViewer?.mimeType || ''}
+        />
 
         {/* Message Input - WhatsApp Style */}
         <div className="bg-[#F0F0F0] px-2 sm:px-3 py-2 safe-area-bottom">

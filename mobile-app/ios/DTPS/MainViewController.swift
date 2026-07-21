@@ -22,6 +22,10 @@ class MainViewController: UIViewController {
         "razorpay.com", "api.razorpay.com", "checkout.razorpay.com",
         // UPI & bank redirect hosts used by Razorpay
         "paytm.com", "phonepe.com", "gpay.com",
+        // ImageKit CDN for images/media
+        "ik.imagekit.io",
+        // Embedded document previews
+        "docs.google.com",
     ]
 
     private var progressObservation: NSKeyValueObservation?
@@ -80,7 +84,6 @@ class MainViewController: UIViewController {
         // JS → Native bridge
         let uc = WKUserContentController()
         uc.add(self, name: "nativeInterface")
-        uc.add(self, name: "fileUpload")
         config.userContentController = uc
 
         // Storage
@@ -612,6 +615,19 @@ extension MainViewController: WKNavigationDelegate {
 
 extension MainViewController: WKUIDelegate {
 
+    // Keep target="_blank" document/media links inside the DTPS WebView.
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
+            webView.load(URLRequest(url: url))
+        }
+        return nil
+    }
+
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
@@ -642,8 +658,6 @@ extension MainViewController: WKUIDelegate {
 extension MainViewController: WKScriptMessageHandler {
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.name == "fileUpload" { handleFileUploadRequest(message); return }
-
         guard message.name == "nativeInterface",
               let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
@@ -681,26 +695,6 @@ extension MainViewController: WKScriptMessageHandler {
         }
     }
 
-    private func handleFileUploadRequest(_ message: WKScriptMessage) {
-        presentMediaPicker(allowsMultipleSelection: false) { [weak self] urls in
-            guard let self = self, let urls = urls, let firstURL = urls.first,
-                  let data = try? Data(contentsOf: firstURL) else { return }
-
-            let b64 = data.base64EncodedString()
-            let mime = "image/jpeg"
-            let name = firstURL.lastPathComponent
-            let js = """
-            (function(){if(window._pendingFileInput){
-            fetch('data:\(mime);base64,\(b64)').then(r=>r.blob()).then(b=>{
-            var f=new File([b],'\(name)',{type:'\(mime)'});
-            var dt=new DataTransfer();dt.items.add(f);
-            window._pendingFileInput.files=dt.files;
-            window._pendingFileInput.dispatchEvent(new Event('change',{bubbles:true}));
-            window._pendingFileInput=null;});}})();
-            """
-            self.webView.evaluateJavaScript(js, completionHandler: nil)
-        }
-    }
 }
 
 // MARK: - Media Picker (Camera / Photo Library)
