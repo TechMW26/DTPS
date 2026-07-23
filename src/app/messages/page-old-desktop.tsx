@@ -70,11 +70,17 @@ import {
   Trash2,
   Loader2,
   CornerDownRight,
+  RotateCcw,
 } from "lucide-react";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import BulkMessageModal from "@/components/messages/BulkMessageModal";
 import { DocumentViewerModal } from "@/components/chat/DocumentViewerModal";
-import { getDocumentViewerUrl, getMediaProxyUrl, getMediaUrl, isViewableDocument } from "@/lib/media";
+import {
+  getDocumentViewerUrl,
+  getMediaProxyUrl,
+  getMediaUrl,
+  isViewableDocument,
+} from "@/lib/media";
 
 // Dynamic import for emoji picker to avoid SSR issues
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
@@ -188,6 +194,14 @@ function MessagesContent() {
   const [isVideoCall, setIsVideoCall] = useState(false);
   const [isAudioCall, setIsAudioCall] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+
+  // Retry state for failed media attachments
+  const [failedAttachments, setFailedAttachments] = useState<Set<string>>(
+    new Set(),
+  );
+  const [attachmentRetryTick, setAttachmentRetryTick] = useState<
+    Record<string, number>
+  >({});
 
   // Bulk messaging state
   const [showBulkMessageModal, setShowBulkMessageModal] = useState(false);
@@ -2193,36 +2207,83 @@ function MessagesContent() {
                                 {message.type === "image" &&
                                   message.attachments?.[0] && (
                                     <div className="mb-2">
-                                      <img
-                                        src={getMediaProxyUrl(message.attachments[0])}
-                                        alt="Shared image"
-                                        className="rounded-lg max-w-xs sm:max-w-sm h-auto cursor-pointer hover:opacity-90 transition-opacity"
-                                        onClick={() =>
-                                          setPreviewImage(
-                                            getMediaUrl(message.attachments?.[0]),
-                                          )
-                                        }
-                                        onError={(e) => {
-                                          const target =
-                                            e.target as HTMLImageElement;
-                                          target.style.display = "none";
-                                          const parent = target.parentElement;
-                                          if (
-                                            parent &&
-                                            !parent.querySelector(
-                                              ".error-placeholder",
+                                      {failedAttachments.has(message._id) ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setFailedAttachments((prev) => {
+                                              const next = new Set(prev);
+                                              next.delete(message._id);
+                                              return next;
+                                            });
+                                            setAttachmentRetryTick((prev) => ({
+                                              ...prev,
+                                              [message._id]:
+                                                (prev[message._id] || 0) + 1,
+                                            }));
+                                          }}
+                                          className="w-40 h-32 rounded-lg flex flex-col items-center justify-center gap-2 text-xs bg-gray-200 text-gray-500 hover:bg-gray-300 transition-colors"
+                                        >
+                                          <RotateCcw className="w-5 h-5" />
+                                          <span>
+                                            Image unavailable · Tap to retry
+                                          </span>
+                                        </button>
+                                      ) : (
+                                        <img
+                                          src={((): string => {
+                                            const retryTick =
+                                              attachmentRetryTick[
+                                                message._id
+                                              ] || 0;
+                                            const rawUrl =
+                                              message.attachments[0].url;
+                                            const isImageKit =
+                                              /ik\.imagekit\.io/i.test(rawUrl);
+                                            if (isImageKit || retryTick > 0) {
+                                              const sep = rawUrl.includes("?")
+                                                ? "&"
+                                                : "?";
+                                              const bust =
+                                                retryTick > 0
+                                                  ? `retry=${retryTick}`
+                                                  : `ts=${Math.floor(Date.now() / 600000)}`;
+                                              return getMediaProxyUrl({
+                                                url: `${rawUrl}${sep}${bust}`,
+                                                filename:
+                                                  message.attachments[0]
+                                                    .filename,
+                                              });
+                                            }
+                                            return getMediaProxyUrl(
+                                              message.attachments[0],
+                                            );
+                                          })()}
+                                          alt="Shared image"
+                                          className="rounded-lg max-w-xs sm:max-w-sm h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                          onClick={() =>
+                                            setPreviewImage(
+                                              getMediaUrl(
+                                                message.attachments?.[0],
+                                              ),
                                             )
-                                          ) {
-                                            const placeholder =
-                                              document.createElement("div");
-                                            placeholder.className =
-                                              "error-placeholder flex items-center justify-center bg-gray-200 rounded-lg p-4 text-gray-500 text-sm";
-                                            placeholder.innerHTML =
-                                              "<span>📷 Image could not be loaded</span>";
-                                            parent.appendChild(placeholder);
                                           }
-                                        }}
-                                      />
+                                          onError={() => {
+                                            console.error(
+                                              "[Messages] Image load error (desktop)",
+                                              {
+                                                messageId: message._id,
+                                                url: message.attachments?.[0]
+                                                  ?.url,
+                                              },
+                                            );
+                                            setFailedAttachments(
+                                              (prev) =>
+                                                new Set([...prev, message._id]),
+                                            );
+                                          }}
+                                        />
+                                      )}
                                     </div>
                                   )}
 
@@ -2231,7 +2292,9 @@ function MessagesContent() {
                                   message.attachments?.[0] && (
                                     <div className="mb-2">
                                       <video
-                                        src={getMediaProxyUrl(message.attachments[0])}
+                                        src={getMediaProxyUrl(
+                                          message.attachments[0],
+                                        )}
                                         controls
                                         className="rounded-lg max-w-xs h-auto"
                                         preload="metadata"
@@ -2254,14 +2317,20 @@ function MessagesContent() {
                                         preload="metadata"
                                       >
                                         <source
-                                          src={getMediaProxyUrl(message.attachments[0])}
+                                          src={getMediaProxyUrl(
+                                            message.attachments[0],
+                                          )}
                                           type={
                                             message.attachments[0].mimeType ||
                                             "audio/*"
                                           }
                                         />
                                         <a
-                                          href={getDocumentViewerUrl(message.attachments[0], message.attachments[0].filename, message.attachments[0].mimeType)}
+                                          href={getDocumentViewerUrl(
+                                            message.attachments[0],
+                                            message.attachments[0].filename,
+                                            message.attachments[0].mimeType,
+                                          )}
                                           target="_blank"
                                           rel="noopener noreferrer"
                                         >
@@ -2273,52 +2342,84 @@ function MessagesContent() {
 
                                 {/* File Messages */}
                                 {message.type === "file" &&
-                                  message.attachments?.[0] && (() => {
+                                  message.attachments?.[0] &&
+                                  (() => {
                                     const att = message.attachments[0];
-                                    const viewable = isViewableDocument(att.filename || "", att.mimeType || "", att.url || "");
+                                    const viewable = isViewableDocument(
+                                      att.filename || "",
+                                      att.mimeType || "",
+                                      att.url || "",
+                                    );
                                     const mediaUrl = getMediaUrl(att);
-                                    const isPdf = (att.mimeType || "") === "application/pdf" || (att.filename || "").endsWith(".pdf");
+                                    const isPdf =
+                                      (att.mimeType || "") ===
+                                        "application/pdf" ||
+                                      (att.filename || "").endsWith(".pdf");
                                     return (
-                                    <div
-                                      className="w-full max-w-xs sm:max-w-md lg:max-w-lg mb-2 bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer"
-                                      onClick={() => {
-                                        if (viewable) {
-                                          setDocumentViewer({ url: mediaUrl, filename: att.filename, mimeType: att.mimeType });
-                                        } else {
-                                          window.open(getMediaProxyUrl(att, { download: true, filename: att.filename }), "_blank", "noopener,noreferrer");
-                                        }
-                                      }}
-                                    >
-                                      {isPdf && (
-                                        <div className="w-full h-32 bg-gray-200 overflow-hidden">
-                                          <iframe
-                                            src={`${mediaUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0`}
-                                            className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
-                                            title={att.filename}
-                                            loading="lazy"
-                                          />
-                                        </div>
-                                      )}
-                                      <div className="p-3 flex items-center gap-3">
-                                        <div className="h-10 w-10 shrink-0 rounded-lg bg-blue-50 flex items-center justify-center">
-                                          <FileIcon className="h-5 w-5 text-blue-600" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <span className="block text-sm font-semibold text-gray-900 truncate">
-                                            {att.filename}
-                                          </span>
-                                          <p className="text-xs text-gray-500">
-                                            {(att.size / 1024 / 1024).toFixed(2)} MB
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        className={`w-full px-3 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 border-t transition-colors ${viewable ? "text-blue-600 hover:bg-blue-50" : "text-gray-600 hover:bg-gray-50"}`}
+                                      <div
+                                        className="w-full max-w-xs sm:max-w-md lg:max-w-lg mb-2 bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer"
+                                        onClick={() => {
+                                          if (viewable) {
+                                            setDocumentViewer({
+                                              url: mediaUrl,
+                                              filename: att.filename,
+                                              mimeType: att.mimeType,
+                                            });
+                                          } else {
+                                            window.open(
+                                              getMediaProxyUrl(att, {
+                                                download: true,
+                                                filename: att.filename,
+                                              }),
+                                              "_blank",
+                                              "noopener,noreferrer",
+                                            );
+                                          }
+                                        }}
                                       >
-                                        {viewable ? <><Eye className="h-4 w-4" /> View Document</> : <><Download className="h-4 w-4" /> Download File</>}
-                                      </button>
-                                    </div>
+                                        {isPdf && (
+                                          <div className="w-full h-32 bg-gray-200 overflow-hidden">
+                                            <iframe
+                                              src={`${mediaUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0`}
+                                              className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
+                                              title={att.filename}
+                                              loading="lazy"
+                                            />
+                                          </div>
+                                        )}
+                                        <div className="p-3 flex items-center gap-3">
+                                          <div className="h-10 w-10 shrink-0 rounded-lg bg-blue-50 flex items-center justify-center">
+                                            <FileIcon className="h-5 w-5 text-blue-600" />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <span className="block text-sm font-semibold text-gray-900 truncate">
+                                              {att.filename}
+                                            </span>
+                                            <p className="text-xs text-gray-500">
+                                              {(att.size / 1024 / 1024).toFixed(
+                                                2,
+                                              )}{" "}
+                                              MB
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className={`w-full px-3 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 border-t transition-colors ${viewable ? "text-blue-600 hover:bg-blue-50" : "text-gray-600 hover:bg-gray-50"}`}
+                                        >
+                                          {viewable ? (
+                                            <>
+                                              <Eye className="h-4 w-4" /> View
+                                              Document
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Download className="h-4 w-4" />{" "}
+                                              Download File
+                                            </>
+                                          )}
+                                        </button>
+                                      </div>
                                     );
                                   })()}
                                 <p className="text-sm">{message.content}</p>
