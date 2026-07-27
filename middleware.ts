@@ -27,7 +27,6 @@ const maintenanceExemptRoutes = [
   '/maintenance',
   '/api/auth',
   '/api/internal/runtime-alert',
-  '/api/orders',
   '/auth',
   '/_next',
   '/favicon.ico',
@@ -220,8 +219,7 @@ export default withAuth(
           pathname.startsWith('/api/payment-links/verify') ||
           pathname.startsWith('/api/payment-links/public') ||
           pathname.startsWith('/payment/success') ||
-          pathname.startsWith('/payment/manual') ||
-          pathname.startsWith('/api/orders')
+          pathname.startsWith('/payment/manual')
         ) {
           return true;
         }
