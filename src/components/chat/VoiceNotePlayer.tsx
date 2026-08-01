@@ -340,6 +340,7 @@ export function VoiceNotePlayer({
         ref={audioRef}
         src={audioUrl}
         preload="metadata"
+        crossOrigin="anonymous"
         onError={handleAudioError}
         onLoadedMetadata={handleAudioLoaded}
         onTimeUpdate={handleAudioTimeUpdate}

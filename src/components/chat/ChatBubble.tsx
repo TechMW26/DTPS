@@ -121,7 +121,11 @@ export function ChatBubble({
   const [docModalMimeType, setDocModalMimeType] = useState("");
 
   // Open document in lightbox modal
-  const openDocumentViewer = (attachmentUrl: string, filename: string, mimeType: string) => {
+  const openDocumentViewer = (
+    attachmentUrl: string,
+    filename: string,
+    mimeType: string,
+  ) => {
     setDocModalUrl(normalizeMediaUrl(attachmentUrl));
     setDocModalFilename(filename);
     setDocModalMimeType(mimeType);
@@ -165,7 +169,11 @@ export function ChatBubble({
     if (message.attachments && message.attachments.length > 0) {
       const attachment = message.attachments[0]; // For now, handle single attachment
       const attachmentUrl = getMediaUrl(attachment);
-      const mediaKind = getMediaKind(attachment.filename, attachment.mimeType, attachmentUrl);
+      const mediaKind = getMediaKind(
+        attachment.filename,
+        attachment.mimeType,
+        attachmentUrl,
+      );
       const resolvedMessageType =
         message.type === "text" || message.type === "file"
           ? ["image", "video", "audio"].includes(mediaKind)
@@ -179,31 +187,55 @@ export function ChatBubble({
           const hasError = imageErrors.get(imageKey) || false;
           const retries = imageRetryCount.get(imageKey) || 0;
 
+          const cacheBust = () =>
+            `ts=${Math.floor(Date.now() / 600000)}&retry=${retries}`;
+
           const handleImageError = () => {
             const currentRetries = imageRetryCount.get(imageKey) || 0;
+            console.error(
+              `[ChatBubble] Image load failed (attempt ${currentRetries + 1}):`,
+              attachmentUrl,
+            );
 
             if (currentRetries === 0) {
-              // First failure: try via image proxy (adds CORS headers + handles CDN issues)
+              // First failure: try via image proxy with cache-bust
               setImageRetryCount((prev) => {
                 const next = new Map(prev);
                 next.set(imageKey, 1);
                 return next;
               });
             } else if (currentRetries === 1) {
-              // Second failure: try the proxy endpoint directly
+              // Second failure: try direct ImageKit URL with cache-bust
               setImageRetryCount((prev) => {
                 const next = new Map(prev);
                 next.set(imageKey, 2);
                 return next;
               });
+            } else if (currentRetries === 2) {
+              // Third failure: try a second proxy pass (some WebViews need it)
+              setImageRetryCount((prev) => {
+                const next = new Map(prev);
+                next.set(imageKey, 3);
+                return next;
+              });
             } else {
-              // Third+ failure: give up
+              // Fourth+ failure: give up
               setImageErrors((prev) => {
                 const next = new Map(prev);
                 next.set(imageKey, true);
                 return next;
               });
             }
+          };
+
+          const handleImageLoad = () => {
+            // Clear any error state on successful load
+            setImageErrors((prev) => {
+              if (!prev.has(imageKey)) return prev;
+              const next = new Map(prev);
+              next.delete(imageKey);
+              return next;
+            });
           };
 
           const handleRetry = () => {
@@ -221,12 +253,20 @@ export function ChatBubble({
 
           // Determine image source based on retry count
           const getImageSrc = () => {
+            const ts = cacheBust();
             if (retries === 0 && attachment.thumbnail) {
-              return getMediaProxyUrl(attachment.thumbnail);
+              const thumbUrl = getMediaProxyUrl(attachment.thumbnail);
+              return `${thumbUrl}${thumbUrl.includes("?") ? "&" : "?"}${ts}`;
             }
-            return retries >= 2
-              ? normalizeMediaUrl(attachmentUrl)
-              : getMediaProxyUrl(attachmentUrl);
+            if (retries >= 2) {
+              // Direct ImageKit URL with cache-bust
+              const direct = normalizeMediaUrl(attachmentUrl);
+              if (direct && /^https?:\/\//i.test(direct)) {
+                return `${direct}${direct.includes("?") ? "&" : "?"}${ts}`;
+              }
+            }
+            const proxyUrl = getMediaProxyUrl(attachmentUrl);
+            return `${proxyUrl}${proxyUrl.includes("?") ? "&" : "?"}${ts}`;
           };
 
           return (
@@ -234,15 +274,19 @@ export function ChatBubble({
               {!hasError ? (
                 <div
                   className="cursor-pointer group relative"
-                  onClick={() => handleImageClick(getMediaProxyUrl(attachmentUrl))}
+                  onClick={() =>
+                    handleImageClick(getMediaProxyUrl(attachmentUrl))
+                  }
                 >
                   <img
                     src={getImageSrc()}
                     alt={attachment.filename}
                     className="rounded-lg max-w-full h-auto transition-opacity group-hover:opacity-90"
                     onError={handleImageError}
+                    onLoad={handleImageLoad}
                     style={{ maxHeight: "300px", maxWidth: "250px" }}
-                    loading="lazy"
+                    crossOrigin="anonymous"
+                    referrerPolicy="no-referrer"
                   />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center">
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -289,9 +333,22 @@ export function ChatBubble({
               <video
                 src={getMediaProxyUrl(attachmentUrl)}
                 controls
+                playsInline
+                crossOrigin="anonymous"
                 className="rounded-lg max-w-full h-auto"
                 style={{ maxHeight: "300px", maxWidth: "250px" }}
-                poster={attachment.thumbnail ? getMediaProxyUrl(attachment.thumbnail) : undefined}
+                poster={
+                  attachment.thumbnail
+                    ? getMediaProxyUrl(attachment.thumbnail)
+                    : undefined
+                }
+                onError={(e) => {
+                  console.error(
+                    "[ChatBubble] Video load failed:",
+                    attachmentUrl,
+                    e,
+                  );
+                }}
               >
                 Your browser does not support the video tag.
               </video>
@@ -345,15 +402,31 @@ export function ChatBubble({
         }
 
         case "file": {
-          const isViewable = isViewableDocument(attachment.filename, attachment.mimeType, attachmentUrl);
-          const isPdf = attachment.mimeType === "application/pdf" || (attachment.filename || "").endsWith(".pdf");
-          const previewUrl = isPdf ? `${resolveUrl(attachmentUrl)}#page=1&toolbar=0&navpanes=0&scrollbar=0` : "";
+          const isViewable = isViewableDocument(
+            attachment.filename,
+            attachment.mimeType,
+            attachmentUrl,
+          );
+          const isPdf =
+            attachment.mimeType === "application/pdf" ||
+            (attachment.filename || "").endsWith(".pdf");
+          const previewUrl = isPdf
+            ? `${getMediaProxyUrl(attachmentUrl)}#page=1&toolbar=0&navpanes=0&scrollbar=0`
+            : "";
 
           const handleFileClick = () => {
             if (isViewable) {
-              openDocumentViewer(attachmentUrl, attachment.filename, attachment.mimeType);
+              openDocumentViewer(
+                attachmentUrl,
+                attachment.filename,
+                attachment.mimeType,
+              );
             } else {
-              window.open(getMediaProxyUrl(attachmentUrl), "_blank", "noopener,noreferrer");
+              window.open(
+                getMediaProxyUrl(attachmentUrl),
+                "_blank",
+                "noopener,noreferrer",
+              );
             }
           };
           return (
@@ -381,7 +454,9 @@ export function ChatBubble({
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {attachment.filename.length > 28
-                      ? attachment.filename.slice(0, 22) + "..." + attachment.filename.slice(-8)
+                      ? attachment.filename.slice(0, 22) +
+                        "..." +
+                        attachment.filename.slice(-8)
                       : attachment.filename}
                   </p>
                   <p className="text-xs text-gray-500">

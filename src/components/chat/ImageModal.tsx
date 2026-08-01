@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { X, Download, ZoomIn, ZoomOut, RotateCw, Share } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { getMediaProxyUrl } from '@/lib/media';
+import { useState, useEffect } from "react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { X, Download, ZoomIn, ZoomOut, RotateCw, Share } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { getMediaProxyUrl } from "@/lib/media";
 
 interface ImageModalProps {
   isOpen: boolean;
@@ -22,7 +22,7 @@ export function ImageModal({
   imageUrl,
   filename,
   onDownload,
-  onShare
+  onShare,
 }: ImageModalProps) {
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -44,15 +44,15 @@ export function ImageModal({
   }, [isOpen]);
 
   const handleZoomIn = () => {
-    setZoom(prev => Math.min(prev * 1.2, 5));
+    setZoom((prev) => Math.min(prev * 1.2, 5));
   };
 
   const handleZoomOut = () => {
-    setZoom(prev => Math.max(prev / 1.2, 0.1));
+    setZoom((prev) => Math.max(prev / 1.2, 0.1));
   };
 
   const handleRotate = () => {
-    setRotation(prev => (prev + 90) % 360);
+    setRotation((prev) => (prev + 90) % 360);
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -60,7 +60,7 @@ export function ImageModal({
       setIsDragging(true);
       setDragStart({
         x: e.clientX - position.x,
-        y: e.clientY - position.y
+        y: e.clientY - position.y,
       });
     }
   };
@@ -69,7 +69,7 @@ export function ImageModal({
     if (isDragging && zoom > 1) {
       setPosition({
         x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y
+        y: e.clientY - dragStart.y,
       });
     }
   };
@@ -83,9 +83,12 @@ export function ImageModal({
       onDownload();
     } else {
       // Default download behavior
-      const link = document.createElement('a');
-      link.href = getMediaProxyUrl(imageUrl, { download: true, filename: filename || 'image' });
-      link.download = filename || 'image';
+      const link = document.createElement("a");
+      link.href = getMediaProxyUrl(imageUrl, {
+        download: true,
+        filename: filename || "image",
+      });
+      link.download = filename || "image";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -113,7 +116,7 @@ export function ImageModal({
               </h3>
             )}
           </div>
-          
+
           <div className="flex items-center space-x-2">
             <Button
               variant="ghost"
@@ -124,7 +127,7 @@ export function ImageModal({
             >
               <ZoomOut className="w-4 h-4" />
             </Button>
-            
+
             <Button
               variant="ghost"
               size="sm"
@@ -134,7 +137,7 @@ export function ImageModal({
             >
               <ZoomIn className="w-4 h-4" />
             </Button>
-            
+
             <Button
               variant="ghost"
               size="sm"
@@ -143,7 +146,7 @@ export function ImageModal({
             >
               <RotateCw className="w-4 h-4" />
             </Button>
-            
+
             <Button
               variant="ghost"
               size="sm"
@@ -152,7 +155,7 @@ export function ImageModal({
             >
               <Download className="w-4 h-4" />
             </Button>
-            
+
             {onShare && (
               <Button
                 variant="ghost"
@@ -163,7 +166,7 @@ export function ImageModal({
                 <Share className="w-4 h-4" />
               </Button>
             )}
-            
+
             <Button
               variant="ghost"
               size="sm"
@@ -176,7 +179,7 @@ export function ImageModal({
         </div>
 
         {/* Image container */}
-        <div 
+        <div
           className="flex items-center justify-center w-full h-full min-h-[400px] overflow-hidden cursor-move"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -188,28 +191,32 @@ export function ImageModal({
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white" />
             </div>
           )}
-          
+
           {error && (
             <div className="text-white text-center">
               <p className="text-lg mb-2">Failed to load image</p>
-              <p className="text-sm text-gray-300">The image could not be displayed</p>
+              <p className="text-sm text-gray-300">
+                The image could not be displayed
+              </p>
             </div>
           )}
-          
+
           {!error && (
             <img
-          src={getMediaProxyUrl(imageUrl)}
-              alt={filename || 'Image'}
+              src={getMediaProxyUrl(imageUrl)}
+              alt={filename || "Image"}
               className={cn(
                 "max-w-full max-h-full object-contain transition-transform duration-200",
-                isDragging ? "cursor-grabbing" : "cursor-grab"
+                isDragging ? "cursor-grabbing" : "cursor-grab",
               )}
               style={{
                 transform: `scale(${zoom}) rotate(${rotation}deg) translate(${position.x}px, ${position.y}px)`,
-                display: loading ? 'none' : 'block'
+                display: loading ? "none" : "block",
               }}
               onLoad={handleImageLoad}
               onError={handleImageError}
+              crossOrigin="anonymous"
+              referrerPolicy="no-referrer"
               draggable={false}
             />
           )}

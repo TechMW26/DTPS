@@ -395,6 +395,15 @@ class MainActivity : AppCompatActivity() {
             displayZoomControls = false
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             userAgentString = "$userAgentString DTPSApp/Android"
+            // Explicitly enable image loading (some OEM ROMs disable by default)
+            loadsImagesAutomatically = true
+            @Suppress("DEPRECATION")
+            blockNetworkImage = false
+            // Allow CORS requests from file:// origins (needed for splash screen)
+            @Suppress("DEPRECATION")
+            allowFileAccessFromFileURLs = true
+            @Suppress("DEPRECATION")
+            allowUniversalAccessFromFileURLs = true
             
             // Enable modern web features
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
