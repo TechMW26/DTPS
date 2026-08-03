@@ -117,13 +117,13 @@ export function ChatInput({
     let fileForUpload = file;
     let localAttachment: ChatAttachment | undefined;
 
-    try {
-      // Determine message type based on file type
-      let messageType: "text" | "image" | "file" | "video" | "audio" = "file";
-      if (file.type.startsWith("image/")) messageType = "image";
-      else if (file.type.startsWith("video/")) messageType = "video";
-      else if (file.type.startsWith("audio/")) messageType = "audio";
+    // Determine message type based on file type (hoisted for catch-block access)
+    let messageType: "image" | "video" | "audio" | "file" = "file";
+    if (file.type.startsWith("image/")) messageType = "image";
+    else if (file.type.startsWith("video/")) messageType = "video";
+    else if (file.type.startsWith("audio/")) messageType = "audio";
 
+    try {
       // Client-side compression for images to speed up upload & reduce failures
       if (messageType === "image" && file.size > 200 * 1024) {
         try {
@@ -184,7 +184,8 @@ export function ChatInput({
           // Show downtime toast for media service outages
           if (errorData.code === "MEDIA_SERVICE_DOWN") {
             toast.error("Media uploads temporarily unavailable", {
-              description: "Our media service is experiencing downtime. Your chats and messages still work — media uploads will resume shortly.",
+              description:
+                "Our media service is experiencing downtime. Your chats and messages still work — media uploads will resume shortly.",
               duration: 8000,
             });
           }
@@ -223,11 +224,6 @@ export function ChatInput({
 
       // Notify parent for retry support
       if (placeholderMessageId && onMediaUploadFailed && localAttachment) {
-        let messageType: "image" | "video" | "audio" | "file" = "file";
-        if (file.type.startsWith("image/")) messageType = "image";
-        else if (file.type.startsWith("video/")) messageType = "video";
-        else if (file.type.startsWith("audio/")) messageType = "audio";
-
         onMediaUploadFailed({
           messageId: placeholderMessageId,
           error: error instanceof Error ? error.message : "Upload failed",
@@ -285,6 +281,8 @@ export function ChatInput({
         if (normalized.includes("wav")) return "wav";
         if (normalized.includes("mpeg") || normalized.includes("mp3"))
           return "mp3";
+        if (normalized.includes("3gpp")) return "3gpp";
+        if (normalized.includes("amr")) return "amr";
         return "webm";
       };
 
@@ -540,7 +538,15 @@ export function ChatInput({
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
                 <span className="text-blue-600 text-xs">
-                  {attachedFile.type.startsWith("image/") ? <><Image className="h-4 w-4" /> </> : <><Paperclip className="h-4 w-4" /> </>}
+                  {attachedFile.type.startsWith("image/") ? (
+                    <>
+                      <Image className="h-4 w-4" />{" "}
+                    </>
+                  ) : (
+                    <>
+                      <Paperclip className="h-4 w-4" />{" "}
+                    </>
+                  )}
                 </span>
               </div>
               <div>

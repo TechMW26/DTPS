@@ -96,6 +96,9 @@ export async function POST(request: NextRequest) {
         "image/png",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/plain",
       ],
       "recipe-image": ["image/jpeg", "image/png", "image/webp"],
       message: [
@@ -162,6 +165,8 @@ export async function POST(request: NextRequest) {
         "image/png",
         "image/webp",
         "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       ],
       bug: ["image/jpeg", "image/png", "image/webp", "image/gif"],
       ecommerce: ["image/jpeg", "image/png", "image/webp"],
@@ -232,7 +237,9 @@ export async function POST(request: NextRequest) {
       ".xlsx",
       ".ppt",
       ".pptx",
+      ".csv",
       ".txt",
+      ".rtf",
       ".zip",
     ]);
 
@@ -248,12 +255,24 @@ export async function POST(request: NextRequest) {
       ".heif",
     ]);
 
+    // Document extensions used as fallback for types that allow PDFs/docs
+    // (medical-report, document) when the file picker reports an empty MIME.
+    const documentAllowedExtensions = new Set([
+      ".pdf",
+      ".doc",
+      ".docx",
+      ".xls",
+      ".xlsx",
+      ".txt",
+    ]);
+
     const isMessageTypeAllowed =
       fileType === "message" &&
       (allowedTypes[fileType]?.includes(normalizedMimeType) ||
         normalizedMimeType.startsWith("image/") ||
         normalizedMimeType.startsWith("video/") ||
         normalizedMimeType.startsWith("audio/") ||
+        normalizedMimeType.startsWith("application/") ||
         messageAllowedExtensions.has(extension) ||
         // Android gallery often returns an empty MIME type
         normalizedMimeType === "");
@@ -278,9 +297,18 @@ export async function POST(request: NextRequest) {
       (normalizedMimeType === "" || normalizedMimeType.startsWith("image/")) &&
       imageAllowedExtensions.has(extension);
 
+    // Document-based uploads (medical-report, document) — when the file picker
+    // reports an empty MIME but the extension is a known document type.
+    const documentBasedTypes = new Set(["medical-report", "document"]);
+    const isDocumentTypeAllowedByExtension =
+      documentBasedTypes.has(fileType as string) &&
+      normalizedMimeType === "" &&
+      documentAllowedExtensions.has(extension);
+
     if (
       !isMessageTypeAllowed &&
       !isImageTypeAllowedByExtension &&
+      !isDocumentTypeAllowedByExtension &&
       !allowedTypes[fileType]?.includes(normalizedMimeType)
     ) {
       return NextResponse.json({ error: "Invalid file type" }, { status: 400 });

@@ -97,11 +97,21 @@ export function ImageModal({
 
   const handleImageLoad = () => {
     setLoading(false);
+    setError(false);
   };
 
   const handleImageError = () => {
     setLoading(false);
     setError(true);
+  };
+
+  // Cache-bust the proxy URL to prevent stale CDN error pages.
+  // Rotates every 10 minutes so reopening the modal gets a fresh response.
+  const getCacheBustedUrl = () => {
+    const proxy = getMediaProxyUrl(imageUrl);
+    if (!proxy) return proxy;
+    const cb = Math.floor(Date.now() / 600000);
+    return `${proxy}${proxy.includes("?") ? "&" : "?"}_cb=${cb}`;
   };
 
   return (
@@ -203,7 +213,7 @@ export function ImageModal({
 
           {!error && (
             <img
-              src={getMediaProxyUrl(imageUrl)}
+              src={getCacheBustedUrl()}
               alt={filename || "Image"}
               className={cn(
                 "max-w-full max-h-full object-contain transition-transform duration-200",

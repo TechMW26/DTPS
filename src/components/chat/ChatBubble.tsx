@@ -327,31 +327,89 @@ export function ChatBubble({
           );
         }
 
-        case "video":
+        case "video": {
+          const videoKey = attachmentUrl;
+          const videoHasError = imageErrors.get(videoKey) || false;
+          const videoRetries = imageRetryCount.get(videoKey) || 0;
+
+          const handleVideoError = () => {
+            const current = imageRetryCount.get(videoKey) || 0;
+            console.error(
+              `[ChatBubble] Video load failed (attempt ${current + 1}):`,
+              attachmentUrl,
+            );
+            if (current < 2) {
+              setImageRetryCount((prev) => {
+                const next = new Map(prev);
+                next.set(videoKey, current + 1);
+                return next;
+              });
+            } else {
+              setImageErrors((prev) => {
+                const next = new Map(prev);
+                next.set(videoKey, true);
+                return next;
+              });
+            }
+          };
+
+          const handleVideoRetry = () => {
+            setImageErrors((prev) => {
+              const next = new Map(prev);
+              next.delete(videoKey);
+              return next;
+            });
+            setImageRetryCount((prev) => {
+              const next = new Map(prev);
+              next.set(videoKey, 0);
+              return next;
+            });
+          };
+
+          const getVideoSrc = () => {
+            const ts = `ts=${Math.floor(Date.now() / 600000)}&retry=${videoRetries}`;
+            const proxy = getMediaProxyUrl(attachmentUrl);
+            return `${proxy}${proxy.includes("?") ? "&" : "?"}${ts}`;
+          };
+
           return (
             <div className="relative max-w-xs">
-              <video
-                src={getMediaProxyUrl(attachmentUrl)}
-                controls
-                playsInline
-                crossOrigin="anonymous"
-                className="rounded-lg max-w-full h-auto"
-                style={{ maxHeight: "300px", maxWidth: "250px" }}
-                poster={
-                  attachment.thumbnail
-                    ? getMediaProxyUrl(attachment.thumbnail)
-                    : undefined
-                }
-                onError={(e) => {
-                  console.error(
-                    "[ChatBubble] Video load failed:",
-                    attachmentUrl,
-                    e,
-                  );
-                }}
-              >
-                Your browser does not support the video tag.
-              </video>
+              {!videoHasError ? (
+                <video
+                  key={`${videoKey}-${videoRetries}`}
+                  src={getVideoSrc()}
+                  controls
+                  playsInline
+                  crossOrigin="anonymous"
+                  className="rounded-lg max-w-full h-auto"
+                  style={{ maxHeight: "300px", maxWidth: "250px" }}
+                  poster={
+                    attachment.thumbnail
+                      ? getMediaProxyUrl(attachment.thumbnail)
+                      : undefined
+                  }
+                  onError={handleVideoError}
+                >
+                  Your browser does not support the video tag.
+                </video>
+              ) : (
+                <div
+                  className="bg-gray-100 rounded-lg p-4 text-center text-gray-500"
+                  style={{ maxHeight: "300px", maxWidth: "250px" }}
+                >
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                  <p className="text-sm mb-2">Failed to load video</p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleVideoRetry();
+                    }}
+                    className="text-xs text-indigo-600 hover:text-indigo-700 font-medium underline"
+                  >
+                    Tap to retry
+                  </button>
+                </div>
+              )}
               <div className="mt-1 text-xs opacity-75">
                 {attachment.filename} • {formatFileSize(attachment.size)}
                 {attachment.duration &&
@@ -359,6 +417,7 @@ export function ChatBubble({
               </div>
             </div>
           );
+        }
 
         case "audio":
         case "voice": {
@@ -441,7 +500,6 @@ export function ChatBubble({
                     src={previewUrl}
                     className="w-[200%] h-[200%] absolute top-0 left-0 scale-50 origin-top-left pointer-events-none"
                     title={attachment.filename}
-                    loading="lazy"
                   />
                 </div>
               )}

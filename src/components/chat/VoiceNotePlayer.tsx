@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Play, Pause, Download, Loader2, AlertCircle } from "lucide-react";
 import WaveSurfer from "wavesurfer.js";
-import { getMediaProxyUrl } from "@/lib/media";
+import { getMediaProxyUrl, normalizeMediaUrl } from "@/lib/media";
 
 interface VoiceNotePlayerProps {
   audioUrl: string;
@@ -63,32 +63,72 @@ export function VoiceNotePlayer({
       wavesurferRef.current = null;
     }
 
+    // Add cache-busting to prevent stale CDN error pages from persisting.
+    // Rotate every 10 minutes so repeated retries get fresh CDN responses.
+    const cacheBustKey = Math.floor(Date.now() / 600000);
+    const cacheBustedProxyUrl = resolvedAudioUrl.includes("?")
+      ? `${resolvedAudioUrl}&_cb=${cacheBustKey}`
+      : `${resolvedAudioUrl}?_cb=${cacheBustKey}`;
+
     try {
-      // Try fetching the audio as a blob first to bypass CORS issues
-      // with Web Audio API on cross-origin CDN audio
+      // Fetch audio as a blob through our proxy so WaveSurfer gets a
+      // same-origin blob URL — avoids CORS issues with ImageKit CDN.
       let blobUrl: string | null = null;
-      let sourceUrl = resolvedAudioUrl;
+      let sourceUrl = cacheBustedProxyUrl;
 
       try {
-        const response = await fetch(resolvedAudioUrl, { mode: "cors" });
+        const response = await fetch(cacheBustedProxyUrl, {
+          mode: "cors",
+          credentials: "include",
+        });
         if (response.ok) {
           const blob = await response.blob();
-          blobUrl = URL.createObjectURL(blob);
-          setAudioBlobUrl(blobUrl);
-        }
-      } catch {
-        // Direct fetch failed, try through our audio proxy
-        try {
-          const proxyUrl = getMediaProxyUrl(audioUrl);
-          const proxyResponse = await fetch(proxyUrl);
-          if (proxyResponse.ok) {
-            const blob = await proxyResponse.blob();
+          if (blob.size > 0) {
             blobUrl = URL.createObjectURL(blob);
             setAudioBlobUrl(blobUrl);
-            sourceUrl = proxyUrl;
           }
+        }
+      } catch {
+        // Proxy fetch failed — try a direct cache-busted URL to the raw
+        // audio file (not proxied) as a last resort for WaveSurfer.
+        const rawUrl = normalizeMediaUrl(audioUrl);
+        if (rawUrl && /^https?:\/\//i.test(rawUrl)) {
+          const rawCacheBusted = rawUrl.includes("?")
+            ? `${rawUrl}&_cb=${cacheBustKey}`
+            : `${rawUrl}?_cb=${cacheBustKey}`;
+          try {
+            const directResponse = await fetch(rawCacheBusted, {
+              mode: "cors",
+            });
+            if (directResponse.ok) {
+              const blob = await directResponse.blob();
+              if (blob.size > 0) {
+                blobUrl = URL.createObjectURL(blob);
+                setAudioBlobUrl(blobUrl);
+              }
+            }
+          } catch {
+            // Both proxy and direct fetch failed — WaveSurfer will try the
+            // proxy URL directly (below).
+          }
+        }
+      }
+
+      // Resume AudioContext if suspended (required on mobile browsers
+      // that block audio until a user gesture).
+      const AudioCtxClass =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (AudioCtxClass) {
+        try {
+          const tempCtx = new AudioCtxClass();
+          if (tempCtx.state === "suspended") {
+            await tempCtx.resume().catch(() => {});
+          }
+          setTimeout(() => tempCtx.close().catch(() => {}), 500);
         } catch {
-          // Proxy also failed, fall through to direct URL
+          // AudioContext resume not supported — proceed anyway
         }
       }
 
@@ -106,7 +146,28 @@ export function VoiceNotePlayer({
         url: blobUrl || sourceUrl,
       });
 
+      // Timeout: if WaveSurfer doesn't report "ready" or "error" within
+      // 12 seconds, fall back to native audio. Prevents hanging spinner.
+      let initTimeout: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        if (isLoading && !useFallback) {
+          console.warn(
+            "[VoiceNotePlayer] WaveSurfer init timed out — falling back to native audio",
+          );
+          setIsLoading(false);
+          setUseFallback(true);
+          try {
+            ws.destroy();
+          } catch {}
+          wavesurferRef.current = null;
+          initTimeout = null;
+        }
+      }, 12000);
+
       ws.on("ready", () => {
+        if (initTimeout) {
+          clearTimeout(initTimeout);
+          initTimeout = null;
+        }
         setIsLoading(false);
         const dur = ws.getDuration();
         if (dur && isFinite(dur)) {
@@ -123,6 +184,10 @@ export function VoiceNotePlayer({
       });
 
       ws.on("error", (err) => {
+        if (initTimeout) {
+          clearTimeout(initTimeout);
+          initTimeout = null;
+        }
         console.warn("[VoiceNotePlayer] WaveSurfer error:", err);
         // Fall back to native audio element
         setIsLoading(false);
@@ -338,14 +403,30 @@ export function VoiceNotePlayer({
 
       <audio
         ref={audioRef}
-        src={audioUrl}
+        src={resolvedAudioUrl}
         preload="metadata"
         crossOrigin="anonymous"
         onError={handleAudioError}
         onLoadedMetadata={handleAudioLoaded}
         onTimeUpdate={handleAudioTimeUpdate}
         onEnded={handleAudioEnded}
-        onPlay={() => setIsPlaying(true)}
+        onPlay={() => {
+          // Resume suspended AudioContext on mobile (autoplay policy).
+          // The native <audio> element creates its own context internally,
+          // but we attempt resume through the global AudioContext if available.
+          const AC =
+            window.AudioContext ||
+            (window as Window & { webkitAudioContext?: typeof AudioContext })
+              .webkitAudioContext;
+          if (AC) {
+            try {
+              const temp = new AC();
+              if (temp.state === "suspended") temp.resume().catch(() => {});
+              setTimeout(() => temp.close(), 100);
+            } catch {}
+          }
+          setIsPlaying(true);
+        }}
         onPause={() => setIsPlaying(false)}
         className="hidden"
       />

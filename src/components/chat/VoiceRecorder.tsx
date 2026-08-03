@@ -196,11 +196,15 @@ export function VoiceRecorder({
       analyserRef.current.fftSize = 256;
       analyserRef.current.smoothingTimeConstant = 0.8;
 
-      // Determine the best audio format supported by the browser
+      // Determine the best audio format supported by the browser.
+      // Safari supports audio/aac and audio/mp4; Chrome/Firefox prefer audio/webm.
+      // isTypeSupported() is unreliable — we try creating a recorder as the
+      // ultimate compatibility check.
       let mimeType = "audio/webm";
       const mimeTypes = [
         "audio/webm;codecs=opus",
         "audio/webm",
+        "audio/aac",
         "audio/mp4",
         "audio/ogg;codecs=opus",
         "audio/ogg",
@@ -208,9 +212,15 @@ export function VoiceRecorder({
       ];
 
       for (const type of mimeTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
+        if (!MediaRecorder.isTypeSupported(type)) continue;
+        // Double-check by actually constructing a recorder — Safari reports
+        // audio/mp4 as supported but silently produces broken files.
+        try {
+          new MediaRecorder(stream, { mimeType: type });
           mimeType = type;
           break;
+        } catch {
+          continue;
         }
       }
 
@@ -218,7 +228,7 @@ export function VoiceRecorder({
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType,
-        audioBitsPerSecond: 128000, // 128kbps for good quality
+        audioBitsPerSecond: mimeType.includes("aac") ? 96000 : 128000,
       });
       mediaRecorderRef.current = mediaRecorder;
 
@@ -268,9 +278,22 @@ export function VoiceRecorder({
       setIsRecording(true);
       setRecordingTime(0);
 
-      // Start timer
+      // Start timer — auto-stop at 10 minutes to prevent runaway recordings
+      const MAX_RECORDING_SECONDS = 600; // 10 minutes
       intervalRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
+        setRecordingTime((prev) => {
+          const next = prev + 1;
+          if (next >= MAX_RECORDING_SECONDS) {
+            // Auto-stop: triggers onstop → blob creation → ready to send
+            if (mediaRecorderRef.current?.state === "recording") {
+              mediaRecorderRef.current.stop();
+            }
+            setIsRecording(false);
+            stopRecordingInternals();
+            return MAX_RECORDING_SECONDS;
+          }
+          return next;
+        });
       }, 1000);
 
       // Start waveform animation
