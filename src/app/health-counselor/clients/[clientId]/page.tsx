@@ -2047,6 +2047,13 @@ export default function HealthCounselorClientDetailPage() {
                                 className="h-10 px-4 flex items-center gap-2 text-gray-600"
                                 onClick={() => {
                                   if (mediaRecorder) {
+                                    // Force flush before stopping — prevents
+                                    // truncated audio in some browsers.
+                                    // Both methods queue internal tasks;
+                                    // calling synchronously ensures ordering.
+                                    if (mediaRecorder.state === "recording") {
+                                      mediaRecorder.requestData();
+                                    }
                                     mediaRecorder.stop();
                                     setIsRecording(false);
                                     if (recordingTimerRef.current) {

@@ -243,23 +243,52 @@ export function ChatInput({
     let localAttachment: ChatAttachment | undefined;
 
     try {
+      // Guard: reject empty blobs before any processing
+      if (!audioBlob || audioBlob.size === 0) {
+        throw new Error("No audio captured. Please re-record your message.");
+      }
+
       const getAudioDuration = async (
         blob: Blob,
       ): Promise<number | undefined> => {
         return new Promise((resolve) => {
           const previewUrl = URL.createObjectURL(blob);
           const audioElement = document.createElement("audio");
+          audioElement.style.display = "none";
+          // Attach to DOM — some browsers (especially mobile Safari) will
+          // not fire loadedmetadata for detached audio elements.
+          document.body.appendChild(audioElement);
+
+          let resolved = false;
+          const cleanup = () => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timeoutId);
+            URL.revokeObjectURL(previewUrl);
+            audioElement.pause();
+            audioElement.removeAttribute("src");
+            audioElement.load();
+            audioElement.remove();
+          };
+
+          // Timeout after 5 seconds — prevents the upload from hanging
+          // indefinitely if the browser never fires loadedmetadata/error.
+          const timeoutId = setTimeout(() => {
+            console.warn("[ChatInput] getAudioDuration timed out");
+            cleanup();
+            resolve(undefined);
+          }, 5000);
 
           audioElement.preload = "metadata";
           audioElement.onloadedmetadata = () => {
             const duration = Number.isFinite(audioElement.duration)
               ? Math.max(1, Math.round(audioElement.duration))
               : undefined;
-            URL.revokeObjectURL(previewUrl);
+            cleanup();
             resolve(duration);
           };
           audioElement.onerror = () => {
-            URL.revokeObjectURL(previewUrl);
+            cleanup();
             resolve(undefined);
           };
 
@@ -320,16 +349,40 @@ export function ChatInput({
       formData.append("file", audioFile);
       formData.append("type", "message");
 
+      // Diagnostic: log what we're about to upload
+      console.log("[ChatInput] Uploading voice recording:", {
+        fileName: audioFile.name,
+        fileSize: audioFile.size,
+        fileType: audioFile.type,
+        blobOriginalType: audioBlob.type,
+        blobOriginalSize: audioBlob.size,
+        duration,
+        voiceExtension,
+      });
+
       const uploadResponse = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
 
       if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error(
+          "[ChatInput] Upload failed:",
+          uploadResponse.status,
+          errorText,
+        );
         throw new Error("Failed to upload voice message");
       }
 
       const uploadData = await uploadResponse.json();
+
+      console.log("[ChatInput] Upload succeeded:", {
+        url: uploadData.url,
+        size: uploadData.size,
+        type: uploadData.type,
+        fileId: uploadData.fileId,
+      });
 
       // Normalize MIME type: strip codec suffix so browsers don't reject
       // the source due to mismatched Content-Type from the CDN.

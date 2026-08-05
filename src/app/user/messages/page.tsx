@@ -35,6 +35,7 @@ import {
 import { compressImage } from "@/lib/imageCompression";
 import ImageLightbox from "@/components/ui/image-lightbox";
 import { DocumentViewerModal } from "@/components/chat/DocumentViewerModal";
+import { VoiceNotePlayer } from "@/components/chat/VoiceNotePlayer";
 import {
   Send,
   Paperclip,
@@ -214,6 +215,7 @@ export default function UserMessagesPage() {
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordStartedAtRef = useRef<number>(0);
   const recordingReplyToIdRef = useRef<string | undefined>(undefined);
+  const recordingCancelledRef = useRef(false);
   const isInitialLoadRef = useRef(false);
   const userPressedBackRef = useRef(false);
   const lastTappedMessageRef = useRef<{ id: string; at: number } | null>(null);
@@ -269,10 +271,13 @@ export default function UserMessagesPage() {
   };
 
   const retryAttachment = (messageId: string) => {
+    // Clean up any stale audio element reference
     const audio = audioRefs.current[messageId];
     if (audio) {
       audio.pause();
       audio.currentTime = 0;
+      audio.removeAttribute("src");
+      audio.load();
       audioRefs.current[messageId] = null;
     }
 
@@ -283,11 +288,13 @@ export default function UserMessagesPage() {
       delete next[messageId];
       return next;
     });
+    // Remove from failed set so the VoiceNotePlayer renders
     setFailedAttachments((prev) => {
       const next = new Set(prev);
       next.delete(messageId);
       return next;
     });
+    // Increment retry tick to force VoiceNotePlayer to remount with fresh key
     setAttachmentRetryTick((prev) => ({
       ...prev,
       [messageId]: (prev[messageId] || 0) + 1,
@@ -921,6 +928,11 @@ export default function UserMessagesPage() {
                       : "webm";
 
               const blob = new Blob(chunks, { type: recorderMimeType });
+              // Guard: if re-encoding produced empty output, keep the original
+              if (!blob || blob.size === 0) {
+                finish(file);
+                return;
+              }
               const compressed = new File(
                 [blob],
                 file.name.replace(/\.[^.]+$/, `.${extension}`),
@@ -1052,6 +1064,17 @@ export default function UserMessagesPage() {
     replyToId = replyingToMessage?._id,
   ) => {
     if (!selectedConversation) return;
+
+    // BACKSTOP: never upload an empty file — prevents 0-byte blobs from
+    // reaching ImageKit regardless of which code path called this function.
+    if (!rawFile || rawFile.size === 0) {
+      console.error("[sendAttachmentMessage] Refusing to send empty file", {
+        type: messageType,
+        fileName: rawFile?.name,
+      });
+      toast.error("Cannot send an empty file. Please try again.");
+      return;
+    }
 
     setSending(true);
 
@@ -1317,7 +1340,15 @@ export default function UserMessagesPage() {
 
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
+      recordingCancelledRef.current = false;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // If the user released the button before getUserMedia resolved,
+      // stopVoiceRecording already set the cancelled flag — abort now.
+      if (recordingCancelledRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
 
       // Use audio/webm for Chrome/Firefox, audio/mp4 for Safari
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -1342,7 +1373,10 @@ export default function UserMessagesPage() {
         }
       };
 
-      recorder.start();
+      // Use timeslice for reliable data capture across browsers.
+      // Without a timeslice, ondataavailable may not fire for very short
+      // recordings on some platforms (Android WebView, older Safari).
+      recorder.start(250);
       recordTimerRef.current = setInterval(() => {
         setRecordingTime(
           Math.floor((Date.now() - recordStartedAtRef.current) / 1000),
@@ -1356,7 +1390,18 @@ export default function UserMessagesPage() {
   };
 
   const stopVoiceRecording = async () => {
-    if (!recorderRef.current) return;
+    // If the recorder hasn't been created yet (getUserMedia still pending),
+    // set the cancellation flag so startVoiceRecording aborts when it resolves.
+    if (!recorderRef.current) {
+      recordingCancelledRef.current = true;
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+      setIsRecording(false);
+      setRecordingTime(0);
+      return;
+    }
 
     const recorder = recorderRef.current;
     if (recordTimerRef.current) {
@@ -1364,22 +1409,39 @@ export default function UserMessagesPage() {
       recordTimerRef.current = null;
     }
 
-    const duration = Math.max(
-      1,
-      Math.floor((Date.now() - recordStartedAtRef.current) / 1000),
+    const rawDuration = Math.floor(
+      (Date.now() - recordStartedAtRef.current) / 1000,
     );
+
+    // Guard: require at least 1 second of recording to prevent empty files.
+    // MediaRecorder needs time to initialise and capture meaningful audio.
+    if (rawDuration < 1) {
+      if (recordStreamRef.current) {
+        recordStreamRef.current.getTracks().forEach((track) => track.stop());
+        recordStreamRef.current = null;
+      }
+      // Stop the recorder if still active
+      if (recorder.state !== "inactive") {
+        recorder.stop();
+      }
+      recorderRef.current = null;
+      recordChunksRef.current = [];
+      setIsRecording(false);
+      setRecordingTime(0);
+      toast.error(
+        "Recording too short. Hold the button and speak for at least 1 second.",
+      );
+      recordingReplyToIdRef.current = undefined;
+      return;
+    }
+
+    const duration = rawDuration;
 
     await new Promise<void>((resolve) => {
       recorder.onstop = async () => {
         // Use the actual MIME type from the recorder for the blob
         const actualMimeType = recorder.mimeType || "audio/webm";
         const voiceBlob = new Blob(recordChunksRef.current, {
-          type: actualMimeType,
-        });
-
-        // Determine file extension based on MIME type
-        const ext = detectAudioExtension(actualMimeType);
-        const voiceFile = new File([voiceBlob], `voice_${Date.now()}.${ext}`, {
           type: actualMimeType,
         });
 
@@ -1392,6 +1454,20 @@ export default function UserMessagesPage() {
         recordChunksRef.current = [];
         setIsRecording(false);
         setRecordingTime(0);
+
+        // Guard: reject empty recordings (e.g. too-short tap, browser quirk)
+        if (!voiceBlob || voiceBlob.size === 0) {
+          toast.error("No audio captured. Please hold the button and speak.");
+          recordingReplyToIdRef.current = undefined;
+          resolve();
+          return;
+        }
+
+        // Determine file extension based on MIME type
+        const ext = detectAudioExtension(actualMimeType);
+        const voiceFile = new File([voiceBlob], `voice_${Date.now()}.${ext}`, {
+          type: actualMimeType,
+        });
 
         try {
           await sendAttachmentMessage(
@@ -1414,6 +1490,14 @@ export default function UserMessagesPage() {
       };
 
       if (recorder.state !== "inactive") {
+        // Force a final dataavailable event before stopping.
+        // Without requestData(), the last audio segment may be lost
+        // in some browsers, producing truncated unplayable files.
+        // Both requestData() and stop() queue internal tasks on the same
+        // task source — the event loop processes them in FIFO order.
+        if (recorder.state === "recording") {
+          recorder.requestData();
+        }
         recorder.stop();
       } else {
         resolve();
@@ -1483,10 +1567,7 @@ export default function UserMessagesPage() {
     const now = Date.now();
     const previousTap = lastTappedMessageRef.current;
 
-    if (
-      previousTap?.id === message._id &&
-      now - previousTap.at < 320
-    ) {
+    if (previousTap?.id === message._id && now - previousTap.at < 320) {
       lastTappedMessageRef.current = null;
       handleReplyToMessage(message);
       return;
@@ -2075,7 +2156,11 @@ export default function UserMessagesPage() {
                                     controls
                                     preload="metadata"
                                     playsInline
-                                    poster={attachment.thumbnail ? getMediaProxyUrl(attachment.thumbnail) : undefined}
+                                    poster={
+                                      attachment.thumbnail
+                                        ? getMediaProxyUrl(attachment.thumbnail)
+                                        : undefined
+                                    }
                                     className="rounded-lg bg-black"
                                     style={{
                                       maxWidth: "220px",
@@ -2117,132 +2202,19 @@ export default function UserMessagesPage() {
                                 );
                               }
                               return (
-                                <div className="flex items-center gap-3 min-w-50 max-w-65 py-1">
-                                  <audio
-                                    key={`${message._id}-${attachmentRetryTick[message._id] || 0}`}
-                                    ref={(element) => {
-                                      if (element)
-                                        audioRefs.current[message._id] =
-                                          element;
-                                    }}
-                                    src={getMediaProxyUrl(resolvedUrl)}
-                                    preload="metadata"
-                                    onTimeUpdate={(event) => {
-                                      const audio = event.currentTarget;
-                                      if (
-                                        audio.duration &&
-                                        isFinite(audio.duration)
-                                      ) {
-                                        setVoiceProgress((prev) => ({
-                                          ...prev,
-                                          [message._id]:
-                                            (audio.currentTime /
-                                              audio.duration) *
-                                            100,
-                                        }));
-                                      }
-                                    }}
-                                    onLoadedMetadata={(event) => {
-                                      const duration =
-                                        event.currentTarget.duration;
-                                      if (isFinite(duration) && duration > 0) {
-                                        setVoiceDurations((prev) => ({
-                                          ...prev,
-                                          [message._id]: duration,
-                                        }));
-                                      }
-                                    }}
-                                    onEnded={() => {
-                                      setVoicePlayingId(null);
-                                      setVoiceProgress((prev) => ({
-                                        ...prev,
-                                        [message._id]: 0,
-                                      }));
-                                    }}
-                                    onError={(e) => {
-                                      const audioElement =
-                                        e.currentTarget as HTMLAudioElement;
-                                      const errorCode =
-                                        audioElement?.error?.code;
-                                      const errorMessage =
-                                        audioElement?.error?.message ||
-                                        "Unknown audio error";
-                                      console.warn(
-                                        `Audio load error for message ${message._id}:`,
-                                        errorCode,
-                                        errorMessage,
-                                        resolvedUrl,
-                                      );
-                                      markAttachmentFailed(message._id);
-                                    }}
-                                    className="hidden"
+                                <div className="min-w-50 max-w-65 py-1">
+                                  <VoiceNotePlayer
+                                    key={`vn-${message._id}-${attachmentRetryTick[message._id] || 0}`}
+                                    audioUrl={resolvedUrl}
+                                    mimeType={attachment.mimeType}
+                                    duration={attachment.duration}
+                                    compact
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      toggleVoicePlayback(message._id)
-                                    }
-                                    className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${isOwn ? "bg-white/25 hover:bg-white/35" : "bg-[#00A884] hover:bg-[#00A884]/80"}`}
-                                  >
-                                    {voicePlayingId === message._id ? (
-                                      <Pause className="w-4 h-4 text-white" />
-                                    ) : (
-                                      <Play className="w-4 h-4 text-white ml-0.5" />
-                                    )}
-                                  </button>
-                                  <div className="flex-1 min-w-0">
-                                    {/* Clickable seek bar */}
-                                    <div
-                                      className="h-2 rounded-full overflow-hidden cursor-pointer relative"
-                                      style={{
-                                        backgroundColor: isOwn
-                                          ? "rgba(255,255,255,.28)"
-                                          : "rgba(0,0,0,.15)",
-                                      }}
-                                      onClick={(e) => {
-                                        const audio =
-                                          audioRefs.current[message._id];
-                                        if (!audio || !isFinite(audio.duration))
-                                          return;
-                                        const rect =
-                                          e.currentTarget.getBoundingClientRect();
-                                        const clickX = e.clientX - rect.left;
-                                        const percent = clickX / rect.width;
-                                        audio.currentTime =
-                                          percent * audio.duration;
-                                        setVoiceProgress((prev) => ({
-                                          ...prev,
-                                          [message._id]: percent * 100,
-                                        }));
-                                      }}
-                                    >
-                                      <div
-                                        className="h-full rounded-full transition-all duration-100"
-                                        style={{
-                                          width: `${voiceProgress[message._id] || 0}%`,
-                                          backgroundColor: isOwn
-                                            ? "#fff"
-                                            : "#00A884",
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="flex justify-between mt-1">
-                                      <span className="text-[10px] opacity-55">
-                                        {voiceDurations[message._id]
-                                          ? formatVoiceDuration(
-                                              voiceDurations[message._id],
-                                            )
-                                          : attachment.duration
-                                            ? formatVoiceDuration(
-                                                attachment.duration,
-                                              )
-                                            : "0:00"}
-                                      </span>
-                                      <span className="text-[10px] opacity-55">
-                                        {formatFileSize(attachment.size)}
-                                      </span>
-                                    </div>
-                                  </div>
+                                  {hasCaption && (
+                                    <p className="text-[14px] mt-1.5 leading-snug wrap-break-word">
+                                      {message.content}
+                                    </p>
+                                  )}
                                 </div>
                               );
                             case "file":
@@ -2265,7 +2237,11 @@ export default function UserMessagesPage() {
                                   </button>
                                 );
                               }
-                              const kind = getMediaKind(attachment.filename, attachment.mimeType, resolvedUrl);
+                              const kind = getMediaKind(
+                                attachment.filename,
+                                attachment.mimeType,
+                                resolvedUrl,
+                              );
                               const isViewableDoc = isViewableDocument(
                                 attachment.filename,
                                 attachment.mimeType,
@@ -2277,9 +2253,22 @@ export default function UserMessagesPage() {
                                     className={`rounded-2xl overflow-hidden cursor-pointer ${isOwn ? "bg-white/10" : isDarkMode ? "bg-white/5" : "bg-gray-100"}`}
                                     onClick={() => {
                                       if (isViewableDoc) {
-                                        setDocumentViewer({ url: resolvedUrl, filename: attachment.filename || "Document", mimeType: attachment.mimeType || "" });
+                                        setDocumentViewer({
+                                          url: resolvedUrl,
+                                          filename:
+                                            attachment.filename || "Document",
+                                          mimeType: attachment.mimeType || "",
+                                        });
                                       } else {
-                                        window.open(getMediaProxyUrl(resolvedUrl, { download: true, filename: attachment.filename || "Document" }), "_blank", "noopener,noreferrer");
+                                        window.open(
+                                          getMediaProxyUrl(resolvedUrl, {
+                                            download: true,
+                                            filename:
+                                              attachment.filename || "Document",
+                                          }),
+                                          "_blank",
+                                          "noopener,noreferrer",
+                                        );
                                       }
                                     }}
                                   >
@@ -2302,7 +2291,17 @@ export default function UserMessagesPage() {
                                       type="button"
                                       className={`w-full px-3 py-2.5 text-sm font-medium flex items-center justify-center gap-1.5 border-t border-white/10 ${isViewableDoc ? "text-blue-500" : "opacity-70"}`}
                                     >
-                                      {isViewableDoc ? <><Eye className="w-4 h-4" /> View Document</> : <><Download className="w-4 h-4" /> Download File</>}
+                                      {isViewableDoc ? (
+                                        <>
+                                          <Eye className="w-4 h-4" /> View
+                                          Document
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Download className="w-4 h-4" />{" "}
+                                          Download File
+                                        </>
+                                      )}
                                     </button>
                                   </div>
                                   {hasCaption && (
@@ -2642,9 +2641,7 @@ export default function UserMessagesPage() {
                             }}
                           >
                             <ImageIcon className="h-5 w-5 text-[#075E54]" />
-                            <span className="text-xs text-gray-700">
-                              Image
-                            </span>
+                            <span className="text-xs text-gray-700">Image</span>
                           </button>
                           <button
                             type="button"
@@ -2664,9 +2661,7 @@ export default function UserMessagesPage() {
                             }}
                           >
                             <Video className="h-5 w-5 text-[#075E54]" />
-                            <span className="text-xs text-gray-700">
-                              Video
-                            </span>
+                            <span className="text-xs text-gray-700">Video</span>
                           </button>
                           <button
                             type="button"
@@ -2982,8 +2977,8 @@ export default function UserMessagesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete message?</AlertDialogTitle>
             <AlertDialogDescription>
-              This message will be permanently deleted for everyone. This
-              action cannot be undone.
+              This message will be permanently deleted for everyone. This action
+              cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

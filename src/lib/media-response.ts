@@ -1,4 +1,5 @@
 import path from "path";
+import fs from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeMediaUrl } from "@/lib/media";
 import connectDB from "@/lib/db/connection";
@@ -33,15 +34,60 @@ const MIME_TYPES: Record<string, string> = {
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
 
-function contentTypeFor(filename: string): string {
-  return MIME_TYPES[path.extname(filename).slice(1).toLowerCase()] || "application/octet-stream";
+function contentTypeFor(filename: string, mimeHint = ""): string {
+  const ext = path.extname(filename).slice(1).toLowerCase();
+  // If the caller provides a mimeHint (e.g. from the DB record), prefer it
+  // for ambiguous extensions like .webm (which could be audio or video).
+  if (mimeHint && ext === "webm") {
+    const normalized = mimeHint.toLowerCase().split(";")[0].trim();
+    if (normalized === "audio/webm") return "audio/webm";
+    if (normalized === "video/webm") return "video/webm";
+  }
+  return MIME_TYPES[ext] || "application/octet-stream";
 }
 
 function safeFilename(filename: string): string {
   return (filename || "document").replace(/[^\x20-\x7e]|[\r\n"]/g, "_");
 }
 
-function commonHeaders(filename: string, contentType: string, download: boolean): Headers {
+/** Serve a file from the local public/ directory as a fallback when ImageKit
+ *  recovery fails. Used for legacy uploads that pre-date the CDN migration. */
+function serveLocalFile(
+  request: NextRequest,
+  filePath: string,
+  download: boolean,
+  filename?: string,
+): NextResponse | null {
+  // Only allow paths under public/uploads/ — prevent directory traversal
+  const normalized = path.normalize(filePath).replace(/\\/g, "/");
+  if (!/^\/?uploads\//i.test(normalized)) return null;
+
+  const absolutePath = path.join(process.cwd(), "public", normalized);
+  if (!fs.existsSync(absolutePath)) return null;
+
+  try {
+    const stat = fs.statSync(absolutePath);
+    if (!stat.isFile()) return null;
+
+    const content = fs.readFileSync(absolutePath);
+    const name = filename || path.basename(normalized);
+    const headers = commonHeaders(name, contentTypeFor(name), download);
+    headers.set("Content-Length", String(stat.size));
+
+    if (request.method === "HEAD") {
+      return new NextResponse(null, { status: 200, headers });
+    }
+    return new NextResponse(content, { status: 200, headers });
+  } catch {
+    return null;
+  }
+}
+
+function commonHeaders(
+  filename: string,
+  contentType: string,
+  download: boolean,
+): Headers {
   const headers = new Headers({
     "Content-Type": contentType,
     "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${safeFilename(filename)}"`,
@@ -49,7 +95,8 @@ function commonHeaders(filename: string, contentType: string, download: boolean)
     "Cache-Control": "private, max-age=3600",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Range",
-    "Access-Control-Expose-Headers": "Content-Length, Content-Range, Content-Disposition",
+    "Access-Control-Expose-Headers":
+      "Content-Length, Content-Range, Content-Disposition",
   });
   return headers;
 }
@@ -89,7 +136,9 @@ function basenameFromMediaUrl(mediaUrl: URL): string {
   }
 }
 
-async function recoverStoredMedia(mediaUrl: URL): Promise<RecoveredMedia | null> {
+async function recoverStoredMedia(
+  mediaUrl: URL,
+): Promise<RecoveredMedia | null> {
   const filename = basenameFromMediaUrl(mediaUrl);
   if (!filename) return null;
 
@@ -100,17 +149,19 @@ async function recoverStoredMedia(mediaUrl: URL): Promise<RecoveredMedia | null>
   try {
     await connectDB();
     const lookup: Array<Record<string, string>> = [
-        { filename },
-        { originalName: filename },
-        { localPath: mediaUrl.toString() },
-        { imageKitUrl: mediaUrl.toString() },
+      { filename },
+      { originalName: filename },
+      { localPath: mediaUrl.toString() },
+      { imageKitUrl: mediaUrl.toString() },
     ];
     if (/^[a-f\d]{24}$/i.test(filename)) {
       lookup.unshift({ _id: filename });
     }
 
     const record = await FileModel.findOne({ $or: lookup })
-      .select("filename originalName mimeType type localPath imageKitFileId imageKitUrl")
+      .select(
+        "filename originalName mimeType type localPath imageKitFileId imageKitUrl",
+      )
       .lean<StoredMediaRecord | null>();
 
     if (record?.imageKitUrl) {
@@ -144,22 +195,31 @@ async function recoverStoredMedia(mediaUrl: URL): Promise<RecoveredMedia | null>
     const imagekit = getImageKit();
     if (imagekit) {
       const extensionIndex = filename.lastIndexOf(".");
-      const webpName = extensionIndex > 0
-        ? `${filename.slice(0, extensionIndex)}.webp`
-        : `${filename}.webp`;
+      const webpName =
+        extensionIndex > 0
+          ? `${filename.slice(0, extensionIndex)}.webp`
+          : `${filename}.webp`;
       const candidateNames = [...new Set([filename, webpName])];
       for (const candidate of candidateNames) {
         const escaped = candidate.replace(/["\\]/g, "\\$&");
-        const matches = await imagekit.listFiles({
+        const matches = (await imagekit.listFiles({
           name: escaped,
           limit: 10,
-        }) as unknown as Array<{ name?: string; url?: string; fileId?: string }>;
-        const match = matches.find((file) => file.name === candidate && file.url);
+        })) as unknown as Array<{
+          name?: string;
+          url?: string;
+          fileId?: string;
+        }>;
+        const match = matches.find(
+          (file) => file.name === candidate && file.url,
+        );
         if (match?.url) {
           if (record) {
             await FileModel.updateOne(
               { _id: record._id },
-              { $set: { imageKitUrl: match.url, imageKitFileId: match.fileId } },
+              {
+                $set: { imageKitUrl: match.url, imageKitFileId: match.fileId },
+              },
             );
           }
           const value: RecoveredMedia = {
@@ -190,13 +250,16 @@ async function recoverStoredMedia(mediaUrl: URL): Promise<RecoveredMedia | null>
 }
 
 function metadataResponse(recovered: RecoveredMedia | null): NextResponse {
-  return NextResponse.json({
-    available: Boolean(recovered),
-    publicUrl: recovered?.url || null,
-  }, {
-    status: recovered ? 200 : 404,
-    headers: { "Cache-Control": "private, no-store" },
-  });
+  return NextResponse.json(
+    {
+      available: Boolean(recovered),
+      publicUrl: recovered?.url || null,
+    },
+    {
+      status: recovered ? 200 : 404,
+      headers: { "Cache-Control": "private, no-store" },
+    },
+  );
 }
 
 async function proxyRemoteMedia(
@@ -208,21 +271,32 @@ async function proxyRemoteMedia(
   try {
     const upstream = await fetch(mediaUrl, {
       method: request.method === "HEAD" ? "HEAD" : "GET",
-      headers: request.headers.get("range") ? { Range: request.headers.get("range")! } : undefined,
+      headers: request.headers.get("range")
+        ? { Range: request.headers.get("range")! }
+        : undefined,
       redirect: "follow",
       cache: "no-store",
     });
     if (!upstream.ok) {
-      return NextResponse.json({ error: "Media could not be loaded" }, { status: upstream.status });
+      return NextResponse.json(
+        { error: "Media could not be loaded" },
+        { status: upstream.status },
+      );
     }
 
-    const filename = requestedFilename || basenameFromMediaUrl(mediaUrl) || "document";
+    const filename =
+      requestedFilename || basenameFromMediaUrl(mediaUrl) || "document";
     const headers = commonHeaders(
       filename,
       upstream.headers.get("content-type") || contentTypeFor(filename),
       download,
     );
-    for (const name of ["content-length", "content-range", "last-modified", "etag"]) {
+    for (const name of [
+      "content-length",
+      "content-range",
+      "last-modified",
+      "etag",
+    ]) {
       const value = upstream.headers.get(name);
       if (value) headers.set(name, value);
     }
@@ -232,7 +306,10 @@ async function proxyRemoteMedia(
     });
   } catch (error) {
     console.error("[MediaResolver] Failed to fetch media", error);
-    return NextResponse.json({ error: "Media could not be loaded" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Media could not be loaded" },
+      { status: 502 },
+    );
   }
 }
 
@@ -251,9 +328,15 @@ function allowedRemoteOrigins(): Set<string> {
   return origins;
 }
 
-export async function handleMediaResolve(request: NextRequest): Promise<NextResponse> {
+export async function handleMediaResolve(
+  request: NextRequest,
+): Promise<NextResponse> {
   const rawUrl = request.nextUrl.searchParams.get("url");
-  if (!rawUrl) return NextResponse.json({ error: "Missing url parameter" }, { status: 400 });
+  if (!rawUrl)
+    return NextResponse.json(
+      { error: "Missing url parameter" },
+      { status: 400 },
+    );
 
   const normalized = normalizeMediaUrl(rawUrl, request.nextUrl.origin);
   if (!normalized || /^(blob|data):/i.test(normalized)) {
@@ -269,7 +352,8 @@ export async function handleMediaResolve(request: NextRequest): Promise<NextResp
 
   const download = request.nextUrl.searchParams.get("download") === "1";
   const metadata = request.nextUrl.searchParams.get("metadata") === "1";
-  const requestedFilename = request.nextUrl.searchParams.get("filename") || undefined;
+  const requestedFilename =
+    request.nextUrl.searchParams.get("filename") || undefined;
   if (
     mediaUrl.origin === request.nextUrl.origin &&
     /^\/api\/files\/[a-f\d]{24}\/?$/i.test(mediaUrl.pathname)
@@ -279,7 +363,10 @@ export async function handleMediaResolve(request: NextRequest): Promise<NextResp
     if (recovered) {
       const recoveredUrl = new URL(recovered.url);
       if (!allowedRemoteOrigins().has(recoveredUrl.origin)) {
-        return NextResponse.json({ error: "Media source is not allowed" }, { status: 403 });
+        return NextResponse.json(
+          { error: "Media source is not allowed" },
+          { status: 403 },
+        );
       }
       return proxyRemoteMedia(
         request,
@@ -291,7 +378,10 @@ export async function handleMediaResolve(request: NextRequest): Promise<NextResp
     return NextResponse.json({ error: "Media not found" }, { status: 404 });
   }
 
-  if (mediaUrl.origin === request.nextUrl.origin && /^\/uploads\//i.test(mediaUrl.pathname)) {
+  if (
+    mediaUrl.origin === request.nextUrl.origin &&
+    /^\/uploads\//i.test(mediaUrl.pathname)
+  ) {
     if (metadata) {
       return metadataResponse(await recoverStoredMedia(mediaUrl));
     }
@@ -299,7 +389,10 @@ export async function handleMediaResolve(request: NextRequest): Promise<NextResp
     if (recovered) {
       const recoveredUrl = new URL(recovered.url);
       if (!allowedRemoteOrigins().has(recoveredUrl.origin)) {
-        return NextResponse.json({ error: "Media source is not allowed" }, { status: 403 });
+        return NextResponse.json(
+          { error: "Media source is not allowed" },
+          { status: 403 },
+        );
       }
       return proxyRemoteMedia(
         request,
@@ -308,11 +401,26 @@ export async function handleMediaResolve(request: NextRequest): Promise<NextResp
         requestedFilename || recovered.filename,
       );
     }
-    return NextResponse.json({ error: "Media not found in ImageKit" }, { status: 404 });
+    // ImageKit recovery failed — try serving from local public/ directory.
+    // This handles legacy uploads that pre-date the CDN migration.
+    const local = serveLocalFile(
+      request,
+      mediaUrl.pathname,
+      download,
+      requestedFilename,
+    );
+    if (local) return local;
+    return NextResponse.json(
+      { error: "Media not found in ImageKit" },
+      { status: 404 },
+    );
   }
 
   if (!allowedRemoteOrigins().has(mediaUrl.origin)) {
-    return NextResponse.json({ error: "Media source is not allowed" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Media source is not allowed" },
+      { status: 403 },
+    );
   }
 
   // Never proxy the resolver back into itself.
@@ -324,11 +432,17 @@ export async function handleMediaResolve(request: NextRequest): Promise<NextResp
     return metadataResponse({
       kind: "remote",
       url: mediaUrl.toString(),
-      filename: requestedFilename || basenameFromMediaUrl(mediaUrl) || "document",
+      filename:
+        requestedFilename || basenameFromMediaUrl(mediaUrl) || "document",
     });
   }
 
-  const remoteResponse = await proxyRemoteMedia(request, mediaUrl, download, requestedFilename);
+  const remoteResponse = await proxyRemoteMedia(
+    request,
+    mediaUrl,
+    download,
+    requestedFilename,
+  );
   if (remoteResponse.status !== 404) {
     return remoteResponse;
   }
@@ -337,7 +451,10 @@ export async function handleMediaResolve(request: NextRequest): Promise<NextResp
   if (recovered) {
     const recoveredUrl = new URL(recovered.url);
     if (!allowedRemoteOrigins().has(recoveredUrl.origin)) {
-      return NextResponse.json({ error: "Media source is not allowed" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Media source is not allowed" },
+        { status: 403 },
+      );
     }
     return proxyRemoteMedia(
       request,

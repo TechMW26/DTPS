@@ -87,6 +87,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
+    // Reject empty files — prevents storing 0-byte blobs on ImageKit
+    if (!file.size || file.size === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Empty file. Please re-record your audio or re-select the file.",
+        },
+        { status: 400 },
+      );
+    }
+
     // Validate file type and size
     const allowedTypes = {
       avatar: ["image/jpeg", "image/png", "image/webp"],
@@ -327,6 +338,21 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    // Diagnostic logging for audio/video files — helps trace data integrity
+    // through the upload pipeline.
+    if (
+      normalizedMimeType.startsWith("audio/") ||
+      normalizedMimeType.startsWith("video/")
+    ) {
+      console.log(`[Upload] Received ${fileType} file:`, {
+        name: file.name,
+        size: file.size,
+        mimeType: file.type,
+        bufferBytes: buffer.length,
+        extension: fileExtension,
+      });
+    }
+
     // Get compression settings based on type
     const compressionSettings =
       fileType === "avatar"
@@ -371,6 +397,10 @@ export async function POST(request: NextRequest) {
         imageKitUrl: imageKitResult.url,
         uploadedBy: session.user.id,
       });
+
+      console.log(
+        `[Upload] ✅ Stored on ImageKit: ${imageKitResult.url} (${file.size} bytes, ${responseMimeType})`,
+      );
 
       return NextResponse.json({
         url: imageKitResult.url,

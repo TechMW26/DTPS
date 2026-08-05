@@ -13,262 +13,301 @@
  *   - `role:<role>`   — joined based on JWT role
  */
 
-import { Server as SocketIOServer, Socket } from 'socket.io';
-import { decode } from 'next-auth/jwt';
-import { onlineStatusManager, typingManager } from './online-status';
-import { userRoom, roleRoom, SOCKET_EVENTS } from './socket-events';
+import { Server as SocketIOServer, Socket } from "socket.io";
+import { decode } from "next-auth/jwt";
+import { onlineStatusManager, typingManager } from "./online-status";
+import { userRoom, roleRoom, SOCKET_EVENTS } from "./socket-events";
 
 declare global {
-    // eslint-disable-next-line no-var
-    var __socketIO: SocketIOServer | undefined;
-    // eslint-disable-next-line no-var
-    var __socketManager: SocketManager | undefined;
+  // eslint-disable-next-line no-var
+  var __socketIO: SocketIOServer | undefined;
+  // eslint-disable-next-line no-var
+  var __socketManager: SocketManager | undefined;
 }
 
-const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || '';
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || "";
 
 // Cookie name varies by env
 const SESSION_COOKIE_NAME =
-    process.env.NODE_ENV === 'production'
-        ? '__Secure-next-auth.session-token'
-        : 'next-auth.session-token';
+  process.env.NODE_ENV === "production"
+    ? "__Secure-next-auth.session-token"
+    : "next-auth.session-token";
 
 export interface SocketUserData {
-    userId: string;
-    role: string;
-    firstName?: string;
-    lastName?: string;
+  userId: string;
+  role: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 class SocketManager {
-    private io: SocketIOServer | null = null;
-    private initialized = false;
+  private io: SocketIOServer | null = null;
+  private initialized = false;
 
-    // Track userId → Set<socketId> for presence
-    private userSockets = new Map<string, Set<string>>();
+  // Track userId → Set<socketId> for presence
+  private userSockets = new Map<string, Set<string>>();
 
-    static getInstance(): SocketManager {
-        if (!globalThis.__socketManager) {
-            globalThis.__socketManager = new SocketManager();
+  static getInstance(): SocketManager {
+    if (!globalThis.__socketManager) {
+      globalThis.__socketManager = new SocketManager();
+    }
+    return globalThis.__socketManager;
+  }
+
+  /** Return underlying io instance. */
+  getIO(): SocketIOServer | null {
+    this.ensureInitialized();
+    return this.io;
+  }
+
+  /**
+   * Lazily grab the io instance from globalThis and wire up auth + handlers.
+   * Called automatically by every public method. Safe to call multiple times.
+   */
+  private ensureInitialized(): void {
+    if (this.initialized) return;
+
+    const io = globalThis.__socketIO;
+    if (!io) {
+      console.warn(
+        "[SocketManager] globalThis.__socketIO not found — server.js may not have created it yet",
+      );
+      return;
+    }
+
+    if (!NEXTAUTH_SECRET) {
+      console.error(
+        "[SocketManager] NEXTAUTH_SECRET is not set — all socket auth will fail!",
+      );
+    }
+
+    this.io = io;
+    this.initialized = true;
+
+    // ── Engine-level error logging ────────────────────────────────────
+    io.engine.on("connection_error", (err) => {
+      console.error("[SocketManager] Engine connection error:", {
+        message: err.message,
+        code: (err as any).code,
+        context: (err as any).context,
+      });
+    });
+
+    // ── Auth middleware ────────────────────────────────────────────────
+    this.io.use(async (socket, next) => {
+      try {
+        const token = await this.extractToken(socket);
+        if (!token || !token.sub) {
+          console.warn(
+            "[SocketManager] Auth rejected — no valid token found in handshake cookies",
+          );
+          return next(new Error("Authentication required"));
         }
-        return globalThis.__socketManager;
-    }
 
-    /** Return underlying io instance. */
-    getIO(): SocketIOServer | null {
-        this.ensureInitialized();
-        return this.io;
-    }
+        // Attach user info to socket
+        (socket as any).userId = token.sub;
+        (socket as any).userRole = token.role || "client";
+        (socket as any).firstName = token.firstName;
+        (socket as any).lastName = token.lastName;
 
-    /**
-     * Lazily grab the io instance from globalThis and wire up auth + handlers.
-     * Called automatically by every public method. Safe to call multiple times.
-     */
-    private ensureInitialized(): void {
-        if (this.initialized) return;
+        next();
+      } catch (err) {
+        console.error("[SocketManager] Auth middleware error:", err);
+        next(new Error("Authentication failed"));
+      }
+    });
 
-        const io = globalThis.__socketIO;
-        if (!io) {
-            console.warn('[SocketManager] globalThis.__socketIO not found — server.js may not have created it yet');
-            return;
+    // ── Connection handler ────────────────────────────────────────────
+    this.io.on("connection", (socket: Socket) => {
+      const userId = (socket as any).userId as string;
+      const userRole = (socket as any).userRole as string;
+
+      console.log(
+        `[SocketManager] User connected: ${userId} (${userRole}) [${socket.id}]`,
+      );
+
+      // Join user-specific + role rooms
+      socket.join(userRoom(userId));
+      socket.join(roleRoom(userRole));
+
+      // Track this socket
+      if (!this.userSockets.has(userId)) {
+        this.userSockets.set(userId, new Set());
+      }
+      this.userSockets.get(userId)!.add(socket.id);
+
+      // Update online status
+      onlineStatusManager.setUserOnline(userId, socket.id);
+
+      // Send welcome event
+      socket.emit(SOCKET_EVENTS.CONNECTED, {
+        status: "connected",
+        userId,
+        socketId: socket.id,
+        timestamp: Date.now(),
+      });
+
+      // Send online snapshot to this client
+      socket.emit(SOCKET_EVENTS.ONLINE_SNAPSHOT, {
+        onlineUsers: onlineStatusManager.getOnlineUsers(),
+        timestamp: Date.now(),
+      });
+
+      // Broadcast user_online to everyone else
+      socket.broadcast.emit(SOCKET_EVENTS.USER_ONLINE, {
+        userId,
+        timestamp: Date.now(),
+      });
+
+      // ── Client-to-server events ──────────────────────────────────
+      socket.on(
+        SOCKET_EVENTS.SEND_TYPING,
+        (data: { receiverId: string; isTyping: boolean }) => {
+          if (data.isTyping) {
+            typingManager.setUserTyping(userId, data.receiverId);
+            this.sendToUser(data.receiverId, SOCKET_EVENTS.TYPING_START, {
+              userId,
+              timestamp: Date.now(),
+            });
+          } else {
+            typingManager.setUserNotTyping(userId);
+            this.sendToUser(data.receiverId, SOCKET_EVENTS.TYPING_STOP, {
+              userId,
+              timestamp: Date.now(),
+            });
+          }
+        },
+      );
+
+      // ── Disconnect handler ───────────────────────────────────────
+      socket.on("disconnect", (reason) => {
+        console.log(
+          `[SocketManager] User disconnected: ${userId} [${socket.id}] reason=${reason}`,
+        );
+        const userSet = this.userSockets.get(userId);
+        if (userSet) {
+          userSet.delete(socket.id);
+          if (userSet.size === 0) {
+            this.userSockets.delete(userId);
+          }
         }
 
-        if (!NEXTAUTH_SECRET) {
-            console.error('[SocketManager] NEXTAUTH_SECRET is not set — all socket auth will fail!');
+        onlineStatusManager.setUserOffline(userId, socket.id);
+        typingManager.clearUserTyping(userId);
+
+        // Broadcast offline only when the user has no remaining sockets
+        if (
+          !this.userSockets.has(userId) ||
+          this.userSockets.get(userId)!.size === 0
+        ) {
+          this.io?.emit(SOCKET_EVENTS.USER_OFFLINE, {
+            userId,
+            timestamp: Date.now(),
+          });
         }
+      });
 
-        this.io = io;
-        this.initialized = true;
-
-        // ── Auth middleware ────────────────────────────────────────────────
-        this.io.use(async (socket, next) => {
-            try {
-                const token = await this.extractToken(socket);
-                if (!token || !token.sub) {
-                    console.warn('[SocketManager] Auth rejected — no valid token found in handshake cookies');
-                    return next(new Error('Authentication required'));
-                }
-
-                // Attach user info to socket
-                (socket as any).userId = token.sub;
-                (socket as any).userRole = token.role || 'client';
-                (socket as any).firstName = token.firstName;
-                (socket as any).lastName = token.lastName;
-
-                next();
-            } catch (err) {
-                console.error('[SocketManager] Auth middleware error:', err);
-                next(new Error('Authentication failed'));
-            }
+      // ── Per-socket error handler ─────────────────────────────────
+      socket.on("error", (err) => {
+        console.error(
+          `[SocketManager] Socket error for ${userId} [${socket.id}]:`,
+          err,
+        );
+        socket.emit(SOCKET_EVENTS.SOCKET_ERROR, {
+          message: err instanceof Error ? err.message : "Unknown socket error",
+          timestamp: Date.now(),
         });
+      });
+    });
 
-        // ── Connection handler ────────────────────────────────────────────
-        this.io.on('connection', (socket: Socket) => {
-            const userId = (socket as any).userId as string;
-            const userRole = (socket as any).userRole as string;
+    console.log(
+      "[SocketManager] Auth middleware and connection handlers attached",
+    );
+  }
 
-            console.log(`[SocketManager] User connected: ${userId} (${userRole}) [${socket.id}]`);
+  // ── Public API (drop-in for SSEManager) ──────────────────────────
 
-            // Join user-specific + role rooms
-            socket.join(userRoom(userId));
-            socket.join(roleRoom(userRole));
-
-            // Track this socket
-            if (!this.userSockets.has(userId)) {
-                this.userSockets.set(userId, new Set());
-            }
-            this.userSockets.get(userId)!.add(socket.id);
-
-            // Update online status
-            onlineStatusManager.setUserOnline(userId, socket.id);
-
-            // Send welcome event
-            socket.emit(SOCKET_EVENTS.CONNECTED, {
-                status: 'connected',
-                userId,
-                socketId: socket.id,
-                timestamp: Date.now(),
-            });
-
-            // Send online snapshot to this client
-            socket.emit(SOCKET_EVENTS.ONLINE_SNAPSHOT, {
-                onlineUsers: onlineStatusManager.getOnlineUsers(),
-                timestamp: Date.now(),
-            });
-
-            // Broadcast user_online to everyone else
-            socket.broadcast.emit(SOCKET_EVENTS.USER_ONLINE, {
-                userId,
-                timestamp: Date.now(),
-            });
-
-            // ── Client-to-server events ──────────────────────────────────
-            socket.on(SOCKET_EVENTS.SEND_TYPING, (data: { receiverId: string; isTyping: boolean }) => {
-                if (data.isTyping) {
-                    typingManager.setUserTyping(userId, data.receiverId);
-                    this.sendToUser(data.receiverId, SOCKET_EVENTS.TYPING_START, {
-                        userId,
-                        timestamp: Date.now(),
-                    });
-                } else {
-                    typingManager.setUserNotTyping(userId);
-                    this.sendToUser(data.receiverId, SOCKET_EVENTS.TYPING_STOP, {
-                        userId,
-                        timestamp: Date.now(),
-                    });
-                }
-            });
-
-            // ── Disconnect handler ───────────────────────────────────────
-            socket.on('disconnect', (reason) => {
-                console.log(`[SocketManager] User disconnected: ${userId} [${socket.id}] reason=${reason}`);
-                const userSet = this.userSockets.get(userId);
-                if (userSet) {
-                    userSet.delete(socket.id);
-                    if (userSet.size === 0) {
-                        this.userSockets.delete(userId);
-                    }
-                }
-
-                onlineStatusManager.setUserOffline(userId, socket.id);
-                typingManager.clearUserTyping(userId);
-
-                // Broadcast offline only when the user has no remaining sockets
-                if (!this.userSockets.has(userId) || this.userSockets.get(userId)!.size === 0) {
-                    this.io?.emit(SOCKET_EVENTS.USER_OFFLINE, {
-                        userId,
-                        timestamp: Date.now(),
-                    });
-                }
-            });
-        });
-
-        console.log('[SocketManager] Auth middleware and connection handlers attached');
+  /** Send an event to a specific user (all their sockets). */
+  sendToUser(userId: string, event: string, data: any): void {
+    this.ensureInitialized();
+    if (!this.io) {
+      console.warn("[SocketManager] io not initialized — skipping sendToUser");
+      return;
     }
+    this.io.to(userRoom(userId)).emit(event, data);
+  }
 
-    // ── Public API (drop-in for SSEManager) ──────────────────────────
+  /** Send to multiple users. */
+  sendToUsers(userIds: string[], event: string, data: any): void {
+    userIds.forEach((id) => this.sendToUser(id, event, data));
+  }
 
-    /** Send an event to a specific user (all their sockets). */
-    sendToUser(userId: string, event: string, data: any): void {
-        this.ensureInitialized();
-        if (!this.io) {
-            console.warn('[SocketManager] io not initialized — skipping sendToUser');
-            return;
-        }
-        this.io.to(userRoom(userId)).emit(event, data);
-    }
+  /** Broadcast to every connected socket. */
+  broadcast(event: string, data: any): void {
+    this.ensureInitialized();
+    if (!this.io) return;
+    this.io.emit(event, data);
+  }
 
-    /** Send to multiple users. */
-    sendToUsers(userIds: string[], event: string, data: any): void {
-        userIds.forEach((id) => this.sendToUser(id, event, data));
-    }
+  /** Broadcast to a specific role room. */
+  broadcastToRole(role: string, event: string, data: any): void {
+    this.ensureInitialized();
+    if (!this.io) return;
+    this.io.to(roleRoom(role)).emit(event, data);
+  }
 
-    /** Broadcast to every connected socket. */
-    broadcast(event: string, data: any): void {
-        this.ensureInitialized();
-        if (!this.io) return;
-        this.io.emit(event, data);
-    }
+  /** Get list of online userIds. */
+  getOnlineUsers(): string[] {
+    return Array.from(this.userSockets.keys());
+  }
 
-    /** Broadcast to a specific role room. */
-    broadcastToRole(role: string, event: string, data: any): void {
-        this.ensureInitialized();
-        if (!this.io) return;
-        this.io.to(roleRoom(role)).emit(event, data);
-    }
+  /** Check if user has at least one connected socket. */
+  isUserOnline(userId: string): boolean {
+    return (this.userSockets.get(userId)?.size ?? 0) > 0;
+  }
 
-    /** Get list of online userIds. */
-    getOnlineUsers(): string[] {
-        return Array.from(this.userSockets.keys());
-    }
+  // ── Admin convenience (replaces AdminSSEManager) ─────────────────
 
-    /** Check if user has at least one connected socket. */
-    isUserOnline(userId: string): boolean {
-        return (this.userSockets.get(userId)?.size ?? 0) > 0;
-    }
+  /** Broadcast admin-specific client update events. */
+  broadcastClientUpdate(eventType: string, data: any): void {
+    this.broadcastToRole("admin", eventType, data);
+  }
 
-    // ── Admin convenience (replaces AdminSSEManager) ─────────────────
+  // ── Private helpers ──────────────────────────────────────────────
 
-    /** Broadcast admin-specific client update events. */
-    broadcastClientUpdate(eventType: string, data: any): void {
-        this.broadcastToRole('admin', eventType, data);
-    }
+  private async extractToken(socket: Socket): Promise<any> {
+    // Parse cookie from handshake headers
+    const cookieHeader = socket.handshake.headers.cookie || "";
+    const cookies = this.parseCookies(cookieHeader);
+    const rawToken = cookies[SESSION_COOKIE_NAME];
 
-    // ── Private helpers ──────────────────────────────────────────────
+    if (!rawToken) return null;
 
-    private async extractToken(socket: Socket): Promise<any> {
-        // Parse cookie from handshake headers
-        const cookieHeader = socket.handshake.headers.cookie || '';
-        const cookies = this.parseCookies(cookieHeader);
-        const rawToken = cookies[SESSION_COOKIE_NAME];
+    // Decode the NextAuth JWT
+    const decoded = await decode({
+      token: rawToken,
+      secret: NEXTAUTH_SECRET,
+    });
 
-        if (!rawToken) return null;
+    return decoded;
+  }
 
-        // Decode the NextAuth JWT
-        const decoded = await decode({
-            token: rawToken,
-            secret: NEXTAUTH_SECRET,
-        });
-
-        return decoded;
-    }
-
-    private parseCookies(cookieString: string): Record<string, string> {
-        const result: Record<string, string> = {};
-        if (!cookieString) return result;
-        cookieString.split(';').forEach((pair) => {
-            const idx = pair.indexOf('=');
-            if (idx < 0) return;
-            const key = pair.substring(0, idx).trim();
-            const val = pair.substring(idx + 1).trim();
-            try {
-                result[key] = decodeURIComponent(val);
-            } catch {
-                result[key] = val;
-            }
-        });
-        return result;
-    }
+  private parseCookies(cookieString: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    if (!cookieString) return result;
+    cookieString.split(";").forEach((pair) => {
+      const idx = pair.indexOf("=");
+      if (idx < 0) return;
+      const key = pair.substring(0, idx).trim();
+      const val = pair.substring(idx + 1).trim();
+      try {
+        result[key] = decodeURIComponent(val);
+      } catch {
+        result[key] = val;
+      }
+    });
+    return result;
+  }
 }
 
 export const socketManager = SocketManager.getInstance();

@@ -2,7 +2,14 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { Play, Pause, Download, Loader2, AlertCircle } from "lucide-react";
+import {
+  Play,
+  Pause,
+  Download,
+  Loader2,
+  AlertCircle,
+  RotateCcw,
+} from "lucide-react";
 import WaveSurfer from "wavesurfer.js";
 import { getMediaProxyUrl, normalizeMediaUrl } from "@/lib/media";
 
@@ -16,6 +23,9 @@ interface VoiceNotePlayerProps {
 
 function formatTime(seconds: number): string {
   if (!isFinite(seconds) || seconds < 0) return "0:00";
+  // When totalDuration is 0 (unknown/not yet loaded), show a placeholder
+  // instead of "0:00" which looks like the audio is broken.
+  if (seconds === 0) return "--:--";
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}`;
@@ -28,6 +38,9 @@ export function VoiceNotePlayer({
   className,
   compact = false,
 }: VoiceNotePlayerProps) {
+  // mimeType is consumed by WaveSurfer.js internally via URL detection;
+  // kept in props for future source-type hinting on native <audio> fallback.
+  void mimeType;
   const resolvedAudioUrl = getMediaProxyUrl(audioUrl);
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
@@ -39,6 +52,7 @@ export function VoiceNotePlayer({
   const [error, setError] = useState<string | null>(null);
   const [useFallback, setUseFallback] = useState(false);
   const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -57,6 +71,23 @@ export function VoiceNotePlayer({
   const initWaveSurfer = useCallback(async () => {
     if (!containerRef.current || useFallback) return;
 
+    // Skip network requests entirely if we already know the file is
+    // empty/broken (duration: 0 from the attachment metadata). This
+    // prevents 404 spam from legacy /uploads/ messages.
+    // Only skip when initialDuration is explicitly 0 (not undefined) AND
+    // the URL does NOT point to an external CDN (blob URLs or legacy
+    // /uploads/ paths that may be gone). ImageKit URLs should always be
+    // tried because the file may be playable even without stored duration.
+    if (
+      initialDuration !== undefined &&
+      initialDuration <= 0 &&
+      !/^https?:\/\//i.test(audioUrl)
+    ) {
+      setError("This voice message is no longer available.");
+      setIsLoading(false);
+      return;
+    }
+
     // Destroy any existing instance
     if (wavesurferRef.current) {
       wavesurferRef.current.destroy();
@@ -74,7 +105,7 @@ export function VoiceNotePlayer({
       // Fetch audio as a blob through our proxy so WaveSurfer gets a
       // same-origin blob URL — avoids CORS issues with ImageKit CDN.
       let blobUrl: string | null = null;
-      let sourceUrl = cacheBustedProxyUrl;
+      const sourceUrl = cacheBustedProxyUrl;
 
       try {
         const response = await fetch(cacheBustedProxyUrl, {
@@ -83,12 +114,26 @@ export function VoiceNotePlayer({
         });
         if (response.ok) {
           const blob = await response.blob();
+          console.log("[VoiceNotePlayer] Proxy blob fetch:", {
+            blobSize: blob.size,
+            blobType: blob.type,
+            contentType: response.headers.get("content-type"),
+            contentLength: response.headers.get("content-length"),
+          });
           if (blob.size > 0) {
             blobUrl = URL.createObjectURL(blob);
             setAudioBlobUrl(blobUrl);
+          } else {
+            console.warn("[VoiceNotePlayer] Proxy returned empty blob");
           }
+        } else {
+          console.warn(
+            "[VoiceNotePlayer] Proxy fetch failed:",
+            response.status,
+          );
         }
-      } catch {
+      } catch (fetchErr) {
+        console.warn("[VoiceNotePlayer] Proxy fetch error:", fetchErr);
         // Proxy fetch failed — try a direct cache-busted URL to the raw
         // audio file (not proxied) as a last resort for WaveSurfer.
         const rawUrl = normalizeMediaUrl(audioUrl);
@@ -108,10 +153,18 @@ export function VoiceNotePlayer({
               }
             }
           } catch {
-            // Both proxy and direct fetch failed — WaveSurfer will try the
-            // proxy URL directly (below).
+            // Both proxy and direct fetch failed.
           }
         }
+      }
+
+      // If we couldn't fetch a blob through either path, the file is
+      // unreachable. Skip WaveSurfer + native audio fallback entirely
+      // to avoid cascading 404 requests in the console.
+      if (!blobUrl) {
+        setError("This voice message is no longer available.");
+        setIsLoading(false);
+        return;
       }
 
       // Resume AudioContext if suspended (required on mobile browsers
@@ -146,6 +199,11 @@ export function VoiceNotePlayer({
         url: blobUrl || sourceUrl,
       });
 
+      console.log("[VoiceNotePlayer] WaveSurfer created:", {
+        usingBlobUrl: !!blobUrl,
+        url: (blobUrl || sourceUrl).substring(0, 80),
+      });
+
       // Timeout: if WaveSurfer doesn't report "ready" or "error" within
       // 12 seconds, fall back to native audio. Prevents hanging spinner.
       let initTimeout: ReturnType<typeof setTimeout> | null = setTimeout(() => {
@@ -170,6 +228,7 @@ export function VoiceNotePlayer({
         }
         setIsLoading(false);
         const dur = ws.getDuration();
+        console.log("[VoiceNotePlayer] WaveSurfer ready:", { duration: dur });
         if (dur && isFinite(dur)) {
           setTotalDuration(dur);
         }
@@ -204,7 +263,33 @@ export function VoiceNotePlayer({
       setIsLoading(false);
       setUseFallback(true);
     }
-  }, [audioUrl, compact, resolvedAudioUrl, useFallback]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioUrl, compact, resolvedAudioUrl, useFallback, retryCount]);
+
+  const handleRetry = useCallback(() => {
+    // Reset all state to trigger a fresh initialization
+    setError(null);
+    setIsLoading(true);
+    setUseFallback(false);
+    setAudioBlobUrl(null);
+    setCurrentTime(0);
+    if (initialDuration) {
+      setTotalDuration(initialDuration);
+    }
+    // Destroy existing WaveSurfer instance
+    if (wavesurferRef.current) {
+      wavesurferRef.current.destroy();
+      wavesurferRef.current = null;
+    }
+    // Reset native audio element
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.removeAttribute("src");
+      audioRef.current.load();
+    }
+    setRetryCount((prev) => prev + 1);
+  }, [initialDuration]);
 
   useEffect(() => {
     if (!useFallback) {
@@ -277,6 +362,13 @@ export function VoiceNotePlayer({
         <div className="flex-1 min-w-0">
           <p className="text-xs text-red-600 truncate">{error}</p>
         </div>
+        <button
+          onClick={handleRetry}
+          className="shrink-0 p-1.5 rounded-md hover:bg-red-100 text-red-600"
+          title="Retry loading audio"
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
         <a
           href={getMediaProxyUrl(audioUrl, { download: true })}
           download
@@ -333,7 +425,7 @@ export function VoiceNotePlayer({
         </div>
 
         <a
-          href={audioUrl}
+          href={resolvedAudioUrl}
           download
           target="_blank"
           rel="noopener noreferrer"
@@ -391,7 +483,7 @@ export function VoiceNotePlayer({
       </span>
 
       <a
-        href={audioUrl}
+        href={resolvedAudioUrl}
         download
         target="_blank"
         rel="noopener noreferrer"
