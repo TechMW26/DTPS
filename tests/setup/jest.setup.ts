@@ -8,6 +8,7 @@ import '@/lib/db/plugins/istDatePlugin';
 import { serverCache } from '@/lib/cache/memoryCache';
 import { SocketManager } from '@/lib/realtime/socket-manager';
 import { onlineStatusManager } from '@/lib/realtime/online-status';
+import '@testing-library/jest-dom';
 
 jest.mock('next-auth', () => ({
     getServerSession: jest.fn(),
@@ -98,21 +99,15 @@ process.emitWarning = ((warning: string | Error, ...args: unknown[]) => {
 }) as typeof process.emitWarning;
 
 declare global {
-    // eslint-disable-next-line no-var
     var __DTPS_TEST_MONGO__: MongoMemoryServer | undefined;
-    // eslint-disable-next-line no-var
     var __DTPS_TEST_HTTP_SERVER__: HttpServer | undefined;
-    // eslint-disable-next-line no-var
     var __DTPS_TEST_IO__: SocketIOServer | undefined;
-    // eslint-disable-next-line no-var
     var __DTPS_TEST_BASE_URL__: string | undefined;
-    // eslint-disable-next-line no-var
     var __DTPS_TEST_CLIENT_SOCKETS__: Set<Socket> | undefined;
-    // eslint-disable-next-line no-var
     var __DTPS_SKIP_DB_CLEANUP__: boolean | undefined;
 }
 
-process.env.NODE_ENV = 'test';
+Object.defineProperty(process.env, 'NODE_ENV', { value: 'test', configurable: true });
 process.env.NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || 'dtps-socket-test-secret';
 
 async function startMongoMemoryServer(): Promise<void> {

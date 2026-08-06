@@ -1,7 +1,7 @@
 import mongoose, { Schema, Model, Document } from 'mongoose';
 
 export interface ITag extends Document {
-  _id: string;
+  _id: mongoose.Types.ObjectId;
   name: string;
   description?: string;
   color?: string; // Hex color code for UI display

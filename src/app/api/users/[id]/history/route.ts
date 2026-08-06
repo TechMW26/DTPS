@@ -124,7 +124,13 @@ export async function POST(
 
     await connectDB();
 
-    let body = {};
+    let body: {
+      action?: string;
+      category?: string;
+      description?: string;
+      changeDetails?: unknown;
+      metadata?: Record<string, unknown>;
+    } = {};
     try {
       const text = await request.text();
       if (text) {

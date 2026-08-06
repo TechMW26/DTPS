@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
               syncedCount++;
             } else if (razorpayLink.status === 'cancelled' || razorpayLink.status === 'expired') {
               payment.status = 'cancelled';
-              payment.paymentStatus = 'cancelled';
+              payment.paymentStatus = 'failed';
               await payment.save();
               syncedCount++;
             }

@@ -19,7 +19,7 @@ REPO_OWNER="TechMW26"
 REPO_NAME="DTPS"
 REPO_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
 REPO_DIR="/opt/dtps"
-GITHUB_TOKEN="${GITHUB_TOKEN:-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}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 CONTAINER_NAME="dtps-app"
 NGINX_CONTAINER="dtps-nginx"
 
@@ -304,9 +304,7 @@ check_env_file() {
     
     log_info "Using environment file: $ENV_FILE"
     
-    # Validate required variables
     MONGODB_URI=$(grep -E "^MONGODB_URI=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '\r' | tr -d '"' | tr -d "'")
-    
     if [ -z "$MONGODB_URI" ]; then
         log_error "MONGODB_URI is not set in $ENV_FILE"
         exit 1

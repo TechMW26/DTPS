@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import User from '@/lib/db/models/User';
-import { deleteUserAvatarImageKitMedia } from '@/lib/client-media-cleanup';
+import { deleteUserAvatarMedia } from '@/lib/client-media-cleanup';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import Appointment from '@/lib/db/models/Appointment';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
@@ -412,7 +412,7 @@ export async function DELETE(
           assignedClientsCount
         }, { status: 400 });
       }
-      await deleteUserAvatarImageKitMedia(existingDietitian as any);
+      await deleteUserAvatarMedia(existingDietitian as any);
       await User.findByIdAndDelete(resolvedDietitianId);
       return NextResponse.json({ message: 'Dietitian deleted permanently' });
     } else {

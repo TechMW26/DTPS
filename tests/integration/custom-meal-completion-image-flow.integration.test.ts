@@ -14,13 +14,15 @@ jest.mock('next-auth', () => ({
     getServerSession: jest.fn(),
 }));
 
-jest.mock('@/lib/imagekit', () => ({
-    getImageKit: jest.fn(() => ({
-        upload: jest.fn().mockResolvedValue({
-            url: 'https://ik.imagekit.io/test/complete-meal/custom-brunch.jpg',
-        }),
-        listFiles: jest.fn().mockResolvedValue([]),
-    })),
+jest.mock('@/lib/storage/blob-storage', () => ({
+    uploadToBlob: jest.fn().mockResolvedValue({
+        url: 'https://test.public.blob.vercel-storage.com/complete-meal/custom-brunch.jpg',
+        pathname: 'complete-meal/custom-brunch.jpg',
+        filename: 'custom-brunch.jpg',
+        size: 1024,
+        contentType: 'image/jpeg',
+    }),
+    deleteFromBlob: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('@/lib/realtime/socket-manager', () => ({

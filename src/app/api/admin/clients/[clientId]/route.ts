@@ -10,7 +10,7 @@ import { UserRole } from "@/types";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
 import { logActivity } from "@/lib/utils/activityLogger";
 import mongoose from "mongoose";
-import { deleteClientImageKitMedia } from "@/lib/client-media-cleanup";
+import { deleteClientMedia } from "@/lib/client-media-cleanup";
 
 // Helper: human-readable role label
 function roleLabel(r?: string) {
@@ -461,7 +461,7 @@ export async function DELETE(
     if (action === "delete") {
       // Permanent delete - use with caution
       console.log("[DELETE Client] Performing permanent delete...");
-      await deleteClientImageKitMedia(targetClient as any);
+      await deleteClientMedia(targetClient as any);
       const result = await User.findByIdAndDelete(clientId);
       if (!result) {
         console.log("[DELETE Client] findByIdAndDelete returned null");

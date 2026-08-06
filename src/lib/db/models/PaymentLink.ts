@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IPaymentLink extends Document {
-  _id: string;
+  _id: mongoose.Types.ObjectId;
   // References
   client: mongoose.Types.ObjectId;
   dietitian: mongoose.Types.ObjectId;

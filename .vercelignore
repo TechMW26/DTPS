@@ -1,0 +1,11 @@
+mobile-app/
+Store Apps/
+coverage/
+reports/
+.migration-backups/
+tests/
+migration-plan/
+tools/firebase-migration/
+.env*
+*.apk
+*.aab

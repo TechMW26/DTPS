@@ -43,11 +43,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get session
-    let importSession = dataImportService.getSession(sessionId);
+    let importSession = dataImportService.getSession(sessionId) ?? undefined;
 
     // Session may be missing after worker reload/restart. Restore from client payload if provided.
     if (!importSession && fallbackSession) {
-      importSession = dataImportService.restoreSession(sessionId, fallbackSession);
+      importSession = dataImportService.restoreSession(sessionId, fallbackSession) ?? undefined;
       if (importSession) {
         console.log(`[Import Save] Restored missing session "${sessionId}" from fallback payload`);
       }

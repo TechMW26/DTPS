@@ -457,7 +457,7 @@ export default function EditRecipePage() {
       if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
       setImagePreview(URL.createObjectURL(blob));
 
-      // Upload to ImageKit
+      // Upload to the configured media service.
       const uploadedUrl = await uploadCompressedImage(blob, file.name, 'recipes');
 
       setImage(uploadedUrl);

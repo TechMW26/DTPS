@@ -53,6 +53,8 @@ function isLikelyValidVapidPublicKey(key: string): boolean {
 }
 
 const vapidKey = normalizeVapidKey(process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY);
+const validVapidKey = vapidKey && isLikelyValidVapidPublicKey(vapidKey) ? vapidKey : null;
+const FIREBASE_MESSAGING_SCOPE = '/firebase-cloud-messaging-push-scope';
 
 let firebaseApp: FirebaseApp | null = null;
 let messaging: Messaging | null = null;
@@ -166,16 +168,6 @@ export async function getFCMToken(): Promise<string | null> {
         return null;
     }
 
-    if (!vapidKey) {
-        console.error('VAPID key not configured');
-        return null;
-    }
-
-    if (!isLikelyValidVapidPublicKey(vapidKey)) {
-        console.warn('Invalid NEXT_PUBLIC_FIREBASE_VAPID_KEY. Please copy the Web Push certificate key from Firebase console.');
-        return null;
-    }
-
     try {
         // Request notification permission first
         const permission = await requestNotificationPermission();
@@ -184,16 +176,20 @@ export async function getFCMToken(): Promise<string | null> {
             return null;
         }
 
-        // Wait for service worker registration
-        const registration = await navigator.serviceWorker.ready;
+        // Keep Firebase Messaging on its own scope so it cannot replace the
+        // root app-shell service worker.
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+            scope: FIREBASE_MESSAGING_SCOPE,
+        });
 
         const { getToken } = await import('firebase/messaging');
 
-        // Get FCM token
-        const token = await getToken(messagingInstance, {
-            vapidKey,
+        // Firebase's SDK default is safer than passing a malformed placeholder.
+        const tokenOptions = {
             serviceWorkerRegistration: registration,
-        });
+            ...(validVapidKey ? { vapidKey: validVapidKey } : {}),
+        };
+        const token = await getToken(messagingInstance, tokenOptions);
 
         if (token) {
             currentToken = token;

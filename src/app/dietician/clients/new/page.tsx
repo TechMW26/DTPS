@@ -83,6 +83,8 @@ export default function DietitianNewClientPage() {
   const [cookingSalt, setCookingSalt] = useState('');
   const [carbonatedBeverageFrequency, setCarbonatedBeverageFrequency] = useState('');
   const [cravingType, setCravingType] = useState('');
+  const [sleepPattern, setSleepPattern] = useState('');
+  const [stressLevel, setStressLevel] = useState('');
 
   // Medical Form state
   const [medicalConditions, setMedicalConditions] = useState('');
@@ -158,6 +160,8 @@ export default function DietitianNewClientPage() {
       case 'cookingSalt': setCookingSalt(value); break;
       case 'carbonatedBeverageFrequency': setCarbonatedBeverageFrequency(value); break;
       case 'cravingType': setCravingType(value); break;
+      case 'sleepPattern': setSleepPattern(value); break;
+      case 'stressLevel': setStressLevel(value); break;
     }
   };
 
@@ -254,6 +258,8 @@ export default function DietitianNewClientPage() {
           cookingSalt: cookingSalt || undefined,
           carbonatedBeverageFrequency: carbonatedBeverageFrequency || undefined,
           cravingType: cravingType || undefined,
+          sleepPattern: sleepPattern || undefined,
+          stressLevel: stressLevel || undefined,
           medicalConditions: medicalConditions ? medicalConditions.split(',').map((c: string) => c.trim()) : undefined,
           allergies: allergies ? allergies.split(',').map((a: string) => a.trim()) : undefined,
           dietaryRestrictions: dietaryRestrictions ? dietaryRestrictions.split(',').map((d: string) => d.trim()) : undefined,
@@ -417,6 +423,8 @@ export default function DietitianNewClientPage() {
                   cookingSalt={cookingSalt}
                   carbonatedBeverageFrequency={carbonatedBeverageFrequency}
                   cravingType={cravingType}
+                  sleepPattern={sleepPattern}
+                  stressLevel={stressLevel}
                   onChange={lifestyleChange}
                   onSave={() => markSaved('lifestyle')}
                   loading={loading}

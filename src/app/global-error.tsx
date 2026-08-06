@@ -80,7 +80,7 @@ export default function GlobalError({
               window.location.reload();
             });
         } else {
-          window.location.reload();
+          globalThis.location.reload();
         }
       }
     } catch (handlerError) {

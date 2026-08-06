@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
-import { getImageKit } from "@/lib/imagekit";
+import { uploadToBlob } from "@/lib/storage/blob-storage";
 import {
   compressImageServer,
   serverCompressionPresets,
@@ -10,7 +10,7 @@ import { UserRole } from "@/types";
 
 /**
  * POST /api/upload-image
- * Upload a compressed image to ImageKit
+ * Upload a compressed image to Vercel Blob
  * Used for recipe images, user avatars, etc.
  * Images are automatically compressed using Sharp before upload
  */
@@ -90,41 +90,30 @@ export async function POST(request: NextRequest) {
       finalFileName = `${Date.now()}-${file.name}`;
     }
 
-    // Upload to ImageKit
-    try {
-      const imagekit = getImageKit();
-      if (!imagekit) {
-        return NextResponse.json(
-          {
-            error: "ImageKit media service is unavailable",
-            code: "MEDIA_SERVICE_DOWN",
-          },
-          { status: 503 },
-        );
-      }
-      const result = await imagekit.upload({
-        file: uploadData,
-        fileName: finalFileName,
-        folder: folder.startsWith("/") ? folder : `/${folder}`,
-        isPrivateFile: false,
-      });
+    // Upload to Vercel Blob
+    const blobResult = await uploadToBlob(uploadData, {
+      type: folder.includes("profile") ? "avatar" : "recipe-image",
+      filename: finalFileName,
+      contentType: shouldCompress ? "image/webp" : file.type,
+      compress: false,
+    });
 
-      return NextResponse.json({
-        success: true,
-        url: result.url,
-        fileId: result.fileId,
-        name: result.name,
-        size: compressedSize,
-        originalSize: originalSize,
-        compressed: shouldCompress,
-      });
-    } catch (imagekitError) {
-      console.error("ImageKit upload error:", imagekitError);
+    if (!blobResult) {
       return NextResponse.json(
-        { error: "Failed to upload image to ImageKit" },
-        { status: 503 },
+        { error: "Media service temporarily unavailable. Please try again shortly.", code: "MEDIA_SERVICE_DOWN" },
+        { status: 503 }
       );
     }
+
+    return NextResponse.json({
+      success: true,
+      url: blobResult.url,
+      fileId: blobResult.pathname,
+      name: blobResult.filename,
+      size: compressedSize,
+      originalSize: originalSize,
+      compressed: shouldCompress,
+    });
   } catch (error) {
     console.error("Image upload error:", error);
     return NextResponse.json(

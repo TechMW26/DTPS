@@ -8,7 +8,7 @@ import User from "@/lib/db/models/User";
 import { Notification } from "@/lib/db/models";
 import { UserRole } from "@/types";
 import { parseISO, startOfDay, isToday, isValid } from "date-fns";
-import { getImageKit } from "@/lib/imagekit";
+import { uploadToBlob } from "@/lib/storage/blob-storage";
 import { compressImageServer } from "@/lib/imageCompressionServer";
 import { MEAL_TYPE_KEYS, type MealTypeKey } from "@/lib/mealConfig";
 import { socketManager } from "@/lib/realtime/socket-manager";
@@ -337,7 +337,7 @@ export async function POST(request: NextRequest) {
       ? [...mealPlan.mealCompletions]
       : [];
 
-    // Handle image upload - save to ImageKit
+    // Persist the optional meal image in the configured media store.
     let imagePath: string | undefined;
     let imageKitFileId: string | undefined;
     if (imageFile) {
@@ -369,30 +369,25 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // Upload to ImageKit in complete-meal folder
-        const ik = getImageKit();
-        if (!ik) {
-          return NextResponse.json(
-            {
-              error:
-                "Media service temporarily unavailable. Please try again shortly.",
-              code: "MEDIA_SERVICE_DOWN",
-            },
-            { status: 503 },
-          );
-        } else {
-          const uploadResponse = await ik.upload({
-            file: uploadData,
-            fileName: filename,
-            folder: "/complete-meal",
-          });
+        // Upload to Vercel Blob
+        const uploadResult = await uploadToBlob(uploadData, {
+          type: "progress",
+          filename,
+          contentType: "image/jpeg",
+          compress: false,
+        });
 
-          // Store the ImageKit URL
-          imagePath = uploadResponse.url;
-          imageKitFileId = uploadResponse.fileId;
+        if (!uploadResult) {
+          return NextResponse.json(
+            { error: "Media service temporarily unavailable. Please try again shortly.", code: "MEDIA_SERVICE_DOWN" },
+            { status: 503 }
+          );
         }
+
+        imagePath = uploadResult.url;
+        imageKitFileId = uploadResult.pathname;
       } catch (uploadError) {
-        console.error("Error uploading meal image to ImageKit:", uploadError);
+        console.error("Error uploading meal image:", uploadError);
         return NextResponse.json(
           {
             error: "Failed to upload meal image",

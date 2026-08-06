@@ -6,6 +6,7 @@ type MockSocket = {
     emit: jest.Mock;
     disconnect: jest.Mock;
     removeAllListeners: jest.Mock;
+    io: { removeAllListeners: jest.Mock };
     __trigger: (event: string, payload?: any) => void;
 };
 
@@ -36,6 +37,7 @@ function createMockSocket(): MockSocket {
             handlers.clear();
             return socket;
         }),
+        io: { removeAllListeners: jest.fn() },
         __trigger: (event: string, payload?: any) => {
             if (event === 'connect') {
                 socket.connected = true;
@@ -60,8 +62,8 @@ describe('SocketClient browser-side wrapper', () => {
     let randomSpy: jest.SpyInstance<number, []>;
 
     async function loadModule() {
-        const module = await import('@/lib/realtime/socket-client');
-        return module;
+        const socketClientModule = await import('@/lib/realtime/socket-client');
+        return socketClientModule;
     }
 
     beforeAll(() => {
@@ -84,7 +86,7 @@ describe('SocketClient browser-side wrapper', () => {
 
         randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
         delete (global as any).window;
-        process.env.NEXTAUTH_URL = 'http://socket-wrapper.test';
+        process.env.NEXT_PUBLIC_SOCKET_URL = 'http://socket-wrapper.test';
     });
 
     afterEach(async () => {
@@ -101,10 +103,10 @@ describe('SocketClient browser-side wrapper', () => {
     });
 
     afterAll(() => {
-        global.__DTPS_SKIP_DB_CLEANUP = false;
+        (globalThis as typeof globalThis & { __DTPS_SKIP_DB_CLEANUP__?: boolean }).__DTPS_SKIP_DB_CLEANUP__ = false;
     });
 
-    it('uses NEXTAUTH_URL in the non-browser environment', async () => {
+    it('uses the dedicated socket URL in the non-browser environment', async () => {
         const { SocketClient } = await loadModule();
         const client = SocketClient.getInstance();
 
@@ -113,19 +115,21 @@ describe('SocketClient browser-side wrapper', () => {
         expect(ioMock).toHaveBeenCalledWith('http://socket-wrapper.test', expect.objectContaining({
             path: '/socket.io',
             transports: ['websocket', 'polling'],
+            tryAllTransports: true,
+            rememberUpgrade: true,
             withCredentials: true,
             reconnection: false,
         }));
     });
 
-    it('uses a browser-relative connection when window is available', async () => {
+    it('uses the dedicated socket URL when window is available', async () => {
         (global as any).window = { location: { origin: 'http://browser.test' } };
 
         const { SocketClient } = await loadModule();
         const client = SocketClient.getInstance();
         client.connect();
 
-        expect(ioMock).toHaveBeenCalledWith(undefined, expect.any(Object));
+        expect(ioMock).toHaveBeenCalledWith('http://socket-wrapper.test', expect.any(Object));
     });
 
     it('re-attaches stored listeners when reconnecting after a disconnect', async () => {
@@ -145,7 +149,18 @@ describe('SocketClient browser-side wrapper', () => {
         expect(sockets[1].on).toHaveBeenCalledWith('custom-event', callback);
     });
 
-    it('does not schedule reconnects after an io server disconnect', async () => {
+    it('coalesces concurrent connection requests into one socket', async () => {
+        const { SocketClient } = await loadModule();
+        const client = SocketClient.getInstance();
+
+        const first = client.connect();
+        const second = client.connect();
+
+        expect(second).toBe(first);
+        expect(ioMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('recovers after an io server disconnect', async () => {
         const { SocketClient } = await loadModule();
         const client = SocketClient.getInstance();
         client.connect();
@@ -153,7 +168,7 @@ describe('SocketClient browser-side wrapper', () => {
         sockets[0].__trigger('disconnect', 'io server disconnect');
         jest.advanceTimersByTime(5000);
 
-        expect(ioMock).toHaveBeenCalledTimes(1);
+        expect(ioMock).toHaveBeenCalledTimes(2);
     });
 
     it('emits only when the socket is connected', async () => {
@@ -182,5 +197,34 @@ describe('SocketClient browser-side wrapper', () => {
         expect(ioMock).toHaveBeenCalledTimes(1);
         expect(sockets[0].removeAllListeners).toHaveBeenCalled();
         expect(sockets[0].disconnect).toHaveBeenCalled();
+    });
+
+    it('continues capped background retries after entering degraded mode', async () => {
+        const { SocketClient } = await loadModule();
+        const client = SocketClient.getInstance();
+        client.connect();
+
+        for (let attempt = 0; attempt < 16; attempt++) {
+            sockets[attempt].__trigger('connect_error', new Error('temporary failure'));
+            jest.runOnlyPendingTimers();
+        }
+
+        expect(client.isDown).toBe(true);
+        expect(ioMock).toHaveBeenCalledTimes(17);
+
+        sockets[16].__trigger('connect');
+        expect(client.connected).toBe(true);
+        expect(client.isDown).toBe(false);
+    });
+
+    it('does not retry an intentional client disconnect', async () => {
+        const { SocketClient } = await loadModule();
+        const client = SocketClient.getInstance();
+        client.connect();
+
+        sockets[0].__trigger('disconnect', 'io client disconnect');
+        jest.runOnlyPendingTimers();
+
+        expect(ioMock).toHaveBeenCalledTimes(1);
     });
 });

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
-import fs from 'fs/promises';
-import path from 'path';
 import connectDB from '@/lib/db/connection';
 import { WatiContact } from '@/lib/db/models';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
@@ -53,9 +51,8 @@ export async function POST(req: NextRequest) {
   // Import endpoint: reads JSON file from repo and upserts by phone/externalId
   await connectDB();
   try {
-    const filePath = path.join(process.cwd(), 'src', 'app', 'data', 'wati_contacts.contacts.json');
-    const file = await fs.readFile(filePath, 'utf8');
-    const raw: any[] = JSON.parse(file);
+    // Import JSON data directly (works on Vercel — bundled at build time)
+    const raw: any[] = await import('@/app/data/wati_contacts.contacts.json').then(m => m.default || m);
 
     const ops = raw.map((r: any) => {
       const externalId = r.id || r._id?.$oid || undefined;

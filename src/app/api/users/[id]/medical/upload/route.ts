@@ -5,7 +5,7 @@ import connectDB from '@/lib/db/connection';
 import { MedicalInfo } from '@/lib/db/models';
 import { File as FileModel } from '@/lib/db/models/File';
 import { clearCacheByTag } from '@/lib/api/utils';
-import { getImageKit } from '@/lib/imagekit';
+import { uploadToBlob, deleteFromBlob } from '@/lib/storage/blob-storage';
 
 // POST /api/users/[id]/medical/upload - Upload medical report file
 export async function POST(
@@ -33,35 +33,35 @@ export async function POST(
     const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
     const contentType = file.type || 'application/octet-stream';
     const bytes = await file.arrayBuffer();
-    const imageKit = getImageKit();
-    if (!imageKit) {
+    const uploaded = await uploadToBlob(Buffer.from(bytes), {
+      type: 'medical-report',
+      filename: uniqueFileName,
+      contentType,
+      compress: false,
+    });
+
+    if (!uploaded) {
       return NextResponse.json(
-        { error: 'ImageKit media service is unavailable', code: 'MEDIA_SERVICE_DOWN' },
+        { error: 'Media service temporarily unavailable', code: 'MEDIA_SERVICE_DOWN' },
         { status: 503 }
       );
     }
 
-    const uploaded = await imageKit.upload({
-      file: Buffer.from(bytes),
-      fileName: uniqueFileName,
-      folder: '/medical-reports',
-    });
-
     let savedFile;
     try {
       savedFile = await FileModel.create({
-        filename: uploaded.name || uniqueFileName,
+        filename: uploaded.filename,
         originalName: file.name,
         mimeType: contentType,
         size: file.size,
         type: 'medical-report',
-        imageKitFileId: uploaded.fileId,
+        imageKitFileId: uploaded.pathname,
         imageKitUrl: uploaded.url,
         uploadedBy: session.user.id,
         metadata: { userId: id, category },
       });
     } catch (databaseError) {
-      await imageKit.deleteFile(uploaded.fileId).catch(() => undefined);
+      await deleteFromBlob(uploaded.pathname || uploaded.url).catch(() => undefined);
       throw databaseError;
     }
 

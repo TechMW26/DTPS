@@ -27,12 +27,12 @@ const FileSchema = new mongoose.Schema({
     type: String,
     default: undefined
   },
-  // ImageKit file ID for management (delete, update)
+  // Legacy field: ImageKit file ID or migrated Blob pathname.
   imageKitFileId: {
     type: String,
     default: null
   },
-  // ImageKit URL for direct access
+  // Legacy-compatible field containing the current public media URL.
   imageKitUrl: {
     type: String,
     default: null

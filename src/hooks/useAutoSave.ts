@@ -567,7 +567,7 @@ export function useRecipeAutoSave(
     clearDraft,
     restoreDraft,
     checkDraft,
-    saveDraft: (overrideData?: T) => saveToStorage(overrideData ?? data),
+    saveDraft: (overrideData?: RecipeFormData) => saveToStorage(overrideData ?? data),
   };
 }
 

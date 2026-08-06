@@ -5,7 +5,7 @@ import connectDB from "@/lib/db/connection";
 import Message from "@/lib/db/models/Message";
 import GroupMessage from "@/lib/db/models/GroupMessage";
 import { File } from "@/lib/db/models/File";
-import { deleteImageKitAssets } from "@/lib/imagekit-storage";
+import { deleteMultipleFromBlob } from "@/lib/storage/blob-storage";
 import { socketManager } from "@/lib/realtime/socket-manager";
 
 // DELETE /api/messages/[messageId] - Delete a message (for all roles)
@@ -77,12 +77,8 @@ export async function DELETE(
       )
     ).filter(Boolean) as typeof fileRecords;
 
-    await deleteImageKitAssets(
-      unreferencedFiles.map((file) => ({
-        fileId: file.imageKitFileId,
-        url: file.imageKitUrl,
-      })),
-    );
+    const urlsToDelete = unreferencedFiles.map((file: any) => file.imageKitUrl || file.imageKitFileId).filter(Boolean) as string[];
+    await deleteMultipleFromBlob(urlsToDelete);
     if (unreferencedFiles.length) {
       await File.deleteMany({
         _id: { $in: unreferencedFiles.map((file) => file._id) },

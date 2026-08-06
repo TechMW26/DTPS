@@ -11,6 +11,14 @@ import { logHistoryServer } from '@/lib/server/history';
 import { format } from 'date-fns';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
+interface ClientMeasurements {
+  heightFeet?: string | number;
+  heightInch?: string | number;
+  heightCm?: string | number;
+  gender?: string;
+  dateOfBirth?: string | Date;
+}
+
 // Helper to check if user has permission to access client data
 const checkPermission = (session: any, clientId?: string): boolean => {
   const userRole = session?.user?.role;
@@ -106,6 +114,10 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return NextResponse.json({ error: 'Invalid client ID' }, { status: 400 });
+    }
+
     const measurementDate = bcaData.measurementDate ? new Date(bcaData.measurementDate) : new Date();
     measurementDate.setHours(0, 0, 0, 0);
 
@@ -145,13 +157,15 @@ export async function POST(request: NextRequest) {
 
     // If height not provided in BCA, fetch from client profile
     if (!bcaHeight && bcaData.weight) {
-      const [user, lifestyle] = await Promise.all([
+      const [userDocument, lifestyleDocument] = await Promise.all([
         User.findById(clientObjectId).select('heightFeet heightInch heightCm gender dateOfBirth').lean(),
         LifestyleInfo.findOne({ userId: clientObjectId }).select('heightFeet heightInch heightCm').lean()
       ]);
-      const hFeet = parseFloat(lifestyle?.heightFeet || user?.heightFeet || '0');
-      const hInch = parseFloat(lifestyle?.heightInch || user?.heightInch || '0');
-      const hCm = lifestyle?.heightCm ? parseFloat(lifestyle.heightCm) : (user?.heightCm ? parseFloat(user.heightCm as string) : (hFeet * 12 + hInch) * 2.54);
+      const user = userDocument as unknown as ClientMeasurements | null;
+      const lifestyle = lifestyleDocument as unknown as ClientMeasurements | null;
+      const hFeet = parseFloat(String(lifestyle?.heightFeet || user?.heightFeet || '0'));
+      const hInch = parseFloat(String(lifestyle?.heightInch || user?.heightInch || '0'));
+      const hCm = lifestyle?.heightCm ? parseFloat(String(lifestyle.heightCm)) : (user?.heightCm ? parseFloat(String(user.heightCm)) : (hFeet * 12 + hInch) * 2.54);
       if (hCm > 0) {
         bcaHeight = hCm / 2.54; // convert cm to inches for BCA storage
       }

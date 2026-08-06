@@ -1,10 +1,8 @@
-import path from "path";
-import fs from "fs";
 import { NextRequest, NextResponse } from "next/server";
-import { normalizeMediaUrl } from "@/lib/media";
+import { head } from "@vercel/blob";
+import { isPublicMediaUrl, normalizeMediaUrl } from "@/lib/media";
 import connectDB from "@/lib/db/connection";
 import { File as FileModel } from "@/lib/db/models/File";
-import { getImageKit } from "@/lib/imagekit";
 
 const MIME_TYPES: Record<string, string> = {
   pdf: "application/pdf",
@@ -35,7 +33,7 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 function contentTypeFor(filename: string, mimeHint = ""): string {
-  const ext = path.extname(filename).slice(1).toLowerCase();
+  const ext = (filename || "").split(".").pop()?.toLowerCase() || "";
   // If the caller provides a mimeHint (e.g. from the DB record), prefer it
   // for ambiguous extensions like .webm (which could be audio or video).
   if (mimeHint && ext === "webm") {
@@ -50,37 +48,15 @@ function safeFilename(filename: string): string {
   return (filename || "document").replace(/[^\x20-\x7e]|[\r\n"]/g, "_");
 }
 
-/** Serve a file from the local public/ directory as a fallback when ImageKit
- *  recovery fails. Used for legacy uploads that pre-date the CDN migration. */
+/** Local file serving removed — Vercel serverless functions have read-only filesystem.
+ * All media is served from Vercel Blob. Legacy local fallback is no longer available. */
 function serveLocalFile(
-  request: NextRequest,
-  filePath: string,
-  download: boolean,
-  filename?: string,
+  _request: NextRequest,
+  _filePath: string,
+  _download: boolean,
+  _filename?: string,
 ): NextResponse | null {
-  // Only allow paths under public/uploads/ — prevent directory traversal
-  const normalized = path.normalize(filePath).replace(/\\/g, "/");
-  if (!/^\/?uploads\//i.test(normalized)) return null;
-
-  const absolutePath = path.join(process.cwd(), "public", normalized);
-  if (!fs.existsSync(absolutePath)) return null;
-
-  try {
-    const stat = fs.statSync(absolutePath);
-    if (!stat.isFile()) return null;
-
-    const content = fs.readFileSync(absolutePath);
-    const name = filename || path.basename(normalized);
-    const headers = commonHeaders(name, contentTypeFor(name), download);
-    headers.set("Content-Length", String(stat.size));
-
-    if (request.method === "HEAD") {
-      return new NextResponse(null, { status: 200, headers });
-    }
-    return new NextResponse(content, { status: 200, headers });
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 function commonHeaders(
@@ -164,6 +140,7 @@ async function recoverStoredMedia(
       )
       .lean<StoredMediaRecord | null>();
 
+    // Legacy ImageKit URL (kept for backward compat during transition)
     if (record?.imageKitUrl) {
       const value: RecoveredMedia = {
         kind: "remote",
@@ -174,65 +151,23 @@ async function recoverStoredMedia(
       return value;
     }
 
+    // Migrated records may retain the legacy ID field as a Blob pathname.
     if (record?.imageKitFileId) {
-      const imagekit = getImageKit();
-      const details = imagekit
-        ? await imagekit.getFileDetails(record.imageKitFileId)
-        : null;
-      if (details?.url) {
+      try {
+        const blob = await head(record.imageKitFileId);
         const value: RecoveredMedia = {
           kind: "remote",
-          url: details.url,
+          url: blob.url,
           filename: record.originalName || record.filename || filename,
         };
         cache.set(filename, { value, expiresAt: Date.now() + 60 * 60_000 });
         return value;
+      } catch {
+        // Continue to the historical local-path fallback.
       }
     }
 
-    // Some transition-period uploads reached ImageKit but their File record
-    // retained a legacy /uploads URL. Search the media library by exact name.
-    const imagekit = getImageKit();
-    if (imagekit) {
-      const extensionIndex = filename.lastIndexOf(".");
-      const webpName =
-        extensionIndex > 0
-          ? `${filename.slice(0, extensionIndex)}.webp`
-          : `${filename}.webp`;
-      const candidateNames = [...new Set([filename, webpName])];
-      for (const candidate of candidateNames) {
-        const escaped = candidate.replace(/["\\]/g, "\\$&");
-        const matches = (await imagekit.listFiles({
-          name: escaped,
-          limit: 10,
-        })) as unknown as Array<{
-          name?: string;
-          url?: string;
-          fileId?: string;
-        }>;
-        const match = matches.find(
-          (file) => file.name === candidate && file.url,
-        );
-        if (match?.url) {
-          if (record) {
-            await FileModel.updateOne(
-              { _id: record._id },
-              {
-                $set: { imageKitUrl: match.url, imageKitFileId: match.fileId },
-              },
-            );
-          }
-          const value: RecoveredMedia = {
-            kind: "remote",
-            url: match.url,
-            filename: record?.originalName || record?.filename || filename,
-          };
-          cache.set(filename, { value, expiresAt: Date.now() + 60 * 60_000 });
-          return value;
-        }
-      }
-    }
-
+    // Legacy local uploads — try to serve directly from stored URL.
     if (record?.localPath && /^https:\/\//i.test(record.localPath)) {
       const value: RecoveredMedia = {
         kind: "remote",
@@ -313,19 +248,18 @@ async function proxyRemoteMedia(
   }
 }
 
-function allowedRemoteOrigins(): Set<string> {
-  // Keep the historical ImageKit origin available even if an environment
-  // variable is temporarily missing; old messages still reference it.
-  const origins = new Set(["https://ik.imagekit.io"]);
-  for (const value of [process.env.IMAGEKIT_URL_ENDPOINT]) {
-    if (!value) continue;
-    try {
-      origins.add(new URL(value).origin);
-    } catch {
-      // Ignore malformed optional configuration.
-    }
+function isAllowedRemoteMediaUrl(url: URL): boolean {
+  if (isPublicMediaUrl(url.toString()) || url.origin === "https://dtps.tech") {
+    return true;
   }
-  return origins;
+
+  const legacyEndpoint = process.env.IMAGEKIT_URL_ENDPOINT;
+  if (!legacyEndpoint) return false;
+  try {
+    return url.origin === new URL(legacyEndpoint).origin;
+  } catch {
+    return false;
+  }
 }
 
 export async function handleMediaResolve(
@@ -362,7 +296,7 @@ export async function handleMediaResolve(
     if (metadata) return metadataResponse(recovered);
     if (recovered) {
       const recoveredUrl = new URL(recovered.url);
-      if (!allowedRemoteOrigins().has(recoveredUrl.origin)) {
+      if (!isAllowedRemoteMediaUrl(recoveredUrl)) {
         return NextResponse.json(
           { error: "Media source is not allowed" },
           { status: 403 },
@@ -388,7 +322,7 @@ export async function handleMediaResolve(
     const recovered = await recoverStoredMedia(mediaUrl);
     if (recovered) {
       const recoveredUrl = new URL(recovered.url);
-      if (!allowedRemoteOrigins().has(recoveredUrl.origin)) {
+      if (!isAllowedRemoteMediaUrl(recoveredUrl)) {
         return NextResponse.json(
           { error: "Media source is not allowed" },
           { status: 403 },
@@ -401,7 +335,7 @@ export async function handleMediaResolve(
         requestedFilename || recovered.filename,
       );
     }
-    // ImageKit recovery failed — try serving from local public/ directory.
+    // Remote recovery failed — try serving from the local public directory.
     // This handles legacy uploads that pre-date the CDN migration.
     const local = serveLocalFile(
       request,
@@ -411,12 +345,12 @@ export async function handleMediaResolve(
     );
     if (local) return local;
     return NextResponse.json(
-      { error: "Media not found in ImageKit" },
+      { error: "Media not found" },
       { status: 404 },
     );
   }
 
-  if (!allowedRemoteOrigins().has(mediaUrl.origin)) {
+  if (!isAllowedRemoteMediaUrl(mediaUrl)) {
     return NextResponse.json(
       { error: "Media source is not allowed" },
       { status: 403 },
@@ -450,7 +384,7 @@ export async function handleMediaResolve(
   const recovered = await recoverStoredMedia(mediaUrl);
   if (recovered) {
     const recoveredUrl = new URL(recovered.url);
-    if (!allowedRemoteOrigins().has(recoveredUrl.origin)) {
+    if (!isAllowedRemoteMediaUrl(recoveredUrl)) {
       return NextResponse.json(
         { error: "Media source is not allowed" },
         { status: 403 },

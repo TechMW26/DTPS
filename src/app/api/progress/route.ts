@@ -17,6 +17,11 @@ type ProgressQuery = {
   type?: string;
 };
 
+interface ClientAssignment {
+  assignedDietitian?: unknown;
+  assignedDietitians?: unknown[];
+}
+
 // GET /api/progress - Get progress entries
 export async function GET(request: NextRequest) {
   try {
@@ -52,16 +57,17 @@ export async function GET(request: NextRequest) {
     } else if (session.user.role === UserRole.DIETITIAN) {
       if (clientId) {
         // Verify the dietitian is assigned to this client
-        const client = await withCache(
+        const clientDocument = await withCache(
           `progress:client-assignment:${clientId}`,
           async () => await User.findById(clientId)
             .select('assignedDietitian assignedDietitians')
             .lean(),
           { ttl: 120000, tags: ['progress'] }
         );
+        const client = clientDocument as unknown as ClientAssignment | null;
         const isAssigned =
           client?.assignedDietitian?.toString() === session.user.id ||
-          client?.assignedDietitians?.some((d) => String(d) === session.user.id);
+          client?.assignedDietitians?.some((d: unknown) => String(d) === session.user.id);
 
         if (!isAssigned) {
           return NextResponse.json(

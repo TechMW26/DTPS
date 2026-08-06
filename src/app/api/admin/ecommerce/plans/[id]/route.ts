@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
 import connectDB from "@/lib/db/connection";
 import EcommercePlan from "@/lib/db/models/EcommercePlan";
-import { deleteImageKitAsset } from "@/lib/imagekit-storage";
+import { deleteFromBlob } from "@/lib/storage/blob-storage";
 
 const isAdmin = (session: any) => session?.user?.role === "admin";
 
@@ -87,10 +87,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    await deleteImageKitAsset({
-      fileId: plan.imageKitFileId,
-      url: plan.imageUrl,
-    });
+    await deleteFromBlob(plan.imageKitFileId || plan.imageUrl);
     await EcommercePlan.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true });

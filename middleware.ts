@@ -25,6 +25,8 @@ const onboardingExemptRoutes = [
 // Routes exempt from maintenance mode (always accessible)
 const maintenanceExemptRoutes = [
   '/maintenance',
+  '/api/health',
+  '/api/firebase-config',
   '/api/auth',
   '/api/internal/runtime-alert',
   '/auth',
@@ -241,6 +243,8 @@ export default withAuth(
           '/auth/signin',
           '/auth/signup',
           '/auth/error',
+          '/api/health',
+          '/api/firebase-config',
           '/api/auth',
           '/api/internal/runtime-alert',
           '/api/user/forget-password',

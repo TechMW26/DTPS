@@ -10,7 +10,7 @@ import { withCache, clearCacheByTag } from "@/lib/api/utils";
 import User from "@/lib/db/models/User";
 import { socketManager } from "@/lib/realtime/socket-manager";
 import { recalculateAndPersistClientStatus } from "@/lib/status/computeClientStatus";
-import { deleteImageKitAsset } from "@/lib/imagekit-storage";
+import { deleteFromBlob } from "@/lib/storage/blob-storage";
 
 // GET - Get single payment details
 export async function GET(
@@ -282,10 +282,7 @@ export async function DELETE(
       }
     }
 
-    await deleteImageKitAsset({
-      fileId: payment.receiptImageFileId,
-      url: payment.receiptImageUrl,
-    });
+    await deleteFromBlob(payment.receiptImageFileId || payment.receiptImageUrl);
     await OtherPlatformPayment.findByIdAndDelete(id);
 
     clearCacheByTag("other_platform_payments");

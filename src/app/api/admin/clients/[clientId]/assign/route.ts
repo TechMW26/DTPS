@@ -86,7 +86,7 @@ export async function PATCH(
         if (filteredIds.length > 0) {
           const validDietitians = await User.find({ _id: { $in: filteredIds }, role: UserRole.DIETITIAN }).select('_id').lean();
           for (const d of validDietitians) {
-            allDietitianIds.push(d._id.toString());
+            allDietitianIds.push(String(d._id));
           }
         }
       }
@@ -111,7 +111,7 @@ export async function PATCH(
         if (filteredHCIds.length > 0) {
           const validHCs = await User.find({ _id: { $in: filteredHCIds }, role: UserRole.HEALTH_COUNSELOR }).select('_id').lean();
           for (const hc of validHCs) {
-            allHCIds.push(hc._id.toString());
+            allHCIds.push(String(hc._id));
           }
         }
       }

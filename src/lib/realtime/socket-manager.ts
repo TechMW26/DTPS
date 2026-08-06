@@ -19,9 +19,7 @@ import { onlineStatusManager, typingManager } from "./online-status";
 import { userRoom, roleRoom, SOCKET_EVENTS } from "./socket-events";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __socketIO: SocketIOServer | undefined;
-  // eslint-disable-next-line no-var
   var __socketManager: SocketManager | undefined;
 }
 
@@ -40,9 +38,16 @@ export interface SocketUserData {
   lastName?: string;
 }
 
+type RemoteBroadcast =
+  | { scope: "user"; userId: string; event: string; data: unknown }
+  | { scope: "users"; userIds: string[]; event: string; data: unknown }
+  | { scope: "role"; role: string; event: string; data: unknown }
+  | { scope: "all"; event: string; data: unknown };
+
 class SocketManager {
   private io: SocketIOServer | null = null;
   private initialized = false;
+  private remoteWarningLogged = false;
 
   // Track userId → Set<socketId> for presence
   private userSockets = new Map<string, Set<string>>();
@@ -228,31 +233,42 @@ class SocketManager {
   // ── Public API (drop-in for SSEManager) ──────────────────────────
 
   /** Send an event to a specific user (all their sockets). */
-  sendToUser(userId: string, event: string, data: any): void {
+  sendToUser(userId: string, event: string, data: unknown): void {
     this.ensureInitialized();
     if (!this.io) {
-      console.warn("[SocketManager] io not initialized — skipping sendToUser");
+      this.dispatchRemote({ scope: "user", userId, event, data });
       return;
     }
     this.io.to(userRoom(userId)).emit(event, data);
   }
 
   /** Send to multiple users. */
-  sendToUsers(userIds: string[], event: string, data: any): void {
-    userIds.forEach((id) => this.sendToUser(id, event, data));
+  sendToUsers(userIds: string[], event: string, data: unknown): void {
+    this.ensureInitialized();
+    if (!this.io) {
+      this.dispatchRemote({ scope: "users", userIds, event, data });
+      return;
+    }
+    userIds.forEach((id) => this.io?.to(userRoom(id)).emit(event, data));
   }
 
   /** Broadcast to every connected socket. */
-  broadcast(event: string, data: any): void {
+  broadcast(event: string, data: unknown): void {
     this.ensureInitialized();
-    if (!this.io) return;
+    if (!this.io) {
+      this.dispatchRemote({ scope: "all", event, data });
+      return;
+    }
     this.io.emit(event, data);
   }
 
   /** Broadcast to a specific role room. */
-  broadcastToRole(role: string, event: string, data: any): void {
+  broadcastToRole(role: string, event: string, data: unknown): void {
     this.ensureInitialized();
-    if (!this.io) return;
+    if (!this.io) {
+      this.dispatchRemote({ scope: "role", role, event, data });
+      return;
+    }
     this.io.to(roleRoom(role)).emit(event, data);
   }
 
@@ -269,11 +285,47 @@ class SocketManager {
   // ── Admin convenience (replaces AdminSSEManager) ─────────────────
 
   /** Broadcast admin-specific client update events. */
-  broadcastClientUpdate(eventType: string, data: any): void {
+  broadcastClientUpdate(eventType: string, data: unknown): void {
     this.broadcastToRole("admin", eventType, data);
   }
 
   // ── Private helpers ──────────────────────────────────────────────
+
+  private dispatchRemote(payload: RemoteBroadcast): void {
+    const endpoint = process.env.NEXT_PUBLIC_SOCKET_URL?.replace(/\/$/, "");
+    const secret = process.env.SOCKET_INTERNAL_SECRET;
+
+    if (!endpoint || !secret) {
+      if (!this.remoteWarningLogged) {
+        console.warn(
+          "[SocketManager] External realtime delivery is not configured",
+        );
+        this.remoteWarningLogged = true;
+      }
+      return;
+    }
+
+    void fetch(`${endpoint}/internal/broadcast`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-socket-internal-secret": secret,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5_000),
+    }).then((response) => {
+      if (!response.ok) {
+        console.error(
+          `[SocketManager] External broadcast failed with ${response.status}`,
+        );
+      }
+    }).catch((error: unknown) => {
+      console.error(
+        "[SocketManager] External broadcast failed:",
+        error instanceof Error ? error.message : error,
+      );
+    });
+  }
 
   private async extractToken(socket: Socket): Promise<any> {
     // Parse cookie from handshake headers

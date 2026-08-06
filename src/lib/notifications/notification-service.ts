@@ -50,8 +50,9 @@ export class NotificationService {
     }
 
     try {
-      // Register Firebase messaging service worker for push notifications
-      this.registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      // Reuse the root app-shell registration. Firebase Messaging owns a
+      // separate scope and is registered by fcmHelper when a token is needed.
+      this.registration = await navigator.serviceWorker.ready;
     } catch (error) {
       console.error('Service Worker registration failed:', error);
     }

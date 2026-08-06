@@ -6,7 +6,7 @@ import type { EmojiClickData } from "emoji-picker-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Send, Paperclip, Smile, Mic, X, Image } from "lucide-react";
+import { Send, Paperclip, Smile, Mic, X, ImageIcon } from "lucide-react";
 import { MediaUploadModal } from "./MediaUploadModal";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { toast } from "sonner";
@@ -593,7 +593,7 @@ export function ChatInput({
                 <span className="text-blue-600 text-xs">
                   {attachedFile.type.startsWith("image/") ? (
                     <>
-                      <Image className="h-4 w-4" />{" "}
+                      <ImageIcon className="h-4 w-4" />{" "}
                     </>
                   ) : (
                     <>

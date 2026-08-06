@@ -2,10 +2,11 @@ import { encode } from 'next-auth/jwt';
 import { io, type Socket } from 'socket.io-client';
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 import { getTestBaseUrl } from './runtime';
+import { UserRole } from '@/types';
 
 export interface AuthSocketUser {
     id: string;
-    role: string;
+    role: UserRole;
     firstName: string;
     lastName: string;
     email?: string;
@@ -26,6 +27,7 @@ export async function createSessionToken(
             firstName: user.firstName,
             lastName: user.lastName,
             email: user.email,
+            emailVerified: false,
         },
     });
 }

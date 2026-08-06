@@ -8,7 +8,7 @@ import {
   Upload,
   X,
   File,
-  Image,
+  ImageIcon,
   FileText,
   AlertCircle
 } from 'lucide-react';
@@ -158,7 +158,7 @@ export default function FileUpload({
     switch (type) {
       case 'avatar':
       case 'recipe-image':
-        return <Image className="h-8 w-8 text-gray-400" />;
+        return <ImageIcon className="h-8 w-8 text-gray-400" />;
       case 'document':
         return <FileText className="h-8 w-8 text-gray-400" />;
       default:

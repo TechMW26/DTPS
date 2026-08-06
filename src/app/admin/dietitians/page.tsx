@@ -189,7 +189,8 @@ export default function AdminDietitiansPage() {
       // Update local state immediately
       setData(prev => prev.map(d => d._id === id ? updatedDietitian.user : d));
 
-      toast?.success?.(`Dietitian ${action}d successfully`) || console.log(`Dietitian ${action}d`);
+      if (toast?.success) toast.success(`Dietitian ${action}d successfully`);
+      else console.log(`Dietitian ${action}d`);
 
       // Emit event for real-time updates
       emitDataChange(DataEventTypes.DIETITIANS_UPDATED);
@@ -198,7 +199,8 @@ export default function AdminDietitiansPage() {
       await fetchDietitians();
     } catch (e: any) {
       setError(e?.message || 'Status update failed');
-      toast?.error?.(e?.message || 'Status update failed') || console.error(e?.message);
+      if (toast?.error) toast.error(e?.message || 'Status update failed');
+      else console.error(e?.message);
     }
   }
 

@@ -118,15 +118,10 @@ const dietTemplateSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-
-    // Avoid session lookup cost for anonymous/public requests.
-    const hasAuthCookie = request.headers.get('cookie')?.includes('next-auth.session-token') ||
-      request.headers.get('cookie')?.includes('__Secure-next-auth.session-token');
-    const sessionPromise = hasAuthCookie ? getServerSession(authOptions) : Promise.resolve(null);
-    const dbPromise = connectDB();
-    const session = await sessionPromise;
-
-    await dbPromise;
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
 
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
@@ -140,9 +135,12 @@ export async function GET(request: NextRequest) {
       : null;
     const includeInactive = searchParams.get('includeInactive') === 'true';
     const sortBy = searchParams.get('sortBy') || 'newest';
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const page = parseInt(searchParams.get('page') || '1');
-    const skip = parseInt(searchParams.get('skip') || String((page - 1) * limit));
+    const requestedLimit = Number.parseInt(searchParams.get('limit') || '10', 10);
+    const requestedPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 10;
+    const page = Number.isFinite(requestedPage) ? Math.max(requestedPage, 1) : 1;
+    const requestedSkip = Number.parseInt(searchParams.get('skip') || '', 10);
+    const skip = Number.isFinite(requestedSkip) ? Math.max(requestedSkip, 0) : (page - 1) * limit;
     const primaryGoal = searchParams.get('primaryGoal');
 
     // Build query
@@ -253,7 +251,6 @@ export async function GET(request: NextRequest) {
         .sort(sortOptions)
         .limit(limit)
         .skip(skip)
-        .lean()
       ,
       { ttl: 120000, tags: ['diet_templates'] }
     );

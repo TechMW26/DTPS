@@ -3,72 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
 import connectDB from "@/lib/db/connection";
 import { File as FileModel } from "@/lib/db/models/File";
-import path from "path";
-import { getImageKit } from "@/lib/imagekit";
-import { deleteImageKitAsset } from "@/lib/imagekit-storage";
-import {
-  compressImageServer,
-  serverCompressionPresets,
-} from "@/lib/imageCompressionServer";
-
-// Helper to upload to ImageKit with compression
-async function uploadToImageKit(
-  buffer: Buffer,
-  fileName: string,
-  folder: string,
-  mimeType: string,
-  compress: boolean = true,
-  compressionSettings?: {
-    maxWidth: number;
-    maxHeight: number;
-    quality: number;
-  },
-): Promise<{ url: string; fileId: string; mimeType: string } | null> {
-  try {
-    const ik = getImageKit();
-    if (!ik) {
-      console.warn("[ImageKit] Skipping upload — ImageKit not configured");
-      return null;
-    }
-    const isImage = mimeType.startsWith("image/") && !mimeType.includes("gif");
-
-    let uploadData: Buffer;
-    let finalMimeType: string;
-    let finalFileName: string;
-
-    if (isImage && compress) {
-      // Compress image before upload
-      const settings = compressionSettings || {
-        maxWidth: 1600,
-        maxHeight: 1600,
-        quality: 85,
-      };
-      uploadData = await compressImageServer(buffer, settings);
-      finalMimeType = "image/webp";
-      finalFileName = fileName.replace(/\.[^/.]+$/, ".webp");
-    } else {
-      // Upload as-is for non-images or GIFs
-      uploadData = buffer;
-      finalMimeType = mimeType;
-      finalFileName = fileName;
-    }
-
-    const uploadResponse = await ik.upload({
-      file: uploadData,
-      fileName: finalFileName,
-      folder: folder,
-    });
-
-    return {
-      url: uploadResponse.url,
-      fileId: uploadResponse.fileId,
-      mimeType: finalMimeType,
-    };
-  } catch (error) {
-    console.error(`[ImageKit] Upload failed for ${folder}/${fileName}:`, error);
-    return null;
-  }
-}
+import { uploadToBlob, deleteFromBlob } from "@/lib/storage/blob-storage";
+import { serverCompressionPresets } from "@/lib/imageCompressionServer";
 
 export async function POST(request: NextRequest) {
   try {
@@ -81,20 +17,17 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
-    const type = formData.get("type") as string; // 'avatar', 'document', 'recipe-image', 'message'
+    const type = formData.get("type") as string;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Reject empty files — prevents storing 0-byte blobs on ImageKit
+    // Reject empty files
     if (!file.size || file.size === 0) {
       return NextResponse.json(
-        {
-          error:
-            "Empty file. Please re-record your audio or re-select the file.",
-        },
-        { status: 400 },
+        { error: "Empty file. Please re-record your audio or re-select the file." },
+        { status: 400 }
       );
     }
 
@@ -198,84 +131,20 @@ export async function POST(request: NextRequest) {
       transformation: 10 * 1024 * 1024, // 10MB for transformation photos
     };
 
-    // ImageKit folder mapping for each file type
-    const imagekitFolders: Record<string, string> = {
-      avatar: "/profile",
-      document: "/documents",
-      "recipe-image": "/recipes",
-      message: "/messages",
-      "note-attachment": "/notes",
-      progress: "/transformation",
-      "progress-photo": "/transformation",
-      "medical-report": "/medical-reports",
-      bug: "/bug",
-      ecommerce: "/ecommerce",
-      transformation: "/transformation",
-    };
-
     const fileType = type as keyof typeof allowedTypes;
-
     const normalizedMimeType = (file.type || "").toLowerCase();
-    const extension = path.extname(file.name || "").toLowerCase();
+    const extension = (file.name || "").split(".").pop()?.toLowerCase() || "";
 
-    // Message uploads support broad media/document families + extension fallback
+    // Message uploads: broad acceptance via MIME prefix + extension fallback
     const messageAllowedExtensions = new Set([
-      ".jpg",
-      ".jpeg",
-      ".png",
-      ".webp",
-      ".gif",
-      ".heic",
-      ".heif",
-      ".mp4",
-      ".webm",
-      ".mov",
-      ".avi",
-      ".mkv",
-      ".mp3",
-      ".wav",
-      ".ogg",
-      ".m4a",
-      ".aac",
-      ".flac",
-      ".opus",
-      ".3gpp",
-      ".amr",
-      ".pdf",
-      ".doc",
-      ".docx",
-      ".xls",
-      ".xlsx",
-      ".ppt",
-      ".pptx",
-      ".csv",
-      ".txt",
-      ".rtf",
-      ".zip",
+      ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif",
+      ".mp4", ".webm", ".mov", ".avi", ".mkv",
+      ".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".3gpp", ".amr",
+      ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".csv", ".txt", ".rtf", ".zip",
     ]);
 
-    // Image file extensions used as a fallback for gallery pickers (Android/iPhone)
-    // that report an empty or non-standard MIME type.
-    const imageAllowedExtensions = new Set([
-      ".jpg",
-      ".jpeg",
-      ".png",
-      ".webp",
-      ".gif",
-      ".heic",
-      ".heif",
-    ]);
-
-    // Document extensions used as fallback for types that allow PDFs/docs
-    // (medical-report, document) when the file picker reports an empty MIME.
-    const documentAllowedExtensions = new Set([
-      ".pdf",
-      ".doc",
-      ".docx",
-      ".xls",
-      ".xlsx",
-      ".txt",
-    ]);
+    const imageAllowedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
+    const documentAllowedExtensions = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt"]);
 
     const isMessageTypeAllowed =
       fileType === "message" &&
@@ -285,31 +154,14 @@ export async function POST(request: NextRequest) {
         normalizedMimeType.startsWith("audio/") ||
         normalizedMimeType.startsWith("application/") ||
         messageAllowedExtensions.has(extension) ||
-        // Android gallery often returns an empty MIME type
         normalizedMimeType === "");
 
-    // Image-based upload types (avatar, progress photos, recipe images, etc.)
-    // Accept when MIME is image/* OR when the picker reported an empty MIME but
-    // the file extension is a known image type (Android/iPhone gallery quirk).
-    const imageBasedTypes = new Set([
-      "avatar",
-      "recipe-image",
-      "progress",
-      "progress-photo",
-      "ecommerce",
-      "transformation",
-      "bug",
-      "medical-report",
-      "document",
-      "note-attachment",
-    ]);
+    const imageBasedTypes = new Set(["avatar", "recipe-image", "progress", "progress-photo", "ecommerce", "transformation", "bug", "medical-report", "document", "note-attachment"]);
     const isImageTypeAllowedByExtension =
       imageBasedTypes.has(fileType as string) &&
       (normalizedMimeType === "" || normalizedMimeType.startsWith("image/")) &&
       imageAllowedExtensions.has(extension);
 
-    // Document-based uploads (medical-report, document) — when the file picker
-    // reports an empty MIME but the extension is a known document type.
     const documentBasedTypes = new Set(["medical-report", "document"]);
     const isDocumentTypeAllowedByExtension =
       documentBasedTypes.has(fileType as string) &&
@@ -338,101 +190,71 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Diagnostic logging for audio/video files — helps trace data integrity
-    // through the upload pipeline.
-    if (
-      normalizedMimeType.startsWith("audio/") ||
-      normalizedMimeType.startsWith("video/")
-    ) {
+    // Diagnostic logging for audio/video files
+    if (normalizedMimeType.startsWith("audio/") || normalizedMimeType.startsWith("video/")) {
       console.log(`[Upload] Received ${fileType} file:`, {
-        name: file.name,
-        size: file.size,
-        mimeType: file.type,
-        bufferBytes: buffer.length,
-        extension: fileExtension,
+        name: file.name, size: file.size, mimeType: file.type,
+        bufferBytes: buffer.length, extension: fileExtension,
       });
     }
 
-    // Get compression settings based on type
+    // Compression settings
+    const compressibleImages = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"]);
+    const shouldCompress = compressibleImages.has(normalizedMimeType);
     const compressionSettings =
       fileType === "avatar"
         ? serverCompressionPresets.avatar
-        : { maxWidth: 1600, maxHeight: 1600, quality: 85 };
+        : { maxWidth: 1600, maxHeight: 1600, quality: 85, format: "webp" as const };
 
-    // Try to upload to ImageKit first (preferred for all file types)
-    const folder = imagekitFolders[fileType] || "/uploads";
-    const compressibleImages = new Set([
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/webp",
-      "image/heic",
-      "image/heif",
-    ]);
-    const shouldCompress = compressibleImages.has(normalizedMimeType);
-
-    const imageKitResult = await uploadToImageKit(
-      buffer,
-      fileName,
-      folder,
-      file.type,
-      shouldCompress,
+    // Upload to Vercel Blob
+    const blobResult = await uploadToBlob(buffer, {
+      type: fileType as any,
+      filename: fileName,
+      contentType: file.type,
+      compress: shouldCompress,
       compressionSettings,
-    );
+    });
 
-    if (imageKitResult) {
-      // Normalize MIME type for audio/video: strip codec suffix (e.g. "audio/webm;codecs=opus" → "audio/webm")
-      // so browsers don't reject the source due to mismatched CDN Content-Type headers.
-      const responseMimeType = (imageKitResult.mimeType || file.type || "")
-        .replace(/;.*$/, "")
-        .trim();
-      // Save metadata only; file bytes live exclusively in ImageKit.
-      const savedFile = await FileModel.create({
-        filename: fileName,
-        originalName: file.name,
-        mimeType: responseMimeType,
-        size: file.size,
-        type: fileType,
-        imageKitFileId: imageKitResult.fileId,
-        imageKitUrl: imageKitResult.url,
-        uploadedBy: session.user.id,
-      });
-
-      console.log(
-        `[Upload] ✅ Stored on ImageKit: ${imageKitResult.url} (${file.size} bytes, ${responseMimeType})`,
+    if (!blobResult) {
+      console.error(`[Upload] Vercel Blob upload failed for ${fileType}/${fileName}`);
+      return NextResponse.json(
+        { error: "Media service temporarily unavailable. Please try again shortly.", code: "MEDIA_SERVICE_DOWN", retryAfter: 60 },
+        { status: 503 }
       );
-
-      return NextResponse.json({
-        url: imageKitResult.url,
-        canonicalUrl: `/api/files/${savedFile._id}`,
-        dbUrl: `/api/files/${savedFile._id}`,
-        imageKitUrl: imageKitResult.url,
-        storage: "imagekit",
-        filename: fileName,
-        size: file.size,
-        type: responseMimeType,
-        fileId: savedFile._id,
-        imageKitFileId: imageKitResult.fileId,
-      });
     }
 
-    // ImageKit failed — no local fallback; return service unavailable
-    console.error(
-      `[Upload] ImageKit unavailable for ${fileType}/${fileName} — upload rejected`,
-    );
-    return NextResponse.json(
-      {
-        error:
-          "Media service temporarily unavailable. Please try again shortly.",
-        code: "MEDIA_SERVICE_DOWN",
-        retryAfter: 60,
-      },
-      { status: 503 },
-    );
+    // Normalize MIME type: strip codec suffix
+    const responseMimeType = blobResult.contentType.replace(/;.*$/, "").trim();
+
+    // Save metadata to DB (reuse imageKit fields as blobUrl/pathname during transition)
+    const savedFile = await FileModel.create({
+      filename: fileName,
+      originalName: file.name,
+      mimeType: responseMimeType,
+      size: file.size,
+      type: fileType,
+      imageKitFileId: blobResult.pathname,
+      imageKitUrl: blobResult.url,
+      uploadedBy: session.user.id,
+    });
+
+    console.log(`[Upload] ✅ Stored on Vercel Blob: ${blobResult.url} (${file.size} bytes, ${responseMimeType})`);
+
+    return NextResponse.json({
+      url: blobResult.url,
+      canonicalUrl: `/api/files/${savedFile._id}`,
+      dbUrl: `/api/files/${savedFile._id}`,
+      imageKitUrl: blobResult.url,
+      storage: "vercel-blob",
+      filename: fileName,
+      size: file.size,
+      type: responseMimeType,
+      fileId: savedFile._id,
+      imageKitFileId: blobResult.pathname,
+    });
   } catch (error) {
     console.error("Error uploading file:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Failed to upload file";
+    const errorMessage = error instanceof Error ? error.message : "Failed to upload file";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
@@ -450,39 +272,29 @@ export async function DELETE(request: NextRequest) {
     const fileId = searchParams.get("fileId");
 
     if (!fileId) {
-      return NextResponse.json(
-        { error: "No file ID provided" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "No file ID provided" }, { status: 400 });
     }
 
-    // Find the file first to get ImageKit fileId
     const fileRecord = await FileModel.findOne({
       _id: fileId,
       uploadedBy: session.user.id,
     });
 
     if (!fileRecord) {
-      return NextResponse.json(
-        { error: "File not found or unauthorized" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "File not found or unauthorized" }, { status: 404 });
     }
 
-    await deleteImageKitAsset({
-      fileId: fileRecord.imageKitFileId,
-      url: fileRecord.imageKitUrl,
-    });
+    // Delete from Vercel Blob (use pathname or URL)
+    const blobRef = fileRecord.imageKitFileId || fileRecord.imageKitUrl;
+    if (blobRef) {
+      await deleteFromBlob(blobRef);
+    }
 
-    // Delete from MongoDB
     await FileModel.findByIdAndDelete(fileId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error deleting file:", error);
-    return NextResponse.json(
-      { error: "Failed to delete file" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to delete file" }, { status: 500 });
   }
 }

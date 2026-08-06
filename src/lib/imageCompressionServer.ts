@@ -9,7 +9,7 @@ interface ServerCompressionOptions {
 
 /**
  * Server-side image compression using Sharp
- * Compresses images before uploading to ImageKit
+ * Compresses images before uploading to Vercel Blob
  * @param buffer - The image buffer to compress
  * @param options - Compression options
  * @returns Compressed image bytes

@@ -3,8 +3,9 @@ import pymongo
 from pymongo import MongoClient
 from bson import ObjectId
 import re
+import os
 
-MONGODB_URI = "mongodb+srv://avirajsharma_db_user:NjqypCD9sr0JNxvi@dtpscluster.hjx2qyc.mongodb.net/DTPS?retryWrites=true&w=majority"
+MONGODB_URI = os.environ["MONGODB_URI"]
 client = MongoClient(MONGODB_URI)
 db = client["DTPS"]
 

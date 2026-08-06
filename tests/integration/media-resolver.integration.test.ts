@@ -3,6 +3,7 @@ import {
   getMediaKind,
   getMediaProxyUrl,
   getMediaUrl,
+  isPublicMediaUrl,
   isViewableDocument,
   normalizeMediaUrl,
 } from "@/lib/media";
@@ -27,6 +28,14 @@ describe("media resolver", () => {
     );
   });
 
+  it("recognizes public media hosts used by document viewers", () => {
+    expect(isPublicMediaUrl("https://ik.imagekit.io/dtps/report.docx")).toBe(true);
+    expect(
+      isPublicMediaUrl("https://store.public.blob.vercel-storage.com/report.docx"),
+    ).toBe(true);
+    expect(isPublicMediaUrl("https://store.blob.vercel-storage.com/private.docx")).toBe(false);
+  });
+
   it("keeps canonical DTPS media URLs intact for desktop recovery", () => {
     expect(normalizeMediaUrl("https://dtps.tech/uploads/messages/photo.jpg", origin)).toBe(
       "https://dtps.tech/uploads/messages/photo.jpg",
@@ -36,6 +45,9 @@ describe("media resolver", () => {
   it("reads legacy media object fields", () => {
     expect(getMediaUrl({ filePath: "/uploads/report.pdf" })).toBe("/uploads/report.pdf");
     expect(getMediaUrl({ imagePath: "/uploads/photo.jpg" })).toBe("/uploads/photo.jpg");
+    expect(getMediaUrl({ imageKitUrl: "https://ik.imagekit.io/dtps/legacy.jpg" })).toBe(
+      "https://ik.imagekit.io/dtps/legacy.jpg",
+    );
   });
 
   it("prefers a stable database file id over a transient storage URL", () => {

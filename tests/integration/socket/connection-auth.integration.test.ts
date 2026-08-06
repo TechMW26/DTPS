@@ -72,7 +72,7 @@ describe('Socket.io connection and authentication', () => {
         const user = await createUser({ role: UserRole.HEALTH_COUNSELOR });
         const { socket } = await createAuthenticatedSocketClient(toAuthUser(user));
 
-        const serverSocket = getTestSocketIO().sockets.sockets.get(socket.id);
+        const serverSocket = getTestSocketIO().sockets.sockets.get(socket.id!);
 
         expect(serverSocket).toBeDefined();
         expect((serverSocket as any).userId).toBe(entityId(user));

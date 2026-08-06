@@ -3,11 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
 import connectDB from "@/lib/db/connection";
 import User from "@/lib/db/models/User";
-import { unlink } from "fs/promises";
-import { join } from "path";
 import mongoose from "mongoose";
 import { File as FileModel } from "@/lib/db/models/File";
-import { deleteImageKitAsset } from "@/lib/imagekit-storage";
+import { deleteFromBlob } from "@/lib/storage/blob-storage";
 
 // DELETE /api/admin/clients/[clientId]/documents - Delete a document
 export async function DELETE(
@@ -66,23 +64,13 @@ export async function DELETE(
     if (storedFileId && mongoose.Types.ObjectId.isValid(storedFileId)) {
       const storedFile = await FileModel.findById(storedFileId);
       if (storedFile) {
-        await deleteImageKitAsset({
-          fileId: storedFile.imageKitFileId,
-          url: storedFile.imageKitUrl,
-        });
+        await deleteFromBlob(storedFile.imageKitFileId || storedFile.imageKitUrl);
         await FileModel.findByIdAndDelete(storedFileId);
       }
     }
 
-    // Legacy cleanup only. New uploads are never written to local storage.
-    if (document.filePath?.startsWith("/uploads/")) {
-      try {
-        const fullPath = join(process.cwd(), "public", document.filePath);
-        await unlink(fullPath);
-      } catch (fileError) {
-        console.log("File might not exist or is external:", fileError);
-      }
-    }
+    // Legacy local file cleanup removed — all media is on Vercel Blob.
+    // deleteFromBlob above handles the CDN removal.
 
     // Remove from database
     client.documents.splice(documentIndex, 1);

@@ -31,7 +31,7 @@ describe('Socket.io room management', () => {
         const payload = await userEvent;
 
         expect(payload).toEqual({ scope: 'user-room' });
-        expect(getTestSocketIO().sockets.adapter.rooms.get(userRoom(entityId(user)))?.has(socket.id)).toBe(true);
+        expect(getTestSocketIO().sockets.adapter.rooms.get(userRoom(entityId(user)))?.has(socket.id!)).toBe(true);
 
         await disconnectSocket(socket);
     });
@@ -52,7 +52,7 @@ describe('Socket.io room management', () => {
         await noDietitianEvent;
 
         expect(payload).toEqual({ role: UserRole.ADMIN });
-        expect(getTestSocketIO().sockets.adapter.rooms.get(roleRoom(UserRole.ADMIN))?.has(adminSocket.id)).toBe(true);
+        expect(getTestSocketIO().sockets.adapter.rooms.get(roleRoom(UserRole.ADMIN))?.has(adminSocket.id!)).toBe(true);
 
         await disconnectSocket(adminSocket);
         await disconnectSocket(dietitianSocket);
@@ -82,12 +82,12 @@ describe('Socket.io room management', () => {
         const userRoomName = userRoom(entityId(user));
         const roleRoomName = roleRoom(UserRole.ADMIN);
 
-        expect(getTestSocketIO().sockets.adapter.rooms.get(userRoomName)?.has(socket.id)).toBe(true);
-        expect(getTestSocketIO().sockets.adapter.rooms.get(roleRoomName)?.has(socket.id)).toBe(true);
+        expect(getTestSocketIO().sockets.adapter.rooms.get(userRoomName)?.has(socket.id!)).toBe(true);
+        expect(getTestSocketIO().sockets.adapter.rooms.get(roleRoomName)?.has(socket.id!)).toBe(true);
 
         await disconnectSocket(socket);
 
-        expect(getTestSocketIO().sockets.adapter.rooms.get(userRoomName)?.has(socket.id)).not.toBe(true);
-        expect(getTestSocketIO().sockets.adapter.rooms.get(roleRoomName)?.has(socket.id)).not.toBe(true);
+        expect(getTestSocketIO().sockets.adapter.rooms.get(userRoomName)?.has(socket.id!)).not.toBe(true);
+        expect(getTestSocketIO().sockets.adapter.rooms.get(roleRoomName)?.has(socket.id!)).not.toBe(true);
     });
 });

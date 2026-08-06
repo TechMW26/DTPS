@@ -1,6 +1,6 @@
 /**
  * Image compression utility using browser canvas API
- * Compresses images before uploading to ImageKit
+ * Compresses images before uploading to Vercel Blob
  */
 
 export interface CompressionOptions {
@@ -154,10 +154,10 @@ export function validateImageFile(
 }
 
 /**
- * Upload compressed image blob to backend (which uploads to ImageKit)
+ * Upload a compressed image blob to the backend media store.
  * @param blob - Compressed image blob
  * @param fileName - File name for storage
- * @param folder - Folder path in ImageKit (default: 'recipes')
+ * @param folder - Logical media folder (default: 'recipes')
  * @returns Uploaded image URL
  */
 export async function uploadCompressedImage(

@@ -76,7 +76,7 @@ export function VoiceNotePlayer({
     // prevents 404 spam from legacy /uploads/ messages.
     // Only skip when initialDuration is explicitly 0 (not undefined) AND
     // the URL does NOT point to an external CDN (blob URLs or legacy
-    // /uploads/ paths that may be gone). ImageKit URLs should always be
+    // /uploads/ paths that may be gone). Managed CDN URLs should always be
     // tried because the file may be playable even without stored duration.
     if (
       initialDuration !== undefined &&
@@ -103,7 +103,7 @@ export function VoiceNotePlayer({
 
     try {
       // Fetch audio as a blob through our proxy so WaveSurfer gets a
-      // same-origin blob URL — avoids CORS issues with ImageKit CDN.
+      // same-origin blob URL — avoids third-party CDN CORS issues.
       let blobUrl: string | null = null;
       const sourceUrl = cacheBustedProxyUrl;
 

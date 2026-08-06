@@ -390,7 +390,7 @@ function parseDietaryRecallMeals(value: any): Array<{
     const normalizedMealType = normalizedMealKey ? getMealLabel(normalizedMealKey) : rawMealType;
 
     const meridianRaw = String(entry.meridian || '').trim().toUpperCase();
-    const meridian = meridianRaw === 'PM' ? 'PM' : 'AM';
+    const meridian: 'AM' | 'PM' = meridianRaw === 'PM' ? 'PM' : 'AM';
 
     const hourValue = String(entry.hour ?? '').trim();
     const minuteValue = String(entry.minute ?? '').trim();

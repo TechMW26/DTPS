@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
-import { getImageKit } from "@/lib/imagekit";
+import { checkDBHealth } from "@/lib/db/connection";
 import { UserRole } from "@/types";
 
 /**
@@ -16,30 +16,20 @@ export async function GET() {
 
   const role = session.user.role;
   const isStaff =
-    role === UserRole.admin ||
-    role === UserRole.dietitian ||
-    role === UserRole.health_counselor;
+    role === UserRole.ADMIN ||
+    role === UserRole.DIETITIAN ||
+    role === UserRole.HEALTH_COUNSELOR;
 
   const services: Record<string, { status: "up" | "down"; message?: string }> = {};
 
-  // Check ImageKit
-  const ik = getImageKit();
-  if (!ik) {
-    services.mediaStorage = {
+  const database = await checkDBHealth();
+  if (!database.healthy) {
+    services.database = {
       status: "down",
-      message: "Media storage service is not configured",
+      message: "MongoDB is temporarily unreachable",
     };
   } else {
-    try {
-      // Lightweight check — list 1 file to verify API connectivity
-      await ik.listFiles({ limit: 1 });
-      services.mediaStorage = { status: "up" };
-    } catch {
-      services.mediaStorage = {
-        status: "down",
-        message: "Media storage service is temporarily unreachable",
-      };
-    }
+    services.database = { status: "up" };
   }
 
   const allUp = Object.values(services).every((s) => s.status === "up");

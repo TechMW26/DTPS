@@ -6,12 +6,12 @@ Multi-role health & nutrition platform connecting dietitians, health counselors,
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15 (App Router) · React 19 |
+| Framework | Next.js 16 (App Router) · React 19 |
 | Styling | Tailwind CSS v4 · shadcn/ui (new-york) |
-| Database | MongoDB with Mongoose (45+ models) |
+| Database | MongoDB with Mongoose |
 | Auth | NextAuth v4 (JWT, Credentials + Google) |
 | Realtime | Socket.io |
-| Media | ImageKit CDN |
+| Media | Vercel Blob |
 | Mobile | Native iOS (Swift/WebKit) + Android (Kotlin/WebView) |
 | Payments | Razorpay · Stripe |
 | Notifications | Firebase Cloud Messaging |
@@ -44,9 +44,7 @@ Single `.env` file for both local dev and Docker production:
 MONGODB_URI=...
 NEXTAUTH_URL=https://dtps.tech
 NEXTAUTH_SECRET=...
-IMAGEKIT_PUBLIC_KEY=...
-IMAGEKIT_PRIVATE_KEY=...
-IMAGEKIT_URL_ENDPOINT=...
+BLOB_READ_WRITE_TOKEN=...
 ```
 
 ## Deployment
@@ -59,7 +57,7 @@ docker-compose -f docker-compose.prod.yml up -d  # Production Docker
 ## Architecture
 
 - **API:** App Router API routes in `src/app/api/**` — no separate server
-- **DB:** Singleton connection in `src/lib/db/connection.ts`, called once per request
+- **DB:** Singleton Mongoose connection in `src/lib/db/connection.ts`, called once per request
 - **Auth:** JWT carries `role` (UserRole enum), `onboardingCompleted`, `isNewUser`
 - **Path alias:** `@/*` → `./src/*`
 - **Mobile:** iOS and Android are WebView wrappers loading `https://dtps.tech/user`

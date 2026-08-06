@@ -6,7 +6,7 @@ import { File as FileModel } from "@/lib/db/models/File";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
-import { deleteImageKitAsset } from "@/lib/imagekit-storage";
+import { deleteFromBlob } from "@/lib/storage/blob-storage";
 
 // GET /api/reports/[fileId] - Stream a file from GridFS
 export async function GET(
@@ -123,10 +123,7 @@ export async function DELETE(
     if (mongoose.Types.ObjectId.isValid(fileId)) {
       const storedFile = await FileModel.findById(fileId);
       if (storedFile) {
-        await deleteImageKitAsset({
-          fileId: storedFile.imageKitFileId,
-          url: storedFile.imageKitUrl,
-        });
+        await deleteFromBlob(storedFile.imageKitFileId || storedFile.imageKitUrl);
         await FileModel.findByIdAndDelete(fileId);
         await MedicalInfo.updateMany(
           { "reports.id": fileId },

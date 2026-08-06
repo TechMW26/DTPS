@@ -13,6 +13,17 @@ import { logHistoryServer } from '@/lib/server/history';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { emitClientWeightUpdate } from '@/lib/realtime/weight-notify';
 
+interface ClientProfileData {
+  heightFeet?: string | number;
+  heightInch?: string | number;
+  heightCm?: string | number;
+  weightKg?: string | number;
+  weight?: number;
+  gender?: string;
+  dateOfBirth?: string | Date;
+  activityLevel?: string;
+}
+
 // BMI calculation: weight(kg) / (height(m))^2
 function calcBMI(weightKg: number, heightCm: number): number {
   if (heightCm <= 0 || weightKg <= 0) return 0;
@@ -49,16 +60,18 @@ function getAge(dob: Date | string | null): number {
 
 // Fetch client profile data (height, gender, age, starting weight)
 async function getClientProfile(clientObjectId: mongoose.Types.ObjectId) {
-  const [user, lifestyle] = await Promise.all([
+  const [userDocument, lifestyleDocument] = await Promise.all([
     User.findById(clientObjectId).select('heightFeet heightInch heightCm weightKg weight gender dateOfBirth activityLevel').lean(),
     LifestyleInfo.findOne({ userId: clientObjectId }).select('heightFeet heightInch heightCm weightKg activityLevel').lean()
   ]);
+  const user = userDocument as unknown as ClientProfileData | null;
+  const lifestyle = lifestyleDocument as unknown as ClientProfileData | null;
 
   // Merge: prefer LifestyleInfo for measurements, User for demographics
   const heightFeet = lifestyle?.heightFeet || user?.heightFeet || '0';
   const heightInch = lifestyle?.heightInch || user?.heightInch || '0';
-  const heightCm = lifestyle?.heightCm ? parseFloat(lifestyle.heightCm) : (user?.heightCm ? parseFloat(user.heightCm as string) : feetInchToCm(heightFeet, heightInch));
-  const weightKg = lifestyle?.weightKg ? parseFloat(lifestyle.weightKg) : (user?.weightKg ? parseFloat(user.weightKg as string) : (user?.weight || 0));
+  const heightCm = lifestyle?.heightCm ? parseFloat(String(lifestyle.heightCm)) : (user?.heightCm ? parseFloat(String(user.heightCm)) : feetInchToCm(heightFeet, heightInch));
+  const weightKg = lifestyle?.weightKg ? parseFloat(String(lifestyle.weightKg)) : (user?.weightKg ? parseFloat(String(user.weightKg)) : (user?.weight || 0));
   const gender = user?.gender || '';
   const age = getAge(user?.dateOfBirth || null);
   const activityLevel = lifestyle?.activityLevel || user?.activityLevel || '';
@@ -99,6 +112,10 @@ export async function GET(request: NextRequest) {
     }
 
     await connectDB();
+
+    if (!clientId || !mongoose.Types.ObjectId.isValid(clientId)) {
+      return NextResponse.json({ error: 'Invalid client ID' }, { status: 400 });
+    }
 
     // Convert clientId to ObjectId
     const clientObjectId = new mongoose.Types.ObjectId(clientId);

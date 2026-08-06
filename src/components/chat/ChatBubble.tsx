@@ -205,7 +205,7 @@ export function ChatBubble({
                 return next;
               });
             } else if (currentRetries === 1) {
-              // Second failure: try direct ImageKit URL with cache-bust
+              // Second failure: try the direct CDN URL with cache-bust.
               setImageRetryCount((prev) => {
                 const next = new Map(prev);
                 next.set(imageKey, 2);
@@ -259,7 +259,7 @@ export function ChatBubble({
               return `${thumbUrl}${thumbUrl.includes("?") ? "&" : "?"}${ts}`;
             }
             if (retries >= 2) {
-              // Direct ImageKit URL with cache-bust
+              // Direct CDN URL with cache-bust.
               const direct = normalizeMediaUrl(attachmentUrl);
               if (direct && /^https?:\/\//i.test(direct)) {
                 return `${direct}${direct.includes("?") ? "&" : "?"}${ts}`;

@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
 import connectDB from "@/lib/db/connection";
-import Recipe from "@/lib/db/models/Recipe";
+import Recipe, { type IRecipe } from "@/lib/db/models/Recipe";
 import User from "@/lib/db/models/User";
 import { UserRole } from "@/types";
 import { z } from "zod";
-import { getImageKit } from "@/lib/imagekit";
+import { uploadToBlob } from "@/lib/storage/blob-storage";
 import { compressImageServer } from "@/lib/imageCompressionServer";
-import mongoose from "mongoose";
+import mongoose, { type ProjectionType } from "mongoose";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
 import { findSimilarRecipes, compareIngredients } from "@/lib/recipe-dedup";
 import {
@@ -503,7 +503,7 @@ export async function GET(request: NextRequest) {
                   { ttl: 300000, tags: ["recipes"] },
                 )
               : Promise.resolve(null);
-            const compactProjection = {
+            const compactProjection: ProjectionType<IRecipe> & { score?: { $meta: "textScore" } } = {
               uuid: 1,
               name: 1,
               servings: 1,
@@ -925,7 +925,7 @@ export async function GET(request: NextRequest) {
       if (isFoodDatabaseView) {
         const compactLimit = limit > 0 ? Math.min(limit, 50) : 12;
         const compactSkip = (page - 1) * compactLimit;
-        const compactProjection = {
+        const compactProjection: ProjectionType<IRecipe> & { score?: { $meta: "textScore" } } = {
           uuid: 1,
           name: 1,
           servings: 1,
@@ -1220,13 +1220,13 @@ export async function POST(request: NextRequest) {
       VALID_MEDICAL_CONTRAINDICATIONS,
     );
 
-    // Always upload the image to ImageKit if provided
+    // Persist remote recipe images in the configured media store.
     if (validatedData.image && validatedData.image.trim() !== "") {
       const imageValue = cleanDoubleEncodedString(validatedData.image);
       try {
         if (imageValue.startsWith("data:")) {
           return NextResponse.json(
-            { error: "Embedded image data is not supported. Upload the file to ImageKit first." },
+            { error: "Embedded image data is not supported. Upload the file first." },
             { status: 400 },
           );
         }
@@ -1243,30 +1243,27 @@ export async function POST(request: NextRequest) {
           },
         );
 
-        const imageKit = getImageKit();
-        if (!imageKit) {
+        const uploadResult = await uploadToBlob(compressedImage, {
+          type: "recipe-image",
+          filename: `recipe_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`,
+          contentType: "image/jpeg",
+          compress: false,
+        });
+
+        if (!uploadResult) {
           return NextResponse.json(
-            {
-              error: "Media service temporarily unavailable",
-              message: "ImageKit is required for recipe images",
-              code: "MEDIA_SERVICE_DOWN",
-            },
-            { status: 503 },
+            { error: "Media service temporarily unavailable", message: "Could not upload recipe image", code: "MEDIA_SERVICE_DOWN" },
+            { status: 503 }
           );
-        } else {
-          const uploadResponse = await imageKit.upload({
-            file: compressedImage,
-            fileName: `recipe_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`,
-            folder: "/recipes",
-          });
-          recipeData.image = uploadResponse.url;
         }
+
+        recipeData.image = uploadResult.url;
       } catch (err) {
-        console.error("ImageKit upload failed:", err);
+        console.error("Recipe image upload failed:", err);
         return NextResponse.json(
           {
             error: "Image upload failed",
-            message: "Could not upload image to ImageKit",
+            message: "Could not upload recipe image",
           },
           { status: 500 },
         );

@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IClientSubscription extends Document {
-  _id: string;
+  _id: mongoose.Types.ObjectId;
   client: mongoose.Types.ObjectId;
   dietitian: mongoose.Types.ObjectId;
   plan: mongoose.Types.ObjectId;

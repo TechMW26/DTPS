@@ -61,7 +61,6 @@ export async function invokeRoute(
     };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DynamicRouteHandler = (
     request: NextRequest,
     context: { params: Promise<any> }

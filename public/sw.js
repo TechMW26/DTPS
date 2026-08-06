@@ -2,7 +2,7 @@
 // Caches ONLY static assets for fast loads. Pages are always fetched from network.
 // Works alongside firebase-messaging-sw.js (which handles push notifications)
 
-const CACHE_VERSION = 'dtps-v3';
+const CACHE_VERSION = 'dtps-v4';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 

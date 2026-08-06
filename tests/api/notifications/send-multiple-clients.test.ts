@@ -53,7 +53,7 @@ describe('POST /api/admin/notifications/send - Multiple Client Selection', () =>
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetServerSession.mockResolvedValue(adminSession as any);
-    mockConnectDB.mockResolvedValue(undefined);
+    mockConnectDB.mockResolvedValue(undefined as never);
   });
 
   describe('Scenario 1: Particular mode with multiple clients', () => {

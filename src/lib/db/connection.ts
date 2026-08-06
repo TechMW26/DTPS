@@ -58,14 +58,15 @@ import "./models/EcommerceRating";
 import "./models/EcommerceTransformation";
 
 // MongoDB URI from environment
-const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://localhost:27017/dtps-nutrition";
+const configuredMongoUri = process.env.MONGODB_URI;
 
-if (!MONGODB_URI) {
+if (!configuredMongoUri) {
   throw new Error(
     "Please define the MONGODB_URI environment variable inside .env.local",
   );
 }
+
+const MONGODB_URI: string = configuredMongoUri;
 
 /**
  * Global cache to maintain connection across hot reloads in development.
@@ -106,8 +107,8 @@ const connectionOptions: mongoose.ConnectOptions = {
   family: 4,
 
   // Connection pool — optimized for throughput
-  maxPoolSize: 20, // Handle concurrent requests (was 10)
-  minPoolSize: 5, // Keep 5 connections warm (was 2)
+  maxPoolSize: process.env.VERCEL ? 10 : 20,
+  minPoolSize: process.env.VERCEL ? 0 : 2,
   maxIdleTimeMS: 60000, // Close idle connections after 60s (was 30s)
   waitQueueTimeoutMS: 10000, // Max wait for pool connection (10s)
 

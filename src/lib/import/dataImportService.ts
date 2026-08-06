@@ -7,7 +7,7 @@
 
 import mongoose from 'mongoose';
 import { modelRegistry } from './modelRegistry';
-import { validationEngine, ValidationError } from './validationEngine';
+import { validationEngine, ValidationError, type FieldMappingInfo } from './validationEngine';
 import { FileGenerator } from './fileParser';
 import dbConnect from '@/lib/db/connection';
 
@@ -22,13 +22,6 @@ export interface SaveResult {
   errors: ValidationError[];
   rollback: boolean;
   message: string;
-}
-
-export interface FieldMappingInfo {
-  originalField: string;
-  mappedField: string | null;
-  value: any;
-  status: 'mapped' | 'unmapped' | 'empty';
 }
 
 export interface ImportSession {

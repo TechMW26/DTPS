@@ -10,8 +10,8 @@ import type ExcelJS from 'exceljs';
 let _ExcelJS: typeof ExcelJS | null = null;
 async function getExcelJS(): Promise<typeof ExcelJS> {
   if (!_ExcelJS) {
-    const module = await import('exceljs');
-    _ExcelJS = module.default;
+    const excelModule = await import('exceljs');
+    _ExcelJS = excelModule.default;
   }
   return _ExcelJS;
 }
@@ -259,7 +259,7 @@ export class FileParser {
         const header = headers[colNumber - 1];
         if (header) {
           // Handle different cell value types
-          let value = cell.value;
+          let value: unknown = cell.value;
           if (value && typeof value === 'object') {
             if ('text' in value) {
               value = value.text;

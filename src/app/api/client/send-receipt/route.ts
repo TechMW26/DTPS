@@ -4,8 +4,13 @@ import { authOptions } from '@/lib/auth';
 import { getBaseUrl } from '@/lib/config';
 import connectDB from '@/lib/db/connection';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import User from '@/lib/db/models/User';
 import nodemailer from 'nodemailer';
+
+interface PopulatedUserRef {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+}
 
 // POST /api/client/send-receipt - Send payment receipt via email
 export async function POST(request: NextRequest) {
@@ -39,8 +44,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const clientEmail = payment.payerEmail || payment.client?.email || session.user.email;
-    const clientName = payment.payerName || `${payment.client?.firstName || ''} ${payment.client?.lastName || ''}`.trim() || 'Valued Customer';
+    const client = payment.client as unknown as PopulatedUserRef | undefined;
+    const dietitian = payment.dietitian as unknown as PopulatedUserRef | undefined;
+    const clientEmail = payment.payerEmail || client?.email || session.user.email;
+    const clientName = payment.payerName || `${client?.firstName || ''} ${client?.lastName || ''}`.trim() || 'Valued Customer';
 
     if (!clientEmail) {
       return NextResponse.json(
@@ -147,10 +154,10 @@ export async function POST(request: NextRequest) {
             <td style="padding: 5px 0; font-size: 14px; opacity: 0.9;">Duration</td>
             <td style="padding: 5px 0; font-size: 14px; text-align: right;">${payment.durationLabel || '30 Days'}</td>
           </tr>
-          ${payment.dietitian ? `
+          ${dietitian ? `
           <tr>
             <td style="padding: 5px 0; font-size: 14px; opacity: 0.9;">Dietitian</td>
-            <td style="padding: 5px 0; font-size: 14px; text-align: right;">Dt. ${payment.dietitian.firstName} ${payment.dietitian.lastName}</td>
+            <td style="padding: 5px 0; font-size: 14px; text-align: right;">Dt. ${dietitian.firstName || ''} ${dietitian.lastName || ''}</td>
           </tr>
           ` : ''}
         </table>

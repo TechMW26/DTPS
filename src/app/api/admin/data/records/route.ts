@@ -27,8 +27,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const modelName = searchParams.get('model');
     const search = searchParams.get('search') || '';
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const requestedPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const requestedLimit = Number.parseInt(searchParams.get('limit') || '20', 10);
+    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isFinite(requestedLimit) ? Math.min(200, Math.max(1, requestedLimit)) : 20;
     const recordId = searchParams.get('id');
     const sortBy = (searchParams.get('sortBy') || '').trim();
     const sortOrder: 1 | -1 = searchParams.get('sortOrder') === 'asc' ? 1 : -1;
@@ -389,7 +391,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Data search error:', error);
-    console.error('Search parameters:', { modelName, search, page, sortBy });
+    console.error('Search request URL:', request.url);
     console.error('Error stack:', error.stack);
     return NextResponse.json(
       {

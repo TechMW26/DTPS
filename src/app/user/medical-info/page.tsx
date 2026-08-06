@@ -255,7 +255,7 @@ export default function MedicalInfoPage() {
       setUploading(true);
       const formData = new FormData();
       formData.append('file', pendingFile);
-      formData.append('type', 'medical-report'); // Use medical-report type for ImageKit upload
+      formData.append('type', 'medical-report');
 
       const res = await fetch('/api/upload', {
         method: 'POST',

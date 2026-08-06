@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import {
   Send,
-  Image,
+  ImageIcon,
   Video,
   FileText,
   Music,
@@ -292,7 +292,7 @@ export function MediaUploadModal({
   };
 
   const getFileIcon = (file: File) => {
-    if (file.type.startsWith("image/")) return <Image className="w-8 h-8" />;
+    if (file.type.startsWith("image/")) return <ImageIcon className="w-8 h-8" />;
     if (file.type.startsWith("video/")) return <Video className="w-8 h-8" />;
     if (file.type.startsWith("audio/")) return <Music className="w-8 h-8" />;
     return <FileText className="w-8 h-8" />;
@@ -328,7 +328,7 @@ export function MediaUploadModal({
                     }
                   }}
                 >
-                  <Image className="w-6 h-6" />
+                  <ImageIcon className="w-6 h-6" />
                   <span className="text-sm">Photos</span>
                 </Button>
 

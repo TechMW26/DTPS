@@ -11,22 +11,23 @@ import { useEffect, useRef } from 'react';
  * - Auto-updating the service worker when a new version is available
  * - Auto-recovering from ChunkLoadError (stale chunk references after deploy)
  * 
- * Works alongside firebase-messaging-sw.js (separate scope for /firebase-*)
+ * Works alongside firebase-messaging-sw.js on its dedicated messaging scope.
  */
 export default function ServiceWorkerProvider() {
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const currentCachePrefix = 'dtps-v4';
 
     // --- 1. Purge ALL old page caches immediately (even before SW registers) ---
     // This fixes white-screen caused by stale cached HTML pointing to old JS chunks
     if ('caches' in window) {
       caches.keys().then((names) => {
         names.forEach((name) => {
-          // Delete old v1 page/image caches and any non-v2 dtps caches
-          if (name.includes('pages') || name.includes('images') || 
-              (name.startsWith('dtps-') && !name.startsWith('dtps-v2'))) {
+          // Delete caches from earlier service-worker versions.
+          if (name.includes('pages') || name.includes('images') ||
+              (name.startsWith('dtps-') && !name.startsWith(currentCachePrefix))) {
             caches.delete(name);
             console.log('[SW] Purged stale cache:', name);
           }
@@ -38,11 +39,16 @@ export default function ServiceWorkerProvider() {
     const handleChunkError = (event: ErrorEvent) => {
       const msg = event.message || '';
       const error = event.error;
+      const isExtensionError = msg.includes('chrome-extension://') || msg.includes('moz-extension://');
+      const isAppDynamicImportError = msg.includes('Failed to fetch dynamically imported module') &&
+        (msg.includes('/_next/') || msg.includes(window.location.origin));
       if (
-        msg.includes('ChunkLoadError') ||
-        msg.includes('Loading chunk') ||
-        msg.includes('Failed to fetch dynamically imported module') ||
-        (error && error.name === 'ChunkLoadError')
+        !isExtensionError && (
+          msg.includes('ChunkLoadError') ||
+          msg.includes('Loading chunk') ||
+          isAppDynamicImportError ||
+          (error && error.name === 'ChunkLoadError')
+        )
       ) {
         // Avoid infinite reload loop: only reload once per session
         const key = 'dtps-chunk-reload';
@@ -69,10 +75,14 @@ export default function ServiceWorkerProvider() {
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason;
       const msg = reason?.message || String(reason || '');
+      const isExtensionError = msg.includes('chrome-extension://') || msg.includes('moz-extension://');
+      const isAppDynamicImportError = msg.includes('Failed to fetch dynamically imported module') &&
+        (msg.includes('/_next/') || msg.includes(window.location.origin));
       if (
+        !isExtensionError && (
         msg.includes('ChunkLoadError') ||
         msg.includes('Loading chunk') ||
-        msg.includes('Failed to fetch dynamically imported module')
+        isAppDynamicImportError)
       ) {
         const key = 'dtps-chunk-reload';
         if (!sessionStorage.getItem(key)) {
@@ -95,41 +105,50 @@ export default function ServiceWorkerProvider() {
     // --- 3. Register/update service worker ---
     if (!('serviceWorker' in navigator)) return;
 
+    let disposed = false;
+    let updateInterval: ReturnType<typeof setInterval> | undefined;
+    let registeredWorker: ServiceWorkerRegistration | null = null;
+    let installingWorker: ServiceWorker | null = null;
+
+    const handleControllerChange = () => {
+      sessionStorage.removeItem('dtps-chunk-reload');
+    };
+
+    const handleInstallingStateChange = () => {
+      if (installingWorker?.state === 'installed' && navigator.serviceWorker.controller) {
+        installingWorker.postMessage({ type: 'SKIP_WAITING' });
+      }
+    };
+
+    const handleUpdateFound = () => {
+      installingWorker?.removeEventListener('statechange', handleInstallingStateChange);
+      installingWorker = registeredWorker?.installing || null;
+      installingWorker?.addEventListener('statechange', handleInstallingStateChange);
+    };
+
     const registerSW = async () => {
       try {
         const registration = await navigator.serviceWorker.register('/sw.js', {
           scope: '/',
         });
+        if (disposed) return;
 
         registrationRef.current = registration;
+        registeredWorker = registration;
 
         // Force immediate update check on every page load
         registration.update().catch(() => {});
 
         // Check for updates periodically (every 15 minutes)
-        const updateInterval = setInterval(() => {
+        updateInterval = setInterval(() => {
           registration.update().catch(() => {});
         }, 15 * 60 * 1000);
 
         // When a new SW is waiting, activate it immediately
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (!newWorker) return;
-
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New version available - activate immediately
-              newWorker.postMessage({ type: 'SKIP_WAITING' });
-            }
-          });
-        });
+        registration.addEventListener('updatefound', handleUpdateFound);
 
         // When new SW takes control, clear the chunk-reload flag
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          sessionStorage.removeItem('dtps-chunk-reload');
-        });
-
-        return () => clearInterval(updateInterval);
+        navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
       } catch (error) {
         console.warn('[SW] Registration failed:', error);
       }
@@ -139,6 +158,12 @@ export default function ServiceWorkerProvider() {
     registerSW();
 
     return () => {
+      disposed = true;
+      if (updateInterval) clearInterval(updateInterval);
+      installingWorker?.removeEventListener('statechange', handleInstallingStateChange);
+      registeredWorker?.removeEventListener('updatefound', handleUpdateFound);
+      registrationRef.current = null;
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
       window.removeEventListener('error', handleChunkError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };

@@ -24,7 +24,14 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const conversationWith = searchParams.get('conversationWith');
-    // No limit - fetch all messages for complete conversation history
+    const requestedLimit = Number.parseInt(searchParams.get('limit') || '', 10);
+    const requestedPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : null;
+    const page = Number.isFinite(requestedPage) ? Math.max(requestedPage, 1) : 1;
+
+    if (conversationWith && !mongoose.isValidObjectId(conversationWith)) {
+      return NextResponse.json({ error: 'Invalid conversation user ID' }, { status: 400 });
+    }
 
     // Validate client can only chat with their primary dietitian
     if (conversationWith) {
@@ -67,9 +74,8 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // NO CACHE for real-time messaging - always fetch fresh data
-    // No limit - fetch all messages for complete conversation history
-    const messages = await Message.find(query)
+    const total = await Message.countDocuments(query);
+    const messagesQuery = Message.find(query)
       .populate('sender', 'firstName lastName avatar role')
       .populate('receiver', 'firstName lastName avatar role')
       .populate({
@@ -80,8 +86,14 @@ export async function GET(request: NextRequest) {
           select: 'firstName lastName avatar'
         }
       })
-      .sort({ createdAt: 1 }) // Oldest first for chronological display
-      .lean();
+      .sort({ createdAt: 1 }); // Oldest first for chronological display
+
+    if (limit !== null) {
+      messagesQuery.skip((page - 1) * limit).limit(limit);
+    }
+
+    // NO CACHE for real-time messaging - always fetch fresh data.
+    const messages = await messagesQuery.lean();
 
     console.log(`[Messages API] Found ${messages.length} messages for conversation ${conversationWith || 'all'}`);
 
@@ -126,7 +138,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       messages,
-      total: messages.length
+      total,
+      pagination: {
+        page,
+        limit: limit ?? total,
+        total,
+        pages: limit === null ? (total > 0 ? 1 : 0) : Math.ceil(total / limit),
+      },
     });
 
   } catch (error) {
@@ -154,7 +172,7 @@ export async function POST(request: NextRequest) {
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     if (!recipientId || (!content && !hasAttachments)) {
       return NextResponse.json(
-        { error: 'Recipient ID and message content are required' },
+        { error: 'Recipient ID and content are required' },
         { status: 400 }
       );
     }
@@ -177,7 +195,7 @@ export async function POST(request: NextRequest) {
     // Only allow messaging the assigned dietitian
     if (primaryDietitian !== recipientId) {
       console.warn(`[Messages API] Client ${session.user.id} tried to message ${recipientId} but primary is ${primaryDietitian}`);
-      return NextResponse.json({ error: 'You can only message your assigned dietitian' }, { status: 403 });
+      return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
     }
 
     // Verify recipient exists

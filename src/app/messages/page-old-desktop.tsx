@@ -81,6 +81,11 @@ import {
   getMediaUrl,
   isViewableDocument,
 } from "@/lib/media";
+import {
+  getPreferredVoiceMimeType,
+  getVoiceFileExtension,
+  normalizeVoiceMimeType,
+} from "@/lib/voice-recording";
 
 // Dynamic import for emoji picker to avoid SSR issues
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
@@ -232,6 +237,10 @@ function MessagesContent() {
   const audioInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
+  const recordingStartedAtRef = useRef(0);
+  const recordingCancelledRef = useRef(false);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastTappedMessageRef = useRef<{ id: string; at: number } | null>(null);
   const messageElementRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -253,6 +262,23 @@ function MessagesContent() {
   const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Use ref to avoid stale closures in event handlers
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+
+  useEffect(() => {
+    return () => {
+      recordingCancelledRef.current = true;
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.onstop = null;
+        recorder.stop();
+      }
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+    };
+  }, []);
 
   const flushPendingIce = async (
     pc: RTCPeerConnection | null = peerConnection,
@@ -813,12 +839,12 @@ function MessagesContent() {
 
   const sendMessage = async (
     content: string,
-    type: "text" | "image" | "file" | "video" | "audio" = "text",
+    type: "text" | "image" | "file" | "video" | "audio" | "voice" = "text",
     attachments?: any[],
     replyToId?: string,
   ) => {
     if ((!content.trim() && !attachments) || !selectedConversation || sending)
-      return;
+      return false;
 
     setSending(true);
     try {
@@ -836,16 +862,22 @@ function MessagesContent() {
         }),
       });
 
-      if (response.ok) {
-        // Don't add message locally - SSE will deliver it to avoid duplicates
-        // Message will appear via real-time SSE event (sent to both sender and recipient)
-        setNewMessage("");
-        setReplyingToMessage(null);
-        // Refresh conversations list to update last message preview
-        fetchConversations();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || "Failed to send message");
       }
+
+      // Don't add message locally - SSE will deliver it to avoid duplicates.
+      setNewMessage("");
+      setReplyingToMessage(null);
+      fetchConversations();
+      return true;
     } catch (error) {
-      // Handle error silently in production
+      console.error("Error sending message:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to send message",
+      );
+      return false;
     } finally {
       setSending(false);
     }
@@ -918,75 +950,183 @@ function MessagesContent() {
   };
 
   const startAudioRecording = async () => {
+    if (isRecording || sending || uploadingFile || !selectedConversation)
+      return;
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      toast.error("Voice recording is not supported in this browser");
+      return;
+    }
+
+    recordingCancelledRef.current = false;
+    setIsRecording(true);
+    setRecordingTime(0);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
+      if (recordingCancelledRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
 
-      const audioChunks: BlobPart[] = [];
+      const preferredMimeType = getPreferredVoiceMimeType((mimeType) =>
+        MediaRecorder.isTypeSupported(mimeType),
+      );
+      const mediaRecorder = preferredMimeType
+        ? new MediaRecorder(stream, {
+            mimeType: preferredMimeType,
+            audioBitsPerSecond: 64000,
+          })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      recordingStreamRef.current = stream;
+      recordingChunksRef.current = [];
+      recordingStartedAtRef.current = Date.now();
+
       mediaRecorder.ondataavailable = (event) => {
-        audioChunks.push(event.data);
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
-        const audioFile = new File([audioBlob], `audio_${Date.now()}.wav`, {
-          type: "audio/wav",
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
+        }
+        const duration = Math.max(
+          1,
+          Math.round((Date.now() - recordingStartedAtRef.current) / 1000),
+        );
+        const mimeType = normalizeVoiceMimeType(
+          mediaRecorder.mimeType || preferredMimeType || "audio/webm",
+        );
+        const audioBlob = new Blob(recordingChunksRef.current, {
+          type: mimeType,
         });
 
-        // Upload audio file
+        recordingChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        recordingStreamRef.current
+          ?.getTracks()
+          .forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        setIsRecording(false);
+
+        if (recordingCancelledRef.current) {
+          setRecordingTime(0);
+          return;
+        }
+
+        if (audioBlob.size === 0) {
+          toast.error("No audio was captured. Please record again.");
+          setRecordingTime(0);
+          return;
+        }
+
+        const extension = getVoiceFileExtension(mimeType);
+        const audioFile = new File(
+          [audioBlob],
+          `voice_${Date.now()}.${extension}`,
+          { type: mimeType },
+        );
+
         const formData = new FormData();
         formData.append("file", audioFile);
         formData.append("type", "message");
 
+        setUploadingFile(true);
         try {
           const uploadResponse = await fetch("/api/upload", {
             method: "POST",
             body: formData,
           });
 
-          if (uploadResponse.ok) {
-            const uploadData = await uploadResponse.json();
-            const attachment = {
-              url: uploadData.url,
-              fileId: uploadData.fileId,
-              filename: uploadData.filename,
-              size: uploadData.size,
-              mimeType: uploadData.type,
-            };
-            await sendMessage("", "audio", [attachment]);
+          if (!uploadResponse.ok) {
+            const errorData = await uploadResponse.json().catch(() => null);
+            throw new Error(
+              errorData?.error || "Failed to upload voice message",
+            );
           }
-        } catch (error) {
-          // Handle error silently
-        }
 
-        stream.getTracks().forEach((track) => track.stop());
+          const uploadData = await uploadResponse.json();
+          const attachment = {
+            url: uploadData.url,
+            fileId: uploadData.fileId,
+            filename: uploadData.filename || audioFile.name,
+            size: uploadData.size || audioFile.size,
+            mimeType: normalizeVoiceMimeType(uploadData.type || mimeType),
+            duration,
+          };
+          const sent = await sendMessage("Voice message", "voice", [
+            attachment,
+          ]);
+          if (!sent) return;
+        } catch (error) {
+          console.error("Voice message failed:", error);
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to send voice message",
+          );
+        } finally {
+          setUploadingFile(false);
+          setRecordingTime(0);
+        }
       };
 
-      setIsRecording(true);
-      setRecordingTime(0);
-      mediaRecorder.start();
+      mediaRecorder.onerror = () => {
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
+        }
+        recordingStreamRef.current
+          ?.getTracks()
+          .forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+        setRecordingTime(0);
+        toast.error("Recording failed. Please try again.");
+      };
+
+      mediaRecorder.start(250);
 
       // Start recording timer
       recordingIntervalRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
     } catch (error) {
-      alert("Could not access microphone. Please check permissions.");
+      setIsRecording(false);
+      setRecordingTime(0);
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      console.error("Could not start voice recording:", error);
+      toast.error("Could not access the microphone. Please check permissions.");
     }
   };
 
   const stopAudioRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) {
+      recordingCancelledRef.current = true;
       setIsRecording(false);
-      setRecordingTime(0);
-
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-      }
+      return;
     }
+    if (recorder.state === "recording") {
+      recorder.requestData();
+      recorder.stop();
+    }
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+  };
+
+  const cancelAudioRecording = () => {
+    recordingCancelledRef.current = true;
+    stopAudioRecording();
+    setRecordingTime(0);
   };
 
   const handleImageCapture = () => {
@@ -2520,8 +2660,10 @@ function MessagesContent() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={stopAudioRecording}
+                      onClick={cancelAudioRecording}
                       className="text-white hover:bg-red-600"
+                      aria-label="Cancel voice recording"
+                      title="Cancel recording"
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -2605,14 +2747,30 @@ function MessagesContent() {
                       </Button>
                     ) : (
                       <Button
-                        onMouseDown={startAudioRecording}
-                        onMouseUp={stopAudioRecording}
-                        onTouchStart={startAudioRecording}
-                        onTouchEnd={stopAudioRecording}
+                        onClick={
+                          isRecording ? stopAudioRecording : startAudioRecording
+                        }
+                        disabled={sending || uploadingFile}
                         size="sm"
-                        className={`rounded-full w-10 h-10 p-0 ${isRecording ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"}`}
+                        className="rounded-full w-10 h-10 p-0 bg-green-500 hover:bg-green-600"
+                        aria-label={
+                          isRecording
+                            ? "Send voice message"
+                            : "Record voice message"
+                        }
+                        title={
+                          isRecording
+                            ? "Send voice message"
+                            : "Record voice message"
+                        }
                       >
-                        <Mic className="h-4 w-4" />
+                        {uploadingFile ? (
+                          <LoadingSpinner className="h-4 w-4" />
+                        ) : isRecording ? (
+                          <Send className="h-4 w-4" />
+                        ) : (
+                          <Mic className="h-4 w-4" />
+                        )}
                       </Button>
                     )}
                   </div>

@@ -4,8 +4,8 @@ import { authOptions } from "@/lib/auth/config";
 import connectDB from "@/lib/db/connection";
 import ProgressEntry from "@/lib/db/models/ProgressEntry";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
-import { getImageKit } from "@/lib/imagekit";
-import { deleteImageKitAsset } from "@/lib/imagekit-storage";
+import { uploadToBlob } from "@/lib/storage/blob-storage";
+import { deleteFromBlob } from "@/lib/storage/blob-storage";
 import { compressImageServer } from "@/lib/imageCompressionServer";
 
 // Progress Photos API Routes
@@ -79,17 +79,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const imageKit = getImageKit();
-    if (!imageKit) {
-      return NextResponse.json(
-        {
-          error: "ImageKit media service is unavailable",
-          code: "MEDIA_SERVICE_DOWN",
-        },
-        { status: 503 },
-      );
-    }
-
     const bytes = await file.arrayBuffer();
     const compressed = await compressImageServer(Buffer.from(bytes), {
       quality: 85,
@@ -97,24 +86,32 @@ export async function POST(request: NextRequest) {
       maxHeight: 1600,
       format: "webp",
     });
-    const uploaded = await imageKit.upload({
-      file: compressed,
-      fileName: `${session.user.id}-${Date.now()}-${photoType}.webp`,
-      folder: "/transformation",
+    const uploaded = await uploadToBlob(compressed, {
+      type: "progress-photo",
+      filename: `${session.user.id}-${Date.now()}-${photoType}.webp`,
+      contentType: "image/webp",
+      compress: false,
     });
 
-    // Connect to database only after ImageKit has accepted the media.
+    if (!uploaded) {
+      return NextResponse.json(
+        { error: "Media service temporarily unavailable", code: "MEDIA_SERVICE_DOWN" },
+        { status: 503 }
+      );
+    }
+
+    // Connect to database only after Vercel Blob has accepted the media.
     await connectDB();
 
     const progressEntry = new ProgressEntry({
-      user: session.user.id, // Use user ID instead of userEmail
+      user: session.user.id,
       type: "photo",
       value: uploaded.url,
       metadata: {
         photoType,
         notes,
-        imageKitFileId: uploaded.fileId,
-        storage: "imagekit",
+        blobPathname: uploaded.pathname,
+        storage: "vercel-blob",
         originalFilename: file.name,
         fileSize: file.size,
         mimeType: file.type,
@@ -140,7 +137,8 @@ export async function POST(request: NextRequest) {
         url: progressEntry.value,
         photoType,
         notes,
-        imageKitFileId: uploaded.fileId,
+        imageKitFileId: uploaded.pathname,
+        blobPathname: uploaded.pathname,
         createdAt: progressEntry.createdAt,
       },
       previousPhoto: previousPhoto
@@ -151,7 +149,7 @@ export async function POST(request: NextRequest) {
             createdAt: (previousPhoto as any).createdAt,
           }
         : null,
-      storage: "imagekit",
+      storage: "vercel-blob",
     };
 
     return NextResponse.json(response);
@@ -200,10 +198,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Photo not found" }, { status: 404 });
     }
 
-    await deleteImageKitAsset({
-      fileId: photo.metadata?.imageKitFileId,
-      url: typeof photo.value === "string" ? photo.value : undefined,
-    });
+    const blobReference = photo.metadata?.blobPathname || photo.metadata?.imageKitFileId || (typeof photo.value === "string" ? photo.value : undefined);
+    if (blobReference) await deleteFromBlob(blobReference);
 
     await ProgressEntry.deleteOne({ _id: photoId });
 

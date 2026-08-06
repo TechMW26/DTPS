@@ -141,6 +141,12 @@ export async function withAPIHandler<T>(
       : error.message?.includes('Database connection') ? 503
       : error.name === 'ValidationError' ? 400
       : 500;
+    const sessionUser = (sessionRef as { user?: {
+      id?: string;
+      name?: string | null;
+      email?: string | null;
+      role?: string;
+    } } | null)?.user;
     logApiError(endpoint, method, error, statusCode, {
       endpoint,
       path: endpoint,
@@ -149,10 +155,10 @@ export async function withAPIHandler<T>(
         : endpoint.startsWith('/api/dietitian-panel') ? 'dietitian'
         : endpoint.startsWith('/api/health-counselor') ? 'health_counselor'
         : 'internal',
-      userId: sessionRef?.user?.id,
-      userName: sessionRef?.user?.name,
-      userEmail: sessionRef?.user?.email,
-      userRole: sessionRef?.user?.role,
+      userId: sessionUser?.id,
+      userName: sessionUser?.name,
+      userEmail: sessionUser?.email,
+      userRole: sessionUser?.role,
     }).catch(() => { /* silent — logging must not block response */ });
 
     // Handle specific error types

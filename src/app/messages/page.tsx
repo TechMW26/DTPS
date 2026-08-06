@@ -62,6 +62,7 @@ interface Message {
   type: "text" | "image" | "file" | "video" | "audio" | "voice";
   isRead: boolean;
   createdAt: string;
+  isFromMe?: boolean;
   attachments?: {
     url: string;
     fileId?: string;
@@ -91,6 +92,8 @@ interface Conversation {
     lastName: string;
     avatar?: string;
     role: string;
+    phone?: string;
+    clientId?: string;
   };
   lastMessage: Message;
   unreadCount: number;

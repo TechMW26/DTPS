@@ -11,8 +11,8 @@ import {
   buildAssignmentSnapshot,
   notifyMealPictureUploaded,
 } from "@/lib/notifications/staffPushService";
-import { getImageKit } from "@/lib/imagekit";
-import { deleteImageKitAsset } from "@/lib/imagekit-storage";
+import { uploadToBlob } from "@/lib/storage/blob-storage";
+import { deleteFromBlob } from "@/lib/storage/blob-storage";
 
 // POST /api/users/[id]/documents - Upload document
 export async function POST(
@@ -94,39 +94,36 @@ export async function POST(
       );
     }
 
-    const imageKit = getImageKit();
-    if (!imageKit) {
-      return NextResponse.json(
-        {
-          error: "ImageKit media service is unavailable",
-          code: "MEDIA_SERVICE_DOWN",
-        },
-        { status: 503 },
-      );
-    }
-
     const filename = `${session.user.id}-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     const bytes = await file.arrayBuffer();
-    const uploaded = await imageKit.upload({
-      file: Buffer.from(bytes),
-      fileName: filename,
-      folder: "/documents",
+    const uploaded = await uploadToBlob(Buffer.from(bytes), {
+      type: "document",
+      filename,
+      contentType: file.type,
+      compress: false,
     });
+
+    if (!uploaded) {
+      return NextResponse.json(
+        { error: "Media service temporarily unavailable", code: "MEDIA_SERVICE_DOWN" },
+        { status: 503 }
+      );
+    }
 
     let savedFile;
     try {
       savedFile = await FileModel.create({
-        filename: uploaded.name || filename,
+        filename: uploaded.filename,
         originalName: file.name,
         mimeType: file.type,
         size: file.size,
         type: "document",
-        imageKitFileId: uploaded.fileId,
+        imageKitFileId: uploaded.pathname,
         imageKitUrl: uploaded.url,
         uploadedBy: session.user.id,
       });
     } catch (databaseError) {
-      await imageKit.deleteFile(uploaded.fileId).catch(() => undefined);
+      await deleteFromBlob(uploaded.pathname || uploaded.url).catch(() => undefined);
       throw databaseError;
     }
 
@@ -313,10 +310,8 @@ export async function DELETE(
     if (fileId) {
       const storedFile = await FileModel.findById(fileId);
       if (storedFile) {
-        await deleteImageKitAsset({
-          fileId: storedFile.imageKitFileId,
-          url: storedFile.imageKitUrl,
-        });
+        const blobReference = storedFile.imageKitFileId || storedFile.imageKitUrl;
+        if (blobReference) await deleteFromBlob(blobReference);
       }
       await FileModel.findByIdAndDelete(fileId);
     }

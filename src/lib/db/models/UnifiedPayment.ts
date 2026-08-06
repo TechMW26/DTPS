@@ -102,6 +102,9 @@ export interface IUnifiedPayment extends Document {
   // ========== PARENT REFERENCE (for multi-phase plans) ==========
   parentPaymentId?: mongoose.Types.ObjectId;
 
+  stripePaymentIntentId?: string;
+  metadata?: Record<string, unknown>;
+
   // ========== NOTES & DESCRIPTION ==========
   description?: string;
   notes?: string;
@@ -470,6 +473,15 @@ const unifiedPaymentSchema = new Schema<IUnifiedPayment>({
   parentPaymentId: {
     type: Schema.Types.ObjectId,
     ref: 'UnifiedPayment'
+  },
+
+  stripePaymentIntentId: {
+    type: String,
+    trim: true,
+  },
+  metadata: {
+    type: Schema.Types.Mixed,
+    default: {},
   },
 
   // ========== NOTES & DESCRIPTION ==========

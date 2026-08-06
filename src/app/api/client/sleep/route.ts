@@ -146,9 +146,11 @@ export async function POST(request: NextRequest) {
         }).catch(() => { });
 
         // Return the full updated state so the client needs no second request
+        const response = buildSleepResponse(journal, targetDate);
         return NextResponse.json({
             success: true,
-            ...buildSleepResponse(journal, targetDate),
+            ...response,
+            entry: response.entries.find((item: any) => item._id === entry._id.toString()) || entry,
         });
     } catch (error) {
         console.error('Sleep POST error:', error);

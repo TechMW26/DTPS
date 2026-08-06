@@ -166,9 +166,11 @@ export async function POST(request: NextRequest) {
         }).catch(console.error);
 
         // Return the full updated state so the client needs no second request
+        const response = buildActivityResponse(journal, targetDate);
         return NextResponse.json({
             success: true,
-            ...buildActivityResponse(journal, targetDate),
+            ...response,
+            entry: response.entries.find((item: any) => item._id === entry._id.toString()) || entry,
         });
     } catch (error) {
         console.error('Activity POST error:', error);

@@ -3,8 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
 import dbConnect from "@/lib/db/connection";
 import Blog, { IBlog } from "@/lib/db/models/Blog";
-import { getImageKit } from "@/lib/imagekit";
-import { deleteImageKitAsset } from "@/lib/imagekit-storage";
+import { uploadToBlob } from "@/lib/storage/blob-storage";
+import { deleteFromBlob } from "@/lib/storage/blob-storage";
 import { UserRole } from "@/types";
 import { compressImageServer } from "@/lib/imageCompressionServer";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
@@ -160,40 +160,28 @@ export async function PUT(
           },
         );
 
-        // Upload single image to ImageKit
-        const imageKitInstance = getImageKit();
-        if (!imageKitInstance) {
+        // Upload to Vercel Blob
+        const uploadResult = await uploadToBlob(compressedImage, {
+          type: "ecommerce",
+          filename: `blog_${Date.now()}.jpg`,
+          contentType: "image/jpeg",
+          compress: false,
+        });
+
+        if (!uploadResult) {
           return NextResponse.json(
-            {
-              error: "ImageKit media service is unavailable",
-              code: "MEDIA_SERVICE_DOWN",
-            },
-            { status: 503 },
+            { error: "Media service temporarily unavailable", code: "MEDIA_SERVICE_DOWN" },
+            { status: 503 }
           );
-        } else {
-          const uploadResult = await imageKitInstance.upload({
-            file: compressedImage,
-            fileName: `blog_${Date.now()}.jpg`,
-            folder: "/blogs",
-          });
-
-          // Use the same URL for featured image
-          blog.featuredImage = uploadResult.url;
-          blog.featuredImageFileId = uploadResult.fileId;
-
-          // Generate thumbnail URL using ImageKit's URL transformation
-          const filePath = (uploadResult as any).filePath as string | undefined;
-          if (filePath && uploadResult.url.endsWith(filePath)) {
-            const baseUrl = uploadResult.url.slice(0, -filePath.length);
-            blog.thumbnailImage = `${baseUrl}/tr:w-600,h-400,fo-auto${filePath}`;
-          } else {
-            blog.thumbnailImage = uploadResult.url;
-          }
         }
+
+        blog.featuredImage = uploadResult.url;
+        blog.featuredImageFileId = uploadResult.pathname;
+        blog.thumbnailImage = uploadResult.url;
       } catch (uploadError) {
         console.error("Image upload failed:", uploadError);
         return NextResponse.json(
-          { error: "Failed to upload image to ImageKit" },
+          { error: "Failed to upload image" },
           { status: 503 },
         );
       }
@@ -231,10 +219,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Blog not found" }, { status: 404 });
     }
 
-    await deleteImageKitAsset({
-      fileId: blog.featuredImageFileId,
-      url: blog.featuredImage,
-    });
+    await deleteFromBlob(blog.featuredImageFileId || blog.featuredImage);
     await Blog.findByIdAndDelete(id);
 
     return NextResponse.json({

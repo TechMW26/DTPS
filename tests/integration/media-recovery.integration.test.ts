@@ -3,8 +3,6 @@ import { NextRequest } from "next/server";
 const mockLean = jest.fn();
 const mockSelect = jest.fn(() => ({ lean: mockLean }));
 const mockFindOne = jest.fn((_query?: unknown) => ({ select: mockSelect }));
-const mockListFiles = jest.fn();
-const mockGetFileDetails = jest.fn();
 
 jest.mock("@/lib/db/connection", () => ({
   __esModule: true,
@@ -15,13 +13,6 @@ jest.mock("@/lib/db/models/File", () => ({
   File: {
     findOne: (...args: unknown[]) => mockFindOne(...args),
   },
-}));
-
-jest.mock("@/lib/imagekit", () => ({
-  getImageKit: () => ({
-    listFiles: mockListFiles,
-    getFileDetails: mockGetFileDetails,
-  }),
 }));
 
 import { handleMediaResolve } from "@/lib/media-response";
@@ -118,5 +109,31 @@ describe("media resolver legacy recovery", () => {
       available: true,
       publicUrl: "https://ik.imagekit.io/dtps/messages/report.pdf",
     });
+  });
+
+  it("proxies public Vercel Blob URLs and rejects private store hosts", async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "content-type": "application/pdf" },
+      }),
+    );
+
+    const publicUrl = "https://dtps-media.public.blob.vercel-storage.com/report.pdf";
+    const publicResponse = await handleMediaResolve(
+      new NextRequest(
+        `https://app.dtps.test/api/media/resolve?url=${encodeURIComponent(publicUrl)}`,
+      ),
+    );
+    expect(publicResponse.status).toBe(200);
+
+    const privateUrl = "https://dtps-media.blob.vercel-storage.com/report.pdf";
+    const privateResponse = await handleMediaResolve(
+      new NextRequest(
+        `https://app.dtps.test/api/media/resolve?url=${encodeURIComponent(privateUrl)}`,
+      ),
+    );
+    expect(privateResponse.status).toBe(403);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });

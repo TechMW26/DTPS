@@ -14,7 +14,7 @@ import { logActivity } from "@/lib/utils/activityLogger";
 import { emitClientWeightUpdate } from "@/lib/realtime/weight-notify";
 import { notifyClientDataUpdate } from "@/lib/notifications/staffPushService";
 import mongoose from "mongoose";
-import { deleteImageKitAsset } from "@/lib/imagekit-storage";
+import { deleteFromBlob } from "@/lib/storage/blob-storage";
 
 // Get all possible meal type keys (canonical + common variations for DB compatibility)
 const ALL_MEAL_KEYS = [
@@ -972,10 +972,7 @@ export async function DELETE(request: Request) {
     }
 
     if (entry.type === "photo") {
-      await deleteImageKitAsset({
-        fileId: entry.metadata?.imageKitFileId,
-        url: typeof entry.value === "string" ? entry.value : undefined,
-      });
+      await deleteFromBlob(entry.metadata?.imageKitFileId || (typeof entry.value === "string" ? entry.value : undefined));
     }
     await ProgressEntry.deleteOne({ _id: entry._id });
 

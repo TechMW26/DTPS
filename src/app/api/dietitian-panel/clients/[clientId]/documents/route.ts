@@ -7,7 +7,8 @@ import MedicalInfo from "@/lib/db/models/MedicalInfo";
 import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
 import { UserRole } from "@/types";
 import { serverCache, withCache } from "@/lib/api/utils";
-import { getImageKit } from "@/lib/imagekit";
+import { uploadToBlob } from "@/lib/storage/blob-storage";
+import { File as FileModel } from "@/lib/db/models/File";
 import { Types } from "mongoose";
 
 export const dynamic = "force-dynamic";
@@ -158,55 +159,38 @@ function extractMealType(raw: string): string {
   );
 }
 
-async function listImageKitFilesForClient(path: string, clientId: string) {
-  const cacheKey = `dietitian-panel:documents:imagekit:${path}:${clientId}`;
+/** Look up files for a client from the database instead of ImageKit list API. */
+async function listClientFiles(clientId: string) {
+  const cacheKey = `dietitian-panel:documents:db:${clientId}`;
   const cachedFiles = serverCache.get<ImageKitFileLite[]>(cacheKey);
   if (cachedFiles) {
     return cachedFiles;
   }
 
-  const normalizeFiles = (files: unknown): ImageKitFileLite[] => {
-    return Array.isArray(files)
-      ? (files as ImageKitFileLite[]).filter((file) =>
-          file.name?.startsWith(clientId),
-        )
-      : [];
-  };
-
-  let ik;
   try {
-    ik = getImageKit();
-    if (!ik) {
-      return [];
-    }
+    await connectDB();
+    const files = await FileModel.find({
+      uploadedBy: clientId,
+    })
+      .select("filename originalName imageKitUrl imageKitFileId mimeType size")
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    const result: ImageKitFileLite[] = files.map((f: any) => ({
+      name: f.filename || f.originalName,
+      url: f.imageKitUrl,
+      fileId: f.imageKitFileId,
+      filePath: f.imageKitFileId,
+      size: f.size,
+      mimeType: f.mimeType,
+      createdAt: (f as any).createdAt,
+    }));
+
+    serverCache.set(cacheKey, result, DOCUMENTS_CACHE_TTL_SECONDS);
+    return result;
   } catch {
     return [];
-  }
-
-  try {
-    const result = await withTimeout(
-      ik.listFiles({
-        path,
-        searchQuery: `name : "${clientId}"`,
-        limit: 100,
-      }),
-      IMAGEKIT_LIST_TIMEOUT_MS,
-    );
-    const filtered = normalizeFiles(result);
-    serverCache.set(cacheKey, filtered, DOCUMENTS_CACHE_TTL_SECONDS);
-    return filtered;
-  } catch {
-    try {
-      const fallbackResult = await withTimeout(
-        ik.listFiles({ path, limit: 100 }),
-        IMAGEKIT_LIST_TIMEOUT_MS,
-      );
-      const filtered = normalizeFiles(fallbackResult);
-      serverCache.set(cacheKey, filtered, DOCUMENTS_CACHE_TTL_SECONDS);
-      return filtered;
-    } catch {
-      return [];
-    }
   }
 }
 
@@ -300,8 +284,8 @@ export async function GET(
               .select("mealCompletions name")
               .lean<MealPlanLite[]>()
               .catch(() => []),
-            listImageKitFilesForClient("/transformation", clientId),
-            listImageKitFilesForClient("/complete-meal", clientId),
+            listClientFiles(clientId),
+            listClientFiles(clientId),
           ]);
 
         // 2. Fetch medical reports from MedicalInfo collection

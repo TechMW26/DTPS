@@ -770,7 +770,7 @@ export default function DataManagementPage() {
           row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
             const header = headers[colNumber - 1];
             if (header) {
-              let value = cell.value;
+              let value: unknown = cell.value;
               if (value && typeof value === 'object') {
                 if ('text' in value) value = value.text;
                 else if ('result' in value) value = value.result;

@@ -1,25 +1,24 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Docker deployment configuration
-  output: 'standalone',
+  // Vercel deployment — default output (not standalone/Docker)
 
   // Performance optimizations
   compress: true,
   poweredByHeader: false,
 
   // Build optimizations
-  reactStrictMode: false,
-
-  // Note: ESLint config moved to eslint.config.mjs (Next.js 16+ no longer supports eslint in next.config.ts)
-  // TypeScript errors can be ignored via tsconfig.json if needed
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  reactStrictMode: true,
 
   // Optimize images
   images: {
     remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.public.blob.vercel-storage.com',
+        pathname: '/**',
+      },
+      // Retain read compatibility while legacy ImageKit references are migrated.
       {
         protocol: 'https',
         hostname: 'ik.imagekit.io',
@@ -59,7 +58,7 @@ const nextConfig: NextConfig = {
       'jspdf',
       'sonner',
     ],
-  } as any,
+  } as NextConfig["experimental"],
 
   // Turbopack configuration for Next.js 16+
   turbopack: {

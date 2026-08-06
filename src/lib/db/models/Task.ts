@@ -1,7 +1,7 @@
 import mongoose, { Schema, Model, Document } from 'mongoose';
 
 export interface ITask extends Document {
-  _id: string;
+  _id: mongoose.Types.ObjectId;
   client: mongoose.Schema.Types.ObjectId;
   dietitian: mongoose.Schema.Types.ObjectId;
   creatorRole?: 'dietitian' | 'health_counselor' | 'admin';

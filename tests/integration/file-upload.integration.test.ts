@@ -10,25 +10,22 @@ import {
 } from '../utils/database';
 import { getServerSession } from 'next-auth';
 import { NextRequest } from 'next/server';
-import { getImageKit } from '@/lib/imagekit';
+import { uploadToBlob } from '@/lib/storage/blob-storage';
 
 // Mock next-auth
 jest.mock('next-auth', () => ({
     getServerSession: jest.fn(),
 }));
 
-const mockImageKitUpload = jest.fn().mockImplementation(
-    async (options: { file: Buffer; fileName: string; folder: string }) => ({
-        url: `https://ik.imagekit.io/test-dtps${options.folder}/${options.fileName}`,
-        fileId: `imagekit-${options.fileName}`,
-    }),
-);
-
-// Mock durable ImageKit storage without making external network writes.
-jest.mock('@/lib/imagekit', () => ({
-    getImageKit: jest.fn(() => ({
-        upload: mockImageKitUpload,
+jest.mock('@/lib/storage/blob-storage', () => ({
+    uploadToBlob: jest.fn(async (file: Buffer, options: { filename: string; contentType?: string }) => ({
+        url: `https://test.public.blob.vercel-storage.com/${options.filename}`,
+        pathname: `messages/${options.filename}`,
+        filename: options.filename,
+        size: file.length,
+        contentType: options.contentType || 'application/octet-stream',
     })),
+    deleteFromBlob: jest.fn().mockResolvedValue(undefined),
 }));
 
 // Mock fs/promises to avoid actual file writes
@@ -63,7 +60,8 @@ function createMockFile(
     filename: string,
     mimeType: string
 ): File {
-    const blob = new Blob([content], { type: mimeType });
+    const blobPart = typeof content === 'string' ? content : new Uint8Array(content);
+    const blob = new Blob([blobPart], { type: mimeType });
     return new File([blob], filename, { type: mimeType });
 }
 
@@ -134,11 +132,11 @@ describe('File Upload Integration Tests', () => {
                 type: 'message',
             });
 
-            // All successful uploads must be durably stored in ImageKit.
+            // All successful uploads must be durably stored in Vercel Blob.
             expect(result.status).toBe(200);
-            expect(result.json.storage).toBe('imagekit');
-            expect(result.json.url).toContain('https://ik.imagekit.io/');
-            expect(Buffer.isBuffer(mockImageKitUpload.mock.calls.at(-1)?.[0]?.file)).toBe(true);
+            expect(result.json.storage).toBe('vercel-blob');
+            expect(result.json.url).toContain('blob.vercel-storage.com');
+            expect(Buffer.isBuffer((uploadToBlob as jest.Mock).mock.calls.at(-1)?.[0])).toBe(true);
             expect(result.json.url).toBeDefined();
             expect(result.json.filename).toBeDefined();
         });
@@ -422,13 +420,13 @@ describe('File Upload Integration Tests', () => {
         });
     });
 
-    describe('ImageKit-only storage', () => {
+    describe('Blob-only storage', () => {
         it('rejects the upload instead of falling back to local or database storage', async () => {
             const client = await createUser({
                 role: UserRole.CLIENT,
-                email: `upload-imagekit-required-${Date.now()}@test.com`,
+                email: `upload-blob-required-${Date.now()}@test.com`,
             });
-            (getImageKit as jest.Mock).mockReturnValueOnce(null);
+            (uploadToBlob as jest.Mock).mockResolvedValueOnce(null);
 
             const result = await invokeUploadRoute({
                 user: client,

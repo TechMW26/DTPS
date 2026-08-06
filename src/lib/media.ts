@@ -20,6 +20,7 @@ const MEDIA_URL_FIELDS = [
   "imagePath",
   "localPath",
   "imageUrl",
+  "blobUrl",
   "imageKitUrl",
   "fileUrl",
   "mediaUrl",
@@ -35,16 +36,41 @@ const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "webm", "mkv", "avi", "m4v"]);
 const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "m4a", "aac", "ogg", "opus", "flac", "webm"]);
 const ARCHIVE_EXTENSIONS = new Set(["zip", "rar", "7z", "tar", "gz"]);
 
+export function isPublicMediaUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      (url.hostname === "ik.imagekit.io" ||
+        url.hostname.endsWith(".public.blob.vercel-storage.com"))
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function getMediaUrl(reference: MediaReference): string {
   if (typeof reference === "string") return reference.trim();
   if (!reference || typeof reference !== "object") return "";
   const values = reference as Record<string, unknown>;
 
+  // Prefer direct CDN URLs (Vercel Blob, etc.) over DB-backed file routes.
+  // This avoids unnecessary 307 redirect hops that break WaveSurfer.js
+  // and other media players that don't follow redirects correctly.
+  for (const field of MEDIA_URL_FIELDS) {
+    const value = values[field];
+    if (typeof value === "string" && value.trim() && /^https?:\/\//i.test(value)) {
+      return value.trim();
+    }
+  }
+
+  // Fallback: if no direct CDN URL, route through DB-backed /api/files/{id}
   const fileId = values.fileId;
   if (typeof fileId === "string" && /^[a-f\d]{24}$/i.test(fileId)) {
     return `/api/files/${fileId}`;
   }
 
+  // Last resort: any non-HTTPS URL field
   for (const field of MEDIA_URL_FIELDS) {
     const value = values[field];
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -144,7 +170,7 @@ export async function resolveDocumentViewerSource(
   const needsHostedViewer = kind === "office" || (isApp && kind === "pdf");
   if (!needsHostedViewer) return proxyUrl;
 
-  let publicUrl = /^https:\/\/ik\.imagekit\.io\//i.test(url) ? url : "";
+  let publicUrl = isPublicMediaUrl(url) ? url : "";
   if (!publicUrl) {
     try {
       const metadataUrl = getMediaMetadataUrl(url);
@@ -157,7 +183,7 @@ export async function resolveDocumentViewerSource(
         const metadata = (await metadataResponse.json()) as {
           publicUrl?: string | null;
         };
-        if (/^https:\/\/ik\.imagekit\.io\//i.test(metadata.publicUrl || "")) {
+        if (isPublicMediaUrl(metadata.publicUrl || "")) {
           publicUrl = metadata.publicUrl || "";
         }
       }

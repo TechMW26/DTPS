@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import connectDB, { checkDBHealth, getConnectionStats } from '@/lib/db/connection';
-import mongoose from 'mongoose';
+import { checkDBHealth, getConnectionStats } from '@/lib/db/connection';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || process.env.npm_package_version || '1.0.0';
 
@@ -54,7 +53,7 @@ export async function GET() {
       database: 'connected',
       connectionStats: {
         readyState: stats.readyState,
-        poolSize: mongoose.connection.db ? 'active' : 'initializing',
+        provider: 'mongodb',
       },
       responseTimeMs: responseTime,
       version: APP_VERSION,

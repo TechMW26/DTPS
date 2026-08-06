@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-  useRef,
-  type ChangeEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useEffect, useState, useRef, type ChangeEvent } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -1333,14 +1327,13 @@ export default function UserMessagesPage() {
     }
   };
 
-  const startVoiceRecording = async (
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ) => {
+  const startVoiceRecording = async () => {
     if (sending || isRecording || !selectedConversation) return;
 
     try {
-      event.currentTarget.setPointerCapture(event.pointerId);
       recordingCancelledRef.current = false;
+      setIsRecording(true);
+      setRecordingTime(0);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       // If the user released the button before getUserMedia resolved,
@@ -1364,9 +1357,6 @@ export default function UserMessagesPage() {
       recordChunksRef.current = [];
       recordStartedAtRef.current = Date.now();
       recordingReplyToIdRef.current = replyingToMessage?._id;
-      setRecordingTime(0);
-      setIsRecording(true);
-
       recorder.ondataavailable = (evt) => {
         if (evt.data && evt.data.size > 0) {
           recordChunksRef.current.push(evt.data);
@@ -1428,9 +1418,7 @@ export default function UserMessagesPage() {
       recordChunksRef.current = [];
       setIsRecording(false);
       setRecordingTime(0);
-      toast.error(
-        "Recording too short. Hold the button and speak for at least 1 second.",
-      );
+      toast.error("Recording too short. Please record for at least 1 second.");
       recordingReplyToIdRef.current = undefined;
       return;
     }
@@ -1457,7 +1445,7 @@ export default function UserMessagesPage() {
 
         // Guard: reject empty recordings (e.g. too-short tap, browser quirk)
         if (!voiceBlob || voiceBlob.size === 0) {
-          toast.error("No audio captured. Please hold the button and speak.");
+          toast.error("No audio captured. Please record again.");
           recordingReplyToIdRef.current = undefined;
           resolve();
           return;
@@ -2736,7 +2724,7 @@ export default function UserMessagesPage() {
                               Recording... {formatVoiceDuration(recordingTime)}
                             </span>
                             <span className="text-xs text-gray-500">
-                              Release to send
+                              Tap send when finished
                             </span>
                           </div>
                         ) : (
@@ -2760,12 +2748,21 @@ export default function UserMessagesPage() {
                         )}
                       </div>
 
-                      {newMessage.trim() ? (
+                      {newMessage.trim() || isRecording ? (
                         <button
                           type="button"
                           className="h-10 w-10 shrink-0 rounded-full bg-[#075E54] text-white flex items-center justify-center hover:bg-[#064e47] disabled:opacity-60"
-                          onClick={handleSendMessage}
+                          onClick={
+                            isRecording
+                              ? () => {
+                                  void stopVoiceRecording();
+                                }
+                              : handleSendMessage
+                          }
                           disabled={sending}
+                          aria-label={
+                            isRecording ? "Send voice message" : "Send message"
+                          }
                         >
                           <Send className="h-5 w-5" />
                         </button>
@@ -2773,14 +2770,11 @@ export default function UserMessagesPage() {
                         <button
                           type="button"
                           className="h-10 w-10 shrink-0 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100 disabled:opacity-60"
-                          onPointerDown={startVoiceRecording}
-                          onPointerUp={() => {
-                            void stopVoiceRecording();
-                          }}
-                          onPointerCancel={() => {
-                            void stopVoiceRecording();
+                          onClick={() => {
+                            void startVoiceRecording();
                           }}
                           disabled={sending}
+                          aria-label="Record voice message"
                         >
                           <Mic className="h-5 w-5 text-gray-600" />
                         </button>

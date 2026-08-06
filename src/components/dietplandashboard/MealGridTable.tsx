@@ -2427,6 +2427,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                           className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 flex items-center justify-between"
                                                           onMouseDown={(e) => {
                                                             e.preventDefault();
+                                                            if (!onUpdate) return;
                                                             const newWeekPlan = cloneWeekPlan(weekPlan);
                                                             const meal = newWeekPlan[actualDayIndex].meals[mealType];
                                                             const foodRow = meal?.foodOptions[optionIndex]?.foods?.[foodIndex];
@@ -2435,7 +2436,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                               foodRow.recipeId = r._id;
                                                               foodRow.recipeUuid = (r as any).uuid;
                                                               const servingMultiplier = r.servings ? (1 / (parseFloat(String(r.servings)) || 1)) : 1;
-                                                              const nut = r.nutrition || {};
+                                                              const nut = r.nutrition || { calories: 0, carbs: 0, fat: 0, protein: 0 };
                                                               foodRow.cal = formatNum(Math.round((nut.calories || 0) * servingMultiplier));
                                                               foodRow.carbs = formatNum(Math.round((nut.carbs || 0) * servingMultiplier));
                                                               foodRow.fats = formatNum(Math.round((nut.fat || 0) * servingMultiplier));
@@ -2734,7 +2735,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                       opt.recipeId = r._id;
                                                       opt.recipeUuid = (r as any).uuid;
                                                       const servingMultiplier = r.servings ? (1 / (parseFloat(String(r.servings)) || 1)) : 1;
-                                                      const nut = r.nutrition || {};
+                                                      const nut = r.nutrition || { calories: 0, carbs: 0, fat: 0, protein: 0 };
                                                       opt.cal = formatNum(Math.round((nut.calories || 0) * servingMultiplier));
                                                       opt.carbs = formatNum(Math.round((nut.carbs || 0) * servingMultiplier));
                                                       opt.fats = formatNum(Math.round((nut.fat || 0) * servingMultiplier));

@@ -446,6 +446,7 @@ export async function GET(request: NextRequest) {
       hasFcmToken: boolean;
       tokenCount?: number;
     }> = [];
+    const holdById = new Map<string, boolean>();
 
     if (isAdmin) {
       const effectiveRoles = requestedRoles.length > 0 ? requestedRoles : DEFAULT_ADMIN_TARGET_ROLES;
@@ -454,12 +455,14 @@ export async function GET(request: NextRequest) {
         .select('_id firstName lastName email avatar role status clientStatus holdStatus fcmTokens')
         .sort({ firstName: 1, lastName: 1 });
 
+      users.forEach((user) => holdById.set(String(user._id), !!user.holdStatus?.isOnHold));
       recipients = users.map(mapRecipient);
     } else {
       const clients = await User.find(getAccessibleClientQuery(session))
         .select('_id firstName lastName email avatar role status clientStatus holdStatus fcmTokens')
         .sort({ firstName: 1, lastName: 1 });
 
+      clients.forEach((user) => holdById.set(String(user._id), !!user.holdStatus?.isOnHold));
       recipients = clients.map(mapRecipient);
     }
 
@@ -485,10 +488,6 @@ export async function GET(request: NextRequest) {
         if (!purchasesByClient.has(cid)) purchasesByClient.set(cid, []);
         purchasesByClient.get(cid)!.push(payment);
       });
-
-      const holdById = new Map<string, boolean>(
-        clientUsers.map((user: any) => [String(user._id), !!user.holdStatus?.isOnHold])
-      );
 
       recipients = recipients.map((recipient) => {
         if (recipient.role !== UserRole.CLIENT) {

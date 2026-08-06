@@ -9,16 +9,20 @@ importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-comp
 // The config is fetched once and cached
 let firebaseInitialized = false;
 let messaging = null;
+let initializationPromise = null;
 
 // Initialize Firebase with config from API
 async function initializeFirebase() {
     if (firebaseInitialized) return true;
+    if (initializationPromise) return initializationPromise;
 
-    try {
+    initializationPromise = (async () => {
+      try {
         // Fetch config from API endpoint
         const response = await fetch('/api/firebase-config');
         if (!response.ok) {
             console.error('[firebase-messaging-sw.js] Failed to fetch Firebase config');
+            initializationPromise = null;
             return false;
         }
 
@@ -26,6 +30,7 @@ async function initializeFirebase() {
 
         if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
             console.error('[firebase-messaging-sw.js] Invalid Firebase config received');
+            initializationPromise = null;
             return false;
         }
 
@@ -34,20 +39,22 @@ async function initializeFirebase() {
 
         // Get Firebase Messaging instance
         messaging = firebase.messaging();
+        messaging.onBackgroundMessage(handleBackgroundMessage);
         firebaseInitialized = true;
 
         console.log('[firebase-messaging-sw.js] Firebase initialized successfully');
         return true;
-    } catch (error) {
+      } catch (error) {
         console.error('[firebase-messaging-sw.js] Error initializing Firebase:', error);
+        initializationPromise = null;
         return false;
-    }
+      }
+    })();
+
+    return initializationPromise;
 }
 
-// Initialize on service worker activation
-self.addEventListener('activate', async (event) => {
-    event.waitUntil(initializeFirebase());
-});
+void initializeFirebase();
 
 // Store for recent notification IDs to prevent duplicates
 const recentNotifications = new Set();
@@ -118,7 +125,7 @@ function getNotificationActions(type) {
 }
 
 // Handle background messages
-messaging.onBackgroundMessage((payload) => {
+function handleBackgroundMessage(payload) {
     console.log('[firebase-messaging-sw.js] Received background message:', payload);
 
     // Generate a unique tag for deduplication
@@ -170,7 +177,7 @@ messaging.onBackgroundMessage((payload) => {
             return undefined;
         })
         .catch(() => undefined);
-});
+}
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
@@ -311,7 +318,7 @@ self.addEventListener('push', (event) => {
 // Service worker activation
 self.addEventListener('activate', (event) => {
     console.log('[firebase-messaging-sw.js] Service Worker activated');
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(Promise.all([initializeFirebase(), self.clients.claim()]));
 });
 
 // Service worker installation

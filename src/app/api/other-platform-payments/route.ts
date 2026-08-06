@@ -5,7 +5,7 @@ import dbConnect from "@/lib/db/connect";
 import OtherPlatformPayment from "@/lib/db/models/OtherPlatformPayment";
 import { UserRole } from "@/types";
 import User from "@/lib/db/models/User";
-import { getImageKit } from "@/lib/imagekit";
+import { uploadToBlob } from "@/lib/storage/blob-storage";
 import { compressImageServer } from "@/lib/imageCompressionServer";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
 import { socketManager } from "@/lib/realtime/socket-manager";
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     let receiptImageUrl = "";
     let receiptImageFileId = "";
 
-    // Handle receipt image upload - compress and upload to ImageKit
+    // Compress and persist the receipt in the configured media store.
     if (receiptImage && receiptImage.size > 0) {
       try {
         const bytes = await receiptImage.arrayBuffer();
@@ -139,35 +139,31 @@ export async function POST(request: NextRequest) {
         // Generate unique filename
         const filename = `receipt_${crypto.randomUUID()}`;
 
-        // Upload to ImageKit in the otherplatform folder
-        const imageKit = getImageKit();
-        if (!imageKit) {
-          return NextResponse.json(
-            {
-              error:
-                "Media service temporarily unavailable. Please try again shortly.",
-              code: "MEDIA_SERVICE_DOWN",
-            },
-            { status: 503 },
-          );
-        } else {
-          const uploadResponse = await imageKit.upload({
-            file: compressedImage,
-            fileName: `${filename}.webp`,
-            folder: "/otherplatform",
-          });
+        // Upload to Vercel Blob
+        const uploadResult = await uploadToBlob(compressedImage, {
+          type: "receipt",
+          filename: `${filename}.webp`,
+          contentType: "image/webp",
+          compress: false,
+        });
 
-          receiptImagePath = uploadResponse.filePath;
-          receiptImageUrl = uploadResponse.url;
-          receiptImageFileId = uploadResponse.fileId;
+        if (!uploadResult) {
+          return NextResponse.json(
+            { error: "Media service temporarily unavailable. Please try again shortly.", code: "MEDIA_SERVICE_DOWN" },
+            { status: 503 }
+          );
         }
+
+        receiptImagePath = uploadResult.pathname;
+        receiptImageUrl = uploadResult.url;
+        receiptImageFileId = uploadResult.pathname;
       } catch (uploadError) {
         console.error(
-          "Error uploading receipt image to ImageKit:",
+          "Error uploading receipt image:",
           uploadError,
         );
         return NextResponse.json(
-          { error: "Failed to upload receipt to ImageKit" },
+          { error: "Failed to upload receipt" },
           { status: 503 },
         );
       }

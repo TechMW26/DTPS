@@ -7,7 +7,7 @@ import mongoose from "mongoose";
 import { logHistoryServer } from "@/lib/server/history";
 import { clearCacheByTag } from "@/lib/api/utils";
 import { File as FileModel } from "@/lib/db/models/File";
-import { deleteImageKitAssets } from "@/lib/imagekit-storage";
+import { deleteMultipleFromBlob } from "@/lib/storage/blob-storage";
 
 // DELETE /api/users/[id]/notes/[noteId] - Delete a note
 export async function DELETE(
@@ -69,11 +69,8 @@ export async function DELETE(
     const recordsByUrl = new Map(
       fileRecords.map((file: any) => [file.imageKitUrl, file]),
     );
-    await deleteImageKitAssets(
-      attachmentUrls.map((url: string) => ({
-        fileId: recordsByUrl.get(url)?.imageKitFileId,
-        url,
-      })),
+    await deleteMultipleFromBlob(
+      attachmentUrls.filter((url: string) => url).map((url: string) => url),
     );
     if (fileRecords.length) {
       await FileModel.deleteMany({

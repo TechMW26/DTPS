@@ -6,10 +6,12 @@ import GroupMessage from "@/lib/db/models/GroupMessage";
 import Message from "@/lib/db/models/Message";
 import OtherPlatformPayment from "@/lib/db/models/OtherPlatformPayment";
 import ProgressEntry from "@/lib/db/models/ProgressEntry";
-import {
-  deleteImageKitAssets,
-  type ImageKitAsset,
-} from "@/lib/imagekit-storage";
+import { deleteMultipleFromBlob } from "@/lib/storage/blob-storage";
+
+type MediaAsset = {
+  fileId?: string | null;
+  url?: string | null;
+};
 
 type ClientMediaOwner = {
   _id: unknown;
@@ -17,7 +19,7 @@ type ClientMediaOwner = {
   documents?: Array<{ filePath?: string }>;
 };
 
-export async function deleteUserAvatarImageKitMedia(
+export async function deleteUserAvatarMedia(
   user: Pick<ClientMediaOwner, "_id" | "avatar">,
 ): Promise<void> {
   if (!user.avatar) return;
@@ -28,13 +30,12 @@ export async function deleteUserAvatarImageKitMedia(
   })
     .select("_id imageKitFileId imageKitUrl")
     .lean();
-  await deleteImageKitAssets([
-    { fileId: (file as any)?.imageKitFileId, url: user.avatar },
-  ]);
+  const urls = [(file as any)?.imageKitUrl, (file as any)?.imageKitFileId, user.avatar].filter(Boolean) as string[];
+  await deleteMultipleFromBlob(urls);
   if (file) await FileModel.deleteOne({ _id: (file as any)._id });
 }
 
-export async function deleteClientImageKitMedia(
+export async function deleteClientMedia(
   user: ClientMediaOwner,
 ): Promise<void> {
   const [ownedFiles, messages, progressPhotos, mealPlans, payments] =
@@ -81,7 +82,7 @@ export async function deleteClientImageKitMedia(
       ]),
     ).values(),
   ];
-  const assets: Array<ImageKitAsset & { databaseFileId?: unknown }> = [
+  const assets: Array<MediaAsset & { databaseFileId?: unknown }> = [
     { url: user.avatar },
     ...allFiles.map((file: any) => ({
       fileId: file.imageKitFileId,
@@ -133,9 +134,12 @@ export async function deleteClientImageKitMedia(
         return survivingDirectMessage || groupMessage ? null : asset;
       }),
     )
-  ).filter(Boolean) as Array<ImageKitAsset & { databaseFileId?: unknown }>;
+  ).filter(Boolean) as Array<MediaAsset & { databaseFileId?: unknown }>;
 
-  await deleteImageKitAssets(deletableAssets);
+  const urlsToDelete = deletableAssets
+    .map((asset) => asset.url || asset.fileId)
+    .filter(Boolean) as string[];
+  await deleteMultipleFromBlob(urlsToDelete);
   await FileModel.deleteMany({
     _id: {
       $in: deletableAssets

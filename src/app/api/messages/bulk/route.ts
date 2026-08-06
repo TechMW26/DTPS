@@ -135,12 +135,12 @@ export async function POST(request: NextRequest) {
         // Dietitian can only send to clients assigned to them
         const assignedToDietitian = r.assignedDietitian?.toString() === session.user.id;
         const inDietitianArray = r.assignedDietitians?.some((d) => d.toString() === session.user.id);
-        isAuthorized = assignedToDietitian || inDietitianArray;
+        isAuthorized = assignedToDietitian || (inDietitianArray ?? false);
       } else if (sessionRole === 'health_counselor') {
         // Health Counselor can only send to clients assigned to them
         const assignedToCounselor = r.assignedHealthCounselor?.toString() === session.user.id;
         const inCounselorArray = r.assignedHealthCounselors?.some((hc) => hc.toString() === session.user.id);
-        isAuthorized = assignedToCounselor || inCounselorArray;
+        isAuthorized = assignedToCounselor || (inCounselorArray ?? false);
       }
 
       if (isAuthorized) {

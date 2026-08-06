@@ -91,6 +91,8 @@ export default function NewClientPage() {
   const [cookingSalt, setCookingSalt] = useState('');
   const [carbonatedBeverageFrequency, setCarbonatedBeverageFrequency] = useState('');
   const [cravingType, setCravingType] = useState('');
+  const [sleepPattern, setSleepPattern] = useState('');
+  const [stressLevel, setStressLevel] = useState('');
   // Medical section state
   const [medicalConditions, setMedicalConditions] = useState('');
   const [allergies, setAllergies] = useState('');
@@ -173,6 +175,8 @@ export default function NewClientPage() {
       case 'cookingSalt': setCookingSalt(value); break;
       case 'carbonatedBeverageFrequency': setCarbonatedBeverageFrequency(value); break;
       case 'cravingType': setCravingType(value); break;
+      case 'sleepPattern': setSleepPattern(value); break;
+      case 'stressLevel': setStressLevel(value); break;
     }
   };
 
@@ -301,6 +305,8 @@ export default function NewClientPage() {
           cookingSalt: cookingSalt || undefined,
           carbonatedBeverageFrequency: carbonatedBeverageFrequency || undefined,
           cravingType: cravingType || undefined,
+          sleepPattern: sleepPattern || undefined,
+          stressLevel: stressLevel || undefined,
           notes
         }),
       });
@@ -514,6 +520,8 @@ export default function NewClientPage() {
                   cookingSalt={cookingSalt}
                   carbonatedBeverageFrequency={carbonatedBeverageFrequency}
                   cravingType={cravingType}
+                  sleepPattern={sleepPattern}
+                  stressLevel={stressLevel}
                   onChange={lifestyleChange}
                   onSave={() => markSaved('lifestyle')}
                   loading={loading}

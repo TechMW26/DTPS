@@ -381,7 +381,7 @@ export default function UserSubscriptionsPage() {
           scale: 2
         });
         const blob = await new Promise<Blob>((resolve, reject) =>
-          canvas.toBlob(value => value ? resolve(value) : reject(new Error('Receipt rendering failed')), 'image/png')
+          canvas.toBlob((value: Blob | null) => value ? resolve(value) : reject(new Error('Receipt rendering failed')), 'image/png')
         );
         const objectUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');

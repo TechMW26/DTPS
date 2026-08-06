@@ -159,9 +159,11 @@ export async function POST(request: NextRequest) {
         }).catch(() => { });
 
         // Return the full updated state so the client needs no second request
+        const response = buildStepsResponse(journal, targetDate);
         return NextResponse.json({
             success: true,
-            ...buildStepsResponse(journal, targetDate),
+            ...response,
+            entry: response.entries.find((item: any) => item._id === entryId.toString()) || entry,
         });
     } catch (error) {
         console.error('Steps POST error:', error);

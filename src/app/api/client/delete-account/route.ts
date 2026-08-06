@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/config";
 import connectDB from "@/lib/db/connection";
 import User from "@/lib/db/models/User";
 import { UserRole } from "@/types";
-import { deleteClientImageKitMedia } from "@/lib/client-media-cleanup";
+import { deleteClientMedia } from "@/lib/client-media-cleanup";
 
 export async function DELETE(req: NextRequest) {
   try {
@@ -50,10 +50,10 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Resolve and remove every ImageKit object owned by account data before
+    // Resolve and remove every managed media object owned by account data before
     // removing its database references. A transient storage failure leaves
     // the account intact so this operation can be retried without leaks.
-    await deleteClientImageKitMedia(user);
+    await deleteClientMedia(user);
 
     // Permanently delete the user account and all associated data
     // Delete related data from other collections

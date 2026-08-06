@@ -49,7 +49,7 @@ describe('Socket.io security scenarios', () => {
         const { socket: attackerSocket } = await createAuthenticatedSocketClient(toAuthUser(attacker));
         attackerSocket.emit('join_room', { roomId: victimRoom });
 
-        expect(getTestSocketIO().sockets.adapter.rooms.get(victimRoom)?.has(attackerSocket.id)).not.toBe(true);
+        expect(getTestSocketIO().sockets.adapter.rooms.get(victimRoom)?.has(attackerSocket.id!)).not.toBe(true);
 
         await disconnectSocket(attackerSocket);
     });
