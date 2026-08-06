@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { format, isToday, isYesterday } from 'date-fns';
 import ImageLightbox from '@/components/ui/image-lightbox';
 import { getDocumentViewerUrl, getMediaKind, getMediaProxyUrl, getMediaUrl } from '@/lib/media';
+import { uploadFileReliably } from '@/lib/client-upload';
 
 interface GroupMessage {
   _id: string;
@@ -201,17 +202,7 @@ export default function GroupChatView({
 
     setUploadingFile(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'message');
-
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) throw new Error('Upload failed');
-      const uploadData = await uploadResponse.json();
+      const uploadData = await uploadFileReliably(file, 'message');
 
       const attachment = {
         url: uploadData.url,

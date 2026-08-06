@@ -164,7 +164,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         if let urlString,
            let url = URL(string: urlString, relativeTo: baseURL)?.absoluteURL,
            url.scheme == "https",
-           url.host == "dtps.tech" || url.host?.hasSuffix(".dtps.tech") == true {
+           ["dtps.tech", "www.dtps.tech"].contains(where: {
+               url.host == $0 || url.host?.hasSuffix(".\($0)") == true
+           }) {
             NotificationCenter.default.post(name: .notificationTapped, object: url)
         }
         completionHandler()

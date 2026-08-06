@@ -43,6 +43,7 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
   };
 
   const [exportFormat, setExportFormat] = useState<'html' | 'csv' | 'pdf' | 'print'>('pdf');
+  const [isExporting, setIsExporting] = useState(false);
 
   // Helper function to format date properly
   const formatDateProper = (dateStr: string): string => {
@@ -745,32 +746,47 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     setOpen(false);
   }, [generateCSVContent, clientName]);
 
-  const handleExportPDF = useCallback(() => {
-    const showMacros = exportFor === 'dietitian';
-    const html = generateHTMLContent(showMacros);
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      // Add print-to-PDF optimized styles
-      const pdfOptimizedHtml = html.replace('</head>', `
-        <style>
-          @media print {
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            @page { size: A4; margin: 10mm; }
-            .container { box-shadow: none !important; }
-          }
-        </style>
-        </head>
-      `);
-      printWindow.document.write(pdfOptimizedHtml);
-      printWindow.document.close();
-      printWindow.onload = () => {
-        // Show instructions for saving as PDF
-        toast.info(`Use "Save as PDF" in the print dialog to download as PDF (${exportFor} version)`);
-        printWindow.print();
-      };
+  const handleExportPDF = useCallback(async () => {
+    setIsExporting(true);
+    const host = document.createElement('div');
+    try {
+      const [{ jsPDF }] = await Promise.all([import('jspdf'), import('html2canvas')]);
+      const html = generateHTMLContent(exportFor === 'dietitian');
+      const parsed = new DOMParser().parseFromString(html, 'text/html');
+
+      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:white;z-index:-1;';
+      host.innerHTML = `${Array.from(parsed.head.querySelectorAll('style')).map((style) => style.outerHTML).join('')}${parsed.body.innerHTML}`;
+      document.body.appendChild(host);
+
+      await Promise.all(Array.from(host.querySelectorAll('img')).map((image) => {
+        if (image.complete) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          image.onload = () => resolve();
+          image.onerror = () => resolve();
+        });
+      }));
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      await pdf.html(host, {
+        margin: [8, 8, 8, 8],
+        autoPaging: 'text',
+        width: 194,
+        windowWidth: 794,
+        html2canvas: { scale: 0.7, useCORS: true, logging: false },
+      });
+
+      const suffix = exportFor === 'dietitian' ? 'dietitian' : 'client';
+      pdf.save(`diet-plan-${clientName?.replace(/\s+/g, '-') || 'export'}-${suffix}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+      toast.success('PDF downloaded successfully');
+      setOpen(false);
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      toast.error('PDF generation failed. Please try Print Preview.');
+    } finally {
+      host.remove();
+      setIsExporting(false);
     }
-    setOpen(false);
-  }, [generateHTMLContent, exportFor]);
+  }, [generateHTMLContent, clientName, exportFor]);
 
   const handlePrint = useCallback(() => {
     const showMacros = exportFor === 'dietitian';
@@ -900,9 +916,9 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleExport} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={handleExport} disabled={isExporting} className="bg-green-600 hover:bg-green-700">
               <Download className="w-4 h-4 mr-2" />
-              Export
+              {isExporting ? 'Generating…' : 'Export'}
             </Button>
           </DialogFooter>
         </DialogContent>

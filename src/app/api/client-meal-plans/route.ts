@@ -198,13 +198,7 @@ export async function GET(request: NextRequest) {
           client.assignedDietitian?.toString() === session.user.id ||
           client.assignedDietitians?.some((d: any) => d.toString() === session.user.id);
 
-        // Check if dietitian created any plans for this client
-        const hasCreatedPlans = await ClientMealPlan.exists({
-          clientId: clientId,
-          dietitianId: session.user.id
-        });
-
-        if (!isAssigned && !hasCreatedPlans) {
+        if (!isAssigned) {
           logActivity({
             userId: session.user.id,
             userRole: 'dietitian',
@@ -216,7 +210,7 @@ export async function GET(request: NextRequest) {
             description: `Blocked meal plan list access for unassigned client ${clientId}`,
             targetUserId: clientId,
             details: {
-              reason: 'not-assigned-and-no-created-plans',
+              reason: 'not-currently-assigned',
               role: normalizedRole,
             },
           }).catch(() => null);
@@ -245,11 +239,7 @@ export async function GET(request: NextRequest) {
         );
         const assignedClientIds = assignedClients.map(c => c._id);
 
-        // Dietitian can see meal plans they created OR for their assigned clients
-        query.$or = [
-          { dietitianId: session.user.id },
-          { clientId: { $in: assignedClientIds } }
-        ];
+        query.clientId = { $in: assignedClientIds };
       }
     } else if (normalizedRole === UserRole.ADMIN) {
       // Admins can see all meal plans

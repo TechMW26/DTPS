@@ -41,6 +41,7 @@ import "./models/MealPlanTemplate";
 import "./models/ClientMealPlan";
 import "./models/Notification";
 import "./models/NotificationDeliveryAudit";
+import "./models/RealtimeSignal";
 import "./models/GoalCategory";
 import "./models/Lead";
 import "./models/Blog";

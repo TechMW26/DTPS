@@ -61,6 +61,7 @@ export function PushNotificationProvider({
 
     // Track last notification to prevent duplicates
     const lastNotificationRef = useRef<{ id: string; timestamp: number } | null>(null);
+    const webPushRegistrationAttempts = useRef(0);
 
     // Helper to check if notification is duplicate
     const isDuplicateNotification = useCallback((title: string, body: string, data?: any): boolean => {
@@ -367,7 +368,7 @@ export function PushNotificationProvider({
     }, [extractNotificationMeta, onNotification, isDuplicateNotification, shouldShowNotificationBanner, syncUnreadNotificationBadge, showPushBanner]);
 
     // Enable web push for staff dashboard roles
-    const { isSupported, permission, registerToken } = usePushNotifications({
+    const { isSupported, permission, isRegistered, registerToken } = usePushNotifications({
         autoRegister: false, // We'll handle it manually
         onNotification: handleForegroundNotification,
         enabled: isWebPushRole,
@@ -378,7 +379,6 @@ export function PushNotificationProvider({
         isNativeApp,
         fcmToken,
         tokenRegistered,
-        requestNotificationPermission: requestNativePermission,
         isLoading: nativeLoading,
         onForegroundNotification: setNativeForegroundHandler
     } = useNativeApp();
@@ -575,27 +575,41 @@ export function PushNotificationProvider({
 
     // Web push notification registration for supported authenticated roles.
     useEffect(() => {
-        // Only register for web if not in native app
-        if (isNativeApp) {
-            return;
-        }
-
-        // Only register if:
-        // 1. Auto-register is enabled
-        // 2. User is authenticated
-        // 3. Notifications are supported
-        // 4. Permission is already granted (don't prompt automatically)
-        // 5. User has a supported role
         if (
-            autoRegister &&
-            status === 'authenticated' &&
-            isSupported &&
-            permission === 'granted' &&
-            isWebPushRole
-        ) {
-            registerToken();
-        }
-    }, [autoRegister, status, isSupported, permission, registerToken, isNativeApp, isWebPushRole]);
+            isNativeApp ||
+            !autoRegister ||
+            status !== 'authenticated' ||
+            !isSupported ||
+            permission !== 'granted' ||
+            !isWebPushRole ||
+            isRegistered
+        ) return;
+
+        let disposed = false;
+        let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const registerWithRetry = async () => {
+            const success = await registerToken();
+            if (disposed || success) {
+                if (success) webPushRegistrationAttempts.current = 0;
+                return;
+            }
+
+            webPushRegistrationAttempts.current += 1;
+            const retryDelay = Math.min(
+                30_000,
+                1_000 * (2 ** Math.min(webPushRegistrationAttempts.current - 1, 5))
+            );
+            retryTimer = setTimeout(registerWithRetry, retryDelay);
+        };
+
+        void registerWithRetry();
+
+        return () => {
+            disposed = true;
+            if (retryTimer) clearTimeout(retryTimer);
+        };
+    }, [autoRegister, status, isSupported, permission, isRegistered, registerToken, isNativeApp, isWebPushRole]);
 
     // Sync unread badge when tab becomes active
     useEffect(() => {

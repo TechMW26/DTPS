@@ -1,13 +1,28 @@
+import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
+import connectDB from '@/lib/db/connection';
+import RealtimeSignal from '@/lib/db/models/RealtimeSignal';
+import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
 import { socketManager } from '@/lib/realtime/socket-manager';
 
-// POST /api/webrtc/signal - Handle WebRTC signaling
+const SIGNAL_TTL_MS = 2 * 60 * 1000;
+
+type SignalDelivery = {
+  recipientId: string;
+  event: string;
+  payload: Record<string, unknown>;
+};
+
+function isValidUserId(value: unknown): value is string {
+  return typeof value === 'string' && mongoose.isValidObjectId(value);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -16,161 +31,189 @@ export async function POST(request: NextRequest) {
       callId,
       callerId,
       receiverId,
-      targetUserId, // Support both receiverId and targetUserId
+      targetUserId,
       type,
       offer,
       answer,
-      iceCandidate
+      iceCandidate,
     } = signalData;
-
-    // Support both receiverId and targetUserId for backward compatibility
     const actualReceiverId = receiverId || targetUserId;
 
-    // Validate required fields based on signal type
-    if (!callId) {
-      return NextResponse.json({
-        error: 'Missing required field: callId',
-        received: { callId, receiverId, targetUserId, type }
-      }, { status: 400 });
+    if (typeof callId !== 'string' || !callId.trim()) {
+      return NextResponse.json({ error: 'Missing required field: callId' }, { status: 400 });
     }
 
-    // For call offers, we need receiverId/targetUserId
-    // For call responses (accepted/rejected/ended), we need callerId
-    // For ICE candidates, we need either
-    if ((type === 'audio' || type === 'video' || type === 'call-offer') && !actualReceiverId) {
-      return NextResponse.json({
-        error: 'Missing required field: receiverId/targetUserId for call offers',
-        received: { callId, receiverId, targetUserId, type }
-      }, { status: 400 });
-    }
+    const now = Date.now();
+    let delivery: SignalDelivery | null = null;
 
-    if ((type === 'call_accepted' || type === 'call_rejected') && !callerId) {
-      console.error('WebRTC Signal validation failed:', {
-        type,
-        callId,
-        callerId,
-        receiverId,
-        targetUserId,
-        hasCallerId: !!callerId,
-        allFields: Object.keys(signalData)
-      });
-      return NextResponse.json({
-        error: 'Missing required field: callerId for call responses',
-        received: { callId, callerId, type, allFields: Object.keys(signalData) }
-      }, { status: 400 });
-    }
-
-    // Get SSE manager instance
-
-    // Route the signal to the appropriate recipient
     switch (type) {
       case 'audio':
       case 'video':
-      case 'call-offer': // Support legacy call-offer type
-        // Incoming call offer
-        socketManager.sendToUser(actualReceiverId, 'incoming_call', {
-          callId,
-          callerId: session.user.id,
-          callerName: `${session.user.firstName} ${session.user.lastName}`,
-          callerAvatar: session.user.avatar,
-          type: type === 'call-offer' ? 'video' : type, // Convert legacy type
-          offer,
-          timestamp: Date.now()
-        });
+      case 'call-offer':
+        if (!isValidUserId(actualReceiverId)) {
+          return NextResponse.json({ error: 'Invalid receiverId/targetUserId' }, { status: 400 });
+        }
+        delivery = {
+          recipientId: actualReceiverId,
+          event: 'incoming_call',
+          payload: {
+            callId,
+            callerId: session.user.id,
+            callerName: `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim(),
+            callerAvatar: session.user.avatar,
+            type: type === 'call-offer' ? 'video' : type,
+            offer,
+            timestamp: now,
+          },
+        };
         break;
 
       case 'call_accepted':
-        // Call was accepted
-        socketManager.sendToUser(callerId, 'call_accepted', {
-          callId,
-          acceptedBy: session.user.id,
-          answer,
-          timestamp: Date.now()
-        });
+        if (!isValidUserId(callerId)) {
+          return NextResponse.json({ error: 'Invalid callerId' }, { status: 400 });
+        }
+        delivery = {
+          recipientId: callerId,
+          event: 'call_accepted',
+          payload: { callId, acceptedBy: session.user.id, answer, timestamp: now },
+        };
         break;
 
       case 'call_rejected':
-        // Call was rejected
-        socketManager.sendToUser(callerId, 'call_rejected', {
-          callId,
-          rejectedBy: session.user.id,
-          timestamp: Date.now()
-        });
+        if (!isValidUserId(callerId)) {
+          return NextResponse.json({ error: 'Invalid callerId' }, { status: 400 });
+        }
+        delivery = {
+          recipientId: callerId,
+          event: 'call_rejected',
+          payload: { callId, rejectedBy: session.user.id, timestamp: now },
+        };
         break;
 
-      case 'call_ended':
-        // Call was ended
-        const targetUserId = callerId === session.user.id ? actualReceiverId : callerId;
-        socketManager.sendToUser(targetUserId, 'call_ended', {
-          callId,
-          endedBy: session.user.id,
-          timestamp: Date.now()
-        });
+      case 'call_ended': {
+        const recipientId = callerId === session.user.id ? actualReceiverId : callerId;
+        if (!isValidUserId(recipientId)) {
+          return NextResponse.json({ error: 'Invalid call participant' }, { status: 400 });
+        }
+        delivery = {
+          recipientId,
+          event: 'call_ended',
+          payload: { callId, endedBy: session.user.id, timestamp: now },
+        };
         break;
+      }
 
-      case 'ice_candidate':
-        // ICE candidate exchange
-        const targetForIce = callerId === session.user.id ? actualReceiverId : callerId;
-        socketManager.sendToUser(targetForIce, 'ice_candidate', {
-          callId,
-          iceCandidate,
-          from: session.user.id,
-          timestamp: Date.now()
-        });
+      case 'ice_candidate': {
+        const recipientId = callerId === session.user.id ? actualReceiverId : callerId;
+        if (!isValidUserId(recipientId) || !iceCandidate) {
+          return NextResponse.json({ error: 'Invalid ICE signal' }, { status: 400 });
+        }
+        delivery = {
+          recipientId,
+          event: 'ice_candidate',
+          payload: { callId, iceCandidate, from: session.user.id, timestamp: now },
+        };
         break;
+      }
 
       case 'missed_call':
-        socketManager.sendToUser(actualReceiverId, 'missed_call', {
-          callId,
-          fromUserId: session.user.id,
-          fromName: `${session.user.firstName ?? ''} ${session.user.lastName ?? ''}`.trim() || undefined,
-          timestamp: Date.now(),
-        });
+        if (!isValidUserId(actualReceiverId)) {
+          return NextResponse.json({ error: 'Invalid receiverId' }, { status: 400 });
+        }
+        delivery = {
+          recipientId: actualReceiverId,
+          event: 'missed_call',
+          payload: {
+            callId,
+            fromUserId: session.user.id,
+            fromName: `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim(),
+            timestamp: now,
+          },
+        };
         break;
 
       default:
         return NextResponse.json({ error: 'Invalid signal type' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true });
+    await connectDB();
+    // Production disables automatic index creation, so prune stale signals here as
+    // well as declaring the TTL index on the model.
+    await RealtimeSignal.deleteMany({ expiresAt: { $lte: new Date(now) } });
+    await RealtimeSignal.create({
+      senderId: session.user.id,
+      recipientId: delivery.recipientId,
+      type: delivery.event,
+      payload: delivery.payload,
+      expiresAt: new Date(now + SIGNAL_TTL_MS),
+    });
 
+    if (delivery.event === 'incoming_call') {
+      const callerName = String(delivery.payload.callerName || 'Your care team');
+      const callType = String(delivery.payload.type || 'audio');
+      const clickAction = `/messages?userId=${encodeURIComponent(session.user.id)}`;
+      await sendNotificationToUser(delivery.recipientId, {
+        title: `Incoming ${callType} call`,
+        body: `${callerName} is calling you`,
+        data: {
+          type: 'incoming_call',
+          callId,
+          callerId: session.user.id,
+          conversationWith: session.user.id,
+          clickAction,
+        },
+        clickAction,
+        saveToDb: false,
+      });
+    }
+
+    // Fast path when a colocated/dedicated socket broadcaster is available.
+    // The Mongo queue above remains the delivery fallback across serverless hosts.
+    socketManager.sendToUser(delivery.recipientId, delivery.event, delivery.payload);
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error handling WebRTC signal:', error);
-    return NextResponse.json(
-      { error: 'Failed to process signal' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to process signal' }, { status: 500 });
   }
 }
 
-// GET /api/webrtc/signal - Get call status (optional)
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const callId = searchParams.get('callId');
+    await connectDB();
+    const signals = await RealtimeSignal.find({
+      recipientId: session.user.id,
+      deliveredAt: null,
+      expiresAt: { $gt: new Date() },
+    })
+      .sort({ createdAt: 1 })
+      .limit(50)
+      .lean();
 
-    if (!callId) {
-      return NextResponse.json({ error: 'Call ID required' }, { status: 400 });
+    if (signals.length > 0) {
+      await RealtimeSignal.updateMany(
+        { _id: { $in: signals.map((signal) => signal._id) }, deliveredAt: null },
+        { $set: { deliveredAt: new Date() } },
+      );
     }
 
-    // Here you could implement call status tracking in a database
-    // For now, we'll return a simple response
     return NextResponse.json({
-      callId,
-      status: 'active', // This would come from your call tracking system
-      timestamp: Date.now()
+      signals: signals.map((signal) => ({
+        id: String(signal._id),
+        type: signal.type,
+        data: signal.payload,
+        createdAt: signal.createdAt,
+      })),
+    }, {
+      headers: { 'Cache-Control': 'no-store' },
     });
-
   } catch (error) {
-    console.error('Error getting call status:', error);
-    return NextResponse.json(
-      { error: 'Failed to get call status' },
-      { status: 500 }
-    );
+    console.error('Error polling WebRTC signals:', error);
+    return NextResponse.json({ error: 'Failed to poll signals' }, { status: 500 });
   }
 }

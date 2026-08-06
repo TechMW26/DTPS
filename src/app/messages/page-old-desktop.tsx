@@ -86,6 +86,7 @@ import {
   getVoiceFileExtension,
   normalizeVoiceMimeType,
 } from "@/lib/voice-recording";
+import { uploadFileReliably } from "@/lib/client-upload";
 
 // Dynamic import for emoji picker to avoid SSR issues
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
@@ -798,7 +799,10 @@ function MessagesContent() {
     }
   };
 
-  const fetchMessages = async (conversationWith: string) => {
+  const fetchMessages = async (
+    conversationWith: string,
+    scrollAfterLoad = true,
+  ) => {
     try {
       // Fetch ALL messages for the conversation (no limit) to ensure no messages are missed
       const response = await fetch(
@@ -817,15 +821,15 @@ function MessagesContent() {
           ),
         );
 
-        // Scroll to bottom after messages are loaded
-        requestAnimationFrame(() => {
+        if (scrollAfterLoad) {
           requestAnimationFrame(() => {
-            scrollToBottom(true);
-            // Additional delayed scroll to catch images/media that load late
-            setTimeout(() => scrollToBottom(true), 100);
-            setTimeout(() => scrollToBottom(true), 300);
+            requestAnimationFrame(() => {
+              scrollToBottom(true);
+              setTimeout(() => scrollToBottom(true), 100);
+              setTimeout(() => scrollToBottom(true), 300);
+            });
           });
-        });
+        }
       } else if (response.status === 404) {
         // No messages found, start with empty array (this is normal for new conversations)
         setMessages([]);
@@ -836,6 +840,28 @@ function MessagesContent() {
       setMessages([]);
     }
   };
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const refreshVisibleMessages = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetchConversations();
+      if (selectedConversation) {
+        void fetchMessages(selectedConversation, false);
+      }
+    };
+
+    const interval = window.setInterval(refreshVisibleMessages, 8_000);
+    window.addEventListener("focus", refreshVisibleMessages);
+    document.addEventListener("visibilitychange", refreshVisibleMessages);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshVisibleMessages);
+      document.removeEventListener("visibilitychange", refreshVisibleMessages);
+    };
+  }, [session?.user?.id, selectedConversation]);
 
   const sendMessage = async (
     content: string,
@@ -867,7 +893,15 @@ function MessagesContent() {
         throw new Error(errorData?.error || "Failed to send message");
       }
 
-      // Don't add message locally - SSE will deliver it to avoid duplicates.
+      const sentMessage = (await response.json()) as Message;
+      if (sentMessage?._id) {
+        setMessages((previous) =>
+          previous.some((message) => message._id === sentMessage._id)
+            ? previous
+            : [...previous, sentMessage],
+        );
+        setTimeout(() => scrollToBottom(false), 30);
+      }
       setNewMessage("");
       setReplyingToMessage(null);
       fetchConversations();
@@ -895,21 +929,7 @@ function MessagesContent() {
 
     setUploadingFile(true);
     try {
-      // Upload file to server
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", "message");
-
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to upload file");
-      }
-
-      const uploadData = await uploadResponse.json();
+      const uploadData = await uploadFileReliably(file, "message");
 
       const attachment = {
         url: uploadData.url,
@@ -1031,25 +1051,9 @@ function MessagesContent() {
           { type: mimeType },
         );
 
-        const formData = new FormData();
-        formData.append("file", audioFile);
-        formData.append("type", "message");
-
         setUploadingFile(true);
         try {
-          const uploadResponse = await fetch("/api/upload", {
-            method: "POST",
-            body: formData,
-          });
-
-          if (!uploadResponse.ok) {
-            const errorData = await uploadResponse.json().catch(() => null);
-            throw new Error(
-              errorData?.error || "Failed to upload voice message",
-            );
-          }
-
-          const uploadData = await uploadResponse.json();
+          const uploadData = await uploadFileReliably(audioFile, "message");
           const attachment = {
             url: uploadData.url,
             fileId: uploadData.fileId,

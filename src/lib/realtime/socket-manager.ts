@@ -292,7 +292,7 @@ class SocketManager {
   // ── Private helpers ──────────────────────────────────────────────
 
   private dispatchRemote(payload: RemoteBroadcast): void {
-    const endpoint = process.env.NEXT_PUBLIC_SOCKET_URL?.replace(/\/$/, "");
+    const endpoint = process.env.SOCKET_BROADCAST_URL?.replace(/\/$/, "");
     const secret = process.env.SOCKET_INTERNAL_SECRET;
 
     if (!endpoint || !secret) {

@@ -13,6 +13,7 @@ import { useCallManager } from "@/hooks/useCallManager";
 import { CallInterface } from "@/components/call/CallInterface";
 import { useNotifications } from "@/hooks/useNotifications";
 import Image from "next/image";
+import { uploadFileReliably } from "@/lib/client-upload";
 
 interface ChatUser {
   _id: string;
@@ -307,21 +308,7 @@ export function ChatInterface({
         );
       }
 
-      const formData = new FormData();
-      formData.append("file", fileToUse);
-      formData.append("type", "message");
-
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        throw new Error(errorText || "Failed to upload media");
-      }
-
-      const uploadData = await uploadResponse.json();
+      const uploadData = await uploadFileReliably(fileToUse, "message");
 
       // Normalize MIME type: strip codec suffix so browsers don't reject
       const normalizedMimeType = (

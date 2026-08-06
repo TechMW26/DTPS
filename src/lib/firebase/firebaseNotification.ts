@@ -68,6 +68,35 @@ function mapNotificationType(dataType?: string): string {
     return typeMap[dataType || ''] || 'system';
 }
 
+function getAndroidNotificationChannel(dataType?: string): string {
+    switch (dataType) {
+        case 'new_message':
+        case 'message':
+            return 'dtps_messages';
+        case 'appointment':
+        case 'appointment_booked':
+        case 'appointment_cancelled':
+        case 'appointment_reminder':
+            return 'dtps_appointments';
+        case 'payment':
+        case 'payment_link':
+        case 'payment_link_created':
+            return 'dtps_payments';
+        case 'task_assigned':
+        case 'meal_plan':
+        case 'meal_plan_created':
+        case 'meal_plan_updated':
+        case 'meal_upcoming':
+        case 'meal_photo_prompt':
+            return 'dtps_tasks';
+        case 'call':
+        case 'incoming_call':
+            return 'dtps_calls';
+        default:
+            return 'dtps_notifications';
+    }
+}
+
 /**
  * Send a push notification to a specific user across all their registered devices
  * Also stores the notification in the database for viewing in the app
@@ -300,7 +329,7 @@ async function sendNotificationToTokens(
         android: {
             priority: 'high' as const,
             notification: {
-                channelId: 'dtps_notifications',
+                channelId: getAndroidNotificationChannel(notification.data?.type),
                 priority: 'high' as const,
                 defaultSound: true,
                 defaultVibrateTimings: true,

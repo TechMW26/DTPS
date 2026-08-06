@@ -75,6 +75,34 @@ export function usePushNotifications(
         });
     }, [enabled]);
 
+    // Keep registration state in sync when permission changes outside this hook
+    // (for example from the client Settings page or browser site controls).
+    useEffect(() => {
+        if (!enabled || !isSupported || !('permissions' in navigator)) return;
+
+        let disposed = false;
+        let permissionStatus: PermissionStatus | null = null;
+        const syncPermission = () => {
+            if (!disposed) setPermission(Notification.permission);
+        };
+
+        navigator.permissions.query({ name: 'notifications' }).then((status) => {
+            if (disposed) return;
+            permissionStatus = status;
+            status.addEventListener('change', syncPermission);
+        }).catch(() => { });
+
+        window.addEventListener('focus', syncPermission);
+        document.addEventListener('visibilitychange', syncPermission);
+
+        return () => {
+            disposed = true;
+            permissionStatus?.removeEventListener('change', syncPermission);
+            window.removeEventListener('focus', syncPermission);
+            document.removeEventListener('visibilitychange', syncPermission);
+        };
+    }, [enabled, isSupported]);
+
     // Set up foreground message listener
     useEffect(() => {
         if (!enabled || !isSupported || !isRegistered) {

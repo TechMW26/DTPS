@@ -29,6 +29,7 @@ import MealCompletionCelebration from '@/components/engagement/MealCompletionCel
 import { toast } from 'sonner';
 import { MEAL_TYPES, type MealTypeKey } from '@/lib/mealConfig';
 import { compressImage, validateImageFile } from '@/lib/imageCompression';
+import { uploadFileReliably } from '@/lib/client-upload';
 
 interface MealItem {
   id: string;
@@ -794,16 +795,20 @@ export default function UserPlanPage() {
     });
 
     try {
-      const formData = new FormData();
-      formData.append('mealId', mealId);
-      formData.append('date', format(selectedDate, 'yyyy-MM-dd'));
-      formData.append('mealType', mealType);
-      if (completionNotes) formData.append('notes', completionNotes);
-      formData.append('image', completionImage);
+      const uploadedImage = await uploadFileReliably(completionImage, 'progress');
 
       const response = await fetch('/api/client/meal-plan/complete', {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mealId,
+          date: format(selectedDate, 'yyyy-MM-dd'),
+          mealType,
+          notes: completionNotes,
+          imageUrl: uploadedImage.url,
+          imagePathname: uploadedImage.pathname,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
       });
 
       if (response.ok) {
@@ -856,7 +861,11 @@ export default function UserPlanPage() {
       const response = await fetch('/api/client/meal-plan/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mealId, date: format(selectedDate, 'yyyy-MM-dd') })
+        body: JSON.stringify({
+          mealId,
+          date: format(selectedDate, 'yyyy-MM-dd'),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        })
       });
       if (response.ok) {
         // Clear cache so next navigation/refresh gets fresh data

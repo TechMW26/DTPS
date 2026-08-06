@@ -87,102 +87,10 @@ export function MediaUploadModal({
     }
   };
 
-  // Compress video using canvas/mediarecorder (client-side)
+  // Preserve the original video. Canvas-based re-encoding drops audio and can
+  // truncate long clips; large files now upload directly to Vercel Blob.
   const compressVideo = async (file: File): Promise<File> => {
-    // For small videos (< 5MB), don't compress
-    if (file.size < 5 * 1024 * 1024) return file;
-
-    return new Promise((resolve, reject) => {
-      const video = document.createElement("video");
-      video.preload = "metadata";
-      video.muted = true;
-      video.playsInline = true;
-
-      video.onloadedmetadata = async () => {
-        try {
-          const canvas = document.createElement("canvas");
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            resolve(file); // Fallback to original
-            return;
-          }
-
-          // Scale down if video is too large (max 720p)
-          const maxHeight = 720;
-          let width = video.videoWidth;
-          let height = video.videoHeight;
-
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-
-          // Use MediaRecorder to re-encode
-          const stream = canvas.captureStream(24); // 24 fps
-          const mediaRecorder = new MediaRecorder(stream, {
-            mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-              ? "video/webm;codecs=vp9"
-              : "video/webm",
-            videoBitsPerSecond: 1500000, // 1.5 Mbps for decent quality
-          });
-
-          const chunks: Blob[] = [];
-          mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) chunks.push(e.data);
-          };
-
-          mediaRecorder.onstop = () => {
-            const blob = new Blob(chunks, { type: "video/webm" });
-            const compressedFile = new File(
-              [blob],
-              file.name.replace(/\.[^.]+$/, ".webm"),
-              {
-                type: "video/webm",
-                lastModified: Date.now(),
-              },
-            );
-            // Only use compressed if it's smaller
-            resolve(compressedFile.size < file.size ? compressedFile : file);
-          };
-
-          mediaRecorder.onerror = () => resolve(file);
-          mediaRecorder.start();
-
-          // Draw frames
-          video.currentTime = 0;
-          video.play();
-
-          const drawFrame = () => {
-            if (video.paused || video.ended) {
-              mediaRecorder.stop();
-              return;
-            }
-            ctx.drawImage(video, 0, 0, width, height);
-            requestAnimationFrame(drawFrame);
-          };
-
-          video.onplay = drawFrame;
-          video.onended = () => mediaRecorder.stop();
-
-          // Timeout for long videos (max 60 seconds of processing)
-          setTimeout(() => {
-            if (mediaRecorder.state === "recording") {
-              video.pause();
-              mediaRecorder.stop();
-            }
-          }, 60000);
-        } catch (err) {
-          console.error("Video compression error:", err);
-          resolve(file); // Fallback to original
-        }
-      };
-
-      video.onerror = () => resolve(file);
-      video.src = URL.createObjectURL(file);
-    });
+    return file;
   };
 
   const handleFileSelect = (file: File) => {

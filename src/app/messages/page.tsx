@@ -55,6 +55,7 @@ import {
   getMediaUrl,
   isViewableDocument,
 } from "@/lib/media";
+import { uploadFileReliably } from "@/lib/client-upload";
 
 interface Message {
   _id: string;
@@ -386,6 +387,26 @@ function ClientMessagesUI() {
     }
   };
 
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const refreshVisibleMessages = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetchConversationsQuiet();
+      if (selectedChat) void fetchMessages(selectedChat);
+    };
+
+    const interval = window.setInterval(refreshVisibleMessages, 8_000);
+    window.addEventListener("focus", refreshVisibleMessages);
+    document.addEventListener("visibilitychange", refreshVisibleMessages);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshVisibleMessages);
+      document.removeEventListener("visibilitychange", refreshVisibleMessages);
+    };
+  }, [session?.user?.id, selectedChat]);
+
   const markAsRead = async (userId: string) => {
     try {
       await fetch(`/api/messages/status`, {
@@ -453,9 +474,15 @@ function ClientMessagesUI() {
         throw new Error("Failed to send message");
       }
 
-      // Don't add to messages here - wait for SSE event to update
-      // This ensures the message appears through the real-time SSE handler
-      console.log("[SendMessage] Message sent, waiting for SSE update");
+      const sentMessage = (await response.json()) as Message;
+      if (sentMessage?._id) {
+        setMessages((previous) =>
+          previous.some((message) => message._id === sentMessage._id)
+            ? previous
+            : [...previous, sentMessage],
+        );
+        void fetchConversationsQuiet();
+      }
     } catch (error) {
       console.error("Error sending message:", error);
       setNewMessage(messageText); // Restore message on error
@@ -821,22 +848,7 @@ function ClientMessagesUI() {
 
     setUploadingFile(true);
     try {
-      // Upload file to server
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", "message");
-
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.error || "Failed to upload file");
-      }
-
-      const uploadData = await uploadResponse.json();
+      const uploadData = await uploadFileReliably(file, "message");
 
       // Determine message type based on file MIME type
       const type = file.type.startsWith("image/")
@@ -878,21 +890,7 @@ function ClientMessagesUI() {
 
     setUploadingFile(true);
     try {
-      // Upload image to server
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", "message");
-
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to upload image");
-      }
-
-      const uploadData = await uploadResponse.json();
+      const uploadData = await uploadFileReliably(file, "message");
 
       const attachment = {
         url: uploadData.url,
@@ -938,8 +936,15 @@ function ClientMessagesUI() {
         throw new Error("Failed to send message");
       }
 
-      // Don't fetch messages here - wait for SSE event to update
-      console.log("[SendAttachment] Message sent, waiting for SSE update");
+      const sentMessage = (await response.json()) as Message;
+      if (sentMessage?._id) {
+        setMessages((previous) =>
+          previous.some((message) => message._id === sentMessage._id)
+            ? previous
+            : [...previous, sentMessage],
+        );
+        void fetchConversationsQuiet();
+      }
     } catch (error) {
       console.error("Error sending attachment message:", error);
     }

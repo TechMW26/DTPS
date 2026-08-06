@@ -15,9 +15,10 @@ class MainViewController: UIViewController {
     private var loadingView: UIView!
     private var loadingSpinner: UIActivityIndicatorView!
 
+    private let appOrigin = "https://dtps.tech"
     private let appURL = "https://dtps.tech/user"
     private let allowedHosts = [
-        "dtps.tech",
+        "dtps.tech", "www.dtps.tech",
         // Razorpay payment gateway
         "razorpay.com", "api.razorpay.com", "checkout.razorpay.com",
         // UPI & bank redirect hosts used by Razorpay
@@ -319,7 +320,7 @@ class MainViewController: UIViewController {
         guard let url = note.object as? URL else { return }
         if webView != nil {
             var str = url.absoluteString
-            if url.scheme == "dtps" { str = "https://dtps.tech" + url.path }
+            if url.scheme == "dtps" { str = appOrigin + url.path }
             if let webURL = URL(string: str) { webView.load(URLRequest(url: webURL)) }
         } else {
             pendingDeepLink = url
@@ -382,9 +383,9 @@ extension MainViewController: WKNavigationDelegate {
         // redirect them to the client signin page instead.
         if let currentURL = webView.url,
            let host = currentURL.host?.lowercased(),
-           host.contains("dtps.tech"),
+           allowedHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }),
            currentURL.path.hasPrefix("/auth/signin") {
-            if let clientSignIn = URL(string: "https://dtps.tech/client-auth/signin") {
+            if let clientSignIn = URL(string: "\(appOrigin)/client-auth/signin") {
                 webView.load(URLRequest(url: clientSignIn))
                 return
             }

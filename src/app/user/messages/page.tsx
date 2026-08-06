@@ -65,6 +65,7 @@ import {
   isViewableDocument,
   normalizeMediaUrl,
 } from "@/lib/media";
+import { uploadFileReliably } from "@/lib/client-upload";
 
 interface MessageUser {
   _id: string;
@@ -603,36 +604,34 @@ export default function UserMessagesPage() {
         ),
       );
 
-      // Now schedule scrolls AFTER the messages have actually rendered
-      // Using nested rAF ensures we scroll after React commits the DOM update
-      requestAnimationFrame(() => {
+      if (showLoader) {
+        // Schedule initial scrolling after React commits the message list.
         requestAnimationFrame(() => {
-          const container = messagesContainerRef.current;
-          if (container) {
-            container.scrollTop = container.scrollHeight;
-          }
-          // Additional delayed scrolls to catch images/media that load late
-          setTimeout(() => {
-            if (messagesContainerRef.current) {
-              messagesContainerRef.current.scrollTop =
-                messagesContainerRef.current.scrollHeight;
-            }
-          }, 100);
-          setTimeout(() => {
-            if (messagesContainerRef.current) {
-              messagesContainerRef.current.scrollTop =
-                messagesContainerRef.current.scrollHeight;
-            }
-          }, 300);
-          setTimeout(() => {
-            if (messagesContainerRef.current) {
-              messagesContainerRef.current.scrollTop =
-                messagesContainerRef.current.scrollHeight;
-            }
-            isInitialLoadRef.current = false;
-          }, 500);
+          requestAnimationFrame(() => {
+            const container = messagesContainerRef.current;
+            if (container) container.scrollTop = container.scrollHeight;
+            setTimeout(() => {
+              if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTop =
+                  messagesContainerRef.current.scrollHeight;
+              }
+            }, 100);
+            setTimeout(() => {
+              if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTop =
+                  messagesContainerRef.current.scrollHeight;
+              }
+            }, 300);
+            setTimeout(() => {
+              if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTop =
+                  messagesContainerRef.current.scrollHeight;
+              }
+              isInitialLoadRef.current = false;
+            }, 500);
+          });
         });
-      });
+      }
 
       // Refresh unread counts in background (don't await - don't block rendering)
       refreshCounts().catch(() => {});
@@ -641,6 +640,30 @@ export default function UserMessagesPage() {
       setLoadingMessages(false);
     }
   };
+
+  // Socket delivery is best-effort across hosting boundaries. Keep the active
+  // chat and conversation list fresh when a realtime broadcast is delayed.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    const refreshVisibleMessages = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetchConversationsQuiet();
+      if (selectedConversation?._id) {
+        void fetchMessages(selectedConversation._id, false);
+      }
+    };
+
+    const messageInterval = window.setInterval(refreshVisibleMessages, 8_000);
+    window.addEventListener("focus", refreshVisibleMessages);
+    document.addEventListener("visibilitychange", refreshVisibleMessages);
+
+    return () => {
+      window.clearInterval(messageInterval);
+      window.removeEventListener("focus", refreshVisibleMessages);
+      document.removeEventListener("visibilitychange", refreshVisibleMessages);
+    };
+  }, [status, selectedConversation?._id]);
 
   const scrollToBottom = (instant = false) => {
     requestAnimationFrame(() => {
@@ -692,14 +715,23 @@ export default function UserMessagesPage() {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        const sentMessage = data?.message as Message | undefined;
+        if (sentMessage?._id) {
+          setMessages((previous) =>
+            previous.some((message) => message._id === sentMessage._id)
+              ? previous
+              : [...previous, sentMessage],
+          );
+          void fetchConversationsQuiet();
+          setTimeout(() => scrollToBottom(false), 30);
+        }
         if (replyToId) {
           setReplyingToMessage((current) =>
             current?._id === replyToId ? null : current,
           );
         }
-        // Message will appear via real-time SSE event
         inputRef.current?.focus();
-        // Debounced refresh via SSE handler
       } else {
         // Restore message on failure and show error from API
         setNewMessage(messageContent);
@@ -973,41 +1005,7 @@ export default function UserMessagesPage() {
     file: File,
     onProgress?: (progress: number) => void,
   ) => {
-    return new Promise<any>((resolve, reject) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", "message");
-
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/upload");
-
-      xhr.upload.onprogress = (event) => {
-        if (!event.lengthComputable) return;
-        const progress = Math.round((event.loaded / event.total) * 100);
-        onProgress?.(progress);
-      };
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            resolve(JSON.parse(xhr.responseText));
-          } catch {
-            reject(new Error("Invalid upload response"));
-          }
-          return;
-        }
-
-        try {
-          const err = JSON.parse(xhr.responseText);
-          reject(new Error(err.error || "Upload failed"));
-        } catch {
-          reject(new Error("Upload failed"));
-        }
-      };
-
-      xhr.onerror = () => reject(new Error("Network upload error"));
-      xhr.send(formData);
-    });
+    return uploadFileReliably(file, "message", onProgress);
   };
 
   const optimizeDocumentFile = async (file: File): Promise<File> => {
@@ -1102,16 +1100,9 @@ export default function UserMessagesPage() {
         }
       }
 
-      if (messageType === "video") {
-        file = await compressVideoFile(rawFile);
-
-        // Ensure large videos are compressed before upload
-        if (rawFile.size > 1024 * 1024 && file === rawFile) {
-          throw new Error(
-            "Video compression failed. Please try a shorter/lower-quality video.",
-          );
-        }
-      }
+      // Keep original video bytes so audio and the complete clip are preserved.
+      // Large videos bypass the serverless body limit via direct Blob upload.
+      if (messageType === "video") file = rawFile;
 
       if (messageType === "audio") {
         file = await compressAudioFile(rawFile, "audio");
@@ -1170,6 +1161,17 @@ export default function UserMessagesPage() {
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.error || "Failed to send media message");
+      }
+
+      const data = await response.json();
+      const sentMessage = data?.message as Message | undefined;
+      if (sentMessage?._id) {
+        setMessages((previous) =>
+          previous.some((message) => message._id === sentMessage._id)
+            ? previous
+            : [...previous, sentMessage],
+        );
+        void fetchConversationsQuiet();
       }
 
       setShowAttachMenu(false);

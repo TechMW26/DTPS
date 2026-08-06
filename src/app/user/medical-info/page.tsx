@@ -28,6 +28,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
 import { getMediaProxyUrl } from '@/lib/media';
+import { uploadFileReliably } from '@/lib/client-upload';
 
 interface MedicalReport {
   id?: string;
@@ -253,17 +254,8 @@ export default function MedicalInfoPage() {
 
     try {
       setUploading(true);
-      const formData = new FormData();
-      formData.append('file', pendingFile);
-      formData.append('type', 'medical-report');
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (res.ok) {
-        const result = await res.json();
+      const result = await uploadFileReliably(pendingFile, 'medical-report');
+      if (result.url) {
         const newReport: MedicalReport = {
           id: result.fileId || result._id || Date.now().toString(),
           fileName: reportName || pendingFile.name,
@@ -280,8 +272,6 @@ export default function MedicalInfoPage() {
         setPendingFile(null);
         setReportName("");
         setReportCategory("Medical Report");
-      } else {
-        toast.error("Failed to upload report");
       }
     } catch (error) {
       console.error("Error uploading file:", error);

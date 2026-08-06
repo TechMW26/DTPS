@@ -80,20 +80,19 @@ export async function GET(request: NextRequest) {
     // Convert effectiveUserId to ObjectId for proper comparison
     const userObjectId = new mongoose.Types.ObjectId(effectiveUserId);
 
-    // If dietitian, show their assigned clients AND clients they created
+    // Staff access follows current assignment only. Record creators must not
+    // retain access after a client is shifted to another care-team member.
     if (effectiveIsDietitian) {
       query.$or = [
         { assignedDietitian: userObjectId },
-        { assignedDietitians: userObjectId },
-        { 'createdBy.userId': userObjectId }
+        { assignedDietitians: userObjectId }
       ];
     }
-    // If health counselor, show their assigned clients AND clients they created
+    // If health counselor, show only currently assigned clients.
     else if (effectiveIsHealthCounselor) {
       query.$or = [
         { assignedHealthCounselor: userObjectId },
-        { assignedHealthCounselors: userObjectId },
-        { 'createdBy.userId': userObjectId }
+        { assignedHealthCounselors: userObjectId }
       ];
     }
     // If viewAs was used but role didn't match dietitian/HC, still filter by that user
@@ -103,8 +102,7 @@ export async function GET(request: NextRequest) {
         { assignedDietitian: userObjectId },
         { assignedDietitians: userObjectId },
         { assignedHealthCounselor: userObjectId },
-        { assignedHealthCounselors: userObjectId },
-        { 'createdBy.userId': userObjectId }
+        { assignedHealthCounselors: userObjectId }
       ];
     }
     // Admin (without viewAs) can see all clients (no additional filter needed)

@@ -133,7 +133,8 @@ export async function POST(request: NextRequest) {
 
     const fileType = type as keyof typeof allowedTypes;
     const normalizedMimeType = (file.type || "").toLowerCase();
-    const extension = (file.name || "").split(".").pop()?.toLowerCase() || "";
+    const rawExtension = (file.name || "").split(".").pop()?.toLowerCase() || "";
+    const extension = rawExtension ? `.${rawExtension}` : "";
 
     // Message uploads: broad acceptance via MIME prefix + extension fallback
     const messageAllowedExtensions = new Set([

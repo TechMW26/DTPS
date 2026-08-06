@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { Send, Paperclip, Smile, Mic, X, ImageIcon } from "lucide-react";
 import { MediaUploadModal } from "./MediaUploadModal";
 import { VoiceRecorder } from "./VoiceRecorder";
-import { toast } from "sonner";
+import { uploadFileReliably } from "@/lib/client-upload";
 
 // Dynamic import for emoji picker to avoid SSR issues
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
@@ -164,47 +164,7 @@ export function ChatInput({
         });
       }
 
-      // Upload file to server
-      const formData = new FormData();
-      formData.append("file", fileForUpload);
-      formData.append("type", "message");
-
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        // Try to parse error message from response
-        let errorMessage = "Failed to upload file";
-        try {
-          const errorData = await uploadResponse.json();
-          errorMessage = errorData.error || errorMessage;
-
-          // Show downtime toast for media service outages
-          if (errorData.code === "MEDIA_SERVICE_DOWN") {
-            toast.error("Media uploads temporarily unavailable", {
-              description:
-                "Our media service is experiencing downtime. Your chats and messages still work — media uploads will resume shortly.",
-              duration: 8000,
-            });
-          }
-        } catch {
-          // If response isn't JSON, use status text
-          if (uploadResponse.status === 413) {
-            errorMessage = "File is too large. Please select a smaller file.";
-          } else if (uploadResponse.status === 400) {
-            errorMessage = "Invalid file type. Please select a supported file.";
-          } else if (uploadResponse.status === 401) {
-            errorMessage = "Session expired. Please refresh and try again.";
-          } else if (uploadResponse.status >= 500) {
-            errorMessage = "Server error. Please try again later.";
-          }
-        }
-        throw new Error(errorMessage);
-      }
-
-      const uploadData = await uploadResponse.json();
+      const uploadData = await uploadFileReliably(fileForUpload, "message");
 
       // Create attachment data
       const attachment = {
@@ -344,11 +304,6 @@ export function ChatInput({
         });
       }
 
-      // Upload audio file
-      const formData = new FormData();
-      formData.append("file", audioFile);
-      formData.append("type", "message");
-
       // Diagnostic: log what we're about to upload
       console.log("[ChatInput] Uploading voice recording:", {
         fileName: audioFile.name,
@@ -360,22 +315,7 @@ export function ChatInput({
         voiceExtension,
       });
 
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        console.error(
-          "[ChatInput] Upload failed:",
-          uploadResponse.status,
-          errorText,
-        );
-        throw new Error("Failed to upload voice message");
-      }
-
-      const uploadData = await uploadResponse.json();
+      const uploadData = await uploadFileReliably(audioFile, "message");
 
       console.log("[ChatInput] Upload succeeded:", {
         url: uploadData.url,

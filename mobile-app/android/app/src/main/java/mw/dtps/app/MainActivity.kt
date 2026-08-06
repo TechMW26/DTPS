@@ -105,9 +105,11 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
-        private const val APP_URL = "https://dtps.tech/user"
+        private const val APP_ORIGIN = "https://dtps.tech"
+        private const val APP_URL = "$APP_ORIGIN/user"
         private const val SPLASH_URL = "file:///android_asset/splash.html"
-        private val ALLOWED_HOSTS = listOf("dtps.tech", "ik.imagekit.io", "docs.google.com")
+        private val APP_HOSTS = listOf("dtps.tech", "www.dtps.tech")
+        private val ALLOWED_HOSTS = APP_HOSTS + listOf("ik.imagekit.io", "docs.google.com")
     }
 
     // File picker launcher for gallery
@@ -618,13 +620,13 @@ class MainActivity : AppCompatActivity() {
         if (candidate.isEmpty()) return null
 
         val absoluteUrl = if (candidate.startsWith("/")) {
-            "https://dtps.tech$candidate"
+            "$APP_ORIGIN$candidate"
         } else {
             candidate
         }
         val parsed = Uri.parse(absoluteUrl)
         val host = parsed.host?.lowercase(Locale.ROOT) ?: return null
-        if (parsed.scheme != "https" || (host != "dtps.tech" && !host.endsWith(".dtps.tech"))) {
+        if (parsed.scheme != "https" || APP_HOSTS.none { host == it || host.endsWith(".$it") }) {
             Log.w(TAG, "Rejected untrusted notification URL")
             return null
         }

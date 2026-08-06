@@ -42,6 +42,9 @@ interface UseNativeAppReturn {
 }
 
 async function registerTokenWithBackend(token: string, deviceType: 'android' | 'ios' | 'web'): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 10_000);
+
   try {
     const response = await fetch('/api/fcm/token', {
       method: 'POST',
@@ -53,12 +56,22 @@ async function registerTokenWithBackend(token: string, deviceType: 'android' | '
         deviceType,
         deviceInfo: `${deviceType} WebView App`,
       }),
+      signal: controller.signal,
     });
-    const result = await response.json();
-    return result.success;
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const result = await response.json().catch(() => null);
+    return result?.success === true;
   } catch (error) {
-    console.error('Error registering FCM token with backend:', error);
+    if (!(error instanceof DOMException && error.name === 'AbortError')) {
+      console.error('Error registering FCM token with backend:', error);
+    }
     return false;
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
@@ -69,7 +82,10 @@ export function useNativeApp(): UseNativeAppReturn {
   const [fcmToken, setFcmToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [tokenRegistered, setTokenRegistered] = useState(false);
+  const [registrationRetryTick, setRegistrationRetryTick] = useState(0);
   const tokenRegistrationAttempted = useRef(false);
+  const tokenRegistrationAttempts = useRef(0);
+  const tokenRegistrationRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tokenCheckInterval = useRef<NodeJS.Timeout | null>(null);
   const notificationHandlerRef = useRef<((notification: ForegroundNotification) => void) | null>(null);
   
@@ -188,9 +204,14 @@ export function useNativeApp(): UseNativeAppReturn {
       if (token && token.length > 0) {
         console.log('Received FCM token from native app');
         setFcmToken(token);
-        // Reset registration flag to allow re-registration with new token
         tokenRegistrationAttempted.current = false;
+        tokenRegistrationAttempts.current = 0;
+        if (tokenRegistrationRetryTimer.current) {
+          clearTimeout(tokenRegistrationRetryTimer.current);
+          tokenRegistrationRetryTimer.current = null;
+        }
         setTokenRegistered(false);
+        setRegistrationRetryTick((value) => value + 1);
       }
     };
 
@@ -240,6 +261,8 @@ export function useNativeApp(): UseNativeAppReturn {
 
   // Register token with backend when user is authenticated and token is available
   useEffect(() => {
+    let cancelled = false;
+
     const registerToken = async () => {
       if (
         status === 'authenticated' &&
@@ -253,19 +276,71 @@ export function useNativeApp(): UseNativeAppReturn {
         console.log('Registering FCM token with backend...');
         
         const success = await registerTokenWithBackend(fcmToken, deviceType);
+        if (cancelled) return;
+
         if (success) {
+          tokenRegistrationAttempts.current = 0;
           setTokenRegistered(true);
           console.log('FCM token registered successfully');
         } else {
-          // Reset flag to allow retry
           tokenRegistrationAttempted.current = false;
-          console.error('Failed to register FCM token');
+          tokenRegistrationAttempts.current += 1;
+          const retryDelay = Math.min(
+            30_000,
+            1_000 * (2 ** Math.min(tokenRegistrationAttempts.current - 1, 5))
+          );
+
+          tokenRegistrationRetryTimer.current = setTimeout(() => {
+            tokenRegistrationRetryTimer.current = null;
+            setRegistrationRetryTick((value) => value + 1);
+          }, retryDelay);
+          console.warn(`Failed to register FCM token; retrying in ${retryDelay / 1000}s`);
         }
       }
     };
 
     registerToken();
-  }, [status, session?.user?.id, fcmToken, isNativeApp, deviceType, tokenRegistered]);
+
+    return () => {
+      cancelled = true;
+      if (!tokenRegistered) {
+        tokenRegistrationAttempted.current = false;
+      }
+      if (tokenRegistrationRetryTimer.current) {
+        clearTimeout(tokenRegistrationRetryTimer.current);
+        tokenRegistrationRetryTimer.current = null;
+      }
+    };
+  }, [status, session?.user?.id, fcmToken, isNativeApp, deviceType, tokenRegistered, registrationRetryTick]);
+
+  // Retry immediately when connectivity returns or the app becomes active.
+  useEffect(() => {
+    if (!isNativeApp || tokenRegistered || !fcmToken) return;
+
+    const retryNow = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (tokenRegistrationRetryTimer.current) {
+        clearTimeout(tokenRegistrationRetryTimer.current);
+        tokenRegistrationRetryTimer.current = null;
+      }
+      tokenRegistrationAttempted.current = false;
+      setRegistrationRetryTick((value) => value + 1);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') retryNow();
+    };
+
+    window.addEventListener('online', retryNow);
+    window.addEventListener('focus', retryNow);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('online', retryNow);
+      window.removeEventListener('focus', retryNow);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [fcmToken, isNativeApp, tokenRegistered]);
 
   const requestNotificationPermission = useCallback(() => {
     if (typeof window !== 'undefined' && window.NativeApp) {

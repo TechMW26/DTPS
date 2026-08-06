@@ -39,6 +39,7 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
 
   const unsubsRef = useRef<Array<() => void>>([]);
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+  const deliveredCallKeysRef = useRef<Set<string>>(new Set());
 
   // Store latest callbacks in refs to avoid stale closures.
   const onMessageRef = useRef(options.onMessage);
@@ -52,6 +53,41 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
     onUserOfflineRef.current = options.onUserOffline;
     onTypingRef.current = options.onTyping;
   });
+
+  const deliverCallEvent = useCallback((eventType: string, data: any) => {
+    const eventKey = `${eventType}:${String(data?.callId || '')}:${String(data?.timestamp || '')}`;
+    if (deliveredCallKeysRef.current.has(eventKey)) return;
+    deliveredCallKeysRef.current.add(eventKey);
+    if (deliveredCallKeysRef.current.size > 200) {
+      deliveredCallKeysRef.current = new Set(Array.from(deliveredCallKeysRef.current).slice(-100));
+    }
+
+    onMessageRef.current?.({ type: eventType, data, timestamp: Date.now() });
+
+    if (eventType === 'incoming_call') {
+      try {
+        NotificationService.getInstance().showCallNotification(
+          data.callerName || 'Incoming call',
+          (data.type as 'audio' | 'video') || 'audio',
+          data.callerAvatar,
+          data.callId,
+          {
+            callerId: data.callerId,
+            offer: data.offer,
+            conversationId: data.conversationId,
+          }
+        );
+      } catch (error) {
+        console.warn('Failed to show call notification', error);
+      }
+    } else if (eventType === 'missed_call') {
+      notifyMissedCall({
+        callId: data.callId,
+        fromUserId: data.fromUserId || data.from || data.callerId,
+        fromName: data.fromName || data.callerName,
+      });
+    }
+  }, []);
 
   const connect = useCallback(() => {
     if (!session?.user?.id) return;
@@ -125,32 +161,7 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
     // ── Calls / WebRTC ────────────────────────────────────────────
     for (const evt of CALL_EVENTS) {
       unsubs.push(socketClient.on(evt, (data: any) => {
-        onMessageRef.current?.({ type: evt, data, timestamp: Date.now() });
-
-        if (evt === 'incoming_call') {
-          try {
-            const ns = NotificationService.getInstance();
-            ns.showCallNotification(
-              data.callerName || 'Incoming call',
-              (data.type as 'audio' | 'video') || 'audio',
-              data.callerAvatar,
-              data.callId,
-              {
-                callerId: data.callerId,
-                offer: data.offer,
-                conversationId: data.conversationId,
-              }
-            );
-          } catch (e) {
-            console.warn('Failed to show call notification', e);
-          }
-        } else if (evt === 'missed_call') {
-          notifyMissedCall({
-            callId: data.callId,
-            fromUserId: data.fromUserId || data.from || data.callerId,
-            fromName: data.fromName || data.callerName,
-          });
-        }
+        deliverCallEvent(evt, data);
       }));
     }
 
@@ -201,7 +212,7 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
         } catch (_) { }
       }, 30000);
     }
-  }, [session?.user?.id]);
+  }, [session?.user?.id, deliverCallEvent]);
 
   const disconnect = useCallback(() => {
     unsubsRef.current.forEach((u) => u());
@@ -222,6 +233,69 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
     }
     return () => disconnect();
   }, [session?.user?.id, connect, disconnect]);
+
+  // Mongo-backed signaling keeps calls functional when the web app and the
+  // persistent Socket.io server are hosted on different platforms.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    let disposed = false;
+    let polling = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleNextPoll = (delay = 1_250) => {
+      if (!disposed) pollTimer = setTimeout(pollSignals, delay);
+    };
+
+    const pollSignals = async () => {
+      if (disposed || polling) return;
+      if (document.visibilityState === 'hidden') {
+        scheduleNextPoll(3_000);
+        return;
+      }
+
+      polling = true;
+      try {
+        const response = await fetch('/api/webrtc/signal', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const result = await response.json();
+          for (const signal of Array.isArray(result?.signals) ? result.signals : []) {
+            if (signal?.type && signal?.data) {
+              deliverCallEvent(signal.type, signal.data);
+            }
+          }
+        }
+      } catch {
+        // Socket delivery may still be active; retry polling quietly.
+      } finally {
+        polling = false;
+        scheduleNextPoll();
+      }
+    };
+
+    const pollNow = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (pollTimer) clearTimeout(pollTimer);
+      pollTimer = null;
+      void pollSignals();
+    };
+
+    void pollSignals();
+    window.addEventListener('online', pollNow);
+    window.addEventListener('focus', pollNow);
+    document.addEventListener('visibilitychange', pollNow);
+
+    return () => {
+      disposed = true;
+      if (pollTimer) clearTimeout(pollTimer);
+      window.removeEventListener('online', pollNow);
+      window.removeEventListener('focus', pollNow);
+      document.removeEventListener('visibilitychange', pollNow);
+    };
+  }, [session?.user?.id, deliverCallEvent]);
 
   // Send typing indicator via socket (with REST fallback)
   const sendTyping = useCallback(

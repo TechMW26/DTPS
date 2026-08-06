@@ -7,7 +7,8 @@ import Message from "@/lib/db/models/Message";
 import User from "@/lib/db/models/User";
 import { Notification } from "@/lib/db/models";
 import { UserRole } from "@/types";
-import { parseISO, startOfDay, isToday, isValid } from "date-fns";
+import { parseISO, startOfDay, isValid } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { uploadToBlob } from "@/lib/storage/blob-storage";
 import { compressImageServer } from "@/lib/imageCompressionServer";
 import { MEAL_TYPE_KEYS, type MealTypeKey } from "@/lib/mealConfig";
@@ -18,6 +19,7 @@ import {
 } from "@/lib/realtime/broadcast-counts";
 import { clearCacheByTag } from "@/lib/api/utils";
 import { logActivity } from "@/lib/utils/activityLogger";
+import { isPublicMediaUrl } from "@/lib/media";
 
 // Map camelCase meal types to canonical UPPERCASE keys
 const CAMELCASE_TO_CANONICAL: Record<string, MealTypeKey> = {
@@ -254,6 +256,9 @@ export async function POST(request: NextRequest) {
     let mealType: string = "";
     let notes: string = "";
     let imageFile: File | null = null;
+    let imageUrl: string = "";
+    let imagePathname: string = "";
+    let clientTimeZone: string = "Asia/Kolkata";
 
     if (contentType.includes("multipart/form-data")) {
       // FormData request (with image)
@@ -263,6 +268,7 @@ export async function POST(request: NextRequest) {
       mealType = (formData.get("mealType") as string) || "";
       notes = (formData.get("notes") as string) || "";
       imageFile = formData.get("image") as File | null;
+      clientTimeZone = (formData.get("timeZone") as string) || "Asia/Kolkata";
     } else {
       // JSON request (without image - for backwards compatibility)
       const body = await request.json();
@@ -270,6 +276,9 @@ export async function POST(request: NextRequest) {
       date = body.date || "";
       mealType = body.mealType || "";
       notes = body.notes || "";
+      imageUrl = body.imageUrl || "";
+      imagePathname = body.imagePathname || "";
+      clientTimeZone = body.timeZone || "Asia/Kolkata";
     }
 
     // Parse the meal ID to extract plan ID and meal info
@@ -281,8 +290,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid date" }, { status: 400 });
     }
 
-    // *** IMPORTANT: Only allow completion for today's date ***
-    if (!isToday(requestedDate)) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: clientTimeZone }).format();
+    } catch {
+      clientTimeZone = "Asia/Kolkata";
+    }
+
+    // Compare calendar dates in the client's timezone. Comparing in the
+    // server's IST timezone rejected valid evening completions abroad.
+    const requestedDateKey = date || formatInTimeZone(requestedDate, clientTimeZone, "yyyy-MM-dd");
+    const clientTodayKey = formatInTimeZone(new Date(), clientTimeZone, "yyyy-MM-dd");
+    if (requestedDateKey !== clientTodayKey) {
       return NextResponse.json(
         {
           error:
@@ -338,8 +356,8 @@ export async function POST(request: NextRequest) {
       : [];
 
     // Persist the optional meal image in the configured media store.
-    let imagePath: string | undefined;
-    let imageKitFileId: string | undefined;
+    let imagePath: string | undefined = isPublicMediaUrl(imageUrl) ? imageUrl : undefined;
+    let imageKitFileId: string | undefined = imagePath ? imagePathname || undefined : undefined;
     if (imageFile) {
       try {
         // Generate unique filename
