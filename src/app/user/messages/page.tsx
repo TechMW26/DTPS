@@ -654,7 +654,7 @@ export default function UserMessagesPage() {
       }
     };
 
-    const messageInterval = window.setInterval(refreshVisibleMessages, 8_000);
+    const messageInterval = window.setInterval(refreshVisibleMessages, 30_000);
     window.addEventListener("focus", refreshVisibleMessages);
     document.addEventListener("visibilitychange", refreshVisibleMessages);
 
@@ -2092,8 +2092,8 @@ export default function UserMessagesPage() {
                                     className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                                     onClick={() => openLightbox(resolvedUrl)}
                                     style={{
-                                      maxWidth: "220px",
-                                      maxHeight: "260px",
+                                      width: "220px",
+                                      aspectRatio: "4 / 3",
                                       objectFit: "cover",
                                     }}
                                     onError={() =>

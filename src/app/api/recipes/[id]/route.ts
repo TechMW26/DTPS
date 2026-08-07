@@ -154,22 +154,14 @@ export async function GET(
 
     // Add flat nutrition values
     const flatNutrition = {
-      calories: recipeData.calories || 0,
-      protein: recipeData.protein || 0,
-      carbs: recipeData.carbs || 0,
-      fat: recipeData.fat || 0
+      calories: normalizeNutritionValue(recipeData.calories),
+      protein: normalizeNutritionValue(recipeData.protein),
+      carbs: normalizeNutritionValue(recipeData.carbs),
+      fat: normalizeNutritionValue(recipeData.fat)
     };
     recipeData.flatNutrition = flatNutrition;
-
-    // Build nutrition object for detail page compatibility
-    if (!recipeData.nutrition) {
-      recipeData.nutrition = {
-        calories: recipeData.calories || 0,
-        protein: recipeData.protein || 0,
-        carbs: recipeData.carbs || 0,
-        fat: recipeData.fat || 0,
-      };
-    }
+    // Flat fields are canonical. Always overwrite stale legacy nested values.
+    recipeData.nutrition = flatNutrition;
 
     // Normalize array fields to ensure they render safely (handles string values from AI)
     recipeData.dietaryRestrictions = normalizeToArray(recipeData.dietaryRestrictions);
@@ -322,10 +314,11 @@ export async function PUT(
 
     // Transform nutrition if provided
     if (data.nutrition && typeof data.nutrition === 'object') {
-      data.calories = data.nutrition.calories || 0;
-      data.protein = data.nutrition.protein || 0;
-      data.carbs = data.nutrition.carbs || 0;
-      data.fat = data.nutrition.fat || 0;
+      data.calories = normalizeNutritionValue(data.nutrition.calories);
+      data.protein = normalizeNutritionValue(data.nutrition.protein);
+      data.carbs = normalizeNutritionValue(data.nutrition.carbs);
+      data.fat = normalizeNutritionValue(data.nutrition.fat);
+      delete data.nutrition;
     }
 
     // Parse servings: extract number for calculations, keep full string for display
@@ -340,15 +333,30 @@ export async function PUT(
       data.totalTime = (data.prepTime || recipe.prepTime || 0) + (data.cookTime || recipe.cookTime || 0);
     }
 
-    // Clear cache for this recipe
-    clearCacheByTag('recipes');
-
-    const updated = await Recipe.findByIdAndUpdate(id, data, {
+    const updated = await Recipe.findByIdAndUpdate(id, {
+      $set: data,
+      $unset: { nutrition: 1 },
+    }, {
       new: true,
-      runValidators: true
+      runValidators: true,
+      // Legacy rows may contain a nested `nutrition` field that no longer
+      // exists in the schema; strict:false allows the explicit $unset.
+      strict: false,
     });
 
-    return NextResponse.json({ success: true, recipe: updated });
+    await clearCacheByTag('recipes');
+
+    const updatedData = updated?.toObject() as Record<string, any> | undefined;
+    if (updatedData) {
+      updatedData.nutrition = {
+        calories: normalizeNutritionValue(updatedData.calories),
+        protein: normalizeNutritionValue(updatedData.protein),
+        carbs: normalizeNutritionValue(updatedData.carbs),
+        fat: normalizeNutritionValue(updatedData.fat),
+      };
+    }
+
+    return NextResponse.json({ success: true, recipe: updatedData });
   } catch (error: any) {
     console.error('Error updating recipe:', error?.message || error);
     return NextResponse.json({ error: 'Failed to update recipe', details: error?.message }, { status: 500 });

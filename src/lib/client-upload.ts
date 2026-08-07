@@ -31,6 +31,7 @@ export interface UploadedFileResult {
 }
 
 const SERVER_UPLOAD_LIMIT = 4 * 1024 * 1024;
+const UPLOAD_RETRY_DELAYS_MS = [250, 750];
 
 const folders: Record<ClientUploadType, string> = {
   avatar: "profile",
@@ -146,6 +147,33 @@ async function directUpload(
   };
 }
 
+function uploadStatus(error: unknown): number | undefined {
+  return (error as Error & { status?: number })?.status;
+}
+
+function shouldRetryUpload(error: unknown): boolean {
+  const status = uploadStatus(error);
+  return status === undefined || status === 408 || status === 429 || status >= 500;
+}
+
+async function withUploadRetries<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= UPLOAD_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryUpload(error) || attempt === UPLOAD_RETRY_DELAYS_MS.length) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, UPLOAD_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+
+  throw lastError;
+}
+
 export async function uploadFileReliably(
   file: File,
   type: ClientUploadType,
@@ -154,16 +182,16 @@ export async function uploadFileReliably(
   if (!file.size) throw new Error("The selected file is empty.");
 
   if (file.size > SERVER_UPLOAD_LIMIT) {
-    return directUpload(file, type, onProgress);
+    return withUploadRetries(() => directUpload(file, type, onProgress));
   }
 
   try {
-    const result = await serverUpload(file, type);
+    const result = await withUploadRetries(() => serverUpload(file, type));
     onProgress?.(100);
     return result;
   } catch (error) {
-    const status = (error as Error & { status?: number }).status;
+    const status = uploadStatus(error);
     if (status === 400 || status === 401 || status === 403) throw error;
-    return directUpload(file, type, onProgress);
+    return withUploadRetries(() => directUpload(file, type, onProgress));
   }
 }

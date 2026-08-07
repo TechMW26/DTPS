@@ -4,6 +4,7 @@ import request from 'supertest';
 import { getServerSession } from 'next-auth';
 import User from '@/lib/db/models/User';
 import Recipe from '@/lib/db/models/Recipe';
+import mongoose from 'mongoose';
 import { UserRole } from '@/types';
 import { entityId } from '../utils/assertions';
 import {
@@ -114,12 +115,22 @@ describe('height + recipe CRUD integrations (supertest)', () => {
             expect(createResponse.body?.recipe?._id).toBeTruthy();
             createdRecipeId = String(createResponse.body.recipe._id);
 
+            // Simulate a legacy AI-generated row that still carries stale
+            // nested nutrition alongside the canonical flat fields.
+            await Recipe.collection.updateOne(
+                { _id: new mongoose.Types.ObjectId(createdRecipeId) },
+                { $set: { nutrition: { calories: 99, protein: 1, carbs: 2, fat: 3 } } }
+            );
+
             const updateDeleteServer = createRouteTestServer(async (nextRequest) => {
                 if (nextRequest.method === 'PUT') {
                     return recipeByIdRoute.PUT(nextRequest, { params: Promise.resolve({ id: createdRecipeId }) });
                 }
                 if (nextRequest.method === 'DELETE') {
                     return recipeByIdRoute.DELETE(nextRequest, { params: Promise.resolve({ id: createdRecipeId }) });
+                }
+                if (nextRequest.method === 'GET') {
+                    return recipeByIdRoute.GET(nextRequest, { params: Promise.resolve({ id: createdRecipeId }) });
                 }
                 return new Response(JSON.stringify({ error: 'Method not allowed' }), {
                     status: 405,
@@ -156,9 +167,24 @@ describe('height + recipe CRUD integrations (supertest)', () => {
                 expect(updateResponse.body?.success).toBe(true);
                 expect(updateResponse.body?.recipe?.name).toBe('Supertest Recipe Updated');
                 expect(updateResponse.body?.recipe?.image).toBe('https://ik.imagekit.io/test-bucket/recipes/supertest-updated.jpg');
+                expect(updateResponse.body?.recipe?.nutrition).toEqual({
+                    calories: 300,
+                    protein: 13,
+                    carbs: 37,
+                    fat: 10,
+                });
 
-                const updatedRecipe = await Recipe.findById(createdRecipeId).lean();
+                const updatedRecipe: any = await Recipe.collection.findOne({
+                    _id: new mongoose.Types.ObjectId(createdRecipeId),
+                });
                 expect(updatedRecipe?.image).toBe('https://ik.imagekit.io/test-bucket/recipes/supertest-updated.jpg');
+                expect(updatedRecipe?.calories).toBe(300);
+                expect(updatedRecipe?.nutrition).toBeUndefined();
+
+                const getResponse = await request(updateDeleteServer)
+                    .get(`/api/recipes/${createdRecipeId}`);
+                expect(getResponse.status).toBe(200);
+                expect(getResponse.body?.recipe?.nutrition?.calories).toBe(300);
 
                 const deleteResponse = await request(updateDeleteServer)
                     .delete(`/api/recipes/${createdRecipeId}`);

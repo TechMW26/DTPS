@@ -115,10 +115,13 @@ export async function GET(request: NextRequest) {
 
     // Build query
     const query: any = {};
+    const andConstraints: Record<string, unknown>[] = [];
     if (templateType) {
       if (templateType === 'plan') {
         // include legacy documents with no templateType field
-        query.$or = [{ templateType: 'plan' }, { templateType: { $exists: false } }];
+        andConstraints.push({
+          $or: [{ templateType: 'plan' }, { templateType: { $exists: false } }]
+        });
       } else {
         query.templateType = templateType;
       }
@@ -155,11 +158,13 @@ export async function GET(request: NextRequest) {
 
     // Filter by primary goal - match category or targetAudience.goals
     if (primaryGoal && primaryGoal !== 'all') {
-      query.$or = [
-        { category: primaryGoal },
-        { 'goals.primaryGoal': primaryGoal },
-        { 'targetAudience.goals': primaryGoal }
-      ];
+      andConstraints.push({
+        $or: [
+          { category: primaryGoal },
+          { 'goals.primaryGoal': primaryGoal },
+          { 'targetAudience.goals': primaryGoal }
+        ]
+      });
     }
 
     if (dietaryRestrictions) {
@@ -178,6 +183,10 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       query.$text = { $search: search };
+    }
+
+    if (andConstraints.length > 0) {
+      query.$and = andConstraints;
     }
 
     // Sort options
@@ -200,7 +209,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Generate cache key based on query params (include session user for per-user caching)
-    const cacheKey = `meal-plan-templates:${sessionUserId}:${templateType || ''}:${category || ''}:${search || ''}:${sortBy}:${skip}:${limit}`;
+    const cacheKey = `meal-plan-templates:${sessionUserId}:${JSON.stringify(query)}:${sortBy}:${skip}:${limit}`;
 
     const { templates, total, categories } = await withCache(
       cacheKey,

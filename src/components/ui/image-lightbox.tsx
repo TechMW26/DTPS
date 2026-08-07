@@ -109,13 +109,13 @@ export default function ImageLightbox({ isOpen, onClose, src, alt = 'Image' }: I
       </div>
 
       <div
-        className="max-w-[90vw] max-h-[90vh] overflow-auto"
+        className="max-w-[95vw] max-h-[95vh] overflow-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <img
           src={getMediaProxyUrl(src)}
           alt={alt}
-          className="max-w-full max-h-[90vh] object-contain"
+          className="max-h-[90vh] w-auto object-contain"
           style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
         />
       </div>

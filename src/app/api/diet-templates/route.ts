@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get('sortBy') || 'newest';
     const requestedLimit = Number.parseInt(searchParams.get('limit') || '10', 10);
     const requestedPage = Number.parseInt(searchParams.get('page') || '1', 10);
-    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 10;
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 1000) : 10;
     const page = Number.isFinite(requestedPage) ? Math.max(requestedPage, 1) : 1;
     const requestedSkip = Number.parseInt(searchParams.get('skip') || '', 10);
     const skip = Number.isFinite(requestedSkip) ? Math.max(requestedSkip, 0) : (page - 1) * limit;

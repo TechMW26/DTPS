@@ -69,6 +69,10 @@ type ImageKitFileLite = {
   name?: string;
   createdAt?: string;
   url?: string;
+  filePath?: string;
+  size?: number;
+  mimeType?: string;
+  uploadType?: string;
 };
 
 function toTime(value: unknown): number {
@@ -172,9 +176,9 @@ async function listClientFiles(clientId: string) {
     const files = await FileModel.find({
       uploadedBy: clientId,
     })
-      .select("filename originalName imageKitUrl imageKitFileId mimeType size")
+      .select("filename originalName imageKitUrl imageKitFileId mimeType size type")
       .sort({ createdAt: -1 })
-      .limit(100)
+      .limit(200)
       .lean();
 
     const result: ImageKitFileLite[] = files.map((f: any) => ({
@@ -184,6 +188,7 @@ async function listClientFiles(clientId: string) {
       filePath: f.imageKitFileId,
       size: f.size,
       mimeType: f.mimeType,
+      uploadType: f.type,
       createdAt: (f as any).createdAt,
     }));
 
@@ -351,20 +356,17 @@ export async function GET(
 
         try {
           if (transformationFiles.length > 0) {
+            // Filter by upload type (transformation or progress-photo) instead of broken name prefix
             const clientTransformationFiles = transformationFiles.filter(
-              (file) => file.name?.startsWith(clientId),
+              (file) =>
+                file.uploadType === 'transformation' ||
+                file.uploadType === 'progress-photo' ||
+                // Fallback: also match old ImageKit naming convention for legacy files
+                file.name?.startsWith(clientId),
             );
 
             transformationImages = clientTransformationFiles.map((file) => {
-              const nameParts = file.name?.split("-") || [];
               let extractedDate = file.createdAt || new Date().toISOString();
-
-              if (nameParts.length >= 2) {
-                const timestampPart = nameParts[1]?.split(".")[0];
-                if (timestampPart && !isNaN(Number(timestampPart))) {
-                  extractedDate = new Date(Number(timestampPart)).toISOString();
-                }
-              }
 
               const dateObj = new Date(extractedDate);
               const formattedDate = dateObj.toLocaleDateString("en-IN", {

@@ -238,9 +238,10 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
   };
 
   // Generate Premium HTML template matching the exact NutriBalance design
-  const generateHTMLContent = useCallback((showMacros: boolean = true) => {
+  const generateHTMLContent = useCallback((showMacros: boolean = true, logoDataUri?: string) => {
     const today = format(new Date(), 'MMMM d, yyyy');
     const planRef = `NP-${format(new Date(), 'yyyy')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const logoSrc = logoDataUri || 'https://dtps.tech/icons/icon-192x192.png';
 
     // Sort days by actual date if available
     const sortedDays = [...weekPlan].sort((a, b) => {
@@ -265,20 +266,20 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Weekly Nutrition Plan — DTPS Nutrition</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', sans-serif; background: #e7e5e4; color: #1c1917; padding: 32px 16px; }
+    body { font-family: 'Poppins', sans-serif; background: #e7e5e4; color: #1c1917; padding: 32px 16px; }
     .page { max-width: 860px; margin: 0 auto; background: #fff; border-radius: 2px; box-shadow: 0 1px 30px rgba(0,0,0,0.08); overflow: hidden; }
     .accent-top { height: 6px; background: linear-gradient(to right, #10b981, #14b8a6, #06b6d4); border-radius: 2px 2px 0 0; }
     .accent-bottom { height: 4px; background: linear-gradient(to right, #10b981, #14b8a6, #06b6d4); }
 
     .header { padding: 40px 48px 32px; }
-    .logo-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-    .logo-icon { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #10b981, #0d9488); display: flex; align-items: center; justify-content: center; }
-    .logo-icon svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .brand { font-size: 11px; text-transform: uppercase; letter-spacing: 0.2em; color: #047857; font-weight: 600; }
-    .title { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 600; color: #292524; margin-top: 12px; letter-spacing: -0.02em; }
+    .logo-row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+    .logo-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .logo-icon img { width: 40px; height: 40px; border-radius: 8px; }
+    .brand { font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em; color: #047857; font-weight: 600; }
+    .title { font-family: 'Poppins', sans-serif; font-size: 28px; font-weight: 700; color: #292524; margin-top: 12px; letter-spacing: -0.02em; }
     .ref { color: #a8a29e; font-size: 13px; margin-top: 4px; }
     .export-badge { display: inline-block; background: ${showMacros ? '#ecfdf5' : '#eff6ff'}; color: ${showMacros ? '#059669' : '#2563eb'}; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 500; margin-top: 8px; }
 
@@ -292,7 +293,7 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     .day-header { padding: 24px 48px 20px; display: flex; align-items: center; gap: 12px; }
     .day-icon { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #10b981, #14b8a6); display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .day-icon svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .day-name { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 600; color: #292524; letter-spacing: -0.02em; }
+    .day-name { font-family: 'Poppins', sans-serif; font-size: 20px; font-weight: 700; color: #292524; letter-spacing: -0.02em; }
     .day-name .day-num { color: #a8a29e; font-size: 16px; }
     .day-date { font-size: 12px; color: #a8a29e; font-weight: 500; margin-top: -2px; }
 
@@ -439,7 +440,7 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
   <!-- HEADER -->
   <div class="header">
     <div class="logo-row">
-      <div class="logo-icon"><img src="https://dtps.tech/icons/icon-96x96.png" alt="DTPS" style="width: 27px; height: 26px; border-radius: 4px;" /></div>
+      <div class="logo-icon"><img src="${logoSrc}" alt="DTPS" /></div>
       <span class="brand">DTPS Nutrition</span>
     </div>
     <h1 class="title"> Nutrition Plan</h1>
@@ -746,47 +747,128 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     setOpen(false);
   }, [generateCSVContent, clientName]);
 
+  // Fetch the DTPS app icon as a base64 data URI (avoid CORS issues in iframe/html2canvas)
+  const fetchLogoDataUri = useCallback(async (): Promise<string> => {
+    const fallback = 'https://dtps.tech/icons/icon-192x192.png';
+    try {
+      const resp = await fetch('/icons/icon-192x192.png');
+      if (!resp.ok) return fallback;
+      const blob = await resp.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return fallback;
+    }
+  }, []);
+
   const handleExportPDF = useCallback(async () => {
     setIsExporting(true);
-    const host = document.createElement('div');
+    let iframe: HTMLIFrameElement | null = null;
     try {
-      const [{ jsPDF }] = await Promise.all([import('jspdf'), import('html2canvas')]);
-      const html = generateHTMLContent(exportFor === 'dietitian');
-      const parsed = new DOMParser().parseFromString(html, 'text/html');
+      const [{ jsPDF }, html2canvasModule, logoDataUri] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+        fetchLogoDataUri(),
+      ]);
+      const html2canvas = html2canvasModule.default || html2canvasModule;
 
-      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:white;z-index:-1;';
-      host.innerHTML = `${Array.from(parsed.head.querySelectorAll('style')).map((style) => style.outerHTML).join('')}${parsed.body.innerHTML}`;
-      document.body.appendChild(host);
+      const html = generateHTMLContent(exportFor === 'dietitian', logoDataUri);
 
-      await Promise.all(Array.from(host.querySelectorAll('img')).map((image) => {
-        if (image.complete) return Promise.resolve();
-        return new Promise<void>((resolve) => {
-          image.onload = () => resolve();
-          image.onerror = () => resolve();
-        });
-      }));
+      // Use iframe for complete CSS isolation — prevents Tailwind v4 oklch() inheritance
+      iframe = document.createElement('iframe');
+      iframe.style.cssText =
+        'position:fixed;left:-9999px;top:0;width:794px;height:600px;border:none;z-index:-1;';
+      document.body.appendChild(iframe);
 
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-      await pdf.html(host, {
-        margin: [8, 8, 8, 8],
-        autoPaging: 'text',
-        width: 194,
-        windowWidth: 794,
-        html2canvas: { scale: 0.7, useCORS: true, logging: false },
+      const doc = iframe.contentDocument || iframe.contentWindow!.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      // Wait for the iframe to fully render and images to load
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          const imgs = doc.querySelectorAll('img');
+          const allLoaded = Array.from(imgs).every((img) => img.complete);
+          if (allLoaded && doc.body.scrollHeight > 0) {
+            resolve();
+          } else {
+            setTimeout(check, 100);
+          }
+        };
+        // Start checking after a short delay for initial render
+        setTimeout(check, 300);
       });
 
+      // Get actual rendered content height
+      const bodyEl = doc.body;
+      const contentHeight = bodyEl.scrollHeight;
+      // Expand iframe to fit content so html2canvas captures everything
+      iframe.style.height = `${contentHeight + 50}px`;
+
+      // Give browser a frame to reflow
+      await new Promise((r) => setTimeout(r, 100));
+
+      const scale = 2;
+      const contentWidthPx = 794;
+      const fullCanvas = await html2canvas(bodyEl, {
+        scale,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        width: contentWidthPx,
+        windowWidth: contentWidthPx,
+        backgroundColor: '#ffffff',
+      } as any);
+
+      // A4: 210mm × 297mm. contentWidth=794px → pageHeight ≈ 1123px at 1x
+      const pageHeight1x = Math.round(contentWidthPx * (297 / 210));
+      const margin1x = 40;
+      const usableHeight1x = pageHeight1x - margin1x * 2;
+      const sliceHeightPx = usableHeight1x * scale;
+      const canvasHeight = fullCanvas.height;
+      const totalPages = Math.ceil(canvasHeight / sliceHeightPx);
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      const pageW = 210, pageH = 297, marginMm = 8;
+      const usableW = pageW - marginMm * 2;
+      const usableH = pageH - marginMm * 2;
+
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) pdf.addPage();
+        const sy = i * sliceHeightPx;
+        const sh = Math.min(sliceHeightPx, canvasHeight - sy);
+
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = contentWidthPx * scale;
+        pageCanvas.height = sh;
+        const ctx = pageCanvas.getContext('2d')!;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(fullCanvas, 0, sy, fullCanvas.width, sh, 0, 0, pageCanvas.width, sh);
+
+        const imgData = pageCanvas.toDataURL('image/jpeg', 0.92);
+        const imgMmHeight = usableH * (sh / sliceHeightPx);
+        pdf.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgMmHeight);
+      }
+
       const suffix = exportFor === 'dietitian' ? 'dietitian' : 'client';
-      pdf.save(`diet-plan-${clientName?.replace(/\s+/g, '-') || 'export'}-${suffix}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+      pdf.save(
+        `diet-plan-${clientName?.replace(/\s+/g, '-') || 'export'}-${suffix}-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
+      );
       toast.success('PDF downloaded successfully');
       setOpen(false);
     } catch (error) {
       console.error('PDF export failed:', error);
-      toast.error('PDF generation failed. Please try Print Preview.');
+      toast.error('PDF generation failed. Please try Print Preview instead.');
     } finally {
-      host.remove();
+      iframe?.remove();
       setIsExporting(false);
     }
-  }, [generateHTMLContent, clientName, exportFor]);
+  }, [generateHTMLContent, clientName, exportFor, fetchLogoDataUri]);
 
   const handlePrint = useCallback(() => {
     const showMacros = exportFor === 'dietitian';

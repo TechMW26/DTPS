@@ -102,6 +102,12 @@ import DocumentsSection from "@/components/clientDashboard/DocumentsSection";
 import HistorySection from "@/components/clientDashboard/HistorySection";
 import TasksSection from "@/components/clientDashboard/TasksSection";
 import ImageLightbox from "@/components/ui/image-lightbox";
+import { uploadFileReliably } from "@/lib/client-upload";
+import {
+  getPreferredVoiceMimeType,
+  getVoiceFileExtension,
+  normalizeVoiceMimeType,
+} from "@/lib/voice-recording";
 
 interface ClientData {
   _id: string;
@@ -1209,50 +1215,25 @@ export default function ClientDetailPage() {
   const handleMediaUpload = async (file: File) => {
     try {
       setUploadingMedia(true);
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", "note-attachment");
+      const data = await uploadFileReliably(file, "note-attachment");
+      let mediaType: "image" | "video" | "audio" = "image";
+      if (file.type.startsWith("video/")) mediaType = "video";
+      else if (file.type.startsWith("audio/")) mediaType = "audio";
 
-      const response = await fetchWithRetry("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        let mediaType: "image" | "video" | "audio" = "image";
-        if (file.type.startsWith("video/")) mediaType = "video";
-        else if (file.type.startsWith("audio/")) mediaType = "audio";
-
-        const attachment = {
-          type: mediaType,
-          url: data.url,
-          filename: file.name,
-          mimeType: file.type,
-          size: file.size,
-        };
-
-        setNewNote((prev) => ({
-          ...prev,
-          attachments: [...(prev.attachments || []), attachment],
-        }));
-        toast.success("Media uploaded successfully");
-      } else {
-        // Try to get error message from response
-        let errorMsg = "Failed to upload media";
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.error || errorMsg;
-        } catch {
-          // If JSON parsing fails, use default error
-        }
-        console.error("Upload error:", errorMsg);
-        if (file.type.startsWith("audio/")) {
-          toast.error(`Failed to upload audio: ${errorMsg}`);
-        } else {
-          toast.error(`Failed to upload media: ${errorMsg}`);
-        }
-      }
+      setNewNote((prev) => ({
+        ...prev,
+        attachments: [
+          ...(prev.attachments || []),
+          {
+            type: mediaType,
+            url: data.url,
+            filename: data.filename || file.name,
+            mimeType: data.type || file.type,
+            size: data.size || file.size,
+          },
+        ],
+      }));
+      toast.success("Media uploaded successfully");
     } catch (error) {
       console.error("Error uploading media:", error);
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
@@ -1988,16 +1969,8 @@ export default function ClientDetailPage() {
         const [basicResponse, lifestyleResponse, medicalResponse] =
           await Promise.allSettled([
             basicRequest,
-            fetchWithRetry(`/api/users/${params.clientId}/lifestyle`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(lifestylePayload),
-            }),
-            fetchWithRetry(`/api/users/${params.clientId}/medical`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(medicalPayload),
-            }),
+            lifestyleRequest,
+            medicalRequest,
           ]);
 
         if (basicResponse.status === "fulfilled") {
@@ -3798,7 +3771,16 @@ export default function ClientDetailPage() {
                                     await navigator.mediaDevices.getUserMedia({
                                       audio: true,
                                     });
-                                  const recorder = new MediaRecorder(stream);
+                                  const preferredMimeType =
+                                    getPreferredVoiceMimeType((mimeType) =>
+                                      MediaRecorder.isTypeSupported(mimeType),
+                                    );
+                                  const recorder = preferredMimeType
+                                    ? new MediaRecorder(stream, {
+                                        mimeType: preferredMimeType,
+                                        audioBitsPerSecond: 64000,
+                                      })
+                                    : new MediaRecorder(stream);
                                   const chunks: Blob[] = [];
 
                                   recorder.ondataavailable = (e) => {
@@ -3822,8 +3804,13 @@ export default function ClientDetailPage() {
                                         return;
                                       }
 
+                                      const mimeType = normalizeVoiceMimeType(
+                                        recorder.mimeType ||
+                                          preferredMimeType ||
+                                          "audio/webm",
+                                      );
                                       const audioBlob = new Blob(chunks, {
-                                        type: "audio/webm",
+                                        type: mimeType,
                                       });
 
                                       if (audioBlob.size === 0) {
@@ -3839,10 +3826,12 @@ export default function ClientDetailPage() {
                                         return;
                                       }
 
+                                      const extension =
+                                        getVoiceFileExtension(mimeType);
                                       const file = new File(
                                         [audioBlob],
-                                        `recording-${Date.now()}.webm`,
-                                        { type: "audio/webm" },
+                                        `recording-${Date.now()}.${extension}`,
+                                        { type: mimeType },
                                       );
 
                                       stream

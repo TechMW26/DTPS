@@ -116,7 +116,7 @@ export function ImageModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-black/90 border-none">
+      <DialogContent className="max-w-[95vw] h-[95vh] p-0 bg-black/95 border-none">
         {/* Header */}
         <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4 bg-linear-to-b from-black/50 to-transparent">
           <div className="text-white">
@@ -216,7 +216,7 @@ export function ImageModal({
               src={getCacheBustedUrl()}
               alt={filename || "Image"}
               className={cn(
-                "max-w-full max-h-full object-contain transition-transform duration-200",
+                "max-h-[90vh] w-auto object-contain transition-transform duration-200",
                 isDragging ? "cursor-grabbing" : "cursor-grab",
               )}
               style={{

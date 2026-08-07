@@ -56,6 +56,11 @@ import {
   isViewableDocument,
 } from "@/lib/media";
 import { uploadFileReliably } from "@/lib/client-upload";
+import {
+  getPreferredVoiceMimeType,
+  getVoiceFileExtension,
+  normalizeVoiceMimeType,
+} from "@/lib/voice-recording";
 
 interface Message {
   _id: string;
@@ -170,10 +175,16 @@ function ClientMessagesUI() {
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
+  const recordingStartedAtRef = useRef(0);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -181,6 +192,24 @@ function ClientMessagesUI() {
   // Refs to avoid stale closures in SSE callbacks
   const selectedChatRef = useRef<string | null>(null);
   const fetchConversationsQuietRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.ondataavailable = null;
+        mediaRecorderRef.current.onstop = null;
+        if (mediaRecorderRef.current.state === "recording") {
+          mediaRecorderRef.current.stop();
+        }
+      }
+      recordingStreamRef.current
+        ?.getTracks()
+        .forEach((track) => track.stop());
+    };
+  }, []);
 
   useEffect(() => {
     if (status === "loading") return;
@@ -230,8 +259,9 @@ function ClientMessagesUI() {
     }
   }, [selectedChat, conversations]);
 
+  // Only auto-scroll for new messages if user is near bottom (don't yank scroll)
   useEffect(() => {
-    scrollToBottom();
+    scrollToBottom(false);
   }, [messages]);
 
   // Keep refs updated for SSE callbacks (avoids stale closures)
@@ -271,8 +301,8 @@ function ClientMessagesUI() {
             }
             return [...prev, newMsg];
           });
-          // Scroll to bottom after adding new message
-          setTimeout(() => scrollToBottom(), 100);
+          // Scroll to bottom after adding new message (only if near bottom)
+          setTimeout(() => scrollToBottom(false), 100);
         }
 
         // Update ONLY the specific conversation in the list (not a full refetch)
@@ -396,7 +426,7 @@ function ClientMessagesUI() {
       if (selectedChat) void fetchMessages(selectedChat);
     };
 
-    const interval = window.setInterval(refreshVisibleMessages, 8_000);
+    const interval = window.setInterval(refreshVisibleMessages, 30_000);
     window.addEventListener("focus", refreshVisibleMessages);
     document.addEventListener("visibilitychange", refreshVisibleMessages);
 
@@ -947,30 +977,133 @@ function ClientMessagesUI() {
       }
     } catch (error) {
       console.error("Error sending attachment message:", error);
+      throw error;
     }
   };
 
   const startRecording = async () => {
-    try {
-      // Request microphone permission
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (isRecording || sending || uploadingFile || !selectedChat) return;
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      alert("Voice recording is not supported in this browser.");
+      return;
+    }
 
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredMimeType = getPreferredVoiceMimeType((mimeType) =>
+        MediaRecorder.isTypeSupported(mimeType),
+      );
+      const recorder = preferredMimeType
+        ? new MediaRecorder(stream, {
+            mimeType: preferredMimeType,
+            audioBitsPerSecond: 64000,
+          })
+        : new MediaRecorder(stream);
+
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      recordingStartedAtRef.current = Date.now();
       setIsRecording(true);
       setRecordingTime(0);
 
-      // Start timer
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        const duration = Math.max(
+          1,
+          Math.round((Date.now() - recordingStartedAtRef.current) / 1000),
+        );
+        const mimeType = normalizeVoiceMimeType(
+          recorder.mimeType || preferredMimeType || "audio/webm",
+        );
+        const audioBlob = new Blob(recordingChunksRef.current, {
+          type: mimeType,
+        });
+
+        recordingChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        recordingStreamRef.current
+          ?.getTracks()
+          .forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        setIsRecording(false);
+
+        if (!audioBlob.size) {
+          setRecordingTime(0);
+          alert("No audio was captured. Please record again.");
+          return;
+        }
+
+        const extension = getVoiceFileExtension(mimeType);
+        const audioFile = new File(
+          [audioBlob],
+          `voice_${Date.now()}.${extension}`,
+          { type: mimeType },
+        );
+
+        setUploadingFile(true);
+        try {
+          const uploadData = await uploadFileReliably(audioFile, "message");
+          await sendMessageWithAttachment(
+            "voice",
+            [
+              {
+                url: uploadData.url,
+                fileId: uploadData.fileId,
+                filename: uploadData.filename || audioFile.name,
+                size: uploadData.size || audioFile.size,
+                mimeType: normalizeVoiceMimeType(uploadData.type || mimeType),
+                duration,
+              },
+            ],
+            "Voice message",
+          );
+        } catch (error) {
+          console.error("Voice message failed:", error);
+          alert(
+            error instanceof Error
+              ? error.message
+              : "Failed to send voice message.",
+          );
+        } finally {
+          setUploadingFile(false);
+          setRecordingTime(0);
+        }
+      };
+
+      recorder.onerror = () => {
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
+        }
+        recordingStreamRef.current
+          ?.getTracks()
+          .forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+        setRecordingTime(0);
+        alert("Recording failed. Please try again.");
+      };
+
+      recorder.start(250);
       recordingIntervalRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
-
-      // In production, use MediaRecorder API to record audio
-      alert(
-        "Voice recording started!\n\nPress stop to send voice message.\n\nFeature will be fully implemented with MediaRecorder API.",
-      );
-
-      // Stop tracks
-      stream.getTracks().forEach((track) => track.stop());
     } catch (error) {
+      recordingStreamRef.current
+        ?.getTracks()
+        .forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      mediaRecorderRef.current = null;
+      setIsRecording(false);
+      setRecordingTime(0);
       alert(
         "Microphone access denied.\n\nPlease allow microphone access to send voice messages.",
       );
@@ -984,19 +1117,30 @@ function ClientMessagesUI() {
       recordingIntervalRef.current = null;
     }
 
-    setIsRecording(false);
-
-    if (recordingTime > 0) {
-      alert(
-        `Voice message recorded!\n\nDuration: ${recordingTime} seconds\n\nWill be sent as audio message.`,
-      );
+    const recorder = mediaRecorderRef.current;
+    if (recorder?.state === "recording") {
+      recorder.requestData();
+      recorder.stop();
+    } else if (!recorder) {
+      setIsRecording(false);
+      setRecordingTime(0);
     }
-
-    setRecordingTime(0);
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const isNearBottom = () => {
+    const container = messagesScrollRef.current;
+    if (!container) return true;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+  };
+
+  const scrollToBottom = (force = false) => {
+    if (force || isNearBottom()) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    // Reset the user-scrolled-up flag when forced
+    if (force) {
+      userScrolledUpRef.current = false;
+    }
   };
 
   const formatMessageTime = (date: string) => {
@@ -1159,6 +1303,7 @@ function ClientMessagesUI() {
 
         {/* Messages Area - WhatsApp Style */}
         <div
+          ref={messagesScrollRef}
           className="flex-1 overflow-y-auto px-2 sm:px-3 py-3 sm:py-4 space-y-2"
           style={{
             backgroundImage:
@@ -1230,7 +1375,13 @@ function ClientMessagesUI() {
                                     message.attachments[0],
                                   )}
                                   alt="Shared image"
-                                  className="rounded-lg max-w-full max-h-64 h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                  className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                  style={{
+                                    width: "250px",
+                                    aspectRatio: "4 / 3",
+                                    objectFit: "cover",
+                                    maxHeight: "256px",
+                                  }}
                                   onClick={() =>
                                     setPreviewImage(
                                       getMediaUrl(message.attachments?.[0]) ||
@@ -1482,14 +1633,14 @@ function ClientMessagesUI() {
           >
             <button
               onClick={() => setPreviewImage(null)}
-              className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors z-10"
             >
               <X className="h-6 w-6 text-white" />
             </button>
             <img
               src={getMediaProxyUrl(previewImage)}
               alt="Preview"
-              className="max-w-full max-h-full object-contain rounded-lg"
+              className="max-h-[90vh] w-auto max-w-[95vw] object-contain rounded-lg"
               onClick={(e) => e.stopPropagation()}
             />
           </div>
@@ -1529,7 +1680,7 @@ function ClientMessagesUI() {
                 onClick={stopRecording}
                 className="px-2 sm:px-3 py-1 bg-white text-red-500 rounded-full text-xs sm:text-sm font-medium active:scale-95 transition-all"
               >
-                Stop
+                Send
               </button>
             </div>
           )}
@@ -1587,7 +1738,7 @@ function ClientMessagesUI() {
               {newMessage.trim() ? (
                 <Send className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-white" />
               ) : isRecording ? (
-                <div className="h-4.5 w-4.5 sm:h-5 sm:w-5 bg-white rounded-sm" />
+                <Send className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-white" />
               ) : (
                 <Mic className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-white" />
               )}

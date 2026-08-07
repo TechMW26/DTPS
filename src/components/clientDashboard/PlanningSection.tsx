@@ -1824,8 +1824,16 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         set.add(mealDate);
       }
 
+      // Also include ALL dates in the plan range as fallback (fixes first/last day not appearing)
+      const current = new Date(planStartDate);
+      const end = new Date(planEndDate);
+      while (current <= end) {
+        set.add(format(current, 'yyyy-MM-dd'));
+        current.setDate(current.getDate() + 1);
+      }
+
       return set;
-    }, [plan?.meals]);
+    }, [plan?.meals, planStartDate, planEndDate]);
 
     // Fetch freeze info when dialog opens
     const fetchFreezeInfo = async () => {

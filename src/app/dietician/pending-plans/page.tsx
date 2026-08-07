@@ -110,7 +110,9 @@ export default function PendingPlansPage() {
   const fetchPendingPlans = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/dashboard/pending-plans');
+      const response = await fetch('/api/dashboard/pending-plans', {
+        cache: 'no-store',
+      });
       if (response.ok) {
         const text = await response.text();
         if (text) {

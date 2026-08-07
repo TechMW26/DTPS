@@ -6,8 +6,7 @@ import User from '@/lib/db/models/User';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { UserRole } from '@/types';
-import { addDays, differenceInDays, format } from 'date-fns';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { differenceInDays } from 'date-fns';
 
 // GET /api/dashboard/pending-plans - Get clients with pending meal plans
 export async function GET(request: NextRequest) {
@@ -26,7 +25,9 @@ export async function GET(request: NextRequest) {
     today.setHours(0, 0, 0, 0);
 
     // Build query based on user role
-    let clientQuery: any = { role: UserRole.CLIENT, status: 'active' };
+    // Pending work must not disappear merely because a paying client is marked
+    // inactive/paused. Only suspended accounts are excluded.
+    let clientQuery: any = { role: UserRole.CLIENT, status: { $ne: 'suspended' } };
 
     if (session.user.role === UserRole.DIETITIAN) {
       clientQuery.$or = [
@@ -53,47 +54,30 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all clients
-    const clients = await withCache(
-      `dashboard:pending-plans:${JSON.stringify(clientQuery)}`,
-      async () => await User.find(clientQuery)
-        .select('_id firstName lastName email phone clientId assignedDietitian assignedDietitians')
-      ,
-      { ttl: 120000, tags: ['dashboard'] }
-    );
+    const clients = await User.find(clientQuery)
+      .select('_id firstName lastName email phone clientId assignedDietitian assignedDietitians')
+      .lean();
 
     const clientIds = clients.map((c: any) => c._id);
 
     // Get all meal plans for these clients (active and completed)
-    const mealPlans = await withCache(
-      `dashboard:pending-plans:${JSON.stringify({
+    const [mealPlans, purchases] = await Promise.all([
+      ClientMealPlan.find({
         clientId: { $in: clientIds },
-        status: { $in: ['active', 'completed'] }
-      })}`,
-      async () => await ClientMealPlan.find({
-        clientId: { $in: clientIds },
-        status: { $in: ['active', 'completed'] }
+        status: { $in: ['active', 'paused', 'completed'] },
+        isDeleted: { $ne: true },
       })
         .select('clientId name startDate endDate duration status purchaseId')
         .sort({ startDate: 1 })
-      ,
-      { ttl: 120000, tags: ['dashboard'] }
-    );
-
-    // Get all purchases for these clients
-    const purchases = await withCache(
-      `dashboard:pending-plans:${JSON.stringify({
+        .lean(),
+      UnifiedPayment.find({
         client: { $in: clientIds },
-        status: { $in: ['active', 'paid'] }
-      })}`,
-      async () => await UnifiedPayment.find({
-        client: { $in: clientIds },
-        status: { $in: ['active', 'paid'] }
+        status: { $in: ['active', 'paid', 'completed'] }
       })
         .select('client planName durationDays durationLabel expectedStartDate expectedEndDate mealPlanCreated daysUsed parentPaymentId status createdAt')
         .sort({ createdAt: -1 })
-      ,
-      { ttl: 120000, tags: ['dashboard'] }
-    );
+        .lean(),
+    ]);
 
     // Group meal plans by client
     const mealPlansByClient: Record<string, any[]> = {};
@@ -129,8 +113,11 @@ export async function GET(request: NextRequest) {
         (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
       );
 
-      // Get the latest/active purchase - this has the correct durationDays
-      const latestPurchase = clientPurchases[0]; // Already sorted by createdAt desc
+      // Prefer the newest purchase that still has unallocated days. Falling
+      // back to the newest record preserves the previous response contract.
+      const latestPurchase = clientPurchases.find((purchase: any) =>
+        Math.max(0, Number(purchase.durationDays || 0) - Number(purchase.daysUsed || 0)) > 0
+      ) || clientPurchases[0];
 
       // Calculate total purchased days from the purchase record
       const totalPurchasedDays = latestPurchase.durationDays || 0;
@@ -315,9 +302,21 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // If all meal plans are completed and the last plan ended more than 30 days ago,
+      // the client's program is truly finished — don't show as pending regardless of purchase counters.
+      const allPlansCompleted = sortedMealPlans.length > 0 &&
+        sortedMealPlans.every((p: any) => p.status === 'completed');
+      const lastPlanEndedLongAgo = lastPlan &&
+        differenceInDays(today, new Date(lastPlan.endDate)) > 30;
+      const purchaseExpectedEndPassed = latestPurchase.expectedEndDate &&
+        differenceInDays(today, new Date(latestPurchase.expectedEndDate)) > 30;
+      const programTrulyFinished = allPlansCompleted &&
+        (lastPlanEndedLongAgo || purchaseExpectedEndPassed);
+
       // CASE 4: Has pending days to create (general case - show all clients with pending days)
       // This covers: upcoming plans, no current plan, any situation where more meal plans need to be created
-      if (pendingDaysToCreate > 0) {
+      // Skip clients whose program is truly finished (all plans completed + ended > 30 days ago)
+      if (pendingDaysToCreate > 0 && !programTrulyFinished) {
         // Check if already added in previous cases
         const alreadyAdded = pendingPlans.some(p => p.clientId.toString() === clientId);
 

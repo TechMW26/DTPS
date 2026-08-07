@@ -28,7 +28,7 @@ export async function GET(
       async () => await MealPlanTemplate.findById(id)
         .populate('createdBy', 'firstName lastName')
       ,
-      { ttl: 120000, tags: ['meal_plan_templates'] }
+      { ttl: 120000, tags: ['meal-plan-templates'] }
     );
     if (!template) {
       return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
@@ -68,7 +68,7 @@ export async function PUT(
     const existingTemplate = await withCache(
       `meal-plan-templates:id:${JSON.stringify(id)}`,
       async () => await MealPlanTemplate.findById(id),
-      { ttl: 120000, tags: ['meal_plan_templates'] }
+      { ttl: 120000, tags: ['meal-plan-templates'] }
     );
     if (!existingTemplate) {
       return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
@@ -154,7 +154,7 @@ export async function PATCH(
     const existingTemplate = await withCache(
       `meal-plan-templates:id:${JSON.stringify(id)}`,
       async () => await MealPlanTemplate.findById(id),
-      { ttl: 120000, tags: ['meal_plan_templates'] }
+      { ttl: 120000, tags: ['meal-plan-templates'] }
     );
     if (!existingTemplate) {
       return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
@@ -184,6 +184,10 @@ export async function PATCH(
 
     await existingTemplate.save();
     await existingTemplate.populate('createdBy', 'firstName lastName');
+
+    clearCacheByTag('meal-plan-templates');
+    clearCacheByTag('meal_plan_templates');
+    serverCache.invalidate('meal-plan-templates:');
 
     return NextResponse.json({
       success: true,

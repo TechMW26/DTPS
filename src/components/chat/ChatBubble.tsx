@@ -281,10 +281,15 @@ export function ChatBubble({
                   <img
                     src={getImageSrc()}
                     alt={attachment.filename}
-                    className="rounded-lg max-w-full h-auto transition-opacity group-hover:opacity-90"
+                    className="rounded-lg max-w-full transition-opacity group-hover:opacity-90"
                     onError={handleImageError}
                     onLoad={handleImageLoad}
-                    style={{ maxHeight: "300px", maxWidth: "250px" }}
+                    style={{
+                      width: "250px",
+                      aspectRatio: "4 / 3",
+                      objectFit: "cover",
+                      maxHeight: "300px",
+                    }}
                     crossOrigin="anonymous"
                     referrerPolicy="no-referrer"
                   />

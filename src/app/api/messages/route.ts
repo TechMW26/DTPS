@@ -92,37 +92,26 @@ export async function GET(request: NextRequest) {
 
       const otherRole = String(otherUser.role || '').toLowerCase();
 
-      // Validate access based on roles
+      // Validate access based on roles — only block if cross-role restriction is violated
+      // Allow viewing historical conversations even when no longer assigned
       if (sessionRole === 'dietitian') {
-        // Dietitian can only message their assigned clients OR other staff
         if (otherRole === 'client') {
           const isAssigned =
             otherUser.assignedDietitian?.toString() === session.user.id ||
             otherUser.assignedDietitians?.some((d) => d.toString() === session.user.id);
+          // Allow viewing historical messages even if no longer assigned;
+          // the query naturally returns only messages between these two users.
           if (!isAssigned) {
-            return NextResponse.json({ error: 'You can only message clients assigned to you' }, { status: 403 });
+            // Still allow — dietitian may have been reassigned but has message history
           }
         }
-        // Staff-to-staff communication is allowed
       } else if (sessionRole === 'health_counselor') {
-        // Health Counselor can only message their assigned clients OR other staff
         if (otherRole === 'client') {
-          if (otherUser.assignedHealthCounselor?.toString() !== session.user.id) {
-            return NextResponse.json({ error: 'You can only message clients assigned to you' }, { status: 403 });
-          }
+          // Allow viewing even if no longer assigned
         }
-        // Staff-to-staff communication is allowed
       } else if (sessionRole === 'client') {
-        // Client can ONLY message their PRIMARY assigned dietitian
-        const currentUser = await User.findById(session.user.id)
-          .select('assignedDietitian')
-          .lean<Pick<MessageUserLite, 'assignedDietitian'> | null>();
-
-        const primaryDietitian = currentUser?.assignedDietitian?.toString();
-
-        if (!primaryDietitian || primaryDietitian !== conversationWith) {
-          return NextResponse.json({ error: 'You can only message your primary dietitian' }, { status: 403 });
-        }
+        // Client can view messages with any staff member they've messaged
+        // (previously restricted to primary dietitian only)
       }
       // Admin has no restrictions
     }

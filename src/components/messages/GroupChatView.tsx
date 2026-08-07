@@ -76,6 +76,7 @@ export default function GroupChatView({
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -91,7 +92,14 @@ export default function GroupChatView({
   }, [group._id]);
 
   useEffect(() => {
-    scrollToBottom();
+    // Only auto-scroll if user is near the bottom (don't yank scroll position)
+    const container = messagesContainerRef.current;
+    if (container) {
+      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+      if (nearBottom) {
+        scrollToBottom();
+      }
+    }
   }, [messages]);
 
   // Listen for SSE group messages
@@ -101,7 +109,7 @@ export default function GroupChatView({
     // Otherwise, we can set up polling as fallback
     const interval = setInterval(() => {
       fetchMessagesQuiet();
-    }, 5000);
+    }, 15_000);
 
     return () => clearInterval(interval);
   }, [group._id]);
@@ -294,7 +302,7 @@ export default function GroupChatView({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-1 bg-[#e5ddd5]">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-1 bg-[#e5ddd5]">
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-gray-500" />

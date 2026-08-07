@@ -120,7 +120,7 @@ export function ChatInterface({
             }
             return [...prev, newMessage];
           });
-          scrollToBottom();
+          scrollToBottom(); // Only scroll if user is near bottom (new incoming message)
 
           // Auto-mark as read if message is from recipient
           if (newMessage.sender._id === recipient._id) {
@@ -173,10 +173,19 @@ export function ChatInterface({
     },
   });
 
-  // Scroll to bottom
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Check if user is near the bottom of the chat (within 150px)
+  const isNearBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < 150;
   }, []);
+
+  // Scroll to bottom — only if user is already near the bottom (prevents yanking)
+  const scrollToBottom = useCallback((force = false) => {
+    if (force || isNearBottom()) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [isNearBottom]);
 
   // Mark messages as read
   const markMessagesAsRead = useCallback(async () => {
@@ -204,7 +213,7 @@ export function ChatInterface({
       if (response.ok) {
         const data = await response.json();
         setMessages(data.messages || []);
-        setTimeout(scrollToBottom, 100);
+        setTimeout(() => scrollToBottom(true), 100);
 
         // Mark messages as read
         markMessagesAsRead();
@@ -385,7 +394,7 @@ export function ChatInterface({
       });
 
       setMessages((prev) => [...prev, tempMessage]);
-      scrollToBottom();
+      scrollToBottom(true);
       return tempMessageId;
     },
     [recipient, scrollToBottom, session?.user],
@@ -427,7 +436,7 @@ export function ChatInterface({
       });
 
       setMessages((prev) => [...prev, tempMessage]);
-      scrollToBottom();
+      scrollToBottom(true);
       return tempMessageId;
     },
     [recipient, scrollToBottom, session?.user],
@@ -560,7 +569,7 @@ export function ChatInterface({
         }
 
         setMessages((prev) => [...prev, tempMessage]);
-        scrollToBottom();
+        scrollToBottom(true);
       } else if (options?.replaceMessageId) {
         setMessages((prev) =>
           prev.map((msg) =>

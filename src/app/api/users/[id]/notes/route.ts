@@ -6,62 +6,7 @@ import mongoose from 'mongoose';
 import { logHistoryServer } from '@/lib/server/history';
 import { NOTE_TOPIC_TYPES } from '@/lib/constants/notes';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
-
-// Delete cached model to ensure schema updates are applied
-if (mongoose.models.ClientNote) {
-  delete mongoose.models.ClientNote;
-}
-
-// Notes Schema (embedded in a separate collection for better management)
-const noteSchema = new mongoose.Schema({
-  client: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  topicType: {
-    type: String,
-    enum: NOTE_TOPIC_TYPES,
-    default: 'General'
-  },
-  date: {
-    type: Date,
-    default: Date.now
-  },
-  content: {
-    type: String,
-    required: true
-  },
-  showToClient: {
-    type: Boolean,
-    default: false
-  },
-  // Media attachments
-  attachments: [{
-    type: {
-      type: String,
-      enum: ['image', 'video', 'audio'],
-      required: true
-    },
-    url: {
-      type: String,
-      required: true
-    },
-    filename: String,
-    mimeType: String,
-    size: Number
-  }]
-}, {
-  timestamps: true
-});
-
-const ClientNote = mongoose.model('ClientNote', noteSchema);
+import ClientNote from '@/lib/db/models/ClientNote';
 
 // GET /api/users/[id]/notes - Get all notes for a client
 export async function GET(

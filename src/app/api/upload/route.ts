@@ -1,15 +1,28 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import mongoose from "mongoose";
 import { authOptions } from "@/lib/auth/config";
 import connectDB from "@/lib/db/connection";
 import { File as FileModel } from "@/lib/db/models/File";
 import { uploadToBlob, deleteFromBlob } from "@/lib/storage/blob-storage";
 import { serverCompressionPresets } from "@/lib/imageCompressionServer";
 
+function scheduleAfterResponse(task: () => Promise<void>): Promise<void> | undefined {
+  try {
+    after(task);
+    return undefined;
+  } catch (error) {
+    // Direct route-handler tests do not create a Next.js request context.
+    // Execute inline there while preserving non-blocking production behavior.
+    if (error instanceof Error && error.message.includes("outside a request scope")) {
+      return task();
+    }
+    throw error;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
-
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -227,30 +240,41 @@ export async function POST(request: NextRequest) {
     // Normalize MIME type: strip codec suffix
     const responseMimeType = blobResult.contentType.replace(/;.*$/, "").trim();
 
-    // Save metadata to DB (reuse imageKit fields as blobUrl/pathname during transition)
-    const savedFile = await FileModel.create({
-      filename: fileName,
-      originalName: file.name,
-      mimeType: responseMimeType,
-      size: file.size,
-      type: fileType,
-      imageKitFileId: blobResult.pathname,
-      imageKitUrl: blobResult.url,
-      uploadedBy: session.user.id,
+    // Pre-allocate the stable file id, then persist metadata after the upload
+    // response. Blob availability must not depend on MongoDB availability.
+    const fileId = new mongoose.Types.ObjectId();
+    const inlineMetadataTask = scheduleAfterResponse(async () => {
+      try {
+        await connectDB();
+        await FileModel.create({
+          _id: fileId,
+          filename: fileName,
+          originalName: file.name,
+          mimeType: responseMimeType,
+          size: file.size,
+          type: fileType,
+          imageKitFileId: blobResult.pathname,
+          imageKitUrl: blobResult.url,
+          uploadedBy: session.user.id,
+        });
+      } catch (metadataError) {
+        console.error("[Upload] Blob uploaded but metadata persistence failed:", metadataError);
+      }
     });
+    if (inlineMetadataTask) await inlineMetadataTask;
 
     console.log(`[Upload] ✅ Stored on Vercel Blob: ${blobResult.url} (${file.size} bytes, ${responseMimeType})`);
 
     return NextResponse.json({
       url: blobResult.url,
-      canonicalUrl: `/api/files/${savedFile._id}`,
-      dbUrl: `/api/files/${savedFile._id}`,
+      canonicalUrl: `/api/files/${fileId}`,
+      dbUrl: `/api/files/${fileId}`,
       imageKitUrl: blobResult.url,
       storage: "vercel-blob",
       filename: fileName,
       size: file.size,
       type: responseMimeType,
-      fileId: savedFile._id,
+      fileId,
       imageKitFileId: blobResult.pathname,
     });
   } catch (error) {

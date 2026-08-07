@@ -1,7 +1,6 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { getServerSession } from "next-auth";
-import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth/config";
+import { getToken } from "next-auth/jwt";
+import { after, NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/db/connection";
 import FileModel from "@/lib/db/models/File";
 
@@ -50,8 +49,13 @@ export async function POST(request: NextRequest) {
       request,
       body,
       onBeforeGenerateToken: async (pathname, rawPayload) => {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.id) throw new Error("Unauthorized");
+        // Decode the signed JWT directly. Calling getServerSession here can run
+        // session callbacks and make Blob token issuance depend on MongoDB.
+        const token = await getToken({
+          req: request,
+          secret: process.env.NEXTAUTH_SECRET,
+        });
+        if (!token?.sub) throw new Error("Unauthorized");
 
         const payload = parsePayload<ClientPayload>(rawPayload);
         const rule = uploadRules[payload.uploadType];
@@ -71,28 +75,37 @@ export async function POST(request: NextRequest) {
           allowedContentTypes: [mimeType],
           maximumSizeInBytes: rule.max,
           addRandomSuffix: true,
-          tokenPayload: JSON.stringify({ ...payload, userId: session.user.id }),
+          tokenPayload: JSON.stringify({ ...payload, userId: token.sub }),
         };
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
         const payload = parsePayload<TokenPayload>(tokenPayload || null);
-        await connectDB();
-        await FileModel.updateOne(
-          { imageKitFileId: blob.pathname },
-          {
-            $setOnInsert: {
-              filename: blob.pathname.split("/").pop() || payload.originalName,
-              originalName: payload.originalName,
-              mimeType: payload.mimeType,
-              size: payload.size,
-              type: payload.uploadType,
-              imageKitFileId: blob.pathname,
-              imageKitUrl: blob.url,
-              uploadedBy: payload.userId,
-            },
-          },
-          { upsert: true },
-        );
+        // The file is already safely in Blob storage. Persist metadata after
+        // acknowledging the callback so a transient Mongo outage cannot make a
+        // successful media upload appear to have failed in the client.
+        after(async () => {
+          try {
+            await connectDB();
+            await FileModel.updateOne(
+              { imageKitFileId: blob.pathname },
+              {
+                $setOnInsert: {
+                  filename: blob.pathname.split("/").pop() || payload.originalName,
+                  originalName: payload.originalName,
+                  mimeType: payload.mimeType,
+                  size: payload.size,
+                  type: payload.uploadType,
+                  imageKitFileId: blob.pathname,
+                  imageKitUrl: blob.url,
+                  uploadedBy: payload.userId,
+                },
+              },
+              { upsert: true },
+            );
+          } catch (metadataError) {
+            console.error("[ClientUpload] Blob uploaded but metadata persistence failed:", metadataError);
+          }
+        });
       },
     });
 

@@ -5,6 +5,17 @@ import connectDB from '@/lib/db/connection';
 import Appointment from '@/lib/db/models/Appointment';
 import User from '@/lib/db/models/User';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { socketManager } from '@/lib/realtime/socket-manager';
+import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
+import { UserRole } from '@/types';
+
+interface ClientAppointmentUser {
+  firstName?: string;
+  lastName?: string;
+  avatar?: string;
+  assignedDietitian?: { toString(): string };
+  assignedDietitians?: Array<{ toString(): string }>;
+}
 
 // GET /api/client/appointments - Get appointments for current client user
 export async function GET(request: NextRequest) {
@@ -16,6 +27,9 @@ export async function GET(request: NextRequest) {
     ]);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.user.role !== UserRole.CLIENT) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -119,11 +133,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the dietitian exists and is assigned to this client
-    const client = await withCache(
-      `client:appointments:${JSON.stringify(session.user.id)}`,
-      async () => await User.findById(session.user.id).select('assignedDietitian assignedDietitians'),
-      { ttl: 60000, tags: ['client'] }
-    );
+    const client = await User.findById(session.user.id)
+      .select('firstName lastName avatar assignedDietitian assignedDietitians')
+      .lean() as ClientAppointmentUser | null;
     const assignedDietitians = [
       client?.assignedDietitian?.toString(),
       ...(client?.assignedDietitians?.map((d: any) => d.toString()) || [])
@@ -136,12 +148,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const scheduledDate = new Date(scheduledAt);
+    if (Number.isNaN(scheduledDate.getTime()) || scheduledDate <= new Date()) {
+      return NextResponse.json(
+        { error: 'Please select a valid future appointment time' },
+        { status: 400 }
+      );
+    }
+
+    const normalizedDuration = Math.min(180, Math.max(15, Number(duration) || 30));
+    const conflicts = await Appointment.findConflicts(
+      dietitianId,
+      scheduledDate,
+      normalizedDuration
+    );
+    if (conflicts.length > 0) {
+      return NextResponse.json(
+        { error: 'This time slot is no longer available' },
+        { status: 409 }
+      );
+    }
+
+    const dietitian = await User.findOne({
+      _id: dietitianId,
+      role: { $in: [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR] },
+      status: 'active'
+    }).select('firstName lastName avatar');
+    if (!dietitian) {
+      return NextResponse.json({ error: 'Assigned dietitian not found' }, { status: 404 });
+    }
+
     // Create the appointment
     const appointment = new Appointment({
       client: session.user.id,
       dietitian: dietitianId,
-      scheduledAt: new Date(scheduledAt),
-      duration,
+      scheduledAt: scheduledDate,
+      duration: normalizedDuration,
       type,
       notes,
       status: 'scheduled',
@@ -149,6 +191,59 @@ export async function POST(request: NextRequest) {
     }) as any;
 
     await appointment.save();
+
+    await Promise.all([
+      clearCacheByTag('appointments'),
+      clearCacheByTag('client'),
+      clearCacheByTag(`client:${session.user.id}`),
+    ]);
+
+    const clientName = `${client?.firstName || ''} ${client?.lastName || ''}`.trim() || 'Client';
+    const dietitianName = `${dietitian.firstName || ''} ${dietitian.lastName || ''}`.trim() || 'Dietitian';
+    const formattedDate = scheduledDate.toLocaleString('en-IN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Kolkata',
+    });
+
+    socketManager.sendToUser(dietitianId, 'appointment_booked', {
+      appointmentId: appointment._id.toString(),
+      client: {
+        _id: session.user.id,
+        firstName: client?.firstName,
+        lastName: client?.lastName,
+        avatar: client?.avatar,
+      },
+      scheduledAt: scheduledDate.toISOString(),
+      duration: normalizedDuration,
+      type,
+      timestamp: Date.now(),
+    });
+
+    await Promise.allSettled([
+      sendNotificationToUser(dietitianId, {
+        title: 'New Appointment Booked',
+        body: `${clientName} booked an appointment for ${formattedDate}`,
+        icon: client?.avatar || '/icons/icon-192x192.png',
+        data: {
+          type: 'appointment_booked',
+          appointmentId: appointment._id.toString(),
+          clientId: session.user.id,
+        },
+        clickAction: '/appointments',
+      }),
+      sendNotificationToUser(session.user.id, {
+        title: 'Appointment Confirmed',
+        body: `Your appointment with ${dietitianName} is scheduled for ${formattedDate}`,
+        icon: dietitian.avatar || '/icons/icon-192x192.png',
+        data: {
+          type: 'appointment_booked',
+          appointmentId: appointment._id.toString(),
+          dietitianId,
+        },
+        clickAction: '/user/appointments',
+      }),
+    ]);
 
     // Populate dietitian info for response
     const populatedAppointment: any = await appointment.populate('dietitian', 'firstName lastName email avatar');

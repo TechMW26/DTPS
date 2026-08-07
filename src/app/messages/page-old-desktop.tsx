@@ -296,7 +296,16 @@ function MessagesContent() {
     }
   };
 
-  const scrollToBottom = (instant = true) => {
+  const userScrolledUpRef = useRef(false);
+
+  const isNearBottom = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+  };
+
+  const scrollToBottom = (instant = true, force = false) => {
+    if (!force && !isNearBottom()) return;
     requestAnimationFrame(() => {
       const container = messagesContainerRef.current;
       if (container) {
@@ -309,11 +318,10 @@ function MessagesContent() {
           });
         }
       }
-      // Also use scrollIntoView as backup
-      messagesEndRef.current?.scrollIntoView({
-        behavior: instant ? "instant" : "smooth",
-      });
     });
+    if (force) {
+      userScrolledUpRef.current = false;
+    }
   };
 
   // Real-time connection for online status updates + call signaling
@@ -824,9 +832,8 @@ function MessagesContent() {
         if (scrollAfterLoad) {
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              scrollToBottom(true);
-              setTimeout(() => scrollToBottom(true), 100);
-              setTimeout(() => scrollToBottom(true), 300);
+              scrollToBottom(true, true);
+              setTimeout(() => scrollToBottom(true, true), 100);
             });
           });
         }
@@ -852,7 +859,7 @@ function MessagesContent() {
       }
     };
 
-    const interval = window.setInterval(refreshVisibleMessages, 8_000);
+    const interval = window.setInterval(refreshVisibleMessages, 30_000);
     window.addEventListener("focus", refreshVisibleMessages);
     document.addEventListener("visibilitychange", refreshVisibleMessages);
 
@@ -900,7 +907,7 @@ function MessagesContent() {
             ? previous
             : [...previous, sentMessage],
         );
-        setTimeout(() => scrollToBottom(false), 30);
+        setTimeout(() => scrollToBottom(false, true), 30);
       }
       setNewMessage("");
       setReplyingToMessage(null);
@@ -2404,7 +2411,12 @@ function MessagesContent() {
                                             );
                                           })()}
                                           alt="Shared image"
-                                          className="rounded-lg max-w-xs sm:max-w-sm h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                          className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                          style={{
+                                            width: "250px",
+                                            aspectRatio: "4 / 3",
+                                            objectFit: "cover",
+                                          }}
                                           onClick={() =>
                                             setPreviewImage(
                                               getMediaUrl(
@@ -2810,15 +2822,21 @@ function MessagesContent() {
                   open={!!previewImage}
                   onOpenChange={() => setPreviewImage(null)}
                 >
-                  <DialogContent className="max-w-4xl">
-                    <DialogHeader>
+                  <DialogContent className="max-w-[95vw] p-0 bg-black/95 border-none">
+                    <DialogHeader className="sr-only">
                       <DialogTitle>Image Preview</DialogTitle>
                     </DialogHeader>
+                    <button
+                      onClick={() => setPreviewImage(null)}
+                      className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+                    >
+                      <X className="h-5 w-5 text-white" />
+                    </button>
                     <div className="flex justify-center">
                       <img
                         src={getMediaProxyUrl(previewImage)}
                         alt="Preview"
-                        className="max-w-full max-h-96 object-contain rounded-lg"
+                        className="max-h-[90vh] w-auto object-contain"
                       />
                     </div>
                   </DialogContent>

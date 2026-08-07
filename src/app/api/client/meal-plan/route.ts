@@ -97,22 +97,38 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
+    const listAll = searchParams.get('list') === 'true';
     const normalizedDate = resolveRequestedDate(dateParam);
-    if (!normalizedDate) {
+    if (!normalizedDate && !listAll) {
       return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
     }
 
-    const cacheKey = `client:meal-plan:${session.user.id}:${normalizedDate.toISOString().slice(0, 10)}`;
+    // If listing all plans, return all non-deleted plans for the client
+    if (listAll) {
+      const allPlans = await ClientMealPlan.find({
+        clientId: session.user.id,
+        status: { $in: ['active', 'completed', 'paused'] },
+      })
+        .select('name status startDate endDate duration createdAt')
+        .sort({ createdAt: -1 })
+        .lean();
+      return NextResponse.json({ success: true, plans: allPlans });
+    }
+
+    // At this point normalizedDate is guaranteed non-null since !listAll
+    const effectiveDate = normalizedDate!;
+
+    const cacheKey = `client:meal-plan:${session.user.id}:${effectiveDate.toISOString().slice(0, 10)}`;
 
     const data = await withCache(
       cacheKey,
       async () => {
-        // Find active meal plan for the client
+        // Find active OR completed meal plan for the client on this date
         const mealPlan = await ClientMealPlan.findOne({
           clientId: session.user.id,
-          status: 'active',
-          startDate: { $lte: endOfDay(normalizedDate) },
-          endDate: { $gte: startOfDay(normalizedDate) }
+          status: { $in: ['active', 'completed', 'paused'] },
+          startDate: { $lte: endOfDay(effectiveDate) },
+          endDate: { $gte: startOfDay(effectiveDate) }
         })
           .select('clientId status startDate endDate meals mealTypes templateId mealCompletions freezedDays customizations goals name')
           .populate('templateId')
@@ -128,7 +144,7 @@ export async function GET(request: NextRequest) {
 
         // Calculate day index within the plan
         const planStartDate = startOfDay(new Date(mealPlan.startDate));
-        const dayIndex = Math.floor((normalizedDate.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24));
+        const dayIndex = Math.floor((effectiveDate.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24));
 
         // Get meals for this day
         let dayMeals: any[] = [];
@@ -160,7 +176,7 @@ export async function GET(request: NextRequest) {
 
             if (mealKeys.length > 0) {
               mealsSource = 'plan-meals';
-              dayMeals = extractMeals(mealsObj, mealPlan._id, dayIndex, normalizedDate, mealPlan.mealCompletions);
+              dayMeals = extractMeals(mealsObj, mealPlan._id, dayIndex, effectiveDate, mealPlan.mealCompletions);
             }
           }
         }
@@ -187,7 +203,7 @@ export async function GET(request: NextRequest) {
             const templateDay = template.meals[dayIndex % template.meals.length];
             if (templateDay) {
               mealsSource = 'template';
-              dayMeals = extractMeals(templateDay.meals || templateDay, mealPlan._id, dayIndex, normalizedDate, mealPlan.mealCompletions);
+              dayMeals = extractMeals(templateDay.meals || templateDay, mealPlan._id, dayIndex, effectiveDate, mealPlan.mealCompletions);
             }
           }
         }
@@ -206,7 +222,7 @@ export async function GET(request: NextRequest) {
           mealPlan.customizations?.targetCalories || 0) * 100) / 100;
 
         // Check if this date is frozen
-        const dateStr = format(normalizedDate, 'yyyy-MM-dd');
+        const dateStr = format(effectiveDate, 'yyyy-MM-dd');
         const freezedDays = mealPlan.freezedDays || [];
         const isFrozen = freezedDays.some((fd: any) => {
           const freezeDate = format(new Date(fd.date), 'yyyy-MM-dd');
@@ -221,7 +237,7 @@ export async function GET(request: NextRequest) {
         return {
           success: true,
           hasPlan: true,
-          date: normalizedDate.toISOString(),
+          date: effectiveDate.toISOString(),
           totalCalories,
           meals: dayMeals,
           dailyNote, // Dietitian's note for the day
