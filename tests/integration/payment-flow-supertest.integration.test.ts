@@ -275,6 +275,54 @@ describe('payment flow integrations (supertest + jest)', () => {
         }
     });
 
+    it('ignores stale used-day counters on an explicitly sized future purchase with no meal plan', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: 'admin-future-stale-counters@example.com',
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+        const futureStart = new Date();
+        futureStart.setDate(futureStart.getDate() + 30);
+        const futureEnd = new Date(futureStart);
+        futureEnd.setDate(futureEnd.getDate() + 89);
+
+        const futurePurchase = await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Future Allocation',
+            planCategory: 'weight-loss',
+            durationDays: 90,
+            durationLabel: '90 Days',
+            baseAmount: 5000,
+            finalAmount: 5000,
+            amount: 5000,
+            status: 'paid',
+            paymentStatus: 'paid',
+            expectedStartDate: futureStart,
+            expectedEndDate: futureEnd,
+            mealPlanCreated: false,
+            daysUsed: 90,
+            paidAt: new Date(),
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+        const route = await import('@/app/api/client-purchases/check/route');
+        const server = createRouteTestServer(route.GET);
+
+        try {
+            const response = await request(server)
+                .get('/api/client-purchases/check')
+                .query({ clientId: entityId(client) });
+
+            expect(response.status).toBe(200);
+            expect(String(response.body.purchase?._id)).toBe(entityId(futurePurchase));
+            expect(response.body.purchase?.daysUsed).toBe(0);
+            expect(response.body.remainingDays).toBe(90);
+        } finally {
+            server.close();
+        }
+    });
+
     it('keeps client-purchases GET aligned with check-route stored counters', async () => {
         const admin = await createUser({
             role: UserRole.ADMIN,

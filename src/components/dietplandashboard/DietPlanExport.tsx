@@ -4,11 +4,12 @@ import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Download, FileText, FileSpreadsheet, Printer, FileImage, FileDown } from 'lucide-react';
-import { DayPlan, MealTypeConfig, FoodOption } from './DietPlanDashboard';
+import { Download, FileText, FileSpreadsheet, Printer, FileDown } from 'lucide-react';
+import { DayPlan } from './DietPlanDashboard';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { MEAL_TYPES, MEAL_TYPE_KEYS, normalizeMealType } from '@/lib/mealConfig';
+import { MEAL_TYPES, normalizeMealType } from '@/lib/mealConfig';
+import { buildDietPlanPdf, dietPlanPdfFilename } from '@/lib/diet-plan-pdf';
 
 interface DietPlanExportProps {
   weekPlan: DayPlan[];
@@ -747,128 +748,46 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     setOpen(false);
   }, [generateCSVContent, clientName]);
 
-  // Fetch the DTPS app icon as a base64 data URI (avoid CORS issues in iframe/html2canvas)
-  const fetchLogoDataUri = useCallback(async (): Promise<string> => {
-    const fallback = 'https://dtps.tech/icons/icon-192x192.png';
-    try {
-      const resp = await fetch('/icons/icon-192x192.png');
-      if (!resp.ok) return fallback;
-      const blob = await resp.blob();
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      return fallback;
-    }
-  }, []);
-
-  const handleExportPDF = useCallback(async () => {
+  const handleExportPDF = async () => {
     setIsExporting(true);
-    let iframe: HTMLIFrameElement | null = null;
     try {
-      const [{ jsPDF }, html2canvasModule, logoDataUri] = await Promise.all([
-        import('jspdf'),
-        import('html2canvas'),
-        fetchLogoDataUri(),
-      ]);
-      const html2canvas = html2canvasModule.default || html2canvasModule;
-
-      const html = generateHTMLContent(exportFor === 'dietitian', logoDataUri);
-
-      // Use iframe for complete CSS isolation — prevents Tailwind v4 oklch() inheritance
-      iframe = document.createElement('iframe');
-      iframe.style.cssText =
-        'position:fixed;left:-9999px;top:0;width:794px;height:600px;border:none;z-index:-1;';
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentDocument || iframe.contentWindow!.document;
-      doc.open();
-      doc.write(html);
-      doc.close();
-
-      // Wait for the iframe to fully render and images to load
-      await new Promise<void>((resolve) => {
-        const check = () => {
-          const imgs = doc.querySelectorAll('img');
-          const allLoaded = Array.from(imgs).every((img) => img.complete);
-          if (allLoaded && doc.body.scrollHeight > 0) {
-            resolve();
-          } else {
-            setTimeout(check, 100);
-          }
-        };
-        // Start checking after a short delay for initial render
-        setTimeout(check, 300);
+      const { jsPDF } = await import('jspdf');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+        putOnlyUsedFonts: true,
+        precision: 2,
+      });
+      buildDietPlanPdf(pdf, {
+        weekPlan,
+        mealTypes: getAllMealTypesSorted(),
+        clientName,
+        clientInfo,
+        dietitianName,
+        duration,
+        showMacros: exportFor === 'dietitian',
       });
 
-      // Get actual rendered content height
-      const bodyEl = doc.body;
-      const contentHeight = bodyEl.scrollHeight;
-      // Expand iframe to fit content so html2canvas captures everything
-      iframe.style.height = `${contentHeight + 50}px`;
-
-      // Give browser a frame to reflow
-      await new Promise((r) => setTimeout(r, 100));
-
-      const scale = 2;
-      const contentWidthPx = 794;
-      const fullCanvas = await html2canvas(bodyEl, {
-        scale,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        width: contentWidthPx,
-        windowWidth: contentWidthPx,
-        backgroundColor: '#ffffff',
-      } as any);
-
-      // A4: 210mm × 297mm. contentWidth=794px → pageHeight ≈ 1123px at 1x
-      const pageHeight1x = Math.round(contentWidthPx * (297 / 210));
-      const margin1x = 40;
-      const usableHeight1x = pageHeight1x - margin1x * 2;
-      const sliceHeightPx = usableHeight1x * scale;
-      const canvasHeight = fullCanvas.height;
-      const totalPages = Math.ceil(canvasHeight / sliceHeightPx);
-
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-      const pageW = 210, pageH = 297, marginMm = 8;
-      const usableW = pageW - marginMm * 2;
-      const usableH = pageH - marginMm * 2;
-
-      for (let i = 0; i < totalPages; i++) {
-        if (i > 0) pdf.addPage();
-        const sy = i * sliceHeightPx;
-        const sh = Math.min(sliceHeightPx, canvasHeight - sy);
-
-        const pageCanvas = document.createElement('canvas');
-        pageCanvas.width = contentWidthPx * scale;
-        pageCanvas.height = sh;
-        const ctx = pageCanvas.getContext('2d')!;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        ctx.drawImage(fullCanvas, 0, sy, fullCanvas.width, sh, 0, 0, pageCanvas.width, sh);
-
-        const imgData = pageCanvas.toDataURL('image/jpeg', 0.92);
-        const imgMmHeight = usableH * (sh / sliceHeightPx);
-        pdf.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgMmHeight);
-      }
-
-      const suffix = exportFor === 'dietitian' ? 'dietitian' : 'client';
-      pdf.save(
-        `diet-plan-${clientName?.replace(/\s+/g, '-') || 'export'}-${suffix}-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
-      );
+      const blobUrl = URL.createObjectURL(pdf.output('blob'));
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = dietPlanPdfFilename(clientName, exportFor, new Date());
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
       toast.success('PDF downloaded successfully');
       setOpen(false);
     } catch (error) {
       console.error('PDF export failed:', error);
-      toast.error('PDF generation failed. Please try Print Preview instead.');
+      toast.error('PDF generation failed. Please try again.');
     } finally {
-      iframe?.remove();
       setIsExporting(false);
     }
-  }, [generateHTMLContent, clientName, exportFor, fetchLogoDataUri]);
+  };
 
   const handlePrint = useCallback(() => {
     const showMacros = exportFor === 'dietitian';

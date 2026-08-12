@@ -75,8 +75,10 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const conversationWith = searchParams.get('conversationWith');
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const page = parseInt(searchParams.get('page') || '1');
+    const requestedLimit = Number.parseInt(searchParams.get('limit') || '100', 10);
+    const requestedPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(200, Math.max(1, requestedLimit)) : 100;
+    const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1;
 
     const sessionRole = String(session.user.role || '').toLowerCase();
 
@@ -136,9 +138,8 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // NO CACHE for real-time messaging - always fetch fresh data
-    // When fetching a specific conversation, get ALL messages (no limit)
-    // Only apply limit/pagination when fetching all messages (inbox view)
+    // Always page from the newest messages. Loading an entire long-running
+    // conversation can create thousands of media elements and freeze the tab.
     const messageQuery = Message.find(query)
       .populate('sender', 'firstName lastName avatar')
       .populate('receiver', 'firstName lastName avatar')
@@ -150,14 +151,12 @@ export async function GET(request: NextRequest) {
           select: 'firstName lastName avatar'
         }
       })
-      .sort({ createdAt: 1 }); // Sort oldest first for proper chat order
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
 
-    // Only apply limit if NOT viewing a specific conversation
-    if (!conversationWith) {
-      messageQuery.limit(limit).skip((page - 1) * limit);
-    }
-
-    const messages = await messageQuery.lean();
+    const newestFirst = await messageQuery.lean();
+    const messages = newestFirst.reverse();
 
     const total = await Message.countDocuments(query);
 
@@ -209,7 +208,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      messages, // No need to reverse - already in correct order (oldest first)
+      messages,
       pagination: {
         page,
         limit,

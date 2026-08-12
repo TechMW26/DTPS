@@ -45,6 +45,34 @@ describe('Socket.io chat history loading and synchronization', () => {
         expect(result.json.messages.map((message: any) => message.content)).toEqual(['first', 'second', 'third']);
     });
 
+    it('pages backward from the latest messages without returning the full conversation', async () => {
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+        for (let index = 1; index <= 5; index += 1) {
+            await createMessageRecord({
+                sender: client._id,
+                receiver: dietitian._id,
+                content: `message-${index}`,
+                createdAt: new Date(`2026-03-27T04:0${index}:00.000Z`),
+            });
+        }
+
+        const route = await import('@/app/api/messages/route');
+        const pageOne = await invokeRoute(route.GET, {
+            method: 'GET',
+            url: `http://localhost/api/messages?conversationWith=${entityId(client)}&limit=2&page=1`,
+            user: dietitian,
+        });
+        const pageTwo = await invokeRoute(route.GET, {
+            method: 'GET',
+            url: `http://localhost/api/messages?conversationWith=${entityId(client)}&limit=2&page=2`,
+            user: dietitian,
+        });
+
+        expect(pageOne.json.messages.map((message: any) => message.content)).toEqual(['message-4', 'message-5']);
+        expect(pageTwo.json.messages.map((message: any) => message.content)).toEqual(['message-2', 'message-3']);
+        expect(pageOne.json.pagination).toEqual({ page: 1, limit: 2, total: 5, pages: 3 });
+    });
+
     it('makes offline messages available through history after reconnect', async () => {
         const { client, dietitian } = await createAssignedDietitianClientPair();
         const { socket: clientSocket } = await createAuthenticatedSocketClient(toAuthUser(client));

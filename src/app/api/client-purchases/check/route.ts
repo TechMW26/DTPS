@@ -431,6 +431,7 @@ export async function GET(request: NextRequest) {
       const durationDays = getEffectiveDurationDays(purchase);
       const linkedDaysUsed = usedDaysByPurchase.get(purchaseId);
       const linkedMealPlanCount = mealPlansByPurchase.get(purchaseId) || 0;
+      const hasExplicitDuration = getDurationDaysFromSource(purchase) > 0;
       const storedDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
       const storedRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
 
@@ -455,6 +456,21 @@ export async function GET(request: NextRequest) {
           effectiveDaysUsed = linkedDaysUsed;
         }
         effectiveDaysUsed = Math.min(durationDays, Math.max(0, effectiveDaysUsed));
+      }
+
+      const isClearlyUnstartedFuturePurchase = Boolean(
+        hasExplicitDuration &&
+        linkedMealPlanCount === 0 &&
+        purchase?.mealPlanCreated !== true &&
+        purchase?.expectedStartDate &&
+        new Date(purchase.expectedStartDate).getTime() > now.getTime()
+      );
+
+      // Imported purchases occasionally carry the previous subscription's
+      // counters. A future allocation with no linked plan is unequivocally
+      // unstarted, so those stale counters must not appear as days used.
+      if (isClearlyUnstartedFuturePurchase) {
+        effectiveDaysUsed = 0;
       }
 
       // Do not auto-consume full duration just because a meal plan exists.
@@ -482,7 +498,9 @@ export async function GET(request: NextRequest) {
       }
 
       // Keep stored counters by default, but normalize inconsistent values.
-      const effectiveRemainingDays = (hasStoredCounters && !countersExceedDuration)
+      const effectiveRemainingDays = isClearlyUnstartedFuturePurchase
+        ? durationDays
+        : (hasStoredCounters && !countersExceedDuration)
         ? storedRemainingDays
         : Math.max(0, durationDays - effectiveDaysUsed);
 

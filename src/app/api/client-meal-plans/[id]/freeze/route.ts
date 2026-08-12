@@ -464,10 +464,10 @@ export async function POST(
         }, { status: 400 });
       }
 
-      // Allow today and future dates (only strictly past dates are blocked)
-      if (freezeDate < today) {
+      // Freeze only complete future days. Same-day meals may already be consumed.
+      if (freezeDate <= today) {
         return NextResponse.json({
-          error: `Cannot freeze past date: ${formattedDate}`
+          error: `Cannot freeze today or a past date: ${formattedDate}`
         }, { status: 400 });
       }
 
@@ -618,6 +618,7 @@ export async function POST(
 
     // Ensure subsequent reads return fresh freeze state and copied recovery days.
     clearCacheByTag('client_meal_plans');
+    clearCacheByTag('client');
 
     // For standalone plans (no linked purchase), keep linked payment dates aligned to plan.
     if (!purchaseId) {
@@ -833,6 +834,7 @@ export async function DELETE(
 
     // Ensure subsequent reads return fresh unfreeze state immediately.
     clearCacheByTag('client_meal_plans');
+    clearCacheByTag('client');
 
     // For standalone plans (no linked purchase), keep linked payment dates aligned to plan.
     if (!purchaseId) {

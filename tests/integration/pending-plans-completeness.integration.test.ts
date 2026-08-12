@@ -45,4 +45,32 @@ describe('pending plans completeness', () => {
       }),
     ]);
   });
+
+  it('does not treat an expired purchase counter as pending plan work', async () => {
+    const { client, dietitian } = await createAssignedDietitianClientPair();
+
+    await UnifiedPayment.create({
+      client: client._id,
+      dietitian: dietitian._id,
+      planName: 'Expired Trial',
+      durationDays: 10,
+      durationLabel: '10 Days',
+      status: 'completed',
+      paymentStatus: 'paid',
+      daysUsed: 0,
+      mealPlanCreated: false,
+      expectedStartDate: new Date('2026-06-01T00:00:00.000Z'),
+      expectedEndDate: new Date('2026-06-10T00:00:00.000Z'),
+    });
+
+    const route = await import('@/app/api/dashboard/pending-plans/route');
+    const result = await invokeRoute(route.GET, {
+      method: 'GET',
+      url: 'http://localhost/api/dashboard/pending-plans',
+      user: dietitian,
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.json.pendingPlans).toEqual([]);
+  });
 });

@@ -170,6 +170,9 @@ function MessagesContent() {
     string | null
   >(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [messagePage, setMessagePage] = useState(1);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(
     null,
@@ -812,13 +815,28 @@ function MessagesContent() {
     scrollAfterLoad = true,
   ) => {
     try {
-      // Fetch ALL messages for the conversation (no limit) to ensure no messages are missed
+      selectedConversationRef.current = conversationWith;
       const response = await fetch(
-        `/api/messages?conversationWith=${conversationWith}`,
+        `/api/messages?conversationWith=${conversationWith}&limit=120&page=1`,
       );
       if (response.ok) {
         const data = await response.json();
-        setMessages(data.messages || []);
+        if (selectedConversationRef.current !== conversationWith) return;
+        const incoming: Message[] = data.messages || [];
+        if (scrollAfterLoad) {
+          setMessages(incoming);
+          setMessagePage(1);
+          setHasOlderMessages((data.pagination?.pages || 1) > 1);
+        } else {
+          setMessages((current) => {
+            const merged = new Map(current.map((message) => [message._id, message]));
+            incoming.forEach((message) => merged.set(message._id, message));
+            return [...merged.values()].sort(
+              (left, right) =>
+                new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+            );
+          });
+        }
 
         // Reset unread count for this conversation locally
         setConversations((prev) =>
@@ -840,11 +858,53 @@ function MessagesContent() {
       } else if (response.status === 404) {
         // No messages found, start with empty array (this is normal for new conversations)
         setMessages([]);
+        setHasOlderMessages(false);
       } else {
         setMessages([]);
+        setHasOlderMessages(false);
       }
     } catch (error) {
       setMessages([]);
+      setHasOlderMessages(false);
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    const conversationWith = selectedConversationRef.current;
+    const container = messagesContainerRef.current;
+    if (!conversationWith || !container || loadingOlderMessages || !hasOlderMessages) return;
+
+    const nextPage = messagePage + 1;
+    const previousHeight = container.scrollHeight;
+    setLoadingOlderMessages(true);
+    try {
+      const response = await fetch(
+        `/api/messages?conversationWith=${conversationWith}&limit=120&page=${nextPage}`,
+      );
+      if (!response.ok || selectedConversationRef.current !== conversationWith) return;
+
+      const data = await response.json();
+      const older: Message[] = data.messages || [];
+      setMessages((current) => {
+        const merged = new Map<string, Message>();
+        [...older, ...current].forEach((message) => merged.set(message._id, message));
+        return [...merged.values()].sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+        );
+      });
+      setMessagePage(nextPage);
+      setHasOlderMessages(nextPage < (data.pagination?.pages || 1));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const currentContainer = messagesContainerRef.current;
+          if (currentContainer) {
+            currentContainer.scrollTop += currentContainer.scrollHeight - previousHeight;
+          }
+        });
+      });
+    } finally {
+      setLoadingOlderMessages(false);
     }
   };
 
@@ -2194,6 +2254,20 @@ function MessagesContent() {
                     'url(\'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="0.5" fill="%23000" opacity="0.02"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>\')',
                 }}
               >
+                {hasOlderMessages && messages.length > 0 && (
+                  <div className="flex justify-center pb-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={loadOlderMessages}
+                      disabled={loadingOlderMessages}
+                      className="bg-white"
+                    >
+                      {loadingOlderMessages ? "Loading…" : "Load earlier messages"}
+                    </Button>
+                  </div>
+                )}
                 {messages.length === 0 ? (
                   <div className="text-center py-8">
                     <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -2411,6 +2485,8 @@ function MessagesContent() {
                                             );
                                           })()}
                                           alt="Shared image"
+                                          loading="lazy"
+                                          decoding="async"
                                           className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                                           style={{
                                             width: "250px",
@@ -2534,13 +2610,8 @@ function MessagesContent() {
                                         }}
                                       >
                                         {isPdf && (
-                                          <div className="w-full h-32 bg-gray-200 overflow-hidden">
-                                            <iframe
-                                              src={`${mediaUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0`}
-                                              className="w-[200%] h-[200%] scale-50 origin-top-left pointer-events-none"
-                                              title={att.filename}
-                                              loading="lazy"
-                                            />
+                                          <div className="flex h-20 items-center justify-center bg-red-50 text-xs font-semibold text-red-700">
+                                            PDF document
                                           </div>
                                         )}
                                         <div className="p-3 flex items-center gap-3">

@@ -29,6 +29,8 @@ const maintenanceExemptRoutes = [
   '/api/firebase-config',
   '/api/auth',
   '/api/internal/runtime-alert',
+  '/api/media/resolve',
+  '/api/audio-proxy',
   '/auth',
   '/_next',
   '/favicon.ico',
@@ -213,6 +215,17 @@ export default withAuth(
     callbacks: {
       authorized: ({ token, req }) => {
         const pathname = req.nextUrl.pathname;
+
+        // Media elements cannot attach NextAuth credentials consistently in
+        // native WebViews. These handlers are read-only and enforce their own
+        // strict upstream allowlist, so they must remain publicly reachable.
+        if (
+          pathname.startsWith('/api/media/resolve') ||
+          pathname.startsWith('/api/audio-proxy')
+        ) {
+          const method = req.method?.toUpperCase();
+          if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true;
+        }
 
         // Allow unauthenticated access to payment callbacks/public payment-link endpoints.
         // These are hit by external providers (Razorpay) or on redirect back from payment.

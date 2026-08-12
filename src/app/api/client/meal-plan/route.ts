@@ -155,7 +155,14 @@ export async function GET(request: NextRequest) {
 
         // 1. Try direct meals array on the plan
         if (mealPlan.meals?.length > 0) {
-          const dayData = mealPlan.meals[dayIndex % mealPlan.meals.length];
+          // Prefer the stored calendar date. Index-only lookup serves the wrong
+          // day when legacy plans have gaps or freeze recovery days appended.
+          const requestedDateKey = format(effectiveDate, 'yyyy-MM-dd');
+          const dayData = mealPlan.meals.find((entry: any) => {
+            if (!entry?.date) return false;
+            const entryDate = new Date(entry.date);
+            return isValid(entryDate) && format(entryDate, 'yyyy-MM-dd') === requestedDateKey;
+          }) || mealPlan.meals[dayIndex];
 
           // Capture daily note
           if (dayData?.note) {

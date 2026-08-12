@@ -249,7 +249,11 @@ async function proxyRemoteMedia(
 }
 
 function isAllowedRemoteMediaUrl(url: URL): boolean {
-  if (isPublicMediaUrl(url.toString()) || url.origin === "https://dtps.tech") {
+  if (
+    isPublicMediaUrl(url.toString()) ||
+    (url.protocol === "https:" &&
+      (url.hostname === "dtps.tech" || url.hostname === "www.dtps.tech"))
+  ) {
     return true;
   }
 

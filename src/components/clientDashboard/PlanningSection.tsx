@@ -1891,8 +1891,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Today and future dates are freezeable (only strictly past dates are blocked)
-      if (date < today) return false;
+      // A freeze changes a full day's entitlement, so only future dates qualify.
+      if (date <= today) return false;
 
       // Can't select dates outside plan range
       if (date < startDate || date > endDate) return false;
@@ -4299,9 +4299,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     setSelectedTemplate(null);
                     setPlanKey(prev => prev + 1);
 
-                    // Set duration based on the selected purchase allocation
+                    // Plans are delivered in 10-day phases. Keep the remaining
+                    // entitlement as the upper bound instead of assigning the
+                    // entire purchase to one phase by default.
                     if (effectiveRemaining > 0) {
-                      setDuration(effectiveRemaining);
+                      setDuration(Math.min(10, effectiveRemaining));
                     }
                     // Initialize start date based on latest plan
                     await initializeStartDate();

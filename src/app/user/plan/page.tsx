@@ -7,6 +7,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRealtime } from '@/hooks/useRealtime';
+import { findRecipeByName } from '@/lib/recipe-match';
 import {
   Clock,
   Check,
@@ -481,18 +482,14 @@ export default function UserPlanPage() {
           }
         }
 
-        // If no recipeId or fetch failed, search by food name (exact match only)
+        // Legacy plans sometimes stored the same recipe words in a different order.
         if (!recipeData && recipeModal.item.name) {
           const searchName = encodeURIComponent(recipeModal.item.name.trim());
-          const searchResponse = await fetch(`/api/recipes?search=${searchName}&limit=5`);
+          const searchResponse = await fetch(`/api/recipes?search=${searchName}&limit=25`);
           if (searchResponse.ok) {
             const searchData = await searchResponse.json();
             if (searchData.success && searchData.recipes && searchData.recipes.length > 0) {
-              // Only use an exact name match — never fall back to a partial/fuzzy result
-              const exactMatch = searchData.recipes.find(
-                (r: any) => r.name.toLowerCase() === recipeModal.item.name.toLowerCase()
-              );
-              recipeData = exactMatch || null;
+              recipeData = findRecipeByName(searchData.recipes, recipeModal.item.name);
             }
           }
         }
@@ -560,6 +557,9 @@ export default function UserPlanPage() {
             mealTypes: data.mealTypes || [],
             totalCalories: data.totalCalories || 0,
             hasPlan: true,
+            dailyNote: data.dailyNote || '',
+            isFrozen: data.isFrozen || false,
+            freezeInfo: data.freezeInfo || null,
             planDetails: data.planDetails
           }
           : {
@@ -567,7 +567,10 @@ export default function UserPlanPage() {
             meals: [],
             mealTypes: [],
             totalCalories: 0,
-            hasPlan: false
+            hasPlan: false,
+            dailyNote: '',
+            isFrozen: false,
+            freezeInfo: null
           };
         mealPlanCache.current.set(dateKey, plan);
       }

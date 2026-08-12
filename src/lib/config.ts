@@ -10,14 +10,11 @@ export const PRODUCTION_URL = 'https://dtps.tech';
  * In development, use localhost
  */
 export function getBaseUrl(): string {
-  // On Vercel, use the deployment-specific URL (auto-set by Vercel at build time)
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-
-  // Check if we're in production with custom domain
+  // Public links must use the canonical domain. VERCEL_URL is deployment-specific
+  // and may point users to a protected preview deployment or the old hostname.
   const isProduction = process.env.NODE_ENV === 'production' ||
-                       process.env.VERCEL_ENV === 'production' ||
+                       Boolean(process.env.VERCEL_ENV) ||
+                       Boolean(process.env.VERCEL_URL) ||
                        process.env.NEXTAUTH_URL?.includes('dtps.tech');
 
   if (isProduction) {
@@ -25,7 +22,7 @@ export function getBaseUrl(): string {
   }
 
   // In development, use NEXTAUTH_URL or fallback to localhost
-  return process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  return process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 }
 
 /**

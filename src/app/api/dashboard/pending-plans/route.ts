@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
         client: { $in: clientIds },
         status: { $in: ['active', 'paid', 'completed'] }
       })
-        .select('client planName durationDays durationLabel expectedStartDate expectedEndDate mealPlanCreated daysUsed parentPaymentId status createdAt')
+        .select('client planName durationDays durationLabel expectedStartDate expectedEndDate endDate mealPlanCreated daysUsed remainingDays linkedMealPlanIds parentPaymentId status paymentStatus createdAt')
         .sort({ createdAt: -1 })
         .lean(),
     ]);
@@ -108,6 +108,21 @@ export async function GET(request: NextRequest) {
 
       if (clientPurchases.length === 0) continue;
 
+      // A leftover counter on an expired purchase is historical accounting, not
+      // work that should create a new phase. This also neutralizes duplicated
+      // migration purchases whose unused copy retained all of its days.
+      const eligiblePurchases = clientPurchases.filter((purchase: any) => {
+        const entitlementEnd = purchase.expectedEndDate || purchase.endDate;
+        if (!entitlementEnd) return true;
+
+        const endDate = new Date(entitlementEnd);
+        if (Number.isNaN(endDate.getTime())) return true;
+        endDate.setHours(23, 59, 59, 999);
+        return endDate >= today;
+      });
+
+      if (eligiblePurchases.length === 0) continue;
+
       // Sort meal plans by start date
       const sortedMealPlans = [...clientMealPlans].sort(
         (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
@@ -115,9 +130,9 @@ export async function GET(request: NextRequest) {
 
       // Prefer the newest purchase that still has unallocated days. Falling
       // back to the newest record preserves the previous response contract.
-      const latestPurchase = clientPurchases.find((purchase: any) =>
+      const latestPurchase = eligiblePurchases.find((purchase: any) =>
         Math.max(0, Number(purchase.durationDays || 0) - Number(purchase.daysUsed || 0)) > 0
-      ) || clientPurchases[0];
+      ) || eligiblePurchases[0];
 
       // Calculate total purchased days from the purchase record
       const totalPurchasedDays = latestPurchase.durationDays || 0;

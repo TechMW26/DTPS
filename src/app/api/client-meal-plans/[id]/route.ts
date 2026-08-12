@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db/connection';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
+import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import User from '@/lib/db/models/User';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { updateClientStatusFromMealPlan } from '@/lib/status/computeClientStatus';
@@ -719,6 +720,46 @@ export async function PUT(
       const safeEndDate = resolveEndDateCoveringMeals(candidateEndDate, updateData.meals);
       if (safeEndDate) {
         updateData.endDate = safeEndDate;
+      }
+    }
+
+    // Drafts may have been autosaved before their purchase dates were final.
+    // Revalidate the authoritative purchase window when publishing or moving
+    // dates so an early draft cannot become an incorrectly dated active plan.
+    if (existingPlan.purchaseId && (isPublishing || startDate !== undefined || endDate !== undefined)) {
+      const purchase = await UnifiedPayment.findById(existingPlan.purchaseId)
+        .select('expectedStartDate expectedEndDate startDate endDate')
+        .lean() as any;
+
+      if (!purchase) {
+        return NextResponse.json(
+          { success: false, error: 'Linked purchase could not be found' },
+          { status: 400 }
+        );
+      }
+
+      const expectedStart = startOfDay(new Date(purchase.expectedStartDate || purchase.startDate));
+      const expectedEnd = startOfDay(new Date(purchase.expectedEndDate || purchase.endDate));
+      const proposedStart = startOfDay(new Date(updateData.startDate || existingPlan.startDate));
+      const proposedEnd = startOfDay(new Date(updateData.endDate || existingPlan.endDate));
+      const datesAreValid = [expectedStart, expectedEnd, proposedStart, proposedEnd]
+        .every((date) => !Number.isNaN(date.getTime()));
+
+      if (!datesAreValid) {
+        return NextResponse.json(
+          { success: false, error: 'Valid expected purchase dates are required before publishing' },
+          { status: 400 }
+        );
+      }
+
+      if (proposedStart < expectedStart || proposedEnd > expectedEnd) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Meal plan dates must remain within the linked purchase expected window',
+          },
+          { status: 400 }
+        );
       }
     }
 
