@@ -7,6 +7,7 @@ import { OTP_CONFIG } from '@/lib/auth/otpStore';
 import { validatePhoneNumber } from '@/lib/validations/contact';
 import { sign } from 'jsonwebtoken';
 import crypto from 'crypto';
+import { hasCurrentOrUpcomingMealPlan } from '@/lib/auth/onboarding-access';
 
 export async function POST(request: NextRequest) {
     try {
@@ -198,6 +199,15 @@ export async function POST(request: NextRequest) {
         // Delete the used OTP record
         await OTPRecord.deleteOne({ _id: otpRecord._id });
 
+        // Staff-created and migrated clients may already have a visible plan
+        // even though the optional profile onboarding was never completed.
+        const canAccessAssignedPlan = !isNewUser && !user.onboardingCompleted
+            ? await hasCurrentOrUpcomingMealPlan(user._id.toString())
+            : false;
+        const effectiveOnboardingCompleted = Boolean(
+            user.onboardingCompleted || canAccessAssignedPlan
+        );
+
         // Generate JWT token for NextAuth
         const jwtSecret = process.env.NEXTAUTH_SECRET;
         if (!jwtSecret) {
@@ -216,14 +226,18 @@ export async function POST(request: NextRequest) {
                 email: userEmail,
                 name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
                 role: user.role,
-                onboardingCompleted: user.onboardingCompleted,
+                onboardingCompleted: effectiveOnboardingCompleted,
             },
             jwtSecret,
             { expiresIn: '1h' }
         );
 
         // Determine redirect URL based on onboarding status
-        const redirectUrl = user.onboardingCompleted ? '/user' : '/user/onboarding';
+        const redirectUrl = canAccessAssignedPlan
+            ? '/user/plan'
+            : effectiveOnboardingCompleted
+                ? '/user'
+                : '/user/onboarding';
 
         console.log(`[OTP Verify] Success for ${normalizedPhone}, userId: ${user._id}, email: ${userEmail}, purpose: ${otpRecord.purpose}`);
 
@@ -237,7 +251,7 @@ export async function POST(request: NextRequest) {
                 email: userEmail,
                 name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
                 role: user.role,
-                onboardingCompleted: user.onboardingCompleted,
+                onboardingCompleted: effectiveOnboardingCompleted,
             },
         });
     } catch (error) {

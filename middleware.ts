@@ -17,6 +17,7 @@ const publicUserRoutes = [
 // Routes that should skip onboarding check (onboarding page itself and its API)
 const onboardingExemptRoutes = [
   '/user/onboarding',
+  '/user/plan',
   '/api/client/onboarding',
   '/api/auth', // Auth routes must be exempt
   '/api/internal/runtime-alert',

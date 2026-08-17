@@ -9,6 +9,7 @@ import { UserRole } from '@/types';
 import { getBaseUrl } from '@/lib/config';
 import { verify } from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
+import { hasCurrentOrUpcomingMealPlan } from '@/lib/auth/onboarding-access';
 
 /**
  * In-memory cache for user active-status checks in the session callback.
@@ -501,7 +502,12 @@ export const authOptions: NextAuthOptions = {
           try {
             await connectDB();
             const dbUser = await User.findById(user.id).select('onboardingCompleted');
-            token.onboardingCompleted = dbUser?.onboardingCompleted ?? false;
+            const hasAccessiblePlan = dbUser?.onboardingCompleted
+              ? false
+              : await hasCurrentOrUpcomingMealPlan(user.id);
+            token.onboardingCompleted = Boolean(
+              dbUser?.onboardingCompleted || hasAccessiblePlan
+            );
           } catch (error) {
             console.error('Error fetching onboarding status:', error);
             token.onboardingCompleted = false;

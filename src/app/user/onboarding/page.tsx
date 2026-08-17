@@ -766,19 +766,50 @@ export default function OnboardingPage() {
   const [checkingStatus, setCheckingStatus] = useState(false); // Start as false - show onboarding immediately
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
     if (status === 'authenticated') {
       // First check session for onboardingCompleted (fast path)
       // If onboardingCompleted is explicitly true, redirect to user dashboard
       if (session?.user?.onboardingCompleted === true) {
         router.replace('/user');
-        return;
+        return () => controller.abort();
       }
-      // If onboardingCompleted is false or undefined, show onboarding immediately
-      // No need to check API - just show the onboarding form
-      setCheckingStatus(false);
+
+      // Existing/migrated clients must never be blocked from a diet chart that
+      // has already been assigned, even if optional profile onboarding is incomplete.
+      setCheckingStatus(true);
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      fetch('/api/client/meal-plan?list=true', { signal: controller.signal })
+        .then(async (response) => response.ok ? response.json() : null)
+        .then((result) => {
+          if (!active) return;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const hasVisiblePlan = Array.isArray(result?.plans) && result.plans.some(
+            (plan: { endDate?: string }) =>
+              plan.endDate && new Date(plan.endDate).getTime() >= today.getTime()
+          );
+
+          if (hasVisiblePlan) {
+            router.replace('/user/plan');
+            return;
+          }
+          setCheckingStatus(false);
+        })
+        .catch(() => {
+          if (active) setCheckingStatus(false);
+        })
+        .finally(() => clearTimeout(timeout));
     } else if (status === 'unauthenticated') {
       router.replace('/client-auth/signin');
     }
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [status, session, router]);
 
   const updateData = (newData: Partial<OnboardingData>) => {
