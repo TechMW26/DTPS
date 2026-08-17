@@ -3,6 +3,7 @@
 import request from 'supertest';
 import { getServerSession } from 'next-auth';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
+import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { entityId } from '../utils/assertions';
 import {
@@ -120,6 +121,10 @@ describe('client meal plan lifecycle & immutability (supertest + jest)', () => {
             expect(fresh.republishCount).toBe(1);
             expect(Array.isArray(fresh.lifecycleAudit)).toBe(true);
             expect(fresh.lifecycleAudit[0].action).toBe('publish');
+            await expect(User.exists({
+                _id: client._id,
+                onboardingCompleted: true,
+            })).resolves.not.toBeNull();
         } finally {
             server.close();
         }

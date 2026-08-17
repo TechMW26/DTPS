@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -764,6 +764,7 @@ export default function OnboardingPage() {
   const [data, setData] = useState<OnboardingData>(defaultData);
   const [saving, setSaving] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false); // Start as false - show onboarding immediately
+  const dietPlanRedirectRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -773,7 +774,7 @@ export default function OnboardingPage() {
       // First check session for onboardingCompleted (fast path)
       // If onboardingCompleted is explicitly true, redirect to user dashboard
       if (session?.user?.onboardingCompleted === true) {
-        router.replace('/user');
+        router.replace(dietPlanRedirectRef.current ? '/user/plan' : '/user');
         return () => controller.abort();
       }
 
@@ -781,19 +782,18 @@ export default function OnboardingPage() {
       // has already been assigned, even if optional profile onboarding is incomplete.
       setCheckingStatus(true);
       const timeout = setTimeout(() => controller.abort(), 5000);
-      fetch('/api/client/meal-plan?list=true', { signal: controller.signal })
+      fetch('/api/client/onboarding', { signal: controller.signal, cache: 'no-store' })
         .then(async (response) => response.ok ? response.json() : null)
-        .then((result) => {
+        .then(async (result) => {
           if (!active) return;
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const hasVisiblePlan = Array.isArray(result?.plans) && result.plans.some(
-            (plan: { endDate?: string }) =>
-              plan.endDate && new Date(plan.endDate).getTime() >= today.getTime()
-          );
-
-          if (hasVisiblePlan) {
-            router.replace('/user/plan');
+          if (result?.onboardingCompleted === true) {
+            const target = result.dietPlanOverride ? '/user/plan' : '/user';
+            dietPlanRedirectRef.current = Boolean(result.dietPlanOverride);
+            try {
+              await updateSession({ onboardingCompleted: true });
+            } finally {
+              if (active) router.replace(target);
+            }
             return;
           }
           setCheckingStatus(false);
@@ -810,7 +810,7 @@ export default function OnboardingPage() {
       active = false;
       controller.abort();
     };
-  }, [status, session, router]);
+  }, [status, session, router, updateSession]);
 
   const updateData = (newData: Partial<OnboardingData>) => {
     setData(prev => ({ ...prev, ...newData }));

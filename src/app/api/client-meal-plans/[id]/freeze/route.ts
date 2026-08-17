@@ -412,10 +412,11 @@ export async function POST(
       return NextResponse.json({ error: 'Meal plan not found' }, { status: 404 });
     }
 
-    // Calculate plan duration
+    // Keep allowance tied to the originally assigned phase duration. The
+    // current date span may already include earlier freeze extensions.
     const startDate = startOfDay(new Date(mealPlan.startDate));
     const endDate = startOfDay(new Date(mealPlan.endDate));
-    const durationDays = differenceInDays(endDate, startDate) + 1;
+    const durationDays = mealPlan.duration || differenceInDays(endDate, startDate) + 1;
 
     // Check for shared freeze tracking
     const purchaseId = mealPlan.purchaseId?.toString() || null;
@@ -447,20 +448,33 @@ export async function POST(
     // Validate freeze dates
     const today = startOfDay(new Date());
     const validFreezeDates: Date[] = [];
+    const requestedFreezeDateSet = new Set<string>();
 
     for (const dateStr of freezeDates) {
+      if (typeof dateStr !== 'string') {
+        return NextResponse.json({ error: 'Every freeze date must use YYYY-MM-DD format' }, { status: 400 });
+      }
+
       const freezeDate = startOfDay(parseISO(dateStr));
+      if (Number.isNaN(freezeDate.getTime())) {
+        return NextResponse.json({ error: `Invalid freeze date: ${dateStr}` }, { status: 400 });
+      }
       const formattedDate = format(freezeDate, 'yyyy-MM-dd');
+
+      // Duplicate dates must never consume allowance twice.
+      if (requestedFreezeDateSet.has(formattedDate)) continue;
+      requestedFreezeDateSet.add(formattedDate);
 
       // Check if date is already frozen (across all linked plans if shared)
       if (existingFreezeSet.has(formattedDate)) {
         continue; // Skip already frozen dates
       }
 
-      // Check if date is within plan range
-      if (freezeDate < startDate || freezeDate > endDate) {
+      // A pause may continue beyond the currently prepared diet. Its first day
+      // must still fall inside this phase; continuity is validated below.
+      if (freezeDate < startDate) {
         return NextResponse.json({
-          error: `Date ${formattedDate} is outside the plan range (${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')})`
+          error: `Date ${formattedDate} is before the plan starts (${format(startDate, 'yyyy-MM-dd')})`
         }, { status: 400 });
       }
 
@@ -498,6 +512,23 @@ export async function POST(
     // Sort freeze dates
     validFreezeDates.sort((a, b) => a.getTime() - b.getTime());
 
+    const extendsBeyondPreparedPlan = validFreezeDates.some(date => date > endDate);
+    if (extendsBeyondPreparedPlan) {
+      if (validFreezeDates[0] > endDate) {
+        return NextResponse.json({
+          error: 'A pause extending beyond the prepared plan must start on or before the current plan end date.'
+        }, { status: 400 });
+      }
+
+      for (let index = 1; index < validFreezeDates.length; index += 1) {
+        if (differenceInDays(validFreezeDates[index], validFreezeDates[index - 1]) !== 1) {
+          return NextResponse.json({
+            error: 'A pause extending beyond the prepared plan must be one continuous date range.'
+          }, { status: 400 });
+        }
+      }
+    }
+
     // Find meals on freeze dates to COPY (not move)
     const mealsToCopy: any[] = [];
 
@@ -514,6 +545,7 @@ export async function POST(
         mealsToCopy.push({ ...meal }); // Create a copy
       }
     }
+    mealsToCopy.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Find the last meal date in the existing meals array (to add after it)
     let lastMealDate = endDate;
@@ -530,9 +562,14 @@ export async function POST(
       }
     }
 
-    // Calculate new dates for the copied meals (after the LAST meal date, not endDate)
+    // Recovery meals must start after both the prepared plan and the requested
+    // pause. This prevents an 18-25 Aug pause from recovering meals on 20-21 Aug.
+    const lastFreezeDate = validFreezeDates[validFreezeDates.length - 1];
+    if (lastFreezeDate > lastMealDate) lastMealDate = lastFreezeDate;
+
     const addedMealDates: string[] = [];
     const newMeals: any[] = [];
+    const recoveryDateByFreezeDate = new Map<string, string>();
 
     for (let i = 0; i < mealsToCopy.length; i++) {
       const mealToCopy = mealsToCopy[i];
@@ -544,7 +581,7 @@ export async function POST(
       const newDayName = fullDayNames[newDate.getDay()];
 
       // Get original frozen day info for recovery label
-      const originalDate = validFreezeDates[i] || validFreezeDates[0];
+      const originalDate = startOfDay(new Date(mealToCopy.date));
       const originalDateObj = new Date(originalDate);
       const originalDayOfMonth = originalDateObj.getDate();
       const originalDayName = fullDayNames[originalDateObj.getDay()];
@@ -568,6 +605,7 @@ export async function POST(
       });
 
       addedMealDates.push(newDateStr);
+      recoveryDateByFreezeDate.set(format(originalDate, 'yyyy-MM-dd'), newDateStr);
     }
 
     // Mark original frozen days with isFrozen: true
@@ -591,9 +629,9 @@ export async function POST(
     });
 
     // Create new freeze day entries with added date info, reason, and frozenBy
-    const newFreezeDays = validFreezeDates.map((date, index) => ({
+    const newFreezeDays = validFreezeDates.map((date) => ({
       date: date,
-      addedDate: addedMealDates[index] || null,
+      addedDate: recoveryDateByFreezeDate.get(format(date, 'yyyy-MM-dd')) || null,
       reason: reason || null, // Optional reason for freezing
       frozenBy: frozenBy, // Who froze this date
       createdAt: new Date()
@@ -640,12 +678,10 @@ export async function POST(
       // Base from the purchase window first (e.g. 15 Jun -> 15 Jul), not from current phase end.
       const purchaseBaselineEnd = resolvePurchaseExpectedEndBaseline(purchaseRecords, endDate);
       const latestLinkedMealPlanEnd = await resolveLatestLinkedMealPlanEndDate(purchaseId, newEndDate);
-      const effectiveBaselineEnd = purchaseBaselineEnd.getTime() > latestLinkedMealPlanEnd.getTime()
-        ? purchaseBaselineEnd
+      const extendedPurchaseEnd = addDays(startOfDay(purchaseBaselineEnd), validFreezeDates.length);
+      const newExpectedEndDate = extendedPurchaseEnd.getTime() > latestLinkedMealPlanEnd.getTime()
+        ? extendedPurchaseEnd
         : latestLinkedMealPlanEnd;
-
-      // Freeze consumes/extends allocation days: push expected end by frozen days count.
-      const newExpectedEndDate = addDays(startOfDay(effectiveBaselineEnd), validFreezeDates.length);
       const purchaseUpdate = {
         $set: {
           expectedEndDate: newExpectedEndDate,

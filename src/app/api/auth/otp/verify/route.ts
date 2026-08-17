@@ -7,7 +7,7 @@ import { OTP_CONFIG } from '@/lib/auth/otpStore';
 import { validatePhoneNumber } from '@/lib/validations/contact';
 import { sign } from 'jsonwebtoken';
 import crypto from 'crypto';
-import { hasCurrentOrUpcomingMealPlan } from '@/lib/auth/onboarding-access';
+import { grantDietPlanAccessIfPublished } from '@/lib/auth/onboarding-access';
 
 export async function POST(request: NextRequest) {
     try {
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
         // Staff-created and migrated clients may already have a visible plan
         // even though the optional profile onboarding was never completed.
         const canAccessAssignedPlan = !isNewUser && !user.onboardingCompleted
-            ? await hasCurrentOrUpcomingMealPlan(user._id.toString())
+            ? await grantDietPlanAccessIfPublished(user._id.toString())
             : false;
         const effectiveOnboardingCompleted = Boolean(
             user.onboardingCompleted || canAccessAssignedPlan

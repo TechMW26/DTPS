@@ -1814,6 +1814,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     const startDate = planStartDate;
     const endDate = planEndDate;
     const durationDays = displayDurationDays;
+    const freezeCalendarEndDate = addDays(endDate, freezeInfo?.remainingFreezeDays || 0);
     const mealDateSet = useMemo(() => {
       const set = new Set<string>();
       const planMeals = Array.isArray(plan?.meals) ? plan.meals : [];
@@ -1894,11 +1895,15 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       // A freeze changes a full day's entitlement, so only future dates qualify.
       if (date <= today) return false;
 
-      // Can't select dates outside plan range
-      if (date < startDate || date > endDate) return false;
+      // A pause can extend beyond the currently prepared diet, up to the
+      // remaining freeze entitlement.
+      if (date < startDate || date > freezeCalendarEndDate) return false;
 
-      // Can only freeze dates that exist in this plan's created meal dates
-      if (!mealDateSet.has(dateStr)) return false;
+      // Dates inside the prepared range must belong to this phase. Dates after
+      // the prepared end are valid only as part of a continuous pause range;
+      // the API enforces that continuity on submission.
+      if (date <= endDate && !mealDateSet.has(dateStr)) return false;
+      if (date > endDate && !selectedDates.some(selected => parseLocalDate(selected) <= endDate)) return false;
 
       // Can't select already frozen dates
       if (isDateFrozen(dateStr)) return false;
@@ -1914,6 +1919,32 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       if (!selectedDates.includes(dateStr)) {
         if (freezeInfo && selectedDates.length >= freezeInfo.remainingFreezeDays) {
           toast.error(`You can only freeze ${freezeInfo.remainingFreezeDays} more days`);
+          return;
+        }
+
+        // Clicking a date beyond the prepared plan completes the pause range
+        // from the first selected plan date, so staff do not need to click
+        // every intervening day manually.
+        const selectedDate = parseLocalDate(dateStr);
+        if (selectedDate > endDate && selectedDates.length > 0) {
+          const rangeStart = [...selectedDates, dateStr]
+            .map(parseLocalDate)
+            .sort((a, b) => a.getTime() - b.getTime())[0];
+          const range: string[] = [];
+          for (let current = new Date(rangeStart); current <= selectedDate; current = addDays(current, 1)) {
+            const currentDateStr = format(current, 'yyyy-MM-dd');
+            if (isDateFrozen(currentDateStr)) {
+              toast.error('The requested pause overlaps an already frozen date');
+              return;
+            }
+            range.push(currentDateStr);
+          }
+
+          if (freezeInfo && range.length > freezeInfo.remainingFreezeDays) {
+            toast.error(`You can only freeze ${freezeInfo.remainingFreezeDays} more days`);
+            return;
+          }
+          setSelectedDates(range);
           return;
         }
       }
@@ -1943,13 +1974,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
           })
         });
 
+        const data = await res.json().catch(() => null);
         if (!res.ok) {
-          const errorText = await res.text();
-          console.error('Failed to freeze dates:', res.status, errorText);
-          toast.error('Failed to freeze dates. Server error.');
+          console.error('Failed to freeze dates:', res.status, data);
+          toast.error(data?.error || 'Failed to freeze dates. Server error.');
           return;
         }
-        const data = await res.json();
 
         if (data.success) {
           toast.success(data.message);
@@ -2020,7 +2050,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       );
     };
 
-    // Generate calendar days for current month range (startDate to endDate)
+    // Include the remaining freeze window so a pause can continue beyond the
+    // last currently prepared meal-plan date.
     const generateCalendarDays = () => {
       const days: { date: Date; dateStr: string; isCurrentMonth: boolean }[] = [];
 
@@ -2028,7 +2059,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       const current = new Date(startDate);
       current.setHours(0, 0, 0, 0);
 
-      while (current <= endDate) {
+      while (current <= freezeCalendarEndDate) {
         days.push({
           date: new Date(current),
           dateStr: format(current, 'yyyy-MM-dd'),
@@ -2199,7 +2230,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                       <div className="flex items-center justify-between mb-3">
                         <Label className="text-sm font-medium">Select Dates to Freeze</Label>
                         <span className="text-xs text-gray-500">
-                          Only future dates with existing meal plan entries are selectable
+                          Select the pause start, then its end date; dates beyond the prepared plan are supported
                         </span>
                       </div>
 
@@ -2225,7 +2256,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                           const isSelected = selectedDates.includes(dateStr);
                           const todayAtStart = new Date(new Date().setHours(0, 0, 0, 0));
                           const isPast = parseLocalDate(dateStr) < todayAtStart;
-                          const hasMealDate = mealDateSet.has(dateStr);
+                          const hasMealDate = mealDateSet.has(dateStr) || parseLocalDate(dateStr) > endDate;
                           const frozenInfo = getFrozenDateInfo(dateStr);
 
                           return (
@@ -2285,7 +2316,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                         </div>
                         <div className="flex items-center gap-1.5">
                           <div className="w-4 h-4 bg-gray-100 rounded" />
-                          <span>Past/No Meal</span>
+                          <span>Past/Unavailable</span>
                         </div>
                       </div>
                     </div>
@@ -2345,7 +2376,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                         <div className="mt-3">
                           <p className="text-xs font-medium text-blue-800 mb-2">Dates to freeze:</p>
                           <div className="flex flex-wrap gap-1">
-                            {selectedDates.sort().map(dateStr => (
+                            {[...selectedDates].sort().map(dateStr => (
                               <Badge
                                 key={dateStr}
                                 variant="secondary"
@@ -2359,24 +2390,20 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                           </div>
                         </div>
 
-                        {/* Show the dates that will be added at the end */}
+                        {/* Show the resulting pause and entitlement window */}
                         <div className="mt-3 pt-3 border-t border-blue-200">
                           <p className="text-xs font-medium text-green-800 mb-2">
-                            📅 Meals will be copied to these new dates:
+                            📅 Pause result
                           </p>
-                          <div className="flex flex-wrap gap-1">
-                            {selectedDates.sort().map((_, index) => {
-                              const newDate = addDays(endDate, index + 1);
-                              return (
-                                <Badge
-                                  key={index}
-                                  variant="outline"
-                                  className="bg-green-50 text-green-700 border-green-300"
-                                >
-                                  {format(newDate, 'MMM d, yyyy')}
-                                </Badge>
-                              );
-                            })}
+                          <div className="space-y-1 text-xs text-green-800">
+                            <p>
+                              Plan resumes after{' '}
+                              <strong>{format(parseLocalDate([...selectedDates].sort().at(-1)!), 'MMM d, yyyy')}</strong>
+                            </p>
+                            <p>
+                              Entitlement end moves to{' '}
+                              <strong>{format(addDays(endDate, selectedDates.length), 'MMM d, yyyy')}</strong>
+                            </p>
                           </div>
                         </div>
 
@@ -2384,7 +2411,7 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                         <div className="mt-3 p-2 bg-amber-50 rounded border border-amber-200">
                           <p className="text-xs text-amber-800">
                             ⚠️ <strong>Important:</strong> During freeze, meals cannot be modified for frozen dates.
-                            The meals will be copied (not moved) to new dates at the end of the plan.
+                            Prepared meals inside the pause will resume only after the full pause ends.
                           </p>
                         </div>
                       </div>

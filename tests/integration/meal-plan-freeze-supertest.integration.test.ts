@@ -49,6 +49,12 @@ function utcDayDiff(fromDate: Date, toDate: Date): number {
     return Math.round((to - from) / (1000 * 60 * 60 * 24));
 }
 
+function localCalendarDayDiff(fromDate: Date, toDate: Date): number {
+    const from = Date.UTC(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+    const to = Date.UTC(toDate.getFullYear(), toDate.getMonth(), toDate.getDate());
+    return Math.round((to - from) / (1000 * 60 * 60 * 24));
+}
+
 describe('meal plan freeze/unfreeze integrations (supertest + jest)', () => {
     beforeEach(async () => {
         await ensureDatabaseConnection();
@@ -200,8 +206,8 @@ describe('meal plan freeze/unfreeze integrations (supertest + jest)', () => {
             ).toBeLessThanOrEqual(1);
             expect(toYMD(new Date(refreshedPhase2AfterFreeze.endDate))).not.toBe(toYMD(phase2End));
             expect(
-                utcDayDiff(new Date(purchaseBeforeFreeze.expectedEndDate), new Date(refreshedPurchaseAfterFreeze.expectedEndDate))
-            ).toBeGreaterThan(0);
+                localCalendarDayDiff(new Date(purchaseBeforeFreeze.expectedEndDate), new Date(refreshedPurchaseAfterFreeze.expectedEndDate))
+            ).toBe(2);
 
             const unfreezeServer = createRouteTestServer((nextRequest) =>
                 route.DELETE(nextRequest, { params: Promise.resolve({ id: phase2Id }) })
@@ -237,6 +243,65 @@ describe('meal plan freeze/unfreeze integrations (supertest + jest)', () => {
             }
         } finally {
             freezeServer.close();
+        }
+    });
+
+    it('supports a continuous pause that extends beyond the currently prepared diet', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: `admin-pause-window-${Date.now()}@example.com`,
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+
+        const pauseStart = addDays(new Date(), 1);
+        pauseStart.setUTCHours(0, 0, 0, 0);
+        const preparedEnd = addDays(pauseStart, 1);
+        const pauseDates = Array.from({ length: 8 }, (_, index) => toYMD(addDays(pauseStart, index)));
+
+        const plan = await ClientMealPlan.create({
+            clientId: client._id,
+            dietitianId: dietitian._id,
+            name: 'Two prepared days before eight-day pause',
+            meals: buildDailyMeals(pauseStart, 2),
+            startDate: pauseStart,
+            endDate: preparedEnd,
+            duration: 2,
+            status: 'active',
+            goals: { primaryGoal: 'weight-loss' },
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+        const route = await import('@/app/api/client-meal-plans/[id]/freeze/route');
+        const planId = entityId(plan);
+        const server = createRouteTestServer((nextRequest) =>
+            route.POST(nextRequest, { params: Promise.resolve({ id: planId }) })
+        );
+
+        try {
+            const response = await request(server)
+                .post(`/api/client-meal-plans/${planId}/freeze`)
+                .send({ freezeDates: pauseDates, reason: 'Client requested pause' });
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.frozenDates).toEqual(pauseDates);
+            expect(response.body.data.addedMealDates).toEqual([
+                toYMD(addDays(pauseStart, 8)),
+                toYMD(addDays(pauseStart, 9)),
+            ]);
+            expect(response.body.data.newEndDate).toBe(toYMD(addDays(preparedEnd, 8)));
+
+            const refreshed: any = await ClientMealPlan.findById(plan._id).lean();
+            expect(refreshed.freezedDays).toHaveLength(8);
+            expect(refreshed.duration).toBe(2);
+            const recoveryDates = refreshed.meals
+                .filter((meal: any) => meal.isFreezeRecovery)
+                .map((meal: any) => toYMD(new Date(meal.date)));
+            expect(recoveryDates).toEqual([
+                toYMD(addDays(pauseStart, 8)),
+                toYMD(addDays(pauseStart, 9)),
+            ]);
+        } finally {
+            server.close();
         }
     });
 });

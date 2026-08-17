@@ -7,6 +7,7 @@ import LifestyleInfo from '@/lib/db/models/LifestyleInfo';
 import MedicalInfo from '@/lib/db/models/MedicalInfo';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+import { grantDietPlanAccessIfPublished } from '@/lib/auth/onboarding-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -217,13 +218,18 @@ export async function GET(request: NextRequest) {
       .select('onboardingCompleted onboardingStep')
       .lean() as { onboardingCompleted?: boolean; onboardingStep?: number } | null;
 
-    const onboardingCompleted = user?.onboardingCompleted ?? false;
+    let onboardingCompleted = user?.onboardingCompleted ?? false;
+    const dietPlanOverride = !onboardingCompleted
+      ? await grantDietPlanAccessIfPublished(session.user.id)
+      : false;
+    onboardingCompleted = onboardingCompleted || dietPlanOverride;
     const onboardingStep = user?.onboardingStep ?? 0;
 
     // Set cache-control headers to prevent browser caching
     const response = NextResponse.json({
       onboardingCompleted,
       onboardingStep,
+      dietPlanOverride,
     });
 
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');

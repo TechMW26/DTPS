@@ -12,6 +12,7 @@ import { logHistoryServer } from '@/lib/server/history';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { addDays, differenceInDays, format, startOfDay } from 'date-fns';
 import { UserRole } from '@/types';
+import { grantDietPlanAccess } from '@/lib/auth/onboarding-access';
 
 const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
   if (!Array.isArray(meals) || meals.length === 0) return false;
@@ -890,6 +891,11 @@ export async function PUT(
         { success: false, error: 'Meal plan not found' },
         { status: 404 }
       );
+    }
+
+    if (updatedPlan.status === 'active') {
+      const clientId = updatedPlan.clientId?.toString();
+      if (clientId) await grantDietPlanAccess(clientId);
     }
 
     // Keep linked phases contiguous when a plan's end-date boundary changes.

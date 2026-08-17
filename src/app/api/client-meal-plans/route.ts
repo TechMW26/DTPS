@@ -15,6 +15,7 @@ import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { updateClientStatusFromMealPlan } from '@/lib/status/computeClientStatus';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { format, startOfDay } from 'date-fns';
+import { grantDietPlanAccess } from '@/lib/auth/onboarding-access';
 
 const normalizeRole = (role: unknown): string => {
   const normalized = String(role || '').trim().toLowerCase();
@@ -741,6 +742,8 @@ export async function POST(request: NextRequest) {
 
     // Skip history logging, notifications, and client status update for drafts
     if (!isDraft) {
+      await grantDietPlanAccess(validatedData.clientId);
+
       // Log history for meal plan assignment
       await logHistoryServer({
         userId: validatedData.clientId,
