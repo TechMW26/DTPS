@@ -305,21 +305,22 @@ export default function UserPlanPage() {
     }, 500);
   }, []);
 
-  // Scroll to today's date when dates are loaded - today is at index 15
+  // Keep the selected date visible, including an assigned start date added by
+  // the jump action when it falls outside the default calendar range.
   useEffect(() => {
     if (weekDates.length > 0 && dateScrollRef.current) {
       setTimeout(() => {
         if (dateScrollRef.current) {
-          // Find the index of today in weekDates
-          const today = new Date();
-          const todayIndex = weekDates.findIndex(date =>
-            date.getFullYear() === today.getFullYear() &&
-            date.getMonth() === today.getMonth() &&
-            date.getDate() === today.getDate()
-          );
-          if (todayIndex !== -1) {
+          const selectedIndex = weekDates.findIndex(date => isSameDay(date, selectedDate));
+          if (selectedIndex !== -1) {
             const buttonWidth = 58; // Approximate width of each date button
-            dateScrollRef.current.scrollLeft = todayIndex * buttonWidth;
+            const centeredOffset = selectedIndex * buttonWidth
+              - (dateScrollRef.current.clientWidth / 2)
+              + (buttonWidth / 2);
+            dateScrollRef.current.scrollTo({
+              left: Math.max(0, centeredOffset),
+              behavior: 'smooth',
+            });
           }
         }
       }, 50);
@@ -1062,6 +1063,37 @@ export default function UserPlanPage() {
   const totalMeals = mealsWithFood.length || 0;
   const isTodaySelected = isToday(selectedDate);
 
+  const upcomingPlanWindow = (() => {
+    if (!planDateWindow?.startDate || !planDateWindow?.endDate) return null;
+
+    const start = new Date(planDateWindow.startDate);
+    const end = new Date(planDateWindow.endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    const selectedDay = new Date(selectedDate);
+    selectedDay.setHours(0, 0, 0, 0);
+
+    return selectedDay < start ? { start, end } : null;
+  })();
+
+  const jumpToAssignedStartDate = () => {
+    if (!upcomingPlanWindow) return;
+
+    const assignedStartDate = new Date(upcomingPlanWindow.start);
+    setWeekDates((currentDates) => {
+      if (currentDates.some((date) => isSameDay(date, assignedStartDate))) {
+        return currentDates;
+      }
+
+      return [...currentDates, assignedStartDate].sort((a, b) => a.getTime() - b.getTime());
+    });
+    setDatePickerValue(format(assignedStartDate, 'yyyy-MM-dd'));
+    setShowDatePicker(false);
+    setSelectedDate(assignedStartDate);
+  };
+
   // Calculate progress segments only for meals with food
   const progressSegments = mealsWithFood.map((meal, index) => {
     const isCompleted = meal.isCompleted;
@@ -1333,42 +1365,47 @@ export default function UserPlanPage() {
             <div className="w-20 h-20 mx-auto mb-4 bg-linear-to-br from-[#E06A26]/20 to-[#DB9C6E]/20 rounded-full flex items-center justify-center">
               <span className="text-4xl">🍽️</span>
             </div>
-            <h3 className={`mb-2 text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>No Meal Plan Available</h3>
+            <h3 className={`mb-2 text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+              {upcomingPlanWindow ? 'Your Meal Plan Starts Soon' : 'No Meal Plan Available'}
+            </h3>
             <p className={`mb-2 text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-600'}`}>
               {format(selectedDate, 'EEEE, MMMM d, yyyy')}
             </p>
-            <p className={`mb-6 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-              You don&apos;t have a meal plan for this date. Get a personalized diet plan from our expert dietitians!
-            </p>
-            {(() => {
-              if (!planDateWindow?.startDate || !planDateWindow?.endDate) return null;
-
-              const start = new Date(planDateWindow.startDate);
-              const end = new Date(planDateWindow.endDate);
-              if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-
-              const selectedDay = new Date(selectedDate);
-              selectedDay.setHours(0, 0, 0, 0);
-              const startDay = new Date(start);
-              startDay.setHours(0, 0, 0, 0);
-
-              // Show helper only for upcoming windows when the selected day is before plan start.
-              if (selectedDay >= startDay) return null;
-
-              return (
-                <p className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#1f8b7d]'}`}>
-                  Your meal plan starts from {format(start, 'dd MMM yyyy')} to {format(end, 'dd MMM yyyy')}.
-                </p>
-              );
-            })()}
             <div className="flex flex-col gap-3">
-              <Link
-                href="/user/services"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-linear-to-r from-[#E06A26] to-[#DB9C6E] text-white rounded-xl text-sm font-bold hover:opacity-90 transition-all shadow-lg"
-              >
-                🛒 Buy a Plan
-                <ChevronRight className="w-4 h-4" />
-              </Link>
+              {upcomingPlanWindow ? (
+                <>
+                  <div className={`rounded-xl border p-4 ${isDarkMode ? 'bg-[#3AB1A0]/10 border-[#3AB1A0]/30' : 'bg-[#3AB1A0]/5 border-[#3AB1A0]/20'}`}>
+                    <p className={`text-sm font-semibold ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#1f8b7d]'}`}>
+                      Assigned from {format(upcomingPlanWindow.start, 'dd MMM yyyy')} to {format(upcomingPlanWindow.end, 'dd MMM yyyy')}
+                    </p>
+                    <p className={`mt-2 text-xs leading-relaxed ${isDarkMode ? 'text-amber-200' : 'text-amber-700'}`}>
+                      For the best results, please start and follow this diet only from your assigned start date. Do not begin the plan early.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={jumpToAssignedStartDate}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-linear-to-r from-[#3AB1A0] to-[#2D8A7C] text-white rounded-xl text-sm font-bold hover:opacity-90 transition-all shadow-lg"
+                  >
+                    <CalendarDays className="w-4 h-4" />
+                    Jump to {format(upcomingPlanWindow.start, 'dd MMM')}
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className={`mb-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                    You don&apos;t have a meal plan for this date. Get a personalized diet plan from our expert dietitians!
+                  </p>
+                  <Link
+                    href="/user/services"
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-linear-to-r from-[#E06A26] to-[#DB9C6E] text-white rounded-xl text-sm font-bold hover:opacity-90 transition-all shadow-lg"
+                  >
+                    🛒 Buy a Plan
+                    <ChevronRight className="w-4 h-4" />
+                  </Link>
+                </>
+              )}
               <Link
                 href="/user/messages"
                 className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#3AB1A0]/10 text-[#3AB1A0] rounded-xl text-sm font-medium hover:bg-[#3AB1A0]/20 transition-colors"
