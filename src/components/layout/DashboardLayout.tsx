@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { NotificationPermissionBanner } from '@/components/notifications/NotificationPermissionBanner';
 import { StaffUnreadCountProvider } from '@/contexts/StaffUnreadCountContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { StaffAppSkeleton } from '@/components/ui/skeleton';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -32,14 +33,7 @@ export default function DashboardLayout({
   }, [status, router]);
 
   if (status === 'loading') {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-        <div className="flex flex-col items-center">
-          <div className="h-12 w-12 border-4 border-[#E06A26] border-t-transparent rounded-full animate-spin" />
-          <p className={`mt-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Loading...</p>
-        </div>
-      </div>
-    );
+    return <StaffAppSkeleton />;
   }
 
   if (status === 'unauthenticated') {

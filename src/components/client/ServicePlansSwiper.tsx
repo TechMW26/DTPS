@@ -252,7 +252,7 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
             <div className="mb-6">
                 <div className="flex items-center justify-between px-1 mb-4">
                     <div>
-                        <h2 className="text-lg font-bold text-gray-900">Choose Your Plan</h2>
+                        <h2 className="text-lg font-bold text-gray-900">Choose your plan</h2>
                         <p className="text-sm text-gray-500">Loading available plans...</p>
                     </div>
                 </div>
@@ -270,7 +270,7 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
             <div className="mb-6">
                 <div className="flex items-center justify-between px-1 mb-4">
                     <div>
-                        <h2 className="text-lg font-bold text-gray-900">Choose Your Plan</h2>
+                        <h2 className="text-lg font-bold text-gray-900">Choose your plan</h2>
                         <p className="text-sm text-gray-500">Start your nutrition journey</p>
                     </div>
                 </div>
@@ -279,12 +279,12 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                         <div className="h-16 w-16 bg-white/20 rounded-full flex items-center justify-center mb-4">
                             <Star className="h-8 w-8" />
                         </div>
-                        <h3 className="text-lg font-bold mb-2">No Plans Available Yet</h3>
+                        <h3 className="text-lg font-bold mb-2">No plans available yet</h3>
                         <p className="text-white/80 text-sm mb-4">
                             Contact your dietitian to create a personalized nutrition plan for you.
                         </p>
                         <div className="bg-white/20 px-4 py-2 rounded-full text-sm font-medium">
-                            Coming Soon
+                            Coming soon
                         </div>
                     </div>
                 </div>
@@ -297,7 +297,7 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
             <div className="mb-6">
                 <div className="flex items-center justify-between px-1 mb-4">
                     <div>
-                        <h2 className="text-lg font-bold text-gray-900">Choose Your Plan</h2>
+                        <h2 className="text-lg font-bold text-gray-900">Choose your plan</h2>
                         <p className="text-sm text-gray-500">Select a nutrition plan to get started</p>
                     </div>
                     {plans.length > 1 && (
@@ -305,6 +305,7 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                             <button
                                 onClick={() => scrollTo('left')}
                                 disabled={activeIndex === 0}
+                                aria-label="Show previous plan"
                                 className="p-2 rounded-full bg-white border-2 border-[#E06A26] disabled:opacity-40 hover:bg-[#E06A26]/10 transition-colors"
                             >
                                 <ChevronLeft className="h-4 w-4 text-[#E06A26]" />
@@ -312,6 +313,7 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                             <button
                                 onClick={() => scrollTo('right')}
                                 disabled={activeIndex === plans.length - 1}
+                                aria-label="Show next plan"
                                 className="p-2 rounded-full bg-white border-2 border-[#E06A26]  disabled:opacity-40 hover:bg-[#E06A26]/10 transition-colors"
                             >
                                 <ChevronRight className="h-4 w-4 text-[#E06A26]" />
@@ -420,9 +422,9 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
 
             {/* Purchase Modal */}
             {showPurchaseModal && selectedPlan && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+                <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
                     <div 
-                        className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-slide-up"
+                        className="client-bottom-sheet-panel max-h-full w-full max-w-md overflow-y-auto rounded-t-3xl bg-white sm:rounded-3xl"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="sticky top-0 bg-linear-to-r from-[#E06A26] to-[#DB9C6E] p-5 text-white">

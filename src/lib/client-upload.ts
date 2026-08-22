@@ -1,6 +1,7 @@
 "use client";
 
 import { upload } from "@vercel/blob/client";
+import { readApiError, resilientFetch, type RequestRecoveryState } from "@/lib/api/resilient-fetch";
 
 export type ClientUploadType =
   | "avatar"
@@ -23,6 +24,7 @@ export interface UploadedFileResult {
   type: string;
   storage?: "vercel-blob";
   fileId?: string;
+  imageKitFileId?: string;
   _id?: string;
   id?: string;
   file?: { fileId?: string };
@@ -98,15 +100,22 @@ function safeFilename(filename: string): string {
 async function serverUpload(
   file: File,
   type: ClientUploadType,
+  operationId: string,
+  onRecoveryState?: (state: RequestRecoveryState) => void,
 ): Promise<UploadedFileResult> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("type", type);
 
-  const response = await fetch("/api/upload", { method: "POST", body: formData });
-  const data = await response.json().catch(() => ({}));
+  const response = await resilientFetch("/api/upload", { method: "POST", body: formData }, {
+    attempts: 3,
+    timeoutMs: 60_000,
+    idempotencyKey: operationId,
+    onRecoveryState,
+  });
+  const data = await response.json().catch(() => ({})) as { error?: string } & UploadedFileResult;
   if (!response.ok) {
-    const error = new Error(data.error || "Upload failed") as Error & { status?: number };
+    const error = new Error(data.error || await readApiError(response, "Upload failed")) as Error & { status?: number };
     error.status = response.status;
     throw error;
   }
@@ -116,12 +125,11 @@ async function serverUpload(
 async function directUpload(
   file: File,
   type: ClientUploadType,
+  pathname: string,
   onProgress?: (progress: number) => void,
 ): Promise<UploadedFileResult> {
   const mimeType = resolvedMimeType(file);
   const filename = safeFilename(file.name);
-  const uniqueName = `${Date.now()}-${crypto.randomUUID()}-${filename}`;
-  const pathname = `${folders[type]}/${uniqueName}`;
 
   const blob = await upload(pathname, file, {
     access: "public",
@@ -178,20 +186,27 @@ export async function uploadFileReliably(
   file: File,
   type: ClientUploadType,
   onProgress?: (progress: number) => void,
+  onRecoveryState?: (state: RequestRecoveryState) => void,
 ): Promise<UploadedFileResult> {
   if (!file.size) throw new Error("The selected file is empty.");
 
+  const operationId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const filename = safeFilename(file.name);
+  const pathname = `${folders[type]}/${operationId}-${filename}`;
+
   if (file.size > SERVER_UPLOAD_LIMIT) {
-    return withUploadRetries(() => directUpload(file, type, onProgress));
+    return withUploadRetries(() => directUpload(file, type, pathname, onProgress));
   }
 
   try {
-    const result = await withUploadRetries(() => serverUpload(file, type));
+    const result = await serverUpload(file, type, operationId, onRecoveryState);
     onProgress?.(100);
     return result;
   } catch (error) {
     const status = uploadStatus(error);
     if (status === 400 || status === 401 || status === 403) throw error;
-    return withUploadRetries(() => directUpload(file, type, onProgress));
+    return withUploadRetries(() => directUpload(file, type, pathname, onProgress));
   }
 }

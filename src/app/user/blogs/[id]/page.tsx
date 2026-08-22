@@ -6,7 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import PageTransition from '@/components/animations/PageTransition';
 import { ArrowLeft, Clock, Bookmark, Share2, Heart, User, Calendar, Tag, Eye, ChevronRight, ImageOff } from 'lucide-react';
 import UserNavBar from '@/components/client/UserNavBar';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 
 interface Blog {
   _id: string;
@@ -148,11 +148,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   if (loading) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center z-100 bg-white dark:bg-gray-950">
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="grid" showHeader={false} />;
   }
 
   if (error || !blog) {
@@ -174,7 +170,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
 
   return (
     <PageTransition>
-      <div className={`min-h-screen pb-24 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {/* Header Image */}
         <div className="relative h-72 sm:h-80 bg-gray-200">
           {blog.featuredImage ? (

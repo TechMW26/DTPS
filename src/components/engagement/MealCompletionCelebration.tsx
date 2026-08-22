@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, X, PartyPopper } from 'lucide-react';
 
 interface MealCompletionCelebrationProps {
   open: boolean;
@@ -86,10 +86,10 @@ export default function MealCompletionCelebration({
             <Check className="h-8 w-8" strokeWidth={3} />
           </div>
         </div>
-        <p className="text-3xl" aria-hidden="true">🎉</p>
+        <PartyPopper aria-hidden="true" className="mx-auto h-8 w-8 text-[#E06A26]" />
         <h2 className="mt-2 text-2xl font-bold">Fantastic work!</h2>
         <p className="mt-2 text-gray-600 dark:text-gray-300" aria-live="polite">
-          Your {mealLabel.toLowerCase()} is complete. Every healthy choice moves you closer to your goal!
+          Your {mealLabel.toLowerCase()} is complete. Every healthy choice moves you closer to your goal.
         </p>
         <button
           type="button"

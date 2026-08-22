@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { CheckCircle, Download, Mail, ArrowRight, Receipt, Calendar, CreditCard, User, Package, Loader2 } from 'lucide-react';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 
 interface PaymentDetails {
@@ -182,14 +182,7 @@ export default function PaymentSuccessPage() {
   };
 
   if (loading) {
-    return (
-      <div className="fixed inset-0 bg-white dark:bg-gray-950 flex items-center justify-center z-100">
-        <div className="text-center">
-          <SpoonGifLoader size="lg" />
-          <p className="text-gray-600 mt-4">Loading payment details...</p>
-        </div>
-      </div>
-    );
+    return <ClientPageSkeleton variant="list" showHeader={false} />;
   }
 
   if (!payment) {

@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { DashboardContentSkeleton } from '@/components/ui/skeleton';
 import { useRealtime } from '@/hooks/useRealtime';
 import {
   CalendarPlus,
@@ -349,9 +350,7 @@ export default function UnifiedAppointmentBookingPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <LoadingSpinner />
-        </div>
+        <DashboardContentSkeleton statCards={3} sections={2} />
       </DashboardLayout>
     );
   }

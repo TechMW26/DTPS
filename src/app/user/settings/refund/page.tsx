@@ -175,7 +175,7 @@ export default function RefundPolicyPage() {
   ] as const;
 
   return (
-    <div className={`min-h-screen pb-24 transition-colors duration-500 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
       <UserNavBar
         title="Refund & Cancellation"
         subtitle="Policy"

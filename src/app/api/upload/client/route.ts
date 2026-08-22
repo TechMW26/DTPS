@@ -74,7 +74,11 @@ export async function POST(request: NextRequest) {
         return {
           allowedContentTypes: [mimeType],
           maximumSizeInBytes: rule.max,
-          addRandomSuffix: true,
+          // The client already supplies a UUID pathname. Keeping it stable makes
+          // retries overwrite/reuse the same logical upload instead of orphaning
+          // a new Blob on every token or network retry.
+          addRandomSuffix: false,
+          allowOverwrite: true,
           tokenPayload: JSON.stringify({ ...payload, userId: token.sub }),
         };
       },

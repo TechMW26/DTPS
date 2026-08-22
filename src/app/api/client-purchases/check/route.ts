@@ -1,38 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import dbConnect from '@/lib/db/connect';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import PaymentLink from '@/lib/db/models/PaymentLink';
-import User from '@/lib/db/models/User';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import Razorpay from 'razorpay';
-import { checkPermission } from '@/lib/permissions/check';
-import { PermissionKey } from '@/lib/db/models/Permission';
-import { UserRole } from '@/types';
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth/config";
+import dbConnect from "@/lib/db/connect";
+import UnifiedPayment from "@/lib/db/models/UnifiedPayment";
+import PaymentLink from "@/lib/db/models/PaymentLink";
+import User from "@/lib/db/models/User";
+import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
+import Razorpay from "razorpay";
+import { checkPermission } from "@/lib/permissions/check";
+import { PermissionKey } from "@/lib/db/models/Permission";
+import { UserRole } from "@/types";
+import { canonicalizePurchaseRecords } from "@/lib/payments/canonicalize-purchases";
+import { resolveEntitlementEndDate } from "@/lib/payments/entitlement-dates";
 
 // Initialize Razorpay for syncing payment status
-const razorpay = process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
-  ? new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
-  })
-  : null;
+const razorpay =
+  process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+    ? new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
+      })
+    : null;
 
 const durationEligibilityQuery = {
   $or: [
     { durationDays: { $exists: true, $gt: 0 } },
-    { duration: { $exists: true, $nin: [null, ''] } },
-    { durationLabel: { $exists: true, $nin: [null, ''] } }
-  ]
+    { duration: { $exists: true, $nin: [null, ""] } },
+    { durationLabel: { $exists: true, $nin: [null, ""] } },
+  ],
 };
 
 function toPositiveDurationDays(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return Math.floor(value);
   }
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     const match = normalized.match(/(\d+(?:\.\d+)?)/);
     if (!match) {
@@ -80,7 +83,9 @@ function getMealPlanDurationDays(plan: any): number {
     const start = new Date(plan.startDate);
     const end = new Date(plan.endDate);
     if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
-      const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const diff =
+        Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) +
+        1;
       return Math.max(0, diff);
     }
   }
@@ -95,19 +100,8 @@ function toValidDate(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function resolveLaterDate(primary?: unknown, fallback?: unknown): Date | null {
-  const primaryDate = toValidDate(primary);
-  const fallbackDate = toValidDate(fallback);
-
-  if (primaryDate && fallbackDate) {
-    return primaryDate.getTime() >= fallbackDate.getTime() ? primaryDate : fallbackDate;
-  }
-
-  return primaryDate || fallbackDate || null;
-}
-
 function getEffectiveDurationDays(purchase: any): number {
-  if (typeof purchase?.__effectiveDurationDays === 'number') {
+  if (typeof purchase?.__effectiveDurationDays === "number") {
     return purchase.__effectiveDurationDays;
   }
 
@@ -118,47 +112,62 @@ function getEffectiveDurationDays(purchase: any): number {
 
   // Fallback for records where duration metadata is missing but day counters exist.
   const inferredDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
-  const inferredRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
+  const inferredRemainingDays = Math.max(
+    0,
+    Number(purchase?.remainingDays || 0),
+  );
   return Math.max(0, inferredDaysUsed + inferredRemainingDays);
 }
 
 function getEffectiveDaysUsed(purchase: any): number {
-  if (typeof purchase?.__effectiveDaysUsed === 'number') {
+  if (typeof purchase?.__effectiveDaysUsed === "number") {
     return purchase.__effectiveDaysUsed;
   }
   return Math.max(0, Number(purchase?.daysUsed || 0));
 }
 
 function getEffectiveRemainingDays(purchase: any): number {
-  if (typeof purchase?.__effectiveRemainingDays === 'number') {
+  if (typeof purchase?.__effectiveRemainingDays === "number") {
     return purchase.__effectiveRemainingDays;
   }
-  return Math.max(0, getEffectiveDurationDays(purchase) - getEffectiveDaysUsed(purchase));
+  return Math.max(
+    0,
+    getEffectiveDurationDays(purchase) - getEffectiveDaysUsed(purchase),
+  );
 }
 
 function hasPaymentProof(paymentLink: any): boolean {
   return Boolean(
     paymentLink?.paidAt ||
-    (typeof paymentLink?.razorpayPaymentId === 'string' && paymentLink.razorpayPaymentId.trim()) ||
-    (typeof paymentLink?.transactionId === 'string' && paymentLink.transactionId.trim())
+    (typeof paymentLink?.razorpayPaymentId === "string" &&
+      paymentLink.razorpayPaymentId.trim()) ||
+    (typeof paymentLink?.transactionId === "string" &&
+      paymentLink.transactionId.trim()),
   );
 }
 
 // Helper function to update client status based on payments (date-based) + hold
-async function updateClientStatusBasedOnMealPlan(clientId: string): Promise<string> {
+async function updateClientStatusBasedOnMealPlan(
+  clientId: string,
+): Promise<string> {
   try {
     // Recompute from the single source of truth: subscription Expected End Date + manual hold.
     // Meal plan publication state does NOT affect the status.
-    const { recalculateAndPersistClientStatus } = await import('@/lib/status/computeClientStatus');
-    return await recalculateAndPersistClientStatus(clientId, { trigger: 'purchase_check' });
+    const { recalculateAndPersistClientStatus } =
+      await import("@/lib/status/computeClientStatus");
+    return await recalculateAndPersistClientStatus(clientId, {
+      trigger: "purchase_check",
+    });
   } catch (error) {
-    console.error('Error updating client status:', error);
-    return 'lead';
+    console.error("Error updating client status:", error);
+    return "lead";
   }
 }
 
 // Helper function to create/update UnifiedPayment record from PaymentLink
-async function createUnifiedPaymentFromLink(paymentLink: any): Promise<string | null> {
+async function createUnifiedPaymentFromLink(
+  paymentLink: any,
+): Promise<string | null> {
   try {
     const durationDays = getDurationDaysFromSource(paymentLink);
     const startDate = paymentLink.paidAt || new Date();
@@ -172,22 +181,26 @@ async function createUnifiedPaymentFromLink(paymentLink: any): Promise<string | 
         dietitian: paymentLink.dietitian,
         servicePlan: paymentLink.servicePlanId,
         paymentLink: paymentLink._id,
-        paymentType: 'service_plan',
-        planName: paymentLink.planName || 'Service Plan',
-        planCategory: paymentLink.planCategory || 'general-wellness',
+        paymentType: "service_plan",
+        planName: paymentLink.planName || "Service Plan",
+        planCategory: paymentLink.planCategory || "general-wellness",
         durationDays,
-        durationLabel: paymentLink.duration || paymentLink.durationLabel || `${durationDays} Days`,
+        durationLabel:
+          paymentLink.duration ||
+          paymentLink.durationLabel ||
+          `${durationDays} Days`,
         baseAmount: paymentLink.amount,
         discountPercent: paymentLink.discount || 0,
         taxPercent: paymentLink.tax || 0,
         finalAmount: paymentLink.finalAmount,
-        currency: paymentLink.currency || 'INR',
-        status: 'paid',
-        paymentStatus: 'paid',
-        paymentMethod: paymentLink.paymentMethod || 'razorpay',
+        currency: paymentLink.currency || "INR",
+        status: "paid",
+        paymentStatus: "paid",
+        paymentMethod: paymentLink.paymentMethod || "razorpay",
         razorpayPaymentLinkId: paymentLink.razorpayPaymentLinkId,
         razorpayPaymentId: paymentLink.razorpayPaymentId,
-        transactionId: paymentLink.razorpayPaymentId || paymentLink.razorpayPaymentLinkId,
+        transactionId:
+          paymentLink.razorpayPaymentId || paymentLink.razorpayPaymentLinkId,
         payerEmail: paymentLink.payerEmail,
         payerPhone: paymentLink.payerPhone,
         purchaseDate: startDate,
@@ -195,23 +208,23 @@ async function createUnifiedPaymentFromLink(paymentLink: any): Promise<string | 
         endDate,
         paidAt: paymentLink.paidAt,
         mealPlanCreated: false,
-        daysUsed: 0
-      }
+        daysUsed: 0,
+      },
     );
 
     return unifiedPayment._id.toString();
   } catch (error) {
-    console.error('Error creating UnifiedPayment record:', error);
+    console.error("Error creating UnifiedPayment record:", error);
     return null;
   }
 }
 
 // Helper function to sync a single payment link with Razorpay
 async function syncPaymentLinkWithRazorpay(paymentLink: any): Promise<boolean> {
-  if (paymentLink.status === 'paid') return true;
+  if (paymentLink.status === "paid") return true;
 
   if (hasPaymentProof(paymentLink)) {
-    paymentLink.status = 'paid';
+    paymentLink.status = "paid";
     if (!paymentLink.paidAt) {
       paymentLink.paidAt = new Date();
     }
@@ -224,16 +237,19 @@ async function syncPaymentLinkWithRazorpay(paymentLink: any): Promise<boolean> {
   if (!razorpay || !paymentLink.razorpayPaymentLinkId) return false;
 
   try {
-    const razorpayLink: any = await razorpay.paymentLink.fetch(paymentLink.razorpayPaymentLinkId);
+    const razorpayLink: any = await razorpay.paymentLink.fetch(
+      paymentLink.razorpayPaymentLinkId,
+    );
 
-    if (razorpayLink.status === 'paid') {
-      paymentLink.status = 'paid';
+    if (razorpayLink.status === "paid") {
+      paymentLink.status = "paid";
       paymentLink.paidAt = razorpayLink.paid_at
         ? new Date(razorpayLink.paid_at * 1000)
         : new Date();
 
       if (razorpayLink.payments?.length > 0) {
-        const latestPayment = razorpayLink.payments[razorpayLink.payments.length - 1];
+        const latestPayment =
+          razorpayLink.payments[razorpayLink.payments.length - 1];
         paymentLink.razorpayPaymentId = latestPayment.payment_id;
       }
 
@@ -262,18 +278,21 @@ export async function GET(request: NextRequest) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
 
     const { searchParams } = new URL(request.url);
-    const clientId = searchParams.get('clientId');
-    const requestedDays = parseInt(searchParams.get('requestedDays') || '0');
-    const forceSync = searchParams.get('forceSync') === 'true';
+    const clientId = searchParams.get("clientId");
+    const requestedDays = parseInt(searchParams.get("requestedDays") || "0");
+    const forceSync = searchParams.get("forceSync") === "true";
 
     if (!clientId) {
-      return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Client ID is required" },
+        { status: 400 },
+      );
     }
 
     const roleBasedCanCreateMealPlans =
@@ -282,7 +301,7 @@ export async function GET(request: NextRequest) {
     const effectiveCreateMealPlanPermission = await checkPermission(
       session.user.id,
       session.user.role as UserRole,
-      PermissionKey.CREATE_MEAL_PLANS
+      PermissionKey.CREATE_MEAL_PLANS,
     );
     const accessContext = {
       requestedBy: {
@@ -291,7 +310,8 @@ export async function GET(request: NextRequest) {
       },
       permissions: {
         roleBasedCreateMealPlans: roleBasedCanCreateMealPlans,
-        effectiveCreateMealPlans: effectiveCreateMealPlanPermission.hasPermission,
+        effectiveCreateMealPlans:
+          effectiveCreateMealPlanPermission.hasPermission,
         effectiveReason: effectiveCreateMealPlanPermission.reason || null,
       },
     };
@@ -299,19 +319,21 @@ export async function GET(request: NextRequest) {
     // First, heal any links that clearly contain paid-proof metadata.
     const linksWithPaymentProof = await PaymentLink.find({
       client: clientId,
-      status: { $ne: 'paid' },
+      status: { $ne: "paid" },
       servicePlanId: { $exists: true, $ne: null },
       ...durationEligibilityQuery,
       $or: [
         { paidAt: { $exists: true, $ne: null } },
-        { razorpayPaymentId: { $exists: true, $nin: [null, ''] } },
-        { transactionId: { $exists: true, $nin: [null, ''] } }
-      ]
-    }).sort({ updatedAt: -1 }).limit(20);
+        { razorpayPaymentId: { $exists: true, $nin: [null, ""] } },
+        { transactionId: { $exists: true, $nin: [null, ""] } },
+      ],
+    })
+      .sort({ updatedAt: -1 })
+      .limit(20);
 
     for (const link of linksWithPaymentProof) {
-      if (link.status !== 'paid') {
-        link.status = 'paid';
+      if (link.status !== "paid") {
+        link.status = "paid";
         if (!link.paidAt) {
           link.paidAt = new Date();
         }
@@ -325,21 +347,25 @@ export async function GET(request: NextRequest) {
       const allPaymentLinks = await PaymentLink.find({
         client: clientId,
         servicePlanId: { $exists: true, $ne: null },
-        ...durationEligibilityQuery
-      }).sort({ createdAt: -1 }).limit(10);
+        ...durationEligibilityQuery,
+      })
+        .sort({ createdAt: -1 })
+        .limit(10);
 
       for (const paymentLink of allPaymentLinks) {
-        if (paymentLink.status !== 'paid') {
+        if (paymentLink.status !== "paid") {
           await syncPaymentLinkWithRazorpay(paymentLink);
         }
       }
     } else {
       const pendingPaymentLinks = await PaymentLink.find({
         client: clientId,
-        status: { $in: ['pending', 'created', 'expired'] },
+        status: { $in: ["pending", "created", "expired"] },
         servicePlanId: { $exists: true, $ne: null },
-        ...durationEligibilityQuery
-      }).sort({ createdAt: -1 }).limit(5);
+        ...durationEligibilityQuery,
+      })
+        .sort({ createdAt: -1 })
+        .limit(5);
 
       for (const pendingLink of pendingPaymentLinks) {
         await syncPaymentLinkWithRazorpay(pendingLink);
@@ -350,38 +376,21 @@ export async function GET(request: NextRequest) {
     const allPaidPurchases = await UnifiedPayment.find({
       client: clientId,
       $or: [
-        { paymentStatus: 'paid' },
-        { status: { $in: ['paid', 'completed', 'active'] } }
-      ]
+        { paymentStatus: "paid" },
+        { status: { $in: ["paid", "completed", "active"] } },
+      ],
     })
-      .populate('servicePlan', 'name category')
+      .populate("servicePlan", "name category")
       .sort({ createdAt: 1 });
 
-    // De-duplicate by strongest available payment identity to avoid duplicate-entry edge cases.
-    const dedupedByIdentity = new Map<string, any>();
-    for (const purchase of allPaidPurchases) {
-      const identityKey = String(
-        purchase.paymentLink ||
-        purchase.razorpayPaymentId ||
-        purchase.transactionId ||
-        purchase._id
-      );
-
-      const existing = dedupedByIdentity.get(identityKey);
-      if (!existing) {
-        dedupedByIdentity.set(identityKey, purchase);
-        continue;
-      }
-
-      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-      const currentTime = new Date(purchase.updatedAt || purchase.createdAt || 0).getTime();
-      if (currentTime > existingTime) {
-        dedupedByIdentity.set(identityKey, purchase);
-      }
-    }
-
-    const dedupedPaidPurchases = Array.from(dedupedByIdentity.values()).sort((a: any, b: any) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    // Imported purchases can exist more than once without a gateway identity.
+    // Collapse only exact, near-simultaneous entitlement duplicates and retain
+    // the record with the strongest progress counters.
+    const canonicalizedPurchases =
+      canonicalizePurchaseRecords(allPaidPurchases);
+    const dedupedPaidPurchases = canonicalizedPurchases.purchases.sort(
+      (a: any, b: any) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
 
     const now = new Date();
@@ -390,8 +399,8 @@ export async function GET(request: NextRequest) {
     const linkedMealPlans = await ClientMealPlan.find({
       clientId,
       purchaseId: { $exists: true, $ne: null },
-      status: { $in: ['active', 'completed', 'paused'] }
-    }).select('purchaseId duration startDate endDate status');
+      status: { $in: ["active", "completed", "paused"] },
+    }).select("purchaseId duration startDate endDate status");
 
     const latestMealPlanEndDateByPurchase = new Map<string, Date>();
     for (const plan of linkedMealPlans) {
@@ -402,7 +411,10 @@ export async function GET(request: NextRequest) {
       }
 
       const existingEndDate = latestMealPlanEndDateByPurchase.get(purchaseKey);
-      if (!existingEndDate || planEndDate.getTime() > existingEndDate.getTime()) {
+      if (
+        !existingEndDate ||
+        planEndDate.getTime() > existingEndDate.getTime()
+      ) {
         latestMealPlanEndDateByPurchase.set(purchaseKey, planEndDate);
       }
     }
@@ -418,22 +430,26 @@ export async function GET(request: NextRequest) {
 
       usedDaysByPurchase.set(
         purchaseKey,
-        (usedDaysByPurchase.get(purchaseKey) || 0) + planDuration
+        (usedDaysByPurchase.get(purchaseKey) || 0) + planDuration,
       );
       mealPlansByPurchase.set(
         purchaseKey,
-        (mealPlansByPurchase.get(purchaseKey) || 0) + 1
+        (mealPlansByPurchase.get(purchaseKey) || 0) + 1,
       );
     }
 
     const computedPaidPurchases = dedupedPaidPurchases.map((purchase: any) => {
-      const purchaseId = purchase?._id?.toString?.() || String(purchase?._id || '');
+      const purchaseId =
+        purchase?._id?.toString?.() || String(purchase?._id || "");
       const durationDays = getEffectiveDurationDays(purchase);
       const linkedDaysUsed = usedDaysByPurchase.get(purchaseId);
       const linkedMealPlanCount = mealPlansByPurchase.get(purchaseId) || 0;
       const hasExplicitDuration = getDurationDaysFromSource(purchase) > 0;
       const storedDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
-      const storedRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
+      const storedRemainingDays = Math.max(
+        0,
+        Number(purchase?.remainingDays || 0),
+      );
 
       // UnifiedPayment counters are the source of truth for UI/API responses.
       // Linked meal plans are only a fallback for legacy records that never had counters populated.
@@ -443,19 +459,24 @@ export async function GET(request: NextRequest) {
 
       const countersExceedDuration =
         storedDaysUsed > durationDays ||
-        (storedDaysUsed + storedRemainingDays) > durationDays;
+        storedDaysUsed + storedRemainingDays > durationDays;
 
       let effectiveDaysUsed = hasStoredCounters
         ? storedDaysUsed
-        : (typeof linkedDaysUsed === 'number' ? linkedDaysUsed : storedDaysUsed);
+        : typeof linkedDaysUsed === "number"
+          ? linkedDaysUsed
+          : storedDaysUsed;
 
       // If stored counters are inconsistent (e.g. 45 used for a 30-day plan),
       // prefer linked meal-plan usage when available and always cap by duration.
       if (hasStoredCounters && countersExceedDuration) {
-        if (typeof linkedDaysUsed === 'number') {
+        if (typeof linkedDaysUsed === "number") {
           effectiveDaysUsed = linkedDaysUsed;
         }
-        effectiveDaysUsed = Math.min(durationDays, Math.max(0, effectiveDaysUsed));
+        effectiveDaysUsed = Math.min(
+          durationDays,
+          Math.max(0, effectiveDaysUsed),
+        );
       }
 
       const isClearlyUnstartedFuturePurchase = Boolean(
@@ -463,7 +484,7 @@ export async function GET(request: NextRequest) {
         linkedMealPlanCount === 0 &&
         purchase?.mealPlanCreated !== true &&
         purchase?.expectedStartDate &&
-        new Date(purchase.expectedStartDate).getTime() > now.getTime()
+        new Date(purchase.expectedStartDate).getTime() > now.getTime(),
       );
 
       // Imported purchases occasionally carry the previous subscription's
@@ -479,7 +500,7 @@ export async function GET(request: NextRequest) {
       // Future scheduled purchases should not consume allocation until they start.
       // Only normalize to zero when we do not have authoritative stored counters.
       if (
-        typeof linkedDaysUsed !== 'number' &&
+        typeof linkedDaysUsed !== "number" &&
         !hasStoredCounters &&
         purchase?.expectedStartDate &&
         new Date(purchase.expectedStartDate).getTime() > now.getTime()
@@ -490,7 +511,7 @@ export async function GET(request: NextRequest) {
       // Unstarted purchase should not be blocked by stale daysUsed.
       // Keep stored counters when they already exist; otherwise fall back to zero.
       if (
-        typeof linkedDaysUsed !== 'number' &&
+        typeof linkedDaysUsed !== "number" &&
         !hasStoredCounters &&
         purchase?.mealPlanCreated !== true
       ) {
@@ -500,12 +521,19 @@ export async function GET(request: NextRequest) {
       // Keep stored counters by default, but normalize inconsistent values.
       const effectiveRemainingDays = isClearlyUnstartedFuturePurchase
         ? durationDays
-        : (hasStoredCounters && !countersExceedDuration)
-        ? storedRemainingDays
-        : Math.max(0, durationDays - effectiveDaysUsed);
+        : hasStoredCounters && !countersExceedDuration
+          ? storedRemainingDays
+          : Math.max(0, durationDays - effectiveDaysUsed);
 
-      const linkedMealPlanEndDate = latestMealPlanEndDateByPurchase.get(purchaseId) || null;
-      const resolvedExpectedEndDate = resolveLaterDate(purchase?.expectedEndDate, linkedMealPlanEndDate);
+      const linkedMealPlanEndDate =
+        latestMealPlanEndDateByPurchase.get(purchaseId) || null;
+      const resolvedExpectedEndDate = resolveEntitlementEndDate({
+        expectedStartDate: purchase?.expectedStartDate,
+        expectedEndDate: purchase?.expectedEndDate,
+        endDate: purchase?.endDate,
+        durationLabel: purchase?.durationLabel,
+        linkedMealPlanEndDate,
+      });
 
       (purchase as any).__effectiveDurationDays = durationDays;
       (purchase as any).__effectiveDaysUsed = effectiveDaysUsed;
@@ -516,7 +544,7 @@ export async function GET(request: NextRequest) {
     });
 
     const allActivePurchases = computedPaidPurchases.filter((purchase: any) =>
-      isPurchaseEligibleForPlanning(purchase)
+      isPurchaseEligibleForPlanning(purchase),
     );
 
     const isWithinExpectedWindow = (purchase: any): boolean => {
@@ -525,12 +553,13 @@ export async function GET(request: NextRequest) {
       const start = new Date(purchase.expectedStartDate);
       const end = new Date(
         purchase.__resolvedExpectedEndDate ||
-        purchase.expectedEndDate ||
-        purchase.endDate ||
-        purchase.expectedStartDate
+          purchase.expectedEndDate ||
+          purchase.endDate ||
+          purchase.expectedStartDate,
       );
 
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()))
+        return false;
 
       return start.getTime() <= now.getTime() && now.getTime() <= end.getTime();
     };
@@ -570,24 +599,33 @@ export async function GET(request: NextRequest) {
       })
       .sort((a: any, b: any) => {
         if (a.expectedStartDate && b.expectedStartDate) {
-          return new Date(a.expectedStartDate).getTime() - new Date(b.expectedStartDate).getTime();
+          return (
+            new Date(a.expectedStartDate).getTime() -
+            new Date(b.expectedStartDate).getTime()
+          );
         }
         if (a.expectedStartDate && !b.expectedStartDate) return -1;
         if (!a.expectedStartDate && b.expectedStartDate) return 1;
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return (
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
       });
 
-    let activePurchase: any = partiallyUsedPurchase || (unstartedPurchases.length > 0 ? unstartedPurchases[0] : null);
+    let activePurchase: any =
+      partiallyUsedPurchase ||
+      (unstartedPurchases.length > 0 ? unstartedPurchases[0] : null);
 
     if (!activePurchase) {
-      activePurchase = allActivePurchases.find((p: any) =>
-        getEffectiveRemainingDays(p) > 0
-      ) || null;
+      activePurchase =
+        allActivePurchases.find((p: any) => getEffectiveRemainingDays(p) > 0) ||
+        null;
     }
 
     const purchasesNeedingPlan = [
       ...(partiallyUsedPurchase ? [partiallyUsedPurchase] : []),
-      ...unstartedPurchases.filter((p: any) => p._id.toString() !== partiallyUsedPurchase?._id?.toString())
+      ...unstartedPurchases.filter(
+        (p: any) => p._id.toString() !== partiallyUsedPurchase?._id?.toString(),
+      ),
     ];
 
     if (!activePurchase && allActivePurchases.length > 0) {
@@ -598,17 +636,17 @@ export async function GET(request: NextRequest) {
     if (!activePurchase) {
       const paidPaymentLink = await PaymentLink.findOne({
         client: clientId,
-        status: 'paid',
+        status: "paid",
         servicePlanId: { $exists: true, $ne: null },
-        ...durationEligibilityQuery
+        ...durationEligibilityQuery,
       }).sort({ paidAt: -1 });
 
       if (paidPaymentLink) {
         await createUnifiedPaymentFromLink(paidPaymentLink);
 
         const existingPayment = await UnifiedPayment.findOne({
-          paymentLink: paidPaymentLink._id
-        }).populate('servicePlan', 'name category');
+          paymentLink: paidPaymentLink._id,
+        }).populate("servicePlan", "name category");
 
         if (existingPayment && isPurchaseEligibleForPlanning(existingPayment)) {
           activePurchase = existingPayment;
@@ -617,24 +655,32 @@ export async function GET(request: NextRequest) {
     }
 
     if (!activePurchase) {
-      const updatedClientStatus = await updateClientStatusBasedOnMealPlan(clientId);
+      const updatedClientStatus =
+        await updateClientStatusBasedOnMealPlan(clientId);
       const hasPaidHistory = computedPaidPurchases.length > 0;
-      const fallbackPurchase = hasPaidHistory ? computedPaidPurchases[computedPaidPurchases.length - 1] : null;
+      const fallbackPurchase = hasPaidHistory
+        ? computedPaidPurchases[computedPaidPurchases.length - 1]
+        : null;
 
       const aggregatedTotalPurchasedDays = computedPaidPurchases.reduce(
         (sum: number, p: any) => sum + getEffectiveDurationDays(p),
-        0
+        0,
       );
       const aggregatedTotalDaysUsed = computedPaidPurchases.reduce(
         (sum: number, p: any) => sum + getEffectiveDaysUsed(p),
-        0
+        0,
       );
-      const aggregatedRemainingDays = Math.max(0, aggregatedTotalPurchasedDays - aggregatedTotalDaysUsed);
+      const aggregatedRemainingDays = Math.max(
+        0,
+        aggregatedTotalPurchasedDays - aggregatedTotalDaysUsed,
+      );
 
       // Allow multi-phase planning: if aggregated remaining days > 0, user can create a new meal plan
-      const canCreate = aggregatedRemainingDays > 0 && accessContext.permissions.effectiveCreateMealPlans;
+      const canCreate =
+        aggregatedRemainingDays > 0 &&
+        accessContext.permissions.effectiveCreateMealPlans;
 
-      console.info('[MEAL_PLAN_ELIGIBILITY_DEBUG]', {
+      console.info("[MEAL_PLAN_ELIGIBILITY_DEBUG]", {
         clientId,
         hasPaidPlan: hasPaidHistory,
         canCreateMealPlan: canCreate,
@@ -649,27 +695,32 @@ export async function GET(request: NextRequest) {
         canCreateMealPlan: canCreate,
         access: accessContext,
         clientStatus: updatedClientStatus,
-        purchase: fallbackPurchase ? {
-          _id: fallbackPurchase?._id,
-          planName: fallbackPurchase?.planName,
-          planCategory: fallbackPurchase?.planCategory,
-          durationDays: getEffectiveDurationDays(fallbackPurchase),
-          durationLabel: fallbackPurchase?.durationLabel,
-          startDate: fallbackPurchase?.startDate,
-          endDate: fallbackPurchase?.endDate,
-          expectedStartDate: fallbackPurchase?.expectedStartDate || null,
-          expectedEndDate: fallbackPurchase?.__resolvedExpectedEndDate || fallbackPurchase?.expectedEndDate || null,
-          parentPurchaseId: fallbackPurchase?.parentPaymentId || null,
-          mealPlanCreated: fallbackPurchase?.mealPlanCreated,
-          daysUsed: getEffectiveDaysUsed(fallbackPurchase),
-          baseAmount: fallbackPurchase?.baseAmount,
-          discountPercent: fallbackPurchase?.discountPercent,
-          taxPercent: fallbackPurchase?.taxPercent,
-          finalAmount: fallbackPurchase?.finalAmount
-        } : null,
+        purchase: fallbackPurchase
+          ? {
+              _id: fallbackPurchase?._id,
+              planName: fallbackPurchase?.planName,
+              planCategory: fallbackPurchase?.planCategory,
+              durationDays: getEffectiveDurationDays(fallbackPurchase),
+              durationLabel: fallbackPurchase?.durationLabel,
+              startDate: fallbackPurchase?.startDate,
+              endDate: fallbackPurchase?.endDate,
+              expectedStartDate: fallbackPurchase?.expectedStartDate || null,
+              expectedEndDate:
+                fallbackPurchase?.__resolvedExpectedEndDate ||
+                fallbackPurchase?.expectedEndDate ||
+                null,
+              parentPurchaseId: fallbackPurchase?.parentPaymentId || null,
+              mealPlanCreated: fallbackPurchase?.mealPlanCreated,
+              daysUsed: getEffectiveDaysUsed(fallbackPurchase),
+              baseAmount: fallbackPurchase?.baseAmount,
+              discountPercent: fallbackPurchase?.discountPercent,
+              taxPercent: fallbackPurchase?.taxPercent,
+              finalAmount: fallbackPurchase?.finalAmount,
+            }
+          : null,
         message: hasPaidHistory
-          ? 'Payment history found, but no remaining subscription days are available for creating a new meal plan.'
-          : 'No active paid plan found. Client needs to purchase a plan first.',
+          ? "Payment history found, but no remaining subscription days are available for creating a new meal plan."
+          : "No active paid plan found. Client needs to purchase a plan first.",
         remainingDays: aggregatedRemainingDays,
         maxDays: aggregatedRemainingDays,
         totalDaysUsed: aggregatedTotalDaysUsed,
@@ -678,20 +729,32 @@ export async function GET(request: NextRequest) {
         diagnostics: {
           totalPaidPurchases: allPaidPurchases.length,
           dedupedPaidPurchases: dedupedPaidPurchases.length,
-          duplicateEntriesDetected: Math.max(0, allPaidPurchases.length - dedupedPaidPurchases.length),
-        }
+          duplicateEntriesDetected:
+            canonicalizedPurchases.duplicateEntriesDetected,
+        },
       });
     }
 
-    const aggregatedTotalPurchasedDays = computedPaidPurchases.reduce((sum: number, p: any) => sum + getEffectiveDurationDays(p), 0);
-    const aggregatedTotalDaysUsed = computedPaidPurchases.reduce((sum: number, p: any) => sum + getEffectiveDaysUsed(p), 0);
-    const aggregatedRemainingDays = Math.max(0, aggregatedTotalPurchasedDays - aggregatedTotalDaysUsed);
+    const aggregatedTotalPurchasedDays = computedPaidPurchases.reduce(
+      (sum: number, p: any) => sum + getEffectiveDurationDays(p),
+      0,
+    );
+    const aggregatedTotalDaysUsed = computedPaidPurchases.reduce(
+      (sum: number, p: any) => sum + getEffectiveDaysUsed(p),
+      0,
+    );
+    const aggregatedRemainingDays = Math.max(
+      0,
+      aggregatedTotalPurchasedDays - aggregatedTotalDaysUsed,
+    );
 
     const totalPurchasedDays = getEffectiveDurationDays(activePurchase);
     const totalDaysUsed = getEffectiveDaysUsed(activePurchase);
     const remainingDays = getEffectiveRemainingDays(activePurchase);
 
-    const canCreate = remainingDays > 0 && (requestedDays === 0 || requestedDays <= remainingDays);
+    const canCreate =
+      remainingDays > 0 &&
+      (requestedDays === 0 || requestedDays <= remainingDays);
 
     const paymentDetails = {
       _id: activePurchase?._id,
@@ -705,10 +768,11 @@ export async function GET(request: NextRequest) {
       mealPlanId: activePurchase?.mealPlan || null,
     };
 
-    const updatedClientStatus = await updateClientStatusBasedOnMealPlan(clientId);
+    const updatedClientStatus =
+      await updateClientStatusBasedOnMealPlan(clientId);
 
     if (!canCreate || !accessContext.permissions.effectiveCreateMealPlans) {
-      console.info('[MEAL_PLAN_ELIGIBILITY_DEBUG]', {
+      console.info("[MEAL_PLAN_ELIGIBILITY_DEBUG]", {
         clientId,
         hasPaidPlan: true,
         canCreateMealPlan: canCreate,
@@ -737,14 +801,17 @@ export async function GET(request: NextRequest) {
         startDate: activePurchase?.startDate,
         endDate: activePurchase?.endDate,
         expectedStartDate: activePurchase?.expectedStartDate || null,
-        expectedEndDate: activePurchase?.__resolvedExpectedEndDate || activePurchase?.expectedEndDate || null,
+        expectedEndDate:
+          activePurchase?.__resolvedExpectedEndDate ||
+          activePurchase?.expectedEndDate ||
+          null,
         parentPurchaseId: activePurchase?.parentPaymentId || null,
         mealPlanCreated: activePurchase?.mealPlanCreated,
         daysUsed: totalDaysUsed,
         baseAmount: activePurchase?.baseAmount,
         discountPercent: activePurchase?.discountPercent,
         taxPercent: activePurchase?.taxPercent,
-        finalAmount: activePurchase?.finalAmount
+        finalAmount: activePurchase?.finalAmount,
       },
       payment: paymentDetails,
       remainingDays,
@@ -756,7 +823,7 @@ export async function GET(request: NextRequest) {
         totalPurchasedDays: aggregatedTotalPurchasedDays,
         totalDaysUsed: aggregatedTotalDaysUsed,
         totalRemainingDays: aggregatedRemainingDays,
-        purchasesNeedingMealPlan: purchasesNeedingPlan.length
+        purchasesNeedingMealPlan: purchasesNeedingPlan.length,
       },
       allPurchasesNeedingMealPlan: purchasesNeedingPlan.map((p: any) => ({
         _id: p._id,
@@ -770,23 +837,28 @@ export async function GET(request: NextRequest) {
         startDate: p.startDate,
         endDate: p.endDate,
         expectedStartDate: p.expectedStartDate || null,
-        expectedEndDate: p.__resolvedExpectedEndDate || p.expectedEndDate || null,
+        expectedEndDate:
+          p.__resolvedExpectedEndDate || p.expectedEndDate || null,
         parentPurchaseId: p.parentPaymentId || null,
-        createdAt: p.createdAt
+        createdAt: p.createdAt,
       })),
       diagnostics: {
         totalPaidPurchases: allPaidPurchases.length,
         dedupedPaidPurchases: dedupedPaidPurchases.length,
-        duplicateEntriesDetected: Math.max(0, allPaidPurchases.length - dedupedPaidPurchases.length),
+        duplicateEntriesDetected:
+          canonicalizedPurchases.duplicateEntriesDetected,
       },
       message: canCreate
-        ? `Client has ${remainingDays} days remaining (${totalDaysUsed}/${totalPurchasedDays} days used) in their ${activePurchase.planName} plan.${purchasesNeedingPlan.length > 1 ? ` (${purchasesNeedingPlan.length} purchases need meal plans)` : ''}`
+        ? `Client has ${remainingDays} days remaining (${totalDaysUsed}/${totalPurchasedDays} days used) in their ${activePurchase.planName} plan.${purchasesNeedingPlan.length > 1 ? ` (${purchasesNeedingPlan.length} purchases need meal plans)` : ""}`
         : remainingDays === 0
           ? `All ${totalPurchasedDays} days have been used. Client needs to purchase a new plan.`
-          : `Requested ${requestedDays} days but only ${remainingDays} days remaining in plan.`
+          : `Requested ${requestedDays} days but only ${remainingDays} days remaining in plan.`,
     });
   } catch (error) {
-    console.error('Error checking client paid plan:', error);
-    return NextResponse.json({ error: 'Failed to check client paid plan' }, { status: 500 });
+    console.error("Error checking client paid plan:", error);
+    return NextResponse.json(
+      { error: "Failed to check client paid plan" },
+      { status: 500 },
+    );
   }
 }

@@ -551,22 +551,31 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
   // Collect all recipe IDs and UUIDs that need to be fetched
   const recipeIds: string[] = [];
   const recipeUuids: string[] = [];
+  const recipeNames: string[] = [];
 
   meals.forEach(meal => {
     if (meal.items) {
       meal.items.forEach((item: any) => {
-        if (!item.recipe?.ingredients) {
+        const hasCompleteEmbeddedRecipe =
+          Array.isArray(item.recipe?.ingredients) &&
+          item.recipe.ingredients.length > 0 &&
+          Array.isArray(item.recipe?.instructions) &&
+          item.recipe.instructions.length > 0;
+
+        if (!hasCompleteEmbeddedRecipe) {
           if (item.recipeUuid) {
             recipeUuids.push(item.recipeUuid);
           } else if (item.recipeId) {
             recipeIds.push(item.recipeId.toString());
+          } else if (item.name) {
+            recipeNames.push(String(item.name).trim());
           }
         }
       });
     }
   });
 
-  if (recipeIds.length === 0 && recipeUuids.length === 0) return meals;
+  if (recipeIds.length === 0 && recipeUuids.length === 0 && recipeNames.length === 0) return meals;
 
   try {
     // Fetch all recipes in one query (by ID or UUID)
@@ -577,12 +586,30 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
     if (recipeUuids.length > 0) {
       query.$or.push({ uuid: { $in: recipeUuids } });
     }
+    if (recipeNames.length > 0) {
+      const exactNamePatterns = [...new Set(recipeNames.filter(Boolean))].map(
+        (name) => new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+      );
+      query.$or.push({
+        $and: [
+          { name: { $in: exactNamePatterns } },
+          { isActive: { $ne: false } },
+          { 'ingredients.0': { $exists: true } },
+          { 'instructions.0': { $exists: true } },
+        ],
+      });
+    }
 
     const recipes = await Recipe.find(query).lean() as any[];
 
     // Create maps for quick lookup by both ID and UUID
     const recipeMapById = new Map(recipes.map((r: any) => [r._id.toString(), r]));
-    const recipeMapByUuid = new Map(recipes.filter((r: any) => r.uuid).map((r: any) => [r.uuid, r]));
+    const recipeMapByUuid = new Map(
+      recipes.filter((r: any) => r.uuid).map((r: any) => [String(r.uuid), r]),
+    );
+    const recipeMapByName = new Map(
+      recipes.map((r: any) => [String(r.name || '').trim().toLowerCase(), r]),
+    );
 
     // Enrich meal items with recipe details
     return meals.map(meal => ({
@@ -591,10 +618,13 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
         // Look up recipe by UUID first, then by ID
         let fullRecipe = null;
         if (item.recipeUuid) {
-          fullRecipe = recipeMapByUuid.get(item.recipeUuid);
+          fullRecipe = recipeMapByUuid.get(String(item.recipeUuid));
         }
         if (!fullRecipe && item.recipeId) {
           fullRecipe = recipeMapById.get(item.recipeId.toString());
+        }
+        if (!fullRecipe && item.name) {
+          fullRecipe = recipeMapByName.get(String(item.name).trim().toLowerCase());
         }
 
         if (fullRecipe) {
@@ -611,8 +641,13 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
               difficulty: fullRecipe.difficulty,
               cuisine: fullRecipe.cuisine,
               tips: fullRecipe.tips || [],
-              nutrition: fullRecipe.nutrition,
-              image: fullRecipe.image || fullRecipe.images?.[0]?.url,
+              nutrition: {
+                calories: Number(fullRecipe.calories) || 0,
+                protein: Number(fullRecipe.protein) || 0,
+                carbs: Number(fullRecipe.carbs) || 0,
+                fat: Number(fullRecipe.fat) || 0,
+              },
+              image: fullRecipe.image || fullRecipe.images?.[0] || '',
               video: fullRecipe.video,
               equipment: fullRecipe.equipment || [],
               storage: fullRecipe.storage,

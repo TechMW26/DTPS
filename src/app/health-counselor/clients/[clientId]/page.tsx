@@ -74,6 +74,8 @@ import {
   DataEventTypes,
   emitDataChange,
 } from "@/lib/events/useDataRefresh";
+import { uploadFileReliably } from "@/lib/client-upload";
+import { resilientFetch } from "@/lib/api/resilient-fetch";
 
 interface ClientData {
   _id: string;
@@ -210,6 +212,7 @@ export default function HealthCounselorClientDetailPage() {
     attachments: [],
   });
   const [savingNote, setSavingNote] = useState(false);
+  const noteOperationIdRef = useRef<string | null>(null);
   const [selectedNote, setSelectedNote] = useState<ClientNote | null>(null);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [editNote, setEditNote] = useState<ClientNote>({
@@ -411,9 +414,11 @@ export default function HealthCounselorClientDetailPage() {
 
   const fetchClientNotes = async () => {
     try {
-      const response = await fetch(`/api/users/${params.clientId}/notes`, {
-        cache: "no-store",
-      });
+      const response = await resilientFetch(
+        `/api/users/${params.clientId}/notes`,
+        { cache: "no-store" },
+        { attempts: 3, timeoutMs: 30_000 },
+      );
       if (response.ok) {
         const data = await response.json();
         // Show all notes - health counselor can see all notes but can only delete their own
@@ -451,11 +456,20 @@ export default function HealthCounselorClientDetailPage() {
             : newNote.content,
       };
 
-      const response = await fetch(`/api/users/${params.clientId}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(noteToSave),
-      });
+      noteOperationIdRef.current ??= crypto.randomUUID();
+
+      const response = await resilientFetch(
+        `/api/users/${params.clientId}/notes`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-idempotency-key": noteOperationIdRef.current,
+          },
+          body: JSON.stringify(noteToSave),
+        },
+        { attempts: 3, timeoutMs: 30_000 },
+      );
 
       if (response.ok) {
         const data = await response.json();
@@ -479,6 +493,7 @@ export default function HealthCounselorClientDetailPage() {
         setRenewalStartDate("");
         setRenewalEndDate("");
         setIsAddingNote(false);
+        noteOperationIdRef.current = null;
         emitDataChange(DataEventTypes.NOTES_UPDATED, {
           clientId: params.clientId,
           noteId: savedNote?._id || null,
@@ -529,17 +544,8 @@ export default function HealthCounselorClientDetailPage() {
   const handleMediaUpload = async (file: File) => {
     try {
       setUploadingMedia(true);
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", "note-attachment");
-
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      const data = await uploadFileReliably(file, "note-attachment");
+      if (data.url) {
         let mediaType: "image" | "video" | "audio" = "image";
         if (file.type.startsWith("video/")) mediaType = "video";
         else if (file.type.startsWith("audio/")) mediaType = "audio";
@@ -557,20 +563,6 @@ export default function HealthCounselorClientDetailPage() {
           attachments: [...(prev.attachments || []), attachment],
         }));
         toast.success("Media uploaded successfully");
-      } else {
-        let errorMsg = "Failed to upload media";
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.error || errorMsg;
-        } catch {
-          // If JSON parsing fails, use default error
-        }
-        console.error("Upload error:", errorMsg);
-        if (file.type.startsWith("audio/")) {
-          toast.error(`Failed to upload audio: ${errorMsg}`);
-        } else {
-          toast.error(`Failed to upload media: ${errorMsg}`);
-        }
       }
     } catch (error) {
       console.error("Error uploading media:", error);

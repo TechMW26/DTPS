@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import Counter from './Counter';
+import { getRecipePublicationIssues } from '@/lib/recipe-quality';
 
 /**
  * Optimized Recipe Model
@@ -62,6 +63,8 @@ export interface IRecipe extends Document {
   isPublic: boolean;
   isPremium: boolean;
   isTemplate: boolean;
+  mergedInto?: mongoose.Types.ObjectId;
+  mergedAt?: Date;
 
   // Stats
   rating: number;
@@ -203,6 +206,8 @@ const recipeSchema = new Schema<IRecipe>({
   isPublic: { type: Boolean, default: false, index: true },
   isPremium: { type: Boolean, default: false },
   isTemplate: { type: Boolean, default: false, index: true },
+  mergedInto: { type: Schema.Types.ObjectId, ref: 'Recipe', default: null, index: true },
+  mergedAt: { type: Date, default: null },
 
   // Stats (flat numbers)
   rating: { type: Number, default: 0, min: 0, max: 5, index: true },
@@ -238,6 +243,60 @@ recipeSchema.index(
   { name: 'text', description: 'text', tags: 'text' },
   { weights: { name: 10, tags: 5, description: 1 } }
 );
+
+// Active recipes are client-visible/publishable and must always contain the
+// minimum details needed by the meal-plan experience. Inactive recipes remain
+// available as drafts while they are being completed.
+recipeSchema.pre('validate', function (next) {
+  if (this.isActive !== false) {
+    const issues = getRecipePublicationIssues(this.toObject());
+    if (issues.length > 0) {
+      return next(new Error(`Recipe cannot be published: ${issues.join('; ')}`));
+    }
+  }
+
+  next();
+});
+
+// Query updates do not run document validation middleware. Reconstruct the
+// proposed document so admin imports and bulk editors cannot accidentally
+// turn an active recipe into a blank client-facing record.
+recipeSchema.pre('findOneAndUpdate', async function (next) {
+  try {
+    const update = this.getUpdate() as Record<string, any> | null;
+    if (!update || Array.isArray(update)) return next();
+
+    const existingQuery = this.model.findOne(this.getQuery());
+    const session = this.getOptions().session;
+    if (session) existingQuery.session(session);
+    const existing = await existingQuery.lean();
+    if (!existing) return next();
+
+    const directUpdates = Object.fromEntries(
+      Object.entries(update).filter(([key]) => !key.startsWith('$')),
+    );
+    const nextRecipe: Record<string, any> = {
+      ...existing,
+      ...directUpdates,
+      ...(update.$set || {}),
+    };
+
+    for (const field of Object.keys(update.$unset || {})) {
+      delete nextRecipe[field];
+    }
+
+    if (nextRecipe.isActive !== false) {
+      const issues = getRecipePublicationIssues(nextRecipe);
+      if (issues.length > 0) {
+        return next(new Error(`Recipe cannot be published: ${issues.join('; ')}`));
+      }
+    }
+
+    next();
+  } catch (error) {
+    next(error as Error);
+  }
+});
 
 // Pre-save: Calculate totalTime and generate uuid
 recipeSchema.pre('save', async function (next) {

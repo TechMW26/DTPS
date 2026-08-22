@@ -16,7 +16,7 @@ import {
     Check
 } from 'lucide-react';
 import { toast } from 'sonner';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { useBodyScrollLock } from '@/hooks';
 
 interface SleepEntry {
@@ -285,15 +285,11 @@ export default function SleepPage() {
     const minutes = Math.round((sleepData.totalToday - hours) * 60);
 
     if (loading) {
-        return (
-            <div className="fixed inset-0 flex items-center justify-center z-100 bg-white dark:bg-gray-950">
-                <SpoonGifLoader size="lg" />
-            </div>
-        );
+        return <ClientPageSkeleton variant="home" showHeader={false} />;
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-24">
+        <div className="min-h-screen bg-gray-50">
             {/* Header */}
             <div className="bg-white px-4 py-4 border-b border-gray-100">
                 <div className="flex items-center justify-between">
@@ -622,8 +618,8 @@ export default function SleepPage() {
 
             {/* Custom Sleep Modal */}
             {showAddModal && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center">
-                    <div className="bg-white rounded-t-3xl w-full max-w-lg p-6 animate-slide-up">
+                <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50">
+                    <div className="client-bottom-sheet-panel max-h-full w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6">
                         {/* Handle */}
                         <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6" />
 

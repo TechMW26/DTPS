@@ -1,26 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import dbConnect from '@/lib/db/connect';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import PaymentLink from '@/lib/db/models/PaymentLink';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
-import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth/config";
+import dbConnect from "@/lib/db/connect";
+import UnifiedPayment from "@/lib/db/models/UnifiedPayment";
+import PaymentLink from "@/lib/db/models/PaymentLink";
+import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
+import { withCache, clearCacheByTag } from "@/lib/api/utils";
+import { recalculateAndPersistClientStatus } from "@/lib/status/computeClientStatus";
+import { canonicalizePurchaseRecords } from "@/lib/payments/canonicalize-purchases";
+import { resolveEntitlementEndDate } from "@/lib/payments/entitlement-dates";
 
 const getPaidPurchaseQuery = () => ({
   $or: [
-    { paymentStatus: 'paid' },
-    { status: { $in: ['paid', 'completed', 'active'] } }
-  ]
+    { paymentStatus: "paid" },
+    { status: { $in: ["paid", "completed", "active"] } },
+  ],
 });
 
 const toPositiveDurationDays = (value: unknown): number => {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return Math.floor(value);
   }
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     const match = normalized.match(/(\d+(?:\.\d+)?)/);
     if (!match) {
@@ -59,7 +61,7 @@ const getDurationDaysFromSource = (source: any): number => {
 };
 
 const getEffectiveDurationDays = (purchase: any): number => {
-  if (typeof purchase?.__effectiveDurationDays === 'number') {
+  if (typeof purchase?.__effectiveDurationDays === "number") {
     return purchase.__effectiveDurationDays;
   }
 
@@ -69,12 +71,15 @@ const getEffectiveDurationDays = (purchase: any): number => {
   }
 
   const inferredDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
-  const inferredRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
+  const inferredRemainingDays = Math.max(
+    0,
+    Number(purchase?.remainingDays || 0),
+  );
   return Math.max(0, inferredDaysUsed + inferredRemainingDays);
 };
 
 const getEffectiveDaysUsed = (purchase: any): number => {
-  if (typeof purchase?.__effectiveDaysUsed === 'number') {
+  if (typeof purchase?.__effectiveDaysUsed === "number") {
     return purchase.__effectiveDaysUsed;
   }
 
@@ -82,7 +87,7 @@ const getEffectiveDaysUsed = (purchase: any): number => {
 };
 
 const getEffectiveRemainingDays = (purchase: any): number => {
-  if (typeof purchase?.__effectiveRemainingDays === 'number') {
+  if (typeof purchase?.__effectiveRemainingDays === "number") {
     return purchase.__effectiveRemainingDays;
   }
 
@@ -90,8 +95,7 @@ const getEffectiveRemainingDays = (purchase: any): number => {
   const storedDaysUsed = Math.max(0, Number(purchase?.daysUsed || 0));
   const storedRemainingDays = Math.max(0, Number(purchase?.remainingDays || 0));
   const hasStoredCounters =
-    purchase?.daysUsed !== undefined ||
-    purchase?.remainingDays !== undefined;
+    purchase?.daysUsed !== undefined || purchase?.remainingDays !== undefined;
 
   if (hasStoredCounters) {
     return storedRemainingDays;
@@ -100,10 +104,12 @@ const getEffectiveRemainingDays = (purchase: any): number => {
   return Math.max(0, durationDays - storedDaysUsed);
 };
 
-const shouldPreserveStoredCounters = (purchase: any, recalculatedDaysUsed: number): boolean => {
+const shouldPreserveStoredCounters = (
+  purchase: any,
+  recalculatedDaysUsed: number,
+): boolean => {
   const hasStoredCounters =
-    purchase?.daysUsed !== undefined ||
-    purchase?.remainingDays !== undefined;
+    purchase?.daysUsed !== undefined || purchase?.remainingDays !== undefined;
 
   if (!hasStoredCounters) {
     return false;
@@ -114,13 +120,16 @@ const shouldPreserveStoredCounters = (purchase: any, recalculatedDaysUsed: numbe
 };
 
 const getLinkedMealPlanDaysUsed = (mealPlans: any[]): number => {
-  return mealPlans.reduce((sum, plan) => sum + Math.max(0, Number(plan?.duration || 0)), 0);
+  return mealPlans.reduce(
+    (sum, plan) => sum + Math.max(0, Number(plan?.duration || 0)),
+    0,
+  );
 };
 
 const applyPurchaseCounters = ({
   purchase,
   mealPlans,
-  preserveStoredCounters
+  preserveStoredCounters,
 }: {
   purchase: any;
   mealPlans: any[];
@@ -145,23 +154,26 @@ const applyPurchaseCounters = ({
     oldRemainingDays,
     nextMealPlanCreated,
     finalDaysUsed,
-    finalRemainingDays
+    finalRemainingDays,
   };
 };
 
 const getStartOfDayIST = (value: Date | string | number): Date => {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   });
 
-  const [year, month, day] = formatter.format(new Date(value)).split('-');
+  const [year, month, day] = formatter.format(new Date(value)).split("-");
   return new Date(`${year}-${month}-${day}T00:00:00+05:30`);
 };
 
-const getCalendarDaysUntilEndIST = (endDateValue: Date | string, referenceDate: Date = new Date()): number => {
+const getCalendarDaysUntilEndIST = (
+  endDateValue: Date | string,
+  referenceDate: Date = new Date(),
+): number => {
   const endDay = getStartOfDayIST(endDateValue);
   const currentDay = getStartOfDayIST(referenceDate);
   const diffMs = endDay.getTime() - currentDay.getTime();
@@ -172,17 +184,6 @@ const toValidDate = (value: unknown): Date | null => {
   if (!value) return null;
   const parsed = new Date(value as any);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const resolveLaterDate = (primary?: unknown, fallback?: unknown): Date | null => {
-  const primaryDate = toValidDate(primary);
-  const fallbackDate = toValidDate(fallback);
-
-  if (primaryDate && fallbackDate) {
-    return primaryDate.getTime() >= fallbackDate.getTime() ? primaryDate : fallbackDate;
-  }
-
-  return primaryDate || fallbackDate || null;
 };
 
 const isPurchaseActiveForPlanning = (purchase: any, now: Date): boolean => {
@@ -207,15 +208,15 @@ export async function GET(request: NextRequest) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
 
     const { searchParams } = new URL(request.url);
-    const clientId = searchParams.get('clientId');
-    const status = searchParams.get('status');
-    const activeOnly = searchParams.get('activeOnly') === 'true';
+    const clientId = searchParams.get("clientId");
+    const status = searchParams.get("status");
+    const activeOnly = searchParams.get("activeOnly") === "true";
 
     const query: any = getPaidPurchaseQuery();
 
@@ -234,24 +235,28 @@ export async function GET(request: NextRequest) {
     if (clientId) {
       const paidLinks = await PaymentLink.find({
         client: clientId,
-        status: 'paid',
+        status: "paid",
         $or: [
           { durationDays: { $exists: true, $gt: 0 } },
-          { duration: { $exists: true, $nin: [null, ''] } },
-          { durationLabel: { $exists: true, $nin: [null, ''] } }
-        ]
+          { duration: { $exists: true, $nin: [null, ""] } },
+          { durationLabel: { $exists: true, $nin: [null, ""] } },
+        ],
       })
-        .select('_id client dietitian servicePlanId amount tax discount finalAmount currency planName planCategory duration durationDays paidAt paymentMethod transactionId payerEmail payerPhone razorpayPaymentLinkId razorpayPaymentId razorpayOrderId')
+        .select(
+          "_id client dietitian servicePlanId amount tax discount finalAmount currency planName planCategory duration durationDays paidAt paymentMethod transactionId payerEmail payerPhone razorpayPaymentLinkId razorpayPaymentId razorpayOrderId",
+        )
         .sort({ paidAt: -1, createdAt: -1 });
 
       if (paidLinks.length > 0) {
         const linkIds = paidLinks.map((l: any) => l._id);
         const existing = await UnifiedPayment.find({
           client: clientId,
-          paymentLink: { $in: linkIds }
-        }).select('paymentLink');
+          paymentLink: { $in: linkIds },
+        }).select("paymentLink");
 
-        const existingLinkIds = new Set(existing.map((p: any) => String(p.paymentLink)));
+        const existingLinkIds = new Set(
+          existing.map((p: any) => String(p.paymentLink)),
+        );
 
         for (const link of paidLinks) {
           if (existingLinkIds.has(String(link._id))) continue;
@@ -269,30 +274,34 @@ export async function GET(request: NextRequest) {
                 paymentId: link.razorpayPaymentId || undefined,
                 orderId: link.razorpayOrderId || undefined,
                 transactionId: link.transactionId || undefined,
-                client: link.client
+                client: link.client,
               },
               {
                 client: link.client,
                 dietitian: link.dietitian,
                 servicePlan: link.servicePlanId,
                 paymentLink: link._id,
-                paymentType: 'service_plan',
-                planName: link.planName || 'Service Plan',
-                planCategory: link.planCategory || 'general-wellness',
+                paymentType: "service_plan",
+                planName: link.planName || "Service Plan",
+                planCategory: link.planCategory || "general-wellness",
                 durationDays,
-                durationLabel: link.duration || link.durationLabel || `${durationDays} Days`,
+                durationLabel:
+                  link.duration || link.durationLabel || `${durationDays} Days`,
                 baseAmount: link.amount,
                 discountPercent: link.discount || 0,
                 taxPercent: link.tax || 0,
                 finalAmount: link.finalAmount,
-                currency: link.currency || 'INR',
-                status: 'paid',
-                paymentStatus: 'paid',
-                paymentMethod: link.paymentMethod || 'razorpay',
+                currency: link.currency || "INR",
+                status: "paid",
+                paymentStatus: "paid",
+                paymentMethod: link.paymentMethod || "razorpay",
                 razorpayPaymentLinkId: link.razorpayPaymentLinkId,
                 razorpayPaymentId: link.razorpayPaymentId,
                 razorpayOrderId: link.razorpayOrderId,
-                transactionId: link.transactionId || link.razorpayPaymentId || link.razorpayPaymentLinkId,
+                transactionId:
+                  link.transactionId ||
+                  link.razorpayPaymentId ||
+                  link.razorpayPaymentLinkId,
                 payerEmail: link.payerEmail,
                 payerPhone: link.payerPhone,
                 purchaseDate: startDate,
@@ -302,37 +311,42 @@ export async function GET(request: NextRequest) {
                 expectedEndDate: endDate,
                 paidAt: link.paidAt || startDate,
                 mealPlanCreated: false,
-                daysUsed: 0
-              }
+                daysUsed: 0,
+              },
             );
             backfilledCount += 1;
           } catch (syncErr) {
-            console.error('Failed to backfill UnifiedPayment for paid link:', link._id, syncErr);
+            console.error(
+              "Failed to backfill UnifiedPayment for paid link:",
+              link._id,
+              syncErr,
+            );
           }
         }
 
         // Ensure fresh reads when new purchases were backfilled during this request.
         if (backfilledCount > 0) {
-          clearCacheByTag('client_purchases');
+          clearCacheByTag("client_purchases");
         }
       }
     }
 
-    const fetchPurchases = async () => await UnifiedPayment.find(query)
-      .populate('client', 'firstName lastName email phone')
-      .populate('dietitian', 'firstName lastName')
-      .populate('servicePlan', 'name category')
-      .populate('paymentLink', 'razorpayPaymentLinkId status paidAt')
-      .sort({ purchaseDate: -1 });
+    const fetchPurchases = async () =>
+      await UnifiedPayment.find(query)
+        .populate("client", "firstName lastName email phone")
+        .populate("dietitian", "firstName lastName")
+        .populate("servicePlan", "name category")
+        .populate("paymentLink", "razorpayPaymentLinkId status paidAt")
+        .sort({ purchaseDate: -1 });
 
     // Client-scoped views (dietitian/health-counselor client detail pages) require real-time freshness.
     const purchases = clientId
       ? await fetchPurchases()
       : await withCache(
-        `client-purchases:${JSON.stringify(query)}`,
-        fetchPurchases,
-        { ttl: 120000, tags: ['client_purchases'] }
-      );
+          `client-purchases:${JSON.stringify(query)}`,
+          fetchPurchases,
+          { ttl: 120000, tags: ["client_purchases"] },
+        );
 
     const purchaseIds = purchases
       .map((purchase: any) => purchase?._id?.toString?.())
@@ -342,11 +356,11 @@ export async function GET(request: NextRequest) {
     if (purchaseIds.length > 0) {
       const linkedMealPlans = await ClientMealPlan.find({
         purchaseId: { $in: purchaseIds },
-        status: { $in: ['active', 'completed', 'paused'] }
-      }).select('purchaseId endDate');
+        status: { $in: ["active", "completed", "paused"] },
+      }).select("purchaseId endDate");
 
       for (const plan of linkedMealPlans) {
-        const purchaseKey = plan?.purchaseId ? String(plan.purchaseId) : '';
+        const purchaseKey = plan?.purchaseId ? String(plan.purchaseId) : "";
         const planEndDate = toValidDate((plan as any)?.endDate);
         if (!purchaseKey || !planEndDate) continue;
 
@@ -360,17 +374,28 @@ export async function GET(request: NextRequest) {
     // Add remaining days to each purchase
     // remainingDays = durationDays - daysUsed (plan allocation remaining)
     // calendarDaysUntilEnd = days until endDate/expectedEndDate (for expiration tracking)
-    const purchasesWithInfo = purchases.map(purchase => {
+    const canonicalPurchases = clientId
+      ? canonicalizePurchaseRecords(purchases).purchases
+      : purchases;
+
+    const purchasesWithInfo = canonicalPurchases.map((purchase) => {
       const purchaseObj = purchase.toObject();
       const now = new Date();
-      const purchaseId = purchaseObj?._id?.toString?.() || '';
+      const purchaseId = purchaseObj?._id?.toString?.() || "";
 
       const durationDays = getEffectiveDurationDays(purchaseObj);
       const daysUsed = getEffectiveDaysUsed(purchaseObj);
       const remainingDays = getEffectiveRemainingDays(purchaseObj);
 
-      const linkedMealPlanEndDate = latestMealPlanEndDateByPurchase.get(purchaseId) || null;
-      const resolvedExpectedEndDate = resolveLaterDate(purchaseObj.expectedEndDate, linkedMealPlanEndDate);
+      const linkedMealPlanEndDate =
+        latestMealPlanEndDateByPurchase.get(purchaseId) || null;
+      const resolvedExpectedEndDate = resolveEntitlementEndDate({
+        expectedStartDate: purchaseObj.expectedStartDate,
+        expectedEndDate: purchaseObj.expectedEndDate,
+        endDate: purchaseObj.endDate,
+        durationLabel: purchaseObj.durationLabel,
+        linkedMealPlanEndDate,
+      });
 
       // Calculate calendar days until end date (for expiration)
       const endDate = resolvedExpectedEndDate || purchaseObj.endDate;
@@ -383,30 +408,36 @@ export async function GET(request: NextRequest) {
 
       return {
         ...purchaseObj,
-        expectedEndDate: resolvedExpectedEndDate || purchaseObj.expectedEndDate || null,
+        expectedEndDate:
+          resolvedExpectedEndDate || purchaseObj.expectedEndDate || null,
         durationDays,
         daysUsed,
         remainingDays,
         calendarDaysUntilEnd, // Days until expectedEndDate/endDate
-        isExpired
+        isExpired,
       };
     });
 
     const now = new Date();
     const filteredPurchases = activeOnly
-      ? purchasesWithInfo.filter((purchase: any) => isPurchaseActiveForPlanning(purchase, now))
+      ? purchasesWithInfo.filter((purchase: any) =>
+          isPurchaseActiveForPlanning(purchase, now),
+        )
       : purchasesWithInfo;
 
     const response = NextResponse.json({
       success: true,
       purchases: filteredPurchases,
-      total: filteredPurchases.length
+      total: filteredPurchases.length,
     });
-    response.headers.set('Cache-Control', 'no-store');
+    response.headers.set("Cache-Control", "no-store");
     return response;
   } catch (error) {
-    console.error('Error fetching client purchases:', error);
-    return NextResponse.json({ error: 'Failed to fetch client purchases' }, { status: 500 });
+    console.error("Error fetching client purchases:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch client purchases" },
+      { status: 500 },
+    );
   }
 }
 
@@ -417,7 +448,7 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
@@ -435,14 +466,18 @@ export async function POST(request: NextRequest) {
       baseAmount,
       discountPercent,
       taxPercent,
-      finalAmount
+      finalAmount,
     } = body;
 
     // Validate required fields
     if (!clientId || !servicePlanId || !paymentLinkId || !durationDays) {
-      return NextResponse.json({
-        error: 'Client ID, service plan ID, payment link ID, and duration are required'
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error:
+            "Client ID, service plan ID, payment link ID, and duration are required",
+        },
+        { status: 400 },
+      );
     }
 
     // Auto-window from payment day: start tomorrow, end inclusive by duration.
@@ -462,7 +497,7 @@ export async function POST(request: NextRequest) {
         dietitian: session.user.id,
         servicePlan: servicePlanId,
         paymentLink: paymentLinkId,
-        paymentType: 'service_plan',
+        paymentType: "service_plan",
         planName,
         planCategory,
         durationDays,
@@ -471,9 +506,9 @@ export async function POST(request: NextRequest) {
         discountPercent: Math.min(discountPercent || 0, 40), // Max 40%
         taxPercent: taxPercent || 0,
         finalAmount,
-        currency: 'INR',
-        status: 'paid',
-        paymentStatus: 'paid',
+        currency: "INR",
+        status: "paid",
+        paymentStatus: "paid",
         purchaseDate: paidAt,
         startDate: purchaseStartDate,
         endDate: purchaseEndDate,
@@ -481,29 +516,35 @@ export async function POST(request: NextRequest) {
         expectedEndDate: purchaseEndDate,
         paidAt,
         mealPlanCreated: false,
-        daysUsed: 0
-      }
+        daysUsed: 0,
+      },
     );
 
     // A new paid purchase establishes/extends the subscription window — recompute status.
     try {
       await recalculateAndPersistClientStatus(clientId, {
-        trigger: 'purchase_created',
+        trigger: "purchase_created",
         changedBy: session.user.id,
         relatedEvent: `purchase:${purchase._id}`,
       });
     } catch (statusError) {
-      console.error('Error recalculating client status after purchase create:', statusError);
+      console.error(
+        "Error recalculating client status after purchase create:",
+        statusError,
+      );
     }
 
     return NextResponse.json({
       success: true,
       purchase,
-      message: 'Client purchase recorded successfully'
+      message: "Client purchase recorded successfully",
     });
   } catch (error) {
-    console.error('Error creating client purchase:', error);
-    return NextResponse.json({ error: 'Failed to create client purchase' }, { status: 500 });
+    console.error("Error creating client purchase:", error);
+    return NextResponse.json(
+      { error: "Failed to create client purchase" },
+      { status: 500 },
+    );
   }
 }
 
@@ -513,26 +554,42 @@ export async function PUT(request: NextRequest) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
 
     const body = await request.json();
-    const { purchaseId, mealPlanId, mealPlanCreated, daysUsed, addDaysUsed, status, expectedStartDate, expectedEndDate, parentPurchaseId } = body;
+    const {
+      purchaseId,
+      mealPlanId,
+      mealPlanCreated,
+      daysUsed,
+      addDaysUsed,
+      status,
+      expectedStartDate,
+      expectedEndDate,
+      parentPurchaseId,
+    } = body;
 
     if (!purchaseId) {
-      return NextResponse.json({ error: 'Purchase ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Purchase ID is required" },
+        { status: 400 },
+      );
     }
 
     // Get current purchase to check existing daysUsed
     const currentPurchase = await withCache(
       `client-purchases:${JSON.stringify(purchaseId)}`,
       async () => await UnifiedPayment.findById(purchaseId),
-      { ttl: 120000, tags: ['client_purchases'] }
+      { ttl: 120000, tags: ["client_purchases"] },
     );
     if (!currentPurchase) {
-      return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: "Purchase not found" },
+        { status: 404 },
+      );
     }
 
     // ======== EXPECTED END DATE VALIDATION ========
@@ -541,15 +598,20 @@ export async function PUT(request: NextRequest) {
     // Admin: edits allowed at any time
     if (expectedEndDate !== undefined || expectedStartDate !== undefined) {
       // Check if user is admin or dietitian
-      const normalizedRole = (session.user.role || '').toLowerCase();
-      const isAdmin = normalizedRole === 'admin';
-      const isDietitian = normalizedRole === 'dietitian' || normalizedRole === 'dietician';
+      const normalizedRole = (session.user.role || "").toLowerCase();
+      const isAdmin = normalizedRole === "admin";
+      const isDietitian =
+        normalizedRole === "dietitian" || normalizedRole === "dietician";
 
       if (!isAdmin && !isDietitian) {
-        return NextResponse.json({
-          error: 'Only admins and dietitians are permitted to modify expected dates',
-          code: 'ROLE_UNAUTHORIZED'
-        }, { status: 403 });
+        return NextResponse.json(
+          {
+            error:
+              "Only admins and dietitians are permitted to modify expected dates",
+            code: "ROLE_UNAUTHORIZED",
+          },
+          { status: 403 },
+        );
       }
 
       // Date validation logic differs by role
@@ -567,18 +629,26 @@ export async function PUT(request: NextRequest) {
         if (isDietitian) {
           // Dietitian: cannot edit on or after the expected end date
           if (today >= existingEndDate) {
-            return NextResponse.json({
-              error: 'Cannot modify expected end date: The expected end date has already passed or is today. Modifications are not allowed.',
-              code: 'DATE_EXPIRED'
-            }, { status: 400 });
+            return NextResponse.json(
+              {
+                error:
+                  "Cannot modify expected end date: The expected end date has already passed or is today. Modifications are not allowed.",
+                code: "DATE_EXPIRED",
+              },
+              { status: 400 },
+            );
           }
 
           // Dietitian: cannot edit after one day before the expected end date
           if (today > oneDayBeforeEnd) {
-            return NextResponse.json({
-              error: 'Cannot modify expected end date: Changes are only allowed up to one day before the current expected end date.',
-              code: 'DATE_TOO_CLOSE'
-            }, { status: 400 });
+            return NextResponse.json(
+              {
+                error:
+                  "Cannot modify expected end date: Changes are only allowed up to one day before the current expected end date.",
+                code: "DATE_TOO_CLOSE",
+              },
+              { status: 400 },
+            );
           }
         }
       }
@@ -587,14 +657,19 @@ export async function PUT(request: NextRequest) {
 
     const updateData: any = {};
     if (mealPlanId) updateData.mealPlan = mealPlanId;
-    if (mealPlanCreated !== undefined) updateData.mealPlanCreated = mealPlanCreated;
+    if (mealPlanCreated !== undefined)
+      updateData.mealPlanCreated = mealPlanCreated;
 
     // Update expected dates
     if (expectedStartDate !== undefined) {
-      updateData.expectedStartDate = expectedStartDate ? new Date(expectedStartDate) : null;
+      updateData.expectedStartDate = expectedStartDate
+        ? new Date(expectedStartDate)
+        : null;
     }
     if (expectedEndDate !== undefined) {
-      updateData.expectedEndDate = expectedEndDate ? new Date(expectedEndDate) : null;
+      updateData.expectedEndDate = expectedEndDate
+        ? new Date(expectedEndDate)
+        : null;
     }
 
     // Update parent purchase reference (for multi-phase plans)
@@ -606,15 +681,19 @@ export async function PUT(request: NextRequest) {
     // to keep this operation idempotent (prevents double counting from repeated publish calls).
     if (addDaysUsed !== undefined && addDaysUsed > 0) {
       if (mealPlanId) {
-        const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
+        const { default: ClientMealPlan } =
+          await import("@/lib/db/models/ClientMealPlan");
         const linkedMealPlans = await ClientMealPlan.find({
           purchaseId,
-          status: { $in: ['active', 'completed', 'paused'] }
-        }).select('duration');
+          status: { $in: ["active", "completed", "paused"] },
+        }).select("duration");
 
-        const recalculatedDaysUsed = linkedMealPlans.reduce((sum: number, plan: any) => {
-          return sum + Math.max(0, Number(plan?.duration || 0));
-        }, 0);
+        const recalculatedDaysUsed = linkedMealPlans.reduce(
+          (sum: number, plan: any) => {
+            return sum + Math.max(0, Number(plan?.duration || 0));
+          },
+          0,
+        );
 
         updateData.daysUsed = recalculatedDaysUsed;
         updateData.mealPlanCreated = linkedMealPlans.length > 0;
@@ -631,9 +710,10 @@ export async function PUT(request: NextRequest) {
         0,
         Number(
           currentPurchase.durationDays ||
-          ((currentPurchase.daysUsed || 0) + (currentPurchase.remainingDays || 0)) ||
-          0
-        )
+            (currentPurchase.daysUsed || 0) +
+              (currentPurchase.remainingDays || 0) ||
+            0,
+        ),
       );
       const normalizedDaysUsed = Math.max(0, Number(updateData.daysUsed || 0));
       updateData.daysUsed = normalizedDaysUsed;
@@ -645,30 +725,42 @@ export async function PUT(request: NextRequest) {
     const updatedPurchase = await UnifiedPayment.findByIdAndUpdate(
       purchaseId,
       updateData,
-      { new: true }
+      { new: true },
     );
 
     if (!updatedPurchase) {
-      return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: "Purchase not found" },
+        { status: 404 },
+      );
     }
 
     // Clear cache to ensure real-time updates across all platforms
-    clearCacheByTag('client_purchases');
+    clearCacheByTag("client_purchases");
     clearCacheByTag(`client-purchases:${JSON.stringify(purchaseId)}`);
 
     // If the subscription window or payment status changed, recompute client status
     // (single source of truth: Expected End Date + manual hold).
-    if (expectedEndDate !== undefined || expectedStartDate !== undefined || status !== undefined) {
-      const purchaseClientId = updatedPurchase.client ? String(updatedPurchase.client) : null;
+    if (
+      expectedEndDate !== undefined ||
+      expectedStartDate !== undefined ||
+      status !== undefined
+    ) {
+      const purchaseClientId = updatedPurchase.client
+        ? String(updatedPurchase.client)
+        : null;
       if (purchaseClientId) {
         try {
           await recalculateAndPersistClientStatus(purchaseClientId, {
-            trigger: 'purchase_updated',
+            trigger: "purchase_updated",
             changedBy: session.user.id,
             relatedEvent: `purchase:${purchaseId}`,
           });
         } catch (statusError) {
-          console.error('Error recalculating client status after purchase update:', statusError);
+          console.error(
+            "Error recalculating client status after purchase update:",
+            statusError,
+          );
         }
       }
     }
@@ -677,12 +769,18 @@ export async function PUT(request: NextRequest) {
       success: true,
       purchase: updatedPurchase,
       totalDaysUsed: updatedPurchase.daysUsed || 0,
-      remainingDays: Math.max(0, (updatedPurchase.durationDays || 0) - (updatedPurchase.daysUsed || 0)),
-      message: 'Purchase updated successfully'
+      remainingDays: Math.max(
+        0,
+        (updatedPurchase.durationDays || 0) - (updatedPurchase.daysUsed || 0),
+      ),
+      message: "Purchase updated successfully",
     });
   } catch (error) {
-    console.error('Error updating client purchase:', error);
-    return NextResponse.json({ error: 'Failed to update client purchase' }, { status: 500 });
+    console.error("Error updating client purchase:", error);
+    return NextResponse.json(
+      { error: "Failed to update client purchase" },
+      { status: 500 },
+    );
   }
 }
 
@@ -692,7 +790,7 @@ export async function PATCH(request: NextRequest) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
@@ -700,14 +798,15 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { purchaseId, clientId, action } = body;
 
-    if (action !== 'recalculate' && action !== 'repair') {
-      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    if (action !== "recalculate" && action !== "repair") {
+      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    const shouldRepairCounters = action === 'repair';
+    const shouldRepairCounters = action === "repair";
 
     // Import ClientMealPlan model
-    const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
+    const { default: ClientMealPlan } =
+      await import("@/lib/db/models/ClientMealPlan");
 
     // If clientId is provided (no active purchase), recalculate all purchases for this client
     if (clientId && !purchaseId) {
@@ -715,9 +814,9 @@ export async function PATCH(request: NextRequest) {
       const allPurchases = await UnifiedPayment.find({
         client: clientId,
         $or: [
-          { paymentStatus: 'paid' },
-          { status: { $in: ['paid', 'completed', 'active'] } }
-        ]
+          { paymentStatus: "paid" },
+          { status: { $in: ["paid", "completed", "active"] } },
+        ],
       });
 
       // Fetch all meal plans for this client once, then group by purchaseId.
@@ -725,7 +824,7 @@ export async function PATCH(request: NextRequest) {
       // never a cross-purchase fallback.
       const allMealPlans = await ClientMealPlan.find({
         clientId: clientId,
-        status: { $in: ['active', 'completed'] }
+        status: { $in: ["active", "completed"] },
       });
 
       const totalDaysUsed = getLinkedMealPlanDaysUsed(allMealPlans);
@@ -735,7 +834,7 @@ export async function PATCH(request: NextRequest) {
       for (const purchase of allPurchases) {
         // Only count plans that explicitly belong to this purchase.
         const effectiveMealPlans = allMealPlans.filter(
-          (plan) => plan.purchaseId?.toString() === purchase._id.toString()
+          (plan) => plan.purchaseId?.toString() === purchase._id.toString(),
         );
 
         const counterState = applyPurchaseCounters({
@@ -743,7 +842,10 @@ export async function PATCH(request: NextRequest) {
           mealPlans: effectiveMealPlans,
           preserveStoredCounters: shouldRepairCounters
             ? false
-            : shouldPreserveStoredCounters(purchase, getLinkedMealPlanDaysUsed(effectiveMealPlans))
+            : shouldPreserveStoredCounters(
+                purchase,
+                getLinkedMealPlanDaysUsed(effectiveMealPlans),
+              ),
         });
 
         if (
@@ -760,7 +862,7 @@ export async function PATCH(request: NextRequest) {
       }
 
       // Clear cache
-      clearCacheByTag('client_purchases');
+      clearCacheByTag("client_purchases");
 
       return NextResponse.json({
         success: true,
@@ -771,18 +873,27 @@ export async function PATCH(request: NextRequest) {
         newDaysUsed: totalDaysUsed,
         mealPlansCount: allMealPlans.length,
         purchasesUpdated: updatedCount,
-        remainingDays: allPurchases.reduce((sum, p) => sum + Math.max(0, (p.durationDays || 0) - totalDaysUsed), 0)
+        remainingDays: allPurchases.reduce(
+          (sum, p) => sum + Math.max(0, (p.durationDays || 0) - totalDaysUsed),
+          0,
+        ),
       });
     }
 
     if (!purchaseId) {
-      return NextResponse.json({ error: 'Purchase ID or Client ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Purchase ID or Client ID is required" },
+        { status: 400 },
+      );
     }
 
     // Get the purchase
     const purchase = await UnifiedPayment.findById(purchaseId);
     if (!purchase) {
-      return NextResponse.json({ error: 'Purchase not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: "Purchase not found" },
+        { status: 404 },
+      );
     }
 
     // Only count meal plans explicitly linked to this purchase by purchaseId.
@@ -790,7 +901,7 @@ export async function PATCH(request: NextRequest) {
     // days from previous purchases/phases and inflate the counter.
     const mealPlans = await ClientMealPlan.find({
       purchaseId: purchaseId,
-      status: { $in: ['active', 'completed'] }
+      status: { $in: ["active", "completed"] },
     });
 
     const totalDaysUsed = getLinkedMealPlanDaysUsed(mealPlans);
@@ -799,7 +910,7 @@ export async function PATCH(request: NextRequest) {
       mealPlans,
       preserveStoredCounters: shouldRepairCounters
         ? false
-        : shouldPreserveStoredCounters(purchase, totalDaysUsed)
+        : shouldPreserveStoredCounters(purchase, totalDaysUsed),
     });
 
     if (
@@ -814,22 +925,26 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Clear cache
-    clearCacheByTag('client_purchases');
+    clearCacheByTag("client_purchases");
 
     return NextResponse.json({
       success: true,
       message: shouldRepairCounters
         ? `Purchase counters repaired: ${counterState.oldDaysUsed} → ${counterState.finalDaysUsed}`
-        : (counterState.finalDaysUsed === counterState.oldDaysUsed && counterState.finalRemainingDays === counterState.oldRemainingDays
+        : counterState.finalDaysUsed === counterState.oldDaysUsed &&
+            counterState.finalRemainingDays === counterState.oldRemainingDays
           ? `Days used preserved at ${counterState.oldDaysUsed}; stored purchase counters remain authoritative.`
-          : `Days used recalculated: ${counterState.oldDaysUsed} → ${counterState.finalDaysUsed}`),
+          : `Days used recalculated: ${counterState.oldDaysUsed} → ${counterState.finalDaysUsed}`,
       oldDaysUsed: counterState.oldDaysUsed,
       newDaysUsed: counterState.finalDaysUsed,
       mealPlansCount: mealPlans.length,
-      remainingDays: counterState.finalRemainingDays
+      remainingDays: counterState.finalRemainingDays,
     });
   } catch (error) {
-    console.error('Error recalculating days used:', error);
-    return NextResponse.json({ error: 'Failed to recalculate days used' }, { status: 500 });
+    console.error("Error recalculating days used:", error);
+    return NextResponse.json(
+      { error: "Failed to recalculate days used" },
+      { status: 500 },
+    );
   }
 }

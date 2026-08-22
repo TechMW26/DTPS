@@ -4,15 +4,21 @@ import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/db/connection";
 import JournalTracking from "@/lib/db/models/JournalTracking";
 import User from "@/lib/db/models/User";
+import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
+import FoodLog from '@/lib/db/models/FoodLog';
 import { withCache } from '@/lib/api/utils';
 import { isValid, parseISO, startOfDay } from 'date-fns';
+import {
+  buildDailyNutritionSummary,
+  getNutritionDateKey,
+} from '@/lib/meal-nutrition';
 
 function toArray<T>(value: T[] | T | null | undefined): T[] {
   return Array.isArray(value) ? value : [];
 }
 
 function resolveTargetDate(dateParam: string | null): Date | null {
-  const requestedDate = dateParam ? parseISO(dateParam) : new Date();
+  const requestedDate = parseISO(dateParam || getNutritionDateKey(new Date()));
   if (!isValid(requestedDate)) {
     return null;
   }
@@ -51,7 +57,7 @@ export async function GET(request: Request) {
     const data = await withCache(
       cacheKey,
       async () => {
-        const [journal, user] = await Promise.all([
+        const [journal, user, mealPlan, foodLog] = await Promise.all([
           JournalTracking.findOne({
             client: userId,
             date: { $gte: targetDate, $lt: nextDay },
@@ -60,6 +66,22 @@ export async function GET(request: Request) {
             .lean() as any,
           User.findById(userId)
             .select('goals dailyGoals heightCm weightKg bmi bmiCategory generalGoal firstName lastName avatar')
+            .lean() as any,
+          ClientMealPlan.findOne({
+            clientId: userId,
+            status: { $in: ['active', 'completed', 'paused'] },
+            isDeleted: { $ne: true },
+            startDate: { $lt: nextDay },
+            endDate: { $gte: targetDate },
+          })
+            .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
+            .select('startDate endDate meals mealCompletions customizations')
+            .lean() as any,
+          FoodLog.findOne({
+            client: userId,
+            date: { $gte: targetDate, $lt: nextDay },
+          })
+            .select('date totalNutrition meals')
             .lean() as any,
         ]);
 
@@ -114,6 +136,12 @@ export async function GET(request: Request) {
         const firstName = user?.firstName || '';
         const lastName = user?.lastName || '';
         const avatar = user?.avatar || '';
+        const nutrition = buildDailyNutritionSummary({
+          plan: mealPlan,
+          foodLog,
+          user,
+          date: targetDate,
+        });
 
         return {
           hydration: {
@@ -140,6 +168,7 @@ export async function GET(request: Request) {
             entries: stepsEntries,
             assignedSteps,
           },
+          nutrition,
           profile: {
             bmi,
             bmiCategory,

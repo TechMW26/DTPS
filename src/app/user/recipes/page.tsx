@@ -5,7 +5,7 @@ import Link from 'next/link';
 import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ArrowLeft, Clock, Users, Flame, Search, X, Loader2 } from 'lucide-react';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 
@@ -123,11 +123,7 @@ export default function RecipesPage() {
 
   // Show full-page loading only on initial load, not during searches
   if (loading && recipes.length === 0 && !searchTerm) {
-    return (
-      <div className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="grid" showHeader={false} />;
   }
 
   const effectiveTotalRecipes = totalRecipes > 0 ? totalRecipes : recipes.length;
@@ -170,7 +166,7 @@ export default function RecipesPage() {
 
   return (
     <PageTransition>
-      <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-linear-to-b from-gray-900 to-gray-900' : 'bg-linear-to-b from-white to-gray-50'}`}>
+      <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-linear-to-b from-gray-900 to-gray-900' : 'bg-linear-to-b from-white to-gray-50'}`}>
         {/* Header */}
         <div className={`sticky top-0 z-40 transition-colors duration-300 border-b ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
           <div className="relative flex items-center justify-center px-4 py-4">

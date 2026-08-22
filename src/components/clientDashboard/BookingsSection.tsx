@@ -44,6 +44,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRealtime } from '@/hooks/useRealtime';
+import { ListSkeleton } from '@/components/ui/skeleton';
 
 interface Appointment {
   _id: string;
@@ -294,8 +295,8 @@ export default function BookingsSection({ clientId, clientName, userRole = 'diet
     return (
       <div className="mt-6">
         <Card>
-          <CardContent className="flex justify-center items-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <CardContent className="py-6">
+            <ListSkeleton rows={5} />
           </CardContent>
         </Card>
       </div>

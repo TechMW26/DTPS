@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Search, Send, CheckCheck, Loader2, Users, ChevronRight, Check } from 'lucide-react';
+import { ListSkeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -239,9 +240,7 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
             {/* User list */}
             <div className="flex-1 overflow-y-auto">
               {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-green-600" />
-                </div>
+                <ListSkeleton rows={6} />
               ) : filteredUsers.length === 0 ? (
                 <p className="text-center text-gray-500 py-8">No users found</p>
               ) : (

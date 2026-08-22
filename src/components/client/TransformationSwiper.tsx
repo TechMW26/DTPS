@@ -41,28 +41,39 @@ export default function TransformationSwiper() {
   };
 
   const scrollToIndex = (index: number) => {
-    if (!containerRef.current) return;
     const container = containerRef.current;
-    // Get actual card width from container
-    const firstCard = container.querySelector('[style*="scrollSnapAlign"]') as HTMLElement;
-    const cardWidth = firstCard?.offsetWidth || (window.innerWidth - 32);
-    const gap = 16;
+    if (!container) return;
+
+    const cards = Array.from(container.querySelectorAll<HTMLElement>('[data-transformation-card]'));
+    const card = cards[index];
+    if (!card) return;
+
+    const left = card.getBoundingClientRect().left - container.getBoundingClientRect().left + container.scrollLeft;
+
     container.scrollTo({
-      left: index * (cardWidth + gap),
-      behavior: 'smooth'
+      left,
+      behavior: 'smooth',
     });
     setActiveIndex(index);
   };
 
   const handleScroll = () => {
-    if (!containerRef.current) return;
     const container = containerRef.current;
-    // Get actual card width from container
-    const firstCard = container.querySelector('[style*="scrollSnapAlign"]') as HTMLElement;
-    const cardWidth = firstCard?.offsetWidth || (window.innerWidth - 32);
-    const gap = 16;
-    const newIndex = Math.round(container.scrollLeft / (cardWidth + gap));
-    setActiveIndex(Math.min(newIndex, transformations.length - 1));
+    if (!container) return;
+
+    const containerLeft = container.getBoundingClientRect().left;
+    const cards = Array.from(container.querySelectorAll<HTMLElement>('[data-transformation-card]'));
+    if (cards.length === 0) return;
+
+    const newIndex = cards.reduce((closestIndex, card, index) => {
+      const cardLeft = card.getBoundingClientRect().left - containerLeft + container.scrollLeft;
+      const closestCard = cards[closestIndex];
+      const closestLeft = closestCard.getBoundingClientRect().left - containerLeft + container.scrollLeft;
+
+      return Math.abs(cardLeft - container.scrollLeft) < Math.abs(closestLeft - container.scrollLeft) ? index : closestIndex;
+    }, 0);
+
+    setActiveIndex(newIndex);
   };
 
   const handleImageError = (id: string, type: 'before' | 'after') => {
@@ -106,7 +117,7 @@ export default function TransformationSwiper() {
             <p className="text-xs text-gray-500">Real transformations, real results</p>
           </div>
         </div>
-        
+
         <div className="flex gap-2">
           <button
             onClick={() => scrollToIndex(Math.max(0, activeIndex - 1))}
@@ -126,18 +137,12 @@ export default function TransformationSwiper() {
       </div>
 
       {/* Swiper Container */}
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth pb-3 -mx-4 px-4"
-        style={{ scrollSnapType: 'x mandatory' }}
-      >
+      <div ref={containerRef} onScroll={handleScroll} className="flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-3 pr-4 scrollbar-hide">
         {transformations.map((transformation) => (
           <div
             key={transformation._id}
-            className="w-[calc(100vw-32px)] sm:w-[380px] shrink-0 bg-white rounded-2xl overflow-hidden shadow-lg border border-gray-100 hover:shadow-xl 
-            transition-all duration-300 hover:-translate-y-1"
-            style={{ scrollSnapAlign: 'start' }}
+            data-transformation-card
+            className="w-[calc(100%_-_1rem)] shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl sm:w-[380px]"
           >
             {/* Before/After Images */}
             <div className="relative">
@@ -163,14 +168,14 @@ export default function TransformationSwiper() {
                     Before
                   </span>
                 </div>
-                
+
                 {/* Center Arrow */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
                   <div className="w-10 h-10 rounded-full bg-white shadow-xl flex items-center justify-center border-2 border-[#3AB1A0]">
                     <ArrowRight className="h-5 w-5 text-[#3AB1A0]" />
                   </div>
                 </div>
-                
+
                 {/* After Image */}
                 <div className="w-1/2 relative bg-linear-to-br from-gray-100 to-gray-200 overflow-hidden">
                   {getImageUrl(transformation.afterImage) && !imageErrors.has(`${transformation._id}-after`) ? (
@@ -193,7 +198,7 @@ export default function TransformationSwiper() {
                   </span>
                 </div>
               </div>
-              
+
               {/* Success Badge */}
               <div className="absolute top-2 right-2 bg-yellow-400/90 backdrop-blur-sm text-yellow-900 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
                 <Star className="h-3 w-3 fill-yellow-900" />
@@ -211,7 +216,7 @@ export default function TransformationSwiper() {
                   <p className="text-sm text-gray-500 mt-0.5">{transformation.clientName}</p>
                 )}
               </div>
-              
+
               {/* Stats Row */}
               <div className="flex items-center gap-4 pt-2 border-t border-gray-100">
                 {transformation.durationWeeks && (
@@ -231,7 +236,7 @@ export default function TransformationSwiper() {
                   </div>
                 )}
               </div>
-              
+
               {/* Description */}
               {transformation.description && (
                 <p className="text-xs text-gray-500 line-clamp-2 italic">

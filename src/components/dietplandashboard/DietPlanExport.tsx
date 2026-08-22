@@ -1,15 +1,37 @@
-'use client';
+"use client";
 
-import { useCallback, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Download, FileText, FileSpreadsheet, Printer, FileDown } from 'lucide-react';
-import { DayPlan } from './DietPlanDashboard';
-import { format } from 'date-fns';
-import { toast } from 'sonner';
-import { MEAL_TYPES, normalizeMealType } from '@/lib/mealConfig';
-import { buildDietPlanPdf, dietPlanPdfFilename } from '@/lib/diet-plan-pdf';
+import { useCallback, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  CheckCircle2,
+  ClipboardList,
+  Download,
+  FileText,
+  FileSpreadsheet,
+  Printer,
+  FileDown,
+  User,
+} from "lucide-react";
+import { DayPlan } from "./DietPlanDashboard";
+import { format } from "date-fns";
+import { toast } from "sonner";
+import { MEAL_TYPES, normalizeMealType } from "@/lib/mealConfig";
+import { buildDietPlanPdf, dietPlanPdfFilename } from "@/lib/diet-plan-pdf";
 
 interface DietPlanExportProps {
   weekPlan: DayPlan[];
@@ -29,9 +51,21 @@ interface DietPlanExportProps {
   onExternalOpenChange?: (open: boolean) => void; // Callback when dialog state changes externally
 }
 
-export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, duration, startDate, dietitianName, externalOpen, onExternalOpenChange }: DietPlanExportProps) {
+export function DietPlanExport({
+  weekPlan,
+  mealTypes,
+  clientName,
+  clientInfo,
+  duration,
+  startDate,
+  dietitianName,
+  externalOpen,
+  onExternalOpenChange,
+}: DietPlanExportProps) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const [exportFor, setExportFor] = useState<'dietitian' | 'client'>('dietitian');
+  const [exportFor, setExportFor] = useState<"dietitian" | "client">(
+    "dietitian",
+  );
 
   // Support both internal and external open state
   const open = externalOpen !== undefined ? externalOpen : internalOpen;
@@ -43,20 +77,22 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     }
   };
 
-  const [exportFormat, setExportFormat] = useState<'html' | 'csv' | 'pdf' | 'print'>('pdf');
+  const [exportFormat, setExportFormat] = useState<
+    "html" | "csv" | "pdf" | "print"
+  >("pdf");
   const [isExporting, setIsExporting] = useState(false);
 
   // Helper function to format date properly
   const formatDateProper = (dateStr: string): string => {
-    if (!dateStr) return '';
+    if (!dateStr) return "";
     try {
       const date = new Date(dateStr);
-      return date.toLocaleDateString('en-IN', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-        timeZone: 'Asia/Kolkata',
+      return date.toLocaleDateString("en-IN", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "Asia/Kolkata",
       });
     } catch (e) {
       return dateStr;
@@ -65,24 +101,24 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
 
   // Helper: escape note text and render one bullet line per sentence.
   const formatNoteForExport = (noteText?: string): string => {
-    if (!noteText) return '';
+    if (!noteText) return "";
 
     const escaped = noteText
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
 
     const sentenceLines = (escaped.match(/[^.\n]+(?:\.)?/g) || [])
       .map((line) => line.trim())
       .filter(Boolean);
 
-    if (!sentenceLines.length) return '';
+    if (!sentenceLines.length) return "";
 
     return sentenceLines
       .map((line) => `<span class="sentence-dot">●</span> ${line}`)
-      .join('<br/>');
+      .join("<br/>");
   };
 
   // Helper function to get meal time — prefer actual stored time from plan data
@@ -107,7 +143,7 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     if (normalizedKey && MEAL_TYPES[normalizedKey]) {
       return MEAL_TYPES[normalizedKey].time12h;
     }
-    return '12:00 PM';
+    return "12:00 PM";
   };
 
   // Helper: get canonical sort order for a meal type
@@ -127,13 +163,13 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
       let hours = parseInt(match[1], 10);
       const minutes = parseInt(match[2], 10);
       const period = match[3].toUpperCase();
-      if (period === 'AM' && hours === 12) hours = 0;
-      if (period === 'PM' && hours !== 12) hours += 12;
+      if (period === "AM" && hours === 12) hours = 0;
+      if (period === "PM" && hours !== 12) hours += 12;
       return hours * 60 + minutes;
     }
     // Fallback: try 24h format
-    if (timeStr.includes(':')) {
-      const [hours, minutes] = timeStr.split(':');
+    if (timeStr.includes(":")) {
+      const [hours, minutes] = timeStr.split(":");
       return parseInt(hours, 10) * 60 + parseInt(minutes, 10);
     }
     return 1200;
@@ -162,7 +198,7 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     const seenMealTypes = new Set<string>();
 
     // 1) Start with planner-configured order
-    mealTypes.forEach(mt => {
+    mealTypes.forEach((mt) => {
       const label = toDisplayLabel(mt);
       if (!seenMealTypes.has(label)) {
         seenMealTypes.add(label);
@@ -171,12 +207,15 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     });
 
     // 2) Add any extra meal types present in data (custom/legacy), in discovery order
-    weekPlan.forEach(day => {
-      Object.keys(day.meals).forEach(mt => {
+    weekPlan.forEach((day) => {
+      Object.keys(day.meals).forEach((mt) => {
         const label = toDisplayLabel(mt);
         const meal = day.meals[mt];
         // Only include if it has food
-        if (meal?.foodOptions?.some(opt => opt.food?.trim()) && !seenMealTypes.has(label)) {
+        if (
+          meal?.foodOptions?.some((opt) => opt.food?.trim()) &&
+          !seenMealTypes.has(label)
+        ) {
           seenMealTypes.add(label);
           orderedMealTypes.push(label);
         }
@@ -188,13 +227,16 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
 
   // Calculate daily totals (only main foods, exclude alternatives)
   const calculateDayTotals = (day: DayPlan) => {
-    let cal = 0, carbs = 0, protein = 0, fats = 0;
+    let cal = 0,
+      carbs = 0,
+      protein = 0,
+      fats = 0;
 
-    Object.values(day.meals).forEach(meal => {
+    Object.values(day.meals).forEach((meal) => {
       if (meal?.foodOptions) {
         // Only count MAIN food options (isAlternative is false or undefined)
-        const mainFoods = meal.foodOptions.filter(opt => !opt.isAlternative);
-        mainFoods.forEach(opt => {
+        const mainFoods = meal.foodOptions.filter((opt) => !opt.isAlternative);
+        mainFoods.forEach((opt) => {
           cal += parseFloat(opt.cal) || 0;
           carbs += parseFloat(opt.carbs) || 0;
           protein += parseFloat(opt.protein) || 0;
@@ -209,58 +251,79 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
   // Get meal type class suffix based on meal name
   const getMealTypeClass = (mealType: string): string => {
     const lowerMeal = mealType.toLowerCase();
-    if (lowerMeal.includes('breakfast') || lowerMeal.includes('early morning')) return 'breakfast';
-    if (lowerMeal.includes('mid morning') || lowerMeal.includes('mid-morning')) return 'mid';
-    if (lowerMeal.includes('lunch')) return 'lunch';
-    if (lowerMeal.includes('snack') || lowerMeal.includes('evening')) return 'snack';
-    if (lowerMeal.includes('dinner') || lowerMeal.includes('bed') || lowerMeal.includes('night')) return 'dinner';
-    return 'breakfast'; // default
+    if (lowerMeal.includes("breakfast") || lowerMeal.includes("early morning"))
+      return "breakfast";
+    if (lowerMeal.includes("mid morning") || lowerMeal.includes("mid-morning"))
+      return "mid";
+    if (lowerMeal.includes("lunch")) return "lunch";
+    if (lowerMeal.includes("snack") || lowerMeal.includes("evening"))
+      return "snack";
+    if (
+      lowerMeal.includes("dinner") ||
+      lowerMeal.includes("bed") ||
+      lowerMeal.includes("night")
+    )
+      return "dinner";
+    return "breakfast"; // default
   };
 
   // Get meal icon SVG based on meal type
   const getMealIcon = (mealType: string): string => {
     const lowerMeal = mealType.toLowerCase();
-    if (lowerMeal.includes('breakfast') || lowerMeal.includes('early morning')) {
+    if (
+      lowerMeal.includes("breakfast") ||
+      lowerMeal.includes("early morning")
+    ) {
       return '<svg viewBox="0 0 24 24"><path d="M17 11h1a3 3 0 0 1 0 6h-1"/><path d="M3 11h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/><path d="M6 6V3"/><path d="M10 6V3"/><path d="M14 6V3"/></svg>';
     }
-    if (lowerMeal.includes('mid morning') || lowerMeal.includes('mid-morning')) {
+    if (
+      lowerMeal.includes("mid morning") ||
+      lowerMeal.includes("mid-morning")
+    ) {
       return '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
     }
-    if (lowerMeal.includes('lunch')) {
+    if (lowerMeal.includes("lunch")) {
       return '<svg viewBox="0 0 24 24"><path d="m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8"/><path d="M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15z"/><path d="m2 22 5.5-1.5L3.5 16.5z"/></svg>';
     }
-    if (lowerMeal.includes('snack') || lowerMeal.includes('evening')) {
+    if (lowerMeal.includes("snack") || lowerMeal.includes("evening")) {
       return '<svg viewBox="0 0 24 24"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06z"/><path d="M10 2c1 .5 2 2 2 5"/></svg>';
     }
-    if (lowerMeal.includes('dinner') || lowerMeal.includes('bed') || lowerMeal.includes('night')) {
+    if (
+      lowerMeal.includes("dinner") ||
+      lowerMeal.includes("bed") ||
+      lowerMeal.includes("night")
+    ) {
       return '<svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>';
     }
     return '<svg viewBox="0 0 24 24"><path d="M17 11h1a3 3 0 0 1 0 6h-1"/><path d="M3 11h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/></svg>';
   };
 
   // Generate Premium HTML template matching the exact NutriBalance design
-  const generateHTMLContent = useCallback((showMacros: boolean = true, logoDataUri?: string) => {
-    const today = format(new Date(), 'MMMM d, yyyy');
-    const planRef = `NP-${format(new Date(), 'yyyy')}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const logoSrc = logoDataUri || 'https://dtps.tech/icons/icon-192x192.png';
+  const generateHTMLContent = useCallback(
+    (showMacros: boolean = true, logoDataUri?: string) => {
+      const today = format(new Date(), "MMMM d, yyyy");
+      const planRef = `NP-${format(new Date(), "yyyy")}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      const logoSrc = logoDataUri || "https://dtps.tech/icons/icon-192x192.png";
 
-    // Sort days by actual date if available
-    const sortedDays = [...weekPlan].sort((a, b) => {
-      if (a.date && b.date) {
-        return new Date(a.date).getTime() - new Date(b.date).getTime();
-      }
-      return weekPlan.indexOf(a) - weekPlan.indexOf(b);
-    });
+      // Sort days by actual date if available
+      const sortedDays = [...weekPlan].sort((a, b) => {
+        if (a.date && b.date) {
+          return new Date(a.date).getTime() - new Date(b.date).getTime();
+        }
+        return weekPlan.indexOf(a) - weekPlan.indexOf(b);
+      });
 
-    // Hide macros CSS for client version
-    const hideMacrosCSS = !showMacros ? `
+      // Hide macros CSS for client version
+      const hideMacrosCSS = !showMacros
+        ? `
     .macros { display: none !important; }
     th.c:nth-child(n+3), td.c:nth-child(n+3), td.cal { display: none !important; }
     .meal-kcal { display: none !important; }
     .alt-table td.ac, .alt-table td.am { display: none !important; }
-    ` : '';
+    `
+        : "";
 
-    return `
+      return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -282,7 +345,8 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     .brand { font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em; color: #047857; font-weight: 600; }
     .title { font-family: 'Poppins', sans-serif; font-size: 28px; font-weight: 700; color: #292524; margin-top: 12px; letter-spacing: -0.02em; }
     .ref { color: #a8a29e; font-size: 13px; margin-top: 4px; }
-    .export-badge { display: inline-block; background: ${showMacros ? '#ecfdf5' : '#eff6ff'}; color: ${showMacros ? '#059669' : '#2563eb'}; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 500; margin-top: 8px; }
+    .export-badge { display: inline-flex; align-items: center; gap: 6px; background: ${showMacros ? "#ecfdf5" : "#eff6ff"}; color: ${showMacros ? "#059669" : "#2563eb"}; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 500; margin-top: 8px; }
+    .export-badge svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
     .client-bar { margin-top: 28px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #f5f5f4; border-radius: 8px; overflow: hidden; border: 1px solid #f5f5f4; }
     .client-field { background: #fff; padding: 12px 16px; }
@@ -444,23 +508,31 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
       <div class="logo-icon"><img src="${logoSrc}" alt="DTPS" /></div>
       <span class="brand">DTPS Nutrition</span>
     </div>
-    <h1 class="title"> Nutrition Plan</h1>
-   
-    <span class="export-badge">${showMacros ? '📋 Dietitian Version' : '👤 Client Version'}</span>
+    <h1 class="title">Nutrition Plan</h1>
+
+    <span class="export-badge">${
+      showMacros
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="18" x="5" y="3" rx="2"/><path d="M9 3V2h6v1M9 8h6M9 12h6M9 16h4"/></svg>Dietitian Version'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21a7 7 0 0 0-14 0"/><circle cx="12" cy="7" r="4"/></svg>Client Version'
+    }</span>
     <div class="client-bar">
-      <div class="client-field"><p class="fl">Client</p><p class="fv">${clientName || 'Client'}</p></div>
+      <div class="client-field"><p class="fl">Client</p><p class="fv">${clientName || "Client"}</p></div>
       <div class="client-field"><p class="fl">Duration</p><p class="fv">${duration} Days</p></div>
-      <div class="client-field"><p class="fl">Dietitian</p><p class="fv">${dietitianName || 'DTPS Nutrition'}</p></div>
+      <div class="client-field"><p class="fl">Dietitian</p><p class="fv">${dietitianName || "DTPS Nutrition"}</p></div>
     </div>
   </div>
 
-  ${sortedDays.map((day, dayIndex) => {
+  ${sortedDays
+    .map((day, dayIndex) => {
       const totals = calculateDayTotals(day);
       const dayNum = dayIndex + 1;
-      const mealTypeClass = 'breakfast'; // default for day icon
+      const mealTypeClass = "breakfast"; // default for day icon
 
       // Day divider (not for first day)
-      const dayDivider = dayIndex > 0 ? '<div class="day-divider"><hr class="day-divider-line"/></div>' : '';
+      const dayDivider =
+        dayIndex > 0
+          ? '<div class="day-divider"><hr class="day-divider-line"/></div>'
+          : "";
 
       if (day.isHeld) {
         return `
@@ -469,10 +541,10 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
         <div class="day-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
         <div>
           <div class="day-name">${day.day} <span class="day-num">&mdash; Day ${dayNum}</span></div>
-          <div class="day-date">${day.date ? formatDateProper(day.date) : ''}</div>
+          <div class="day-date">${day.date ? formatDateProper(day.date) : ""}</div>
         </div>
       </div>
-      <div class="day-held-banner">⏸️ Plan on hold${day.holdReason ? `: ${day.holdReason}` : ''}</div>
+      <div class="day-held-banner">⏸️ Plan on hold${day.holdReason ? `: ${day.holdReason}` : ""}</div>
       `;
       }
 
@@ -484,39 +556,44 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
       <div class="day-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
       <div>
         <div class="day-name">${day.day} <span class="day-num">&mdash; Day ${dayNum}</span></div>
-        <div class="day-date">${day.date ? formatDateProper(day.date) : ''}</div>
+        <div class="day-date">${day.date ? formatDateProper(day.date) : ""}</div>
       </div>
     </div>
 
     <div class="macros">
-      <div class="mc cal"><div class="mc-top"><div class="mc-dot"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div><span class="mc-label">Calories</span></div><div class="mc-val">${totals.cal.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} <span>kcal</span></div></div>
+      <div class="mc cal"><div class="mc-top"><div class="mc-dot"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div><span class="mc-label">Calories</span></div><div class="mc-val">${totals.cal.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")} <span>kcal</span></div></div>
       <div class="mc pro"><div class="mc-top"><div class="mc-dot"><svg viewBox="0 0 24 24"><path d="m6.5 6.5 11 11"/><path d="m21 21-1-1"/><path d="m3 3 1 1"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg></div><span class="mc-label">Protein</span></div><div class="mc-val">${totals.protein.toFixed(0)} <span>g</span></div></div>
       <div class="mc carb"><div class="mc-top"><div class="mc-dot"><svg viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg></div><span class="mc-label">Carbs</span></div><div class="mc-val">${totals.carbs.toFixed(0)} <span>g</span></div></div>
       <div class="mc fat"><div class="mc-top"><div class="mc-dot"><svg viewBox="0 0 24 24"><path d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66.95-2.3c.48.17.98.3 1.34.3C19 20 22 3 22 3c-1 2-8 2.25-13 3.25S2 11.5 2 13.5s1.75 3.75 1.75 3.75"/></svg></div><span class="mc-label">Fats</span></div><div class="mc-val">${totals.fats.toFixed(0)} <span>g</span></div></div>
     </div>
 
     <div class="meals">
-      ${allMealTypes.map(mealType => {
-        const meal = findMealInDay(day, mealType);
-        if (!meal?.foodOptions?.length) return '';
+      ${allMealTypes
+        .map((mealType) => {
+          const meal = findMealInDay(day, mealType);
+          if (!meal?.foodOptions?.length) return "";
 
-        // Separate main foods from alternatives
-        const mainFoods = meal.foodOptions.filter(opt => !opt.isAlternative);
-        const alternatives = meal.foodOptions.filter(opt => opt.isAlternative);
+          // Separate main foods from alternatives
+          const mainFoods = meal.foodOptions.filter(
+            (opt) => !opt.isAlternative,
+          );
+          const alternatives = meal.foodOptions.filter(
+            (opt) => opt.isAlternative,
+          );
 
-        if (!mainFoods.length) return '';
+          if (!mainFoods.length) return "";
 
-        const mealClass = getMealTypeClass(mealType);
-        const mealIcon = getMealIcon(mealType);
-        const mealTime = getMealTime(mealType);
+          const mealClass = getMealTypeClass(mealType);
+          const mealIcon = getMealIcon(mealType);
+          const mealTime = getMealTime(mealType);
 
-        // Calculate meal totals from main foods only
-        let mealCal = 0;
-        mainFoods.forEach(opt => {
-          mealCal += parseFloat(opt.cal) || 0;
-        });
+          // Calculate meal totals from main foods only
+          let mealCal = 0;
+          mainFoods.forEach((opt) => {
+            mealCal += parseFloat(opt.cal) || 0;
+          });
 
-        return `
+          return `
         <div class="meal">
           <div class="meal-head">
             <div class="meal-left">
@@ -539,71 +616,95 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
                 </tr>
               </thead>
               <tbody>
-                ${mainFoods.map(food => `
+                ${mainFoods
+                  .map(
+                    (food) => `
                 <tr>
-                  <td class="food">${food.food || '-'}</td>
-                  <td class="c">${food.unit || '1'}</td>
-                  <td class="cal">${food.cal || '0'}</td>
-                  <td class="c">${food.protein || '0'}</td>
-                  <td class="c">${food.carbs || '0'}</td>
-                  <td class="c">${food.fats || '0'}</td>
+                  <td class="food">${food.food || "-"}</td>
+                  <td class="c">${food.unit || "1"}</td>
+                  <td class="cal">${food.cal || "0"}</td>
+                  <td class="c">${food.protein || "0"}</td>
+                  <td class="c">${food.carbs || "0"}</td>
+                  <td class="c">${food.fats || "0"}</td>
                 </tr>
-                ${food.note?.trim() ? `
+                ${
+                  food.note?.trim()
+                    ? `
                 <tr class="food-note-row">
                   <td class="food-note" colspan="6"><span class="food-note-label">Note:</span>${formatNoteForExport(food.note)}</td>
                 </tr>
-                ` : ''}
-                `).join('')}
+                `
+                    : ""
+                }
+                `,
+                  )
+                  .join("")}
               </tbody>
             </table>
           </div>
-          ${alternatives.length > 0 ? `
+          ${
+            alternatives.length > 0
+              ? `
           <div class="alt-wrap ${mealClass}-alt">
             <div class="alt-header ${mealClass}-hdr">
               <svg viewBox="0 0 24 24"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg>
               <span class="alt-label">Alternatives</span>
             </div>
-            ${mainFoods.map((mainFood, mainIdx) => {
-          // Find alternatives that could replace this main food
-          // For now, show all alternatives under first main food
-          if (mainIdx > 0) return '';
-          return `
+            ${mainFoods
+              .map((mainFood, mainIdx) => {
+                // Find alternatives that could replace this main food
+                // For now, show all alternatives under first main food
+                if (mainIdx > 0) return "";
+                return `
               <div class="alt-group-label">
                 <span class="alt-group-dot ${mealClass}-dot"></span>
-                <span class="alt-group-text">Instead of <strong>${mainFood.food || 'Main Item'}</strong></span>
+                <span class="alt-group-text">Instead of <strong>${mainFood.food || "Main Item"}</strong></span>
               </div>
               <table class="alt-table">
                 <tbody>
-                  ${alternatives.map(alt => `
+                  ${alternatives
+                    .map(
+                      (alt) => `
                   <tr>
-                    <td class="af">${alt.food || '-'}</td>
-                    <td class="as">${alt.unit || '1 srv'}</td>
-                    <td class="ac">${alt.cal || '0'} <span>cal</span></td>
-                    <td class="am">${alt.protein || '0'}p</td>
-                    <td class="am">${alt.carbs || '0'}c</td>
-                    <td class="am">${alt.fats || '0'}f</td>
+                    <td class="af">${alt.food || "-"}</td>
+                    <td class="as">${alt.unit || "1 srv"}</td>
+                    <td class="ac">${alt.cal || "0"} <span>cal</span></td>
+                    <td class="am">${alt.protein || "0"}p</td>
+                    <td class="am">${alt.carbs || "0"}c</td>
+                    <td class="am">${alt.fats || "0"}f</td>
                   </tr>
-                  `).join('')}
+                  `,
+                    )
+                    .join("")}
                 </tbody>
               </table>
               `;
-        }).join('')}
+              })
+              .join("")}
           </div>
-          ` : ''}
+          `
+              : ""
+          }
         </div>
         `;
-      }).join('')}
+        })
+        .join("")}
     </div>
 
-    ${day.note ? `
+    ${
+      day.note
+        ? `
     <div class="notes">
       <hr class="notes-divider"/>
       <p class="notes-title">Day Notes</p>
       <div class="note"><p>${formatNoteForExport(day.note)}</p></div>
     </div>
-    ` : ''}
+    `
+        : ""
+    }
     `;
-    }).join('')}
+    })
+    .join("")}
 
   <!-- NOTES -->
   <div class="notes">
@@ -613,8 +714,8 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     <div class="note"><span class="note-dot"></span><p>Nutritional values are approximate and may vary by brand and preparation.</p></div>
     <div class="note"><span class="note-dot"></span><p>Replace food items only with the listed alternatives to maintain macro balance.</p></div>
     <div class="note"><span class="note-dot"></span><p>Avoid processed foods, sugary drinks, and excessive sodium intake.</p></div>
-    ${clientInfo?.dietaryRestrictions ? `<div class="note"><span class="note-dot"></span><p><strong>Dietary Restrictions:</strong> ${clientInfo.dietaryRestrictions}</p></div>` : ''}
-    ${clientInfo?.allergies ? `<div class="note"><span class="note-dot"></span><p><strong>Allergies:</strong> ${clientInfo.allergies}</p></div>` : ''}
+    ${clientInfo?.dietaryRestrictions ? `<div class="note"><span class="note-dot"></span><p><strong>Dietary Restrictions:</strong> ${clientInfo.dietaryRestrictions}</p></div>` : ""}
+    ${clientInfo?.allergies ? `<div class="note"><span class="note-dot"></span><p><strong>Allergies:</strong> ${clientInfo.allergies}</p></div>` : ""}
   </div>
 
   <!-- FOOTER -->
@@ -626,7 +727,7 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
       </div>
       <div class="sig">
         <div class="sig-line"></div>
-        <p class="sig-name">${dietitianName || 'DTPS Nutrition'}</p>
+        <p class="sig-name">${dietitianName || "DTPS Nutrition"}</p>
         <p class="sig-role">Certified Nutritionist</p>
       </div>
     </div>
@@ -637,7 +738,17 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
 </body>
 </html>
     `;
-  }, [weekPlan, mealTypes, clientName, clientInfo, duration, startDate, dietitianName]);
+    },
+    [
+      weekPlan,
+      mealTypes,
+      clientName,
+      clientInfo,
+      duration,
+      startDate,
+      dietitianName,
+    ],
+  );
 
   // Generate CSV content with proper date/time sorting
   const generateCSVContent = useCallback(() => {
@@ -650,25 +761,26 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     });
 
     let csv = '"Diet Plan Export"\n';
-    csv += `"Client","${clientName || 'N/A'}"\n`;
+    csv += `"Client","${clientName || "N/A"}"\n`;
     csv += `"Duration","${duration} days"\n`;
-    csv += `"Start Date","${startDate ? format(new Date(startDate), 'PPP') : 'N/A'}"\n`;
-    csv += '\n';
+    csv += `"Start Date","${startDate ? format(new Date(startDate), "PPP") : "N/A"}"\n`;
+    csv += "\n";
 
     // Column headers
-    csv += '"Day","Date","Meal Type","Meal Time","Food Item","Quantity","Calories","Carbs(g)","Protein(g)","Fats(g)","Alternative Options","Notes"\n';
+    csv +=
+      '"Day","Date","Meal Type","Meal Time","Food Item","Quantity","Calories","Carbs(g)","Protein(g)","Fats(g)","Alternative Options","Notes"\n';
 
     // Data rows
     sortedDays.forEach((day) => {
       // Skip held days or show them differently
       if (day.isHeld) {
-        csv += `"${day.day}","${day.date ? formatDateProper(day.date) : ''}","ON HOLD","","","","","","","","","","⏸️ ${day.holdReason || 'Plan on hold'}"\n`;
+        csv += `"${day.day}","${day.date ? formatDateProper(day.date) : ""}","ON HOLD","","","","","","","","","","⏸️ ${day.holdReason || "Plan on hold"}"\n`;
         return;
       }
 
       const allMealTypes = getAllMealTypesSorted();
 
-      allMealTypes.forEach(mealType => {
+      allMealTypes.forEach((mealType) => {
         const meal = findMealInDay(day, mealType);
         if (!meal?.foodOptions?.length) return;
 
@@ -677,22 +789,22 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
         const alternatives = meal.foodOptions.slice(1);
 
         const alternativesStr = alternatives
-          .map(alt => `${alt.food}${alt.unit ? ` (${alt.unit})` : ''}`)
-          .join(' | ');
+          .map((alt) => `${alt.food}${alt.unit ? ` (${alt.unit})` : ""}`)
+          .join(" | ");
 
         // Main food row
-        csv += `"${day.day}","${day.date ? formatDateProper(day.date) : ''}","${mealType}","${getMealTime(mealType)}","${primaryFood.food || ''}","${primaryFood.unit || ''}","${primaryFood.cal || ''}","${primaryFood.carbs || ''}","${primaryFood.protein || ''}","${primaryFood.fats || ''}","${alternativesStr}","${day.note || ''}"\n`;
+        csv += `"${day.day}","${day.date ? formatDateProper(day.date) : ""}","${mealType}","${getMealTime(mealType)}","${primaryFood.food || ""}","${primaryFood.unit || ""}","${primaryFood.cal || ""}","${primaryFood.carbs || ""}","${primaryFood.protein || ""}","${primaryFood.fats || ""}","${alternativesStr}","${day.note || ""}"\n`;
 
         // Alternative rows (if any)
         alternatives.forEach((alt, altIndex) => {
-          csv += `"","","(Alternative ${altIndex + 1})","","${alt.food || ''}","${alt.unit || ''}","${alt.cal || ''}","${alt.carbs || ''}","${alt.protein || ''}","${alt.fats || ''}","",""\n`;
+          csv += `"","","(Alternative ${altIndex + 1})","","${alt.food || ""}","${alt.unit || ""}","${alt.cal || ""}","${alt.carbs || ""}","${alt.protein || ""}","${alt.fats || ""}","",""\n`;
         });
       });
 
       // Add day total row
       const dayTotals = calculateDayTotals(day);
       csv += `"${day.day} TOTAL","","","","","","${dayTotals.cal.toFixed(0)}","${dayTotals.carbs.toFixed(1)}","${dayTotals.protein.toFixed(1)}","${dayTotals.fats.toFixed(1)}","",""\n`;
-      csv += '\n'; // Blank line between days for readability
+      csv += "\n"; // Blank line between days for readability
     });
 
     // Weekly summary
@@ -704,10 +816,10 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
           cal: acc.cal + totals.cal,
           carbs: acc.carbs + totals.carbs,
           protein: acc.protein + totals.protein,
-          fats: acc.fats + totals.fats
+          fats: acc.fats + totals.fats,
         };
       },
-      { cal: 0, carbs: 0, protein: 0, fats: 0 }
+      { cal: 0, carbs: 0, protein: 0, fats: 0 },
     );
 
     csv += `"Total Calories","${weeklyTotals.cal.toFixed(0)}"\n`;
@@ -721,14 +833,14 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
 
   // Export handlers
   const handleExportHTML = useCallback(() => {
-    const showMacros = exportFor === 'dietitian';
+    const showMacros = exportFor === "dietitian";
     const html = generateHTMLContent(showMacros);
-    const blob = new Blob([html], { type: 'text/html' });
+    const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    const suffix = exportFor === 'dietitian' ? 'dietitian' : 'client';
-    link.download = `diet-plan-${clientName?.replace(/\s+/g, '-') || 'export'}-${suffix}-${format(new Date(), 'yyyy-MM-dd')}.html`;
+    const suffix = exportFor === "dietitian" ? "dietitian" : "client";
+    link.download = `diet-plan-${clientName?.replace(/\s+/g, "-") || "export"}-${suffix}-${format(new Date(), "yyyy-MM-dd")}.html`;
     link.click();
     URL.revokeObjectURL(url);
     toast.success(`Diet plan exported as HTML (${exportFor} version)`);
@@ -737,25 +849,25 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
 
   const handleExportCSV = useCallback(() => {
     const csv = generateCSVContent();
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    link.download = `diet-plan-${clientName?.replace(/\s+/g, '-') || 'export'}-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    link.download = `diet-plan-${clientName?.replace(/\s+/g, "-") || "export"}-${format(new Date(), "yyyy-MM-dd")}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-    toast.success('Diet plan exported as CSV');
+    toast.success("Diet plan exported as CSV");
     setOpen(false);
   }, [generateCSVContent, clientName]);
 
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
-      const { jsPDF } = await import('jspdf');
+      const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
         compress: true,
         putOnlyUsedFonts: true,
         precision: 2,
@@ -767,32 +879,32 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
         clientInfo,
         dietitianName,
         duration,
-        showMacros: exportFor === 'dietitian',
+        showMacros: exportFor === "dietitian",
       });
 
-      const blobUrl = URL.createObjectURL(pdf.output('blob'));
-      const link = document.createElement('a');
+      const blobUrl = URL.createObjectURL(pdf.output("blob"));
+      const link = document.createElement("a");
       link.href = blobUrl;
       link.download = dietPlanPdfFilename(clientName, exportFor, new Date());
-      link.rel = 'noopener';
+      link.rel = "noopener";
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
-      toast.success('PDF downloaded successfully');
+      toast.success("PDF downloaded successfully");
       setOpen(false);
     } catch (error) {
-      console.error('PDF export failed:', error);
-      toast.error('PDF generation failed. Please try again.');
+      console.error("PDF export failed:", error);
+      toast.error("PDF generation failed. Please try again.");
     } finally {
       setIsExporting(false);
     }
   };
 
   const handlePrint = useCallback(() => {
-    const showMacros = exportFor === 'dietitian';
+    const showMacros = exportFor === "dietitian";
     const html = generateHTMLContent(showMacros);
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (printWindow) {
       printWindow.document.write(html);
       printWindow.document.close();
@@ -806,16 +918,16 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
 
   const handleExport = () => {
     switch (exportFormat) {
-      case 'html':
+      case "html":
         handleExportHTML();
         break;
-      case 'csv':
+      case "csv":
         handleExportCSV();
         break;
-      case 'pdf':
+      case "pdf":
         handleExportPDF();
         break;
-      case 'print':
+      case "print":
         handlePrint();
         break;
     }
@@ -825,7 +937,11 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
     <>
       {/* Only show button if not externally controlled */}
       {externalOpen === undefined && (
-        <Button variant="outline" onClick={() => setOpen(true)} className="border-gray-300 hover:bg-slate-50 dark:border-gray-600 dark:hover:bg-slate-700 font-medium">
+        <Button
+          variant="outline"
+          onClick={() => setOpen(true)}
+          className="border-gray-300 hover:bg-slate-50 dark:border-gray-600 dark:hover:bg-slate-700 font-medium"
+        >
           <Download className="w-4 h-4 mr-2" />
           Export Diet Plan
         </Button>
@@ -836,7 +952,8 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
           <DialogHeader>
             <DialogTitle>Export Diet Plan</DialogTitle>
             <DialogDescription>
-              Choose a format to download the diet plan for {clientName || 'this client'}.
+              Choose a format to download the diet plan for{" "}
+              {clientName || "this client"}.
             </DialogDescription>
           </DialogHeader>
 
@@ -846,31 +963,40 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
               <div className="flex gap-2">
                 <Button
                   type="button"
-                  variant={exportFor === 'dietitian' ? 'default' : 'outline'}
-                  className={`flex-1 ${exportFor === 'dietitian' ? 'bg-green-600 hover:bg-green-700' : ''}`}
-                  onClick={() => setExportFor('dietitian')}
+                  variant={exportFor === "dietitian" ? "default" : "outline"}
+                  className={`flex-1 ${exportFor === "dietitian" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                  onClick={() => setExportFor("dietitian")}
                 >
-                  📋 Dietitian
+                  <ClipboardList className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Dietitian
                 </Button>
                 <Button
                   type="button"
-                  variant={exportFor === 'client' ? 'default' : 'outline'}
-                  className={`flex-1 ${exportFor === 'client' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
-                  onClick={() => setExportFor('client')}
+                  variant={exportFor === "client" ? "default" : "outline"}
+                  className={`flex-1 ${exportFor === "client" ? "bg-blue-600 hover:bg-blue-700" : ""}`}
+                  onClick={() => setExportFor("client")}
                 >
-                  👤 Client
+                  <User className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Client
                 </Button>
               </div>
               <p className="text-xs text-gray-600 mt-2">
-                {exportFor === 'dietitian'
-                  ? '✓ Includes all nutritional data (calories, macros)'
-                  : '✓ Meal plan only (no nutritional information)'}
+                <CheckCircle2
+                  className="mr-1 inline h-3.5 w-3.5 text-green-600"
+                  aria-hidden="true"
+                />
+                {exportFor === "dietitian"
+                  ? "Includes all nutritional data (calories and macronutrients)"
+                  : "Includes the meal plan without nutritional information"}
               </p>
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Export Format</label>
-              <Select value={exportFormat} onValueChange={(v: any) => setExportFormat(v)}>
+              <Select
+                value={exportFormat}
+                onValueChange={(v: any) => setExportFormat(v)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -916,10 +1042,16 @@ export function DietPlanExport({ weekPlan, mealTypes, clientName, clientInfo, du
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleExport} disabled={isExporting} className="bg-green-600 hover:bg-green-700">
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExport}
+              disabled={isExporting}
+              className="bg-green-600 hover:bg-green-700"
+            >
               <Download className="w-4 h-4 mr-2" />
-              {isExporting ? 'Generating…' : 'Export'}
+              {isExporting ? "Generating…" : "Export"}
             </Button>
           </DialogFooter>
         </DialogContent>

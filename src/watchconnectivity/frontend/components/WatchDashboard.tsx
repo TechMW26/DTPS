@@ -2,6 +2,7 @@
 
 import { WatchHealthData } from '../hooks/useWatchConnection';
 import WatchHealthCard from './WatchHealthCard';
+import { BarChart3 } from 'lucide-react';
 
 interface WatchDashboardProps {
   watchHealthData: WatchHealthData | null;
@@ -27,7 +28,7 @@ export function WatchDashboard({
   if (!watchHealthData) {
     return (
       <div className="text-center py-8 text-gray-500">
-        <p className="text-4xl mb-3">📊</p>
+        <BarChart3 aria-hidden="true" className="mx-auto mb-3 h-10 w-10 text-gray-400" />
         <p className="text-sm">No health data available</p>
         <p className="text-xs text-gray-400 mt-1">Connect your watch to see data</p>
       </div>

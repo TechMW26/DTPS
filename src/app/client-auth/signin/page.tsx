@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Eye, EyeOff, Mail, Lock, ArrowLeft, Leaf, Phone, MessageSquare } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, ArrowLeft, Leaf, Phone, MessageSquare, Flag } from 'lucide-react';
 import { signInSchema, SignInInput } from '@/lib/validations/auth';
 import { validatePhoneNumber } from '@/lib/validations/contact';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
@@ -380,7 +380,7 @@ export default function ClientSignInPage() {
                           {COUNTRY_CODE_OPTIONS.map((country) => (
                             <SelectItem key={`${country.code}-${country.country}`} value={country.code}>
                               <span className="flex items-center gap-2">
-                                <span>{country.flag}</span>
+                                <Flag aria-hidden="true" className="h-4 w-4 text-gray-500" />
                                 <span>{country.code}</span>
                               </span>
                             </SelectItem>

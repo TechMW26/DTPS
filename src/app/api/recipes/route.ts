@@ -20,6 +20,10 @@ import {
   VALID_MEDICAL_CONTRAINDICATIONS,
 } from "@/lib/recipe-normalize";
 import { logActivity } from "@/lib/utils/activityLogger";
+import {
+  getRecipePublicationIssues,
+  getStrictRecipeFingerprint,
+} from "@/lib/recipe-quality";
 
 // Recipe validation schema - flexible to handle both old and new formats (no word limits)
 const recipeSchema = z.object({
@@ -95,9 +99,11 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    const exactName = (searchParams.get("exactName") || "").trim();
     const search = searchParams.get("search");
     const normalizedSearch = (search || "").trim();
-    const effectiveSearch = normalizedSearch;
+    const effectiveSearch = exactName || normalizedSearch;
+    const exactNameMode = exactName.length > 0;
     const normalizedSearchLower = effectiveSearch.toLowerCase();
     const category = searchParams.get("category");
     const cuisine = searchParams.get("cuisine");
@@ -123,8 +129,26 @@ export async function GET(request: NextRequest) {
       ? parseInt(effectiveSearch, 10)
       : null;
 
-    // Build query
-    let query: any = {};
+    // Build query. Inactive recipes are drafts/archives. Clients additionally
+    // receive only complete recipes, so malformed legacy rows cannot surface.
+    const requestRole = (session.user.role || "")
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+    const requestCanManageRecipes =
+      requestRole === UserRole.DIETITIAN ||
+      requestRole === UserRole.HEALTH_COUNSELOR ||
+      requestRole.includes("admin");
+    const includeInactive =
+      searchParams.get("includeInactive") === "true" &&
+      requestCanManageRecipes;
+    let query: any = {
+      mergedInto: null,
+      ...(includeInactive ? {} : { isActive: { $ne: false } }),
+    };
+    if (requestRole === UserRole.CLIENT) {
+      query["ingredients.0"] = { $exists: true };
+      query["instructions.0"] = { $exists: true };
+    }
     let foodDbRelevanceFallbackOr: any[] | null = null;
     let textSearchUsed = false;
 
@@ -135,7 +159,13 @@ export async function GET(request: NextRequest) {
       /[.*+?^${}()|[\]\\]/g,
       "\\$&",
     );
-    if (effectiveSearch) {
+    if (exactNameMode) {
+      const escapedExactName = exactName.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&",
+      );
+      query.name = { $regex: `^${escapedExactName}$`, $options: "i" };
+    } else if (effectiveSearch) {
       const escapedSearch = effectiveSearch.replace(
         /[.*+?^${}()|[\]\\]/g,
         "\\$&",
@@ -1079,6 +1109,18 @@ export async function POST(request: NextRequest) {
       throw validationError;
     }
 
+    const publicationIssues = getRecipePublicationIssues(validatedData);
+    if (validatedData.isActive !== false && publicationIssues.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Recipe is incomplete",
+          message: "Complete the recipe before publishing it",
+          details: publicationIssues,
+        },
+        { status: 400 },
+      );
+    }
+
     await connectDB();
 
     // ── Broad-match duplicate detection ──
@@ -1203,6 +1245,7 @@ export async function POST(request: NextRequest) {
       carbs: carbsValue,
       fat: fatValue,
       createdBy: session.user.id,
+      isActive: validatedData.isActive !== false,
     };
 
     // Handle tags - normalize to array
@@ -1219,6 +1262,39 @@ export async function POST(request: NextRequest) {
       validatedData.medicalContraindications,
       VALID_MEDICAL_CONTRAINDICATIONS,
     );
+
+    // A force-create override may be appropriate for broadly similar dishes,
+    // but never for a byte-for-byte equivalent recipe definition. This check
+    // is intentionally strict and includes ingredients, instructions, tags,
+    // nutrition, timings and serving metadata.
+    const escapedRecipeName = recipeData.name.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
+    const sameNameRecipes = await Recipe.find({
+      mergedInto: null,
+      name: { $regex: `^${escapedRecipeName}$`, $options: "i" },
+    }).lean();
+    const newRecipeFingerprint = getStrictRecipeFingerprint(recipeData);
+    const exactDuplicate = sameNameRecipes.find(
+      (candidate) =>
+        getStrictRecipeFingerprint(candidate) === newRecipeFingerprint,
+    );
+
+    if (exactDuplicate) {
+      return NextResponse.json(
+        {
+          error: "Duplicate recipe exists",
+          message: `An identical recipe “${exactDuplicate.name}” already exists. Use or update the existing recipe instead.`,
+          duplicateRecipe: {
+            id: String(exactDuplicate._id),
+            name: exactDuplicate.name,
+          },
+          canForceCreate: false,
+        },
+        { status: 409 },
+      );
+    }
 
     // Persist remote recipe images in the configured media store.
     if (validatedData.image && validatedData.image.trim() !== "") {

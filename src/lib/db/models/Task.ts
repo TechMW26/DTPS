@@ -17,6 +17,7 @@ export interface ITask extends Document {
   status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
   tags?: mongoose.Schema.Types.ObjectId[]; // Array of tag IDs
   googleCalendarEventId?: string; // For syncing with Google Calendar
+  operationId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -103,6 +104,12 @@ const taskSchema = new Schema<ITask>(
     googleCalendarEventId: {
       type: String,
       default: null
+    },
+    operationId: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+      required: false
     }
   },
   { timestamps: true, autoIndex: false }
@@ -112,6 +119,7 @@ const taskSchema = new Schema<ITask>(
 taskSchema.index({ client: 1, startDate: 1 });
 taskSchema.index({ dietitian: 1, startDate: 1 });
 taskSchema.index({ status: 1 });
+taskSchema.index({ client: 1, dietitian: 1, operationId: 1 }, { sparse: true });
 
 // Pre-save validation
 taskSchema.pre('save', function (next) {

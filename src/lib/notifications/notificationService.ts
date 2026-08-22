@@ -229,7 +229,7 @@ export async function sendPaymentLinkCreatedNotification(
     : `A payment of ${amountFormatted} has been requested. Tap to pay now.`;
 
   return sendNotificationToUser(userId, {
-    title: '💳 New Payment Request',
+    title: 'New payment request',
     body,
     icon: '/icons/icon-192x192.png',
     data: {

@@ -39,7 +39,7 @@ import {
   UserCheck
 } from "lucide-react";
 import Link from "next/link";
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { getDocumentViewerUrl } from '@/lib/media';
 
 interface ProfileData {
@@ -213,11 +213,7 @@ export default function ProfilePage() {
   );
 
   if (loading) {
-    return (
-      <div className={`fixed inset-0 ${isDarkMode ? 'bg-gray-950' : 'bg-white'} flex items-center justify-center z-100`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="form" showHeader={false} />;
   }
 
   const tabs = [
@@ -400,7 +396,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Tab Content */}
-        <div className="px-4 py-4 pb-24">
+        <div className="px-4 py-4">
           {/* Personal Tab */}
           {activeTab === "personal" && (
             <div className="space-y-4">

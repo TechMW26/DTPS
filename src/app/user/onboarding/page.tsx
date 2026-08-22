@@ -19,10 +19,20 @@ import {
   Check,
   Calendar,
   Heart,
-  Stethoscope
+  Stethoscope,
+  Salad,
+  Sprout,
+  Wheat,
+  Beef,
+  Milk,
+  Apple,
+  Leaf,
+  Bone,
+  Moon,
+  Footprints,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 
 // Step components
 interface StepProps {
@@ -422,7 +432,7 @@ function Step3DailyGoals({ onNext, onBack, data, updateData, isDarkMode }: StepP
       unit: 'kcal',
       min: 1200,
       max: 4000,
-      icon: '🔥',
+      icon: Flame,
       iconBg: 'bg-orange-100',
       iconBgDark: 'bg-orange-900/30',
     },
@@ -433,7 +443,7 @@ function Step3DailyGoals({ onNext, onBack, data, updateData, isDarkMode }: StepP
       unit: 'steps',
       min: 1000,
       max: 20000,
-      icon: '👣',
+      icon: Footprints,
       iconBg: 'bg-blue-100',
       iconBgDark: 'bg-blue-900/30',
     },
@@ -444,7 +454,7 @@ function Step3DailyGoals({ onNext, onBack, data, updateData, isDarkMode }: StepP
       unit: 'ml',
       min: 500,
       max: 4000,
-      icon: '💧',
+      icon: Droplets,
       iconBg: 'bg-cyan-100',
       iconBgDark: 'bg-cyan-900/30',
     },
@@ -456,7 +466,7 @@ function Step3DailyGoals({ onNext, onBack, data, updateData, isDarkMode }: StepP
       min: 4,
       max: 12,
       step: 0.5,
-      icon: '🌙',
+      icon: Moon,
       iconBg: 'bg-indigo-100',
       iconBgDark: 'bg-indigo-900/30',
     },
@@ -488,8 +498,8 @@ function Step3DailyGoals({ onNext, onBack, data, updateData, isDarkMode }: StepP
           <div key={goal.key} className={`rounded-2xl p-5 shadow-sm ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-xl ${isDarkMode ? goal.iconBgDark : goal.iconBg}`}>
-                  {goal.icon}
+                <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${isDarkMode ? goal.iconBgDark : goal.iconBg}`}>
+                  <goal.icon aria-hidden="true" className="h-5 w-5" />
                 </div>
                 <span className={`font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>{goal.label}</span>
               </div>
@@ -536,17 +546,17 @@ function Step3DailyGoals({ onNext, onBack, data, updateData, isDarkMode }: StepP
 // Step 4: Dietary Preferences
 function Step4DietaryPreferences({ onNext, onBack, data, updateData, isDarkMode }: StepProps) {
   const dietTypes = [
-    { value: 'Vegetarian', label: 'Vegetarian', description: 'No meat, poultry, or seafood', icon: '🥬' },
-    { value: 'Vegan', label: 'Vegan', description: 'Plant-based only, no animal products', icon: '🌱' },
-    { value: 'Gluten-Free', label: 'Gluten-Free', description: 'No wheat, barley, or rye', icon: '🌾' },
-    { value: 'Non-Vegetarian', label: 'Non-Vegetarian', description: 'Includes meat and seafood', icon: '🍖' },
-    { value: 'Dairy-Free', label: 'Dairy-Free', description: 'No milk, cheese, or dairy', icon: '🥛' },
-    { value: 'Keto', label: 'Keto', description: 'High fat, very low carb', icon: '🥑' },
-    { value: 'Low-Carb', label: 'Low-Carb', description: 'Reduced carbohydrate intake', icon: '🥗' },
-    { value: 'Low-Fat', label: 'Low-Fat', description: 'Reduced fat intake', icon: '🍃' },
-    { value: 'High-Protein', label: 'High-Protein', description: 'Protein-focused diet', icon: '💪' },
-    { value: 'Paleo', label: 'Paleo', description: 'Based on prehistoric diet', icon: '🦴' },
-    { value: 'Mediterranean', label: 'Mediterranean', description: 'Heart-healthy eating pattern', icon: '🫒' },
+    { value: 'Vegetarian', label: 'Vegetarian', description: 'No meat, poultry, or seafood', icon: Salad },
+    { value: 'Vegan', label: 'Vegan', description: 'Plant-based only, no animal products', icon: Sprout },
+    { value: 'Gluten-Free', label: 'Gluten-Free', description: 'No wheat, barley, or rye', icon: Wheat },
+    { value: 'Non-Vegetarian', label: 'Non-Vegetarian', description: 'Includes meat and seafood', icon: Beef },
+    { value: 'Dairy-Free', label: 'Dairy-Free', description: 'No milk, cheese, or dairy', icon: Milk },
+    { value: 'Keto', label: 'Keto', description: 'High fat, very low carb', icon: Apple },
+    { value: 'Low-Carb', label: 'Low-Carb', description: 'Reduced carbohydrate intake', icon: Salad },
+    { value: 'Low-Fat', label: 'Low-Fat', description: 'Reduced fat intake', icon: Leaf },
+    { value: 'High-Protein', label: 'High-Protein', description: 'Protein-focused diet', icon: Dumbbell },
+    { value: 'Paleo', label: 'Paleo', description: 'Based on prehistoric diet', icon: Bone },
+    { value: 'Mediterranean', label: 'Mediterranean', description: 'Heart-healthy eating pattern', icon: Heart },
   ];
 
   return (
@@ -576,7 +586,7 @@ function Step4DietaryPreferences({ onNext, onBack, data, updateData, isDarkMode 
           >
             <div className={`h-12 w-12 rounded-2xl flex items-center justify-center text-2xl mb-2 ${data.dietType === diet.value ? 'bg-[#3AB1A0]/20' : isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
               }`}>
-              {diet.icon}
+              <diet.icon aria-hidden="true" className="h-6 w-6" />
             </div>
             <p className={`font-semibold text-sm ${data.dietType === diet.value ? (isDarkMode ? 'text-white' : 'text-gray-900') : isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               {diet.label}
@@ -732,7 +742,7 @@ function Step5Summary({ onNext, onBack, data, isDarkMode }: StepProps) {
             </div>
           </div>
           <div className={`rounded-xl p-4 flex items-center gap-3 shadow-sm ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <span className="text-xl">👣</span>
+            <Footprints aria-hidden="true" className="h-5 w-5 text-blue-500" />
             <div>
               <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{data.dailyGoals.steps.toLocaleString()}</p>
               <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Steps</p>
@@ -905,11 +915,7 @@ export default function OnboardingPage() {
   };
 
   if (status === 'loading' || saving || checkingStatus) {
-    return (
-      <div className={`fixed inset-0 flex items-center justify-center z-[100] ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="form" />;
   }
 
   const stepProps: StepProps = {

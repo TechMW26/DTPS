@@ -19,8 +19,7 @@ import {
     Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
-import BottomNavBar from '@/components/client/BottomNavBar';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { useBodyScrollLock } from '@/hooks';
 
 interface ActivityEntry {
@@ -327,16 +326,12 @@ export default function ActivityPage() {
     const completionPercent = Math.round(fillPercent);
 
     if (loading) {
-        return (
-            <div className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-                <SpoonGifLoader size="lg" />
-            </div>
-        );
+        return <ClientPageSkeleton variant="home" showHeader={false} />;
     }
 
     return (
         <PageTransition>
-            <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+            <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
                 {/* Header */}
                 <div className={`px-4 py-4 border-b transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                     <div className="flex items-center justify-between">
@@ -724,8 +719,8 @@ export default function ActivityPage() {
 
                 {/* Custom Activity Modal */}
                 {showAddModal && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center pb-20">
-                        <div className="bg-white rounded-3xl w-full max-w-lg p-6 pb-8 animate-slide-up max-h-[80dvh] overflow-y-auto mx-3">
+                    <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50">
+                        <div className="client-bottom-sheet-panel mx-3 max-h-full w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 pb-8">
                             {/* Handle */}
                             <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6" />
 

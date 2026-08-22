@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, Search, Users, Loader2, Check, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ListSkeleton } from '@/components/ui/skeleton';
 
 interface User {
   _id: string;
@@ -227,9 +228,7 @@ export default function CreateGroupModal({ isOpen, onClose, onGroupCreated, curr
             {/* User list */}
             <div className="flex-1 overflow-y-auto">
               {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-                </div>
+                <ListSkeleton rows={6} />
               ) : filteredUsers.length === 0 ? (
                 <p className="text-center text-gray-500 py-8">No users found</p>
               ) : (

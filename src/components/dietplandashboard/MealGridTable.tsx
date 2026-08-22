@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Plus, X, Minus, Copy, ChevronLeft, ChevronRight, Check, Maximize2, Minimize2, Trash2, Download, Eye, GripVertical } from 'lucide-react';
+import { Plus, X, Minus, Copy, ChevronLeft, ChevronRight, Check, Maximize2, Minimize2, Trash2, Download, Eye, GripVertical, ClipboardList, Snowflake, RefreshCw, Utensils, Search, Pencil, AlertTriangle } from 'lucide-react';
 import { DayPlan, Meal, FoodOption, FoodItem as MealFoodItem } from './DietPlanDashboard';
 import { DEFAULT_MEAL_TYPES_LIST, MEAL_TYPES, MEAL_TYPE_KEYS, normalizeMealType } from '@/lib/mealConfig';
 import { FoodDatabasePanel } from './FoodSheet';
@@ -1945,8 +1945,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
             </>
           )}
           {readOnly && (
-            <span className="text-sm text-gray-500 font-medium px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
-              📋 View Mode - Read Only
+            <span className="flex items-center gap-1 text-sm text-gray-500 font-medium px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
+              <Eye className="h-4 w-4" aria-hidden="true" /> View only
             </span>
           )}
         </div>
@@ -2146,8 +2146,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                           </div>
                         )}
                         {isFrozenDay && (
-                          <div className="text-xs text-red-500 font-medium">
-                            ❄️ Frozen Day
+                          <div className="flex items-center gap-1 text-xs text-red-500 font-medium">
+                            <Snowflake className="h-3 w-3" aria-hidden="true" /> Frozen day
                           </div>
                         )}
                         <DatePicker
@@ -2241,7 +2241,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                     title="Add alternative food option"
                                     disabled={isFrozenDay}
                                   >
-                                    <span className="text-xs">🔄 Alt</span>
+                                    <span className="flex items-center gap-1 text-xs"><RefreshCw className="h-3 w-3" aria-hidden="true" /> Alternative</span>
                                   </Button>
                                   <Button
                                     variant="outline"
@@ -2271,8 +2271,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                     <div className="flex items-center justify-between mb-2">
                                       <div className="flex items-center gap-2">
                                         {option.isAlternative ? (
-                                          <span className="px-2 py-0.5 text-xs font-semibold text-orange-700 bg-orange-200 rounded">
-                                            🔄 Alternative
+                                          <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-orange-700 bg-orange-200 rounded">
+                                            <RefreshCw className="h-3 w-3" aria-hidden="true" /> Alternative
                                           </span>
                                         ) : (
                                           <span className="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-200 rounded">
@@ -2457,7 +2457,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                             setFoodSuggestionPos(null);
                                                           }}
                                                         >
-                                                          <span>🍽️ {r.name}</span>
+                                                          <span className="flex items-center gap-1"><Utensils className="h-3 w-3" aria-hidden="true" /> {r.name}</span>
                                                           <span className="text-[10px] text-gray-400">
                                                             {r.nutrition?.calories != null ? `${Math.round(r.nutrition.calories)} cal` : ''}
                                                           </span>
@@ -2748,7 +2748,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                                                     setFoodSuggestionPos(null);
                                                   }}
                                                 >
-                                                  <span>🍽️ {r.name}</span>
+                                                  <span className="flex items-center gap-1"><Utensils className="h-3 w-3" aria-hidden="true" /> {r.name}</span>
                                                   <span className="text-[10px] text-gray-400">
                                                     {r.nutrition?.calories != null ? `${Math.round(r.nutrition.calories)} cal` : ''}
                                                   </span>
@@ -3135,7 +3135,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                   <p className="text-sm text-slate-900 font-medium">
                     This food will be copied to <span className="font-bold">{selectedDaysForFoodCopy.length} day(s)</span> × <span className="font-bold">{selectedMealsForFoodCopy.length} meal type(s)</span> = <span className="font-bold">{selectedDaysForFoodCopy.length * selectedMealsForFoodCopy.length} total location(s)</span>
                     {copyFoodSource && weekPlan[copyFoodSource.dayIndex]?.meals[copyFoodSource.mealType]?.foodOptions[copyFoodSource.optionIndex]?.isAlternative && (
-                      <span className="block mt-1 text-orange-700 text-xs">🔄 Will be added as alternative food in each location</span>
+                      <span className="mt-1 flex items-center gap-1 text-orange-700 text-xs"><RefreshCw className="h-3 w-3" aria-hidden="true" /> Will be added as an alternative food in each location.</span>
                     )}
                   </p>
                 </div>
@@ -3164,7 +3164,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 <Copy className="w-5 h-5" />
                 Copy Food Option Card
                 {copyOptionSource?.option?.isAlternative ? (
-                  <span className="px-2 py-0.5 text-xs font-semibold text-orange-700 bg-orange-200 rounded">🔄 Alternative</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-orange-700 bg-orange-200 rounded"><RefreshCw className="h-3 w-3" aria-hidden="true" /> Alternative</span>
                 ) : (
                   <span className="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-200 rounded">Main Food</span>
                 )}
@@ -3267,10 +3267,11 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                   <p className="text-sm text-slate-900 font-medium">
                     This food option card will be copied to <span className="font-bold">{selectedDaysForOptionCopy.length} day(s)</span> × <span className="font-bold">{selectedMealsForOptionCopy.length} meal type(s)</span> = <span className="font-bold">{selectedDaysForOptionCopy.length * selectedMealsForOptionCopy.length} total location(s)</span>
                   </p>
-                  <p className={`mt-1 text-xs ${copyOptionSource?.option?.isAlternative ? 'text-orange-700' : 'text-green-700'}`}>
+                  <p className={`mt-1 flex items-center gap-1 text-xs ${copyOptionSource?.option?.isAlternative ? 'text-orange-700' : 'text-green-700'}`}>
+                    {copyOptionSource?.option?.isAlternative ? <RefreshCw className="h-3 w-3" aria-hidden="true" /> : <Check className="h-3 w-3" aria-hidden="true" />}
                     {copyOptionSource?.option?.isAlternative
-                      ? '🔄 Will be added as alternative food option in each location'
-                      : '✓ Will be added as main food option in each location'}
+                      ? 'Will be added as an alternative food option in each location.'
+                      : 'Will be added as the main food option in each location.'}
                   </p>
                 </div>
               )}
@@ -3410,7 +3411,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                   onClick={applyDefaultMealTimes}
                   className="w-full h-9 text-xs border-blue-300 bg-white hover:bg-blue-50 text-blue-700 font-medium"
                 >
-                  📋 Apply Default Times
+                  <ClipboardList className="h-4 w-4 mr-2" aria-hidden="true" /> Apply default times
                 </Button>
                 <p className="text-xs text-blue-600 mt-2 text-center">
                   {DEFAULT_MEAL_TYPES_LIST.map(m => `${m.name}: ${m.time}`).join(', ')}
@@ -3444,7 +3445,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
             <div className="space-y-4 py-4">
               {/* Find Section */}
               <div className="space-y-3 p-3 border rounded-lg bg-slate-50">
-                <Label className="text-slate-900 font-semibold text-sm">🔍 Find Food / Recipe</Label>
+                <Label className="flex items-center gap-1 text-slate-900 font-semibold text-sm"><Search className="h-4 w-4" aria-hidden="true" /> Find food or recipe</Label>
 
                 {/* Searchable input with dropdown */}
                 <div className="relative">
@@ -3487,7 +3488,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                             setShowFindDropdown(false);
                           }}
                         >
-                          <span className="text-emerald-700">📋</span> {f}
+                          <ClipboardList className="h-3 w-3 text-emerald-700" aria-hidden="true" /> {f}
                         </div>
                       ))
                       }
@@ -3510,7 +3511,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                             setShowFindDropdown(false);
                           }}
                         >
-                          <span className="text-emerald-700">📋</span> {f}
+                          <ClipboardList className="h-3 w-3 text-emerald-700" aria-hidden="true" /> {f}
                         </div>
                       ))}
 
@@ -3533,7 +3534,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                             setShowFindDropdown(false);
                           }}
                         >
-                          <span className="text-blue-600">🍽️</span> {r.name}
+                          <Utensils className="h-3 w-3 text-blue-600" aria-hidden="true" /> {r.name}
                         </div>
                       ))
                       }
@@ -3556,7 +3557,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                             setShowFindDropdown(false);
                           }}
                         >
-                          <span className="text-blue-600">🍽️</span> {r.name}
+                          <Utensils className="h-3 w-3 text-blue-600" aria-hidden="true" /> {r.name}
                         </div>
                       ))}
 
@@ -3590,7 +3591,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                           setShowFindDropdown(false);
                         }}
                       >
-                        <span className="text-yellow-600">✏️</span> Use "{findSearchFilter}" as search term
+                        <Pencil className="h-3 w-3 text-yellow-600" aria-hidden="true" /> Use &quot;{findSearchFilter}&quot; as the search term
                       </div>
                     </div>
                   )}
@@ -3610,7 +3611,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                       }}
                       className="text-red-500 hover:text-red-700 ml-2"
                     >
-                      ✕
+                      <X className="h-4 w-4" aria-hidden="true" />
                     </button>
                   </div>
                 )}
@@ -3646,7 +3647,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
               {/* Replace Section - Only show if action is replace */}
               {replaceAction === 'replace' && (
                 <div className="space-y-3 p-3 border rounded-lg bg-blue-50">
-                  <Label className="text-slate-900 font-semibold text-sm">🔄 Replace With</Label>
+                  <Label className="flex items-center gap-1 text-slate-900 font-semibold text-sm"><RefreshCw className="h-4 w-4" aria-hidden="true" /> Replace with</Label>
 
                   {/* Searchable input with dropdown */}
                   <div className="relative">
@@ -3702,7 +3703,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                               setShowReplaceDropdown(false);
                             }}
                           >
-                            <span className="text-blue-600">🍽️</span> {r.name}
+                            <Utensils className="h-3 w-3 text-blue-600" aria-hidden="true" /> {r.name}
                             {r.nutrition && (
                               <span className="text-[10px] text-gray-400 ml-2">
                                 ({r.nutrition.calories} cal)
@@ -3741,7 +3742,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                               setShowReplaceDropdown(false);
                             }}
                           >
-                            <span className="text-blue-600">🍽️</span> {r.name}
+                            <Utensils className="h-3 w-3 text-blue-600" aria-hidden="true" /> {r.name}
                             {r.nutrition && (
                               <span className="text-[10px] text-gray-400 ml-2">
                                 ({r.nutrition.calories} cal)
@@ -3780,7 +3781,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                             setShowReplaceDropdown(false);
                           }}
                         >
-                          <span className="text-yellow-600">✏️</span> Use "{replaceSearchFilter}" as replacement
+                          <Pencil className="h-3 w-3 text-yellow-600" aria-hidden="true" /> Use &quot;{replaceSearchFilter}&quot; as the replacement
                         </div>
                       </div>
                     )}
@@ -3807,7 +3808,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                         }}
                         className="text-red-500 hover:text-red-700 ml-2"
                       >
-                        ✕
+                        <X className="h-4 w-4" aria-hidden="true" />
                       </button>
                     </div>
                   )}
@@ -3817,7 +3818,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
               {/* Delete Warning */}
               {replaceAction === 'delete' && (
                 <div className="p-3 border border-red-300 rounded-lg bg-red-50">
-                  <p className="text-sm text-red-700 font-medium">⚠️ Delete Mode</p>
+                  <p className="flex items-center gap-1 text-sm text-red-700 font-medium"><AlertTriangle className="h-4 w-4" aria-hidden="true" /> Delete mode</p>
                   <p className="text-xs text-red-600">Found items will be permanently removed from the selected days and meal types.</p>
                 </div>
               )}
@@ -3905,7 +3906,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 style={{ backgroundColor: replaceAction === 'delete' ? '#dc2626' : '#00A63E', color: 'white' }}
                 className="hover:opacity-90 shadow font-medium"
               >
-                {replaceAction === 'delete' ? '🗑️ Delete' : '🔄 Replace'}
+                {replaceAction === 'delete' ? <><Trash2 className="h-4 w-4 mr-2" aria-hidden="true" /> Delete</> : <><RefreshCw className="h-4 w-4 mr-2" aria-hidden="true" /> Replace</>}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -4064,8 +4065,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
             </DialogHeader>
             <div className="py-4 space-y-3">
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-800">
-                  <strong>⚠️ Warning:</strong> This will remove <strong>{mealTypeToRemove}</strong> from <strong>ALL days</strong> in this diet plan. This action cannot be undone.
+                <p className="flex items-start gap-1 text-sm text-red-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> <span><strong>Warning:</strong> This will remove <strong>{mealTypeToRemove}</strong> from <strong>all days</strong> in this diet plan. This action cannot be undone.</span>
                 </p>
               </div>
             </div>

@@ -65,6 +65,11 @@ export async function POST(request: NextRequest) {
 
     // Transform and validate recipes
     const transformedRecipes = body.recipes.map((r: any) => {
+      const name = typeof r.name === 'string' ? r.name.trim() : '';
+      if (!name) {
+        throw new Error('Every imported recipe must have a name');
+      }
+
       // Validate ingredients - ensure they are objects
       const ingredients = Array.isArray(r.ingredients)
         ? r.ingredients
@@ -91,7 +96,7 @@ export async function POST(request: NextRequest) {
       }
 
       return {
-        name: r.name?.trim() || 'Untitled Recipe',
+        name,
         description: r.description || '',
         ingredients,
         instructions,

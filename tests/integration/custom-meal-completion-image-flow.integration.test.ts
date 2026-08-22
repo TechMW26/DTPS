@@ -221,5 +221,40 @@ describe('Custom Meal Type Completion With Image Flow', () => {
         expect(savedCompletion).toBeTruthy();
         expect(savedCompletion.mealTypeOriginal).toBe('Second Breakfast');
         expect(savedCompletion.imagePath).toContain('/complete-meal/');
+        expect(savedCompletion.nutrition).toEqual({
+            calories: 320,
+            protein: 12,
+            carbs: 45,
+            fat: 10,
+        });
+
+        // 5) The dashboard calorie widget and progress tracker must now read
+        // the same completion-backed nutrition and assigned daily goal.
+        mockSession(client);
+        const dashboardRoute = await import('@/app/api/client/dashboard-summary/route');
+        const progressRoute = await import('@/app/api/client/progress/route');
+
+        const dashboardResponse = await dashboardRoute.GET(new NextRequest(
+            'http://localhost/api/client/dashboard-summary?date=' + requestDate,
+        ));
+        const progressResponse = await progressRoute.GET(new NextRequest(
+            'http://localhost/api/client/progress?range=1W&allWeights=true',
+        ));
+
+        expect(dashboardResponse.status).toBe(200);
+        expect(progressResponse.status).toBe(200);
+
+        const dashboardData = await dashboardResponse.json();
+        const progressData = await progressResponse.json();
+        const expectedIntake = { calories: 320, protein: 12, carbs: 45, fat: 10 };
+
+        expect(dashboardData.nutrition.consumed).toEqual(expectedIntake);
+        expect(dashboardData.nutrition.goal).toEqual(expectedIntake);
+        expect(dashboardData.nutrition.completedMeals).toBe(1);
+        expect(progressData.todayIntake).toEqual(expectedIntake);
+        expect(progressData.goals).toEqual(expect.objectContaining(expectedIntake));
+        expect(progressData.nutritionHistory).toEqual(expect.arrayContaining([
+            expect.objectContaining({ date: requestDate, ...expectedIntake }),
+        ]));
     });
 });

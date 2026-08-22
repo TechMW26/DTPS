@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
-import { X, LayoutDashboard, Heart, Utensils, TrendingUp, Calendar, MessageCircle, CreditCard, User, Settings, HelpCircle, LogOut, BookOpen, Package, ChevronRight, Bell } from 'lucide-react';
+import { X, LayoutDashboard, Heart, TrendingUp, Calendar, MessageCircle, CreditCard, User, Settings, LogOut, BookOpen, Package, Bell } from 'lucide-react';
 import { useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -54,6 +54,7 @@ export default function UserSidebar({ isOpen, onClose }: UserSidebarProps) {
 
   // Close sidebar when pressing escape
   useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -65,7 +66,7 @@ export default function UserSidebar({ isOpen, onClose }: UserSidebarProps) {
 
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = previousOverflow;
     };
   }, [isOpen, onClose]);
 
@@ -106,14 +107,18 @@ export default function UserSidebar({ isOpen, onClose }: UserSidebarProps) {
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 z-40 transition-opacity duration-700 ease-in-out bg-black/50 backdrop-blur-sm"
         onClick={onClose}
+        aria-hidden="true"
       />
       
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col transform shadow-2xl w-72 transition-all duration-700 ease-in-out motion-reduce:duration-300 motion-reduce:ease-out ${
+        role="dialog"
+        aria-modal="true"
+        aria-label="Client navigation"
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(18rem,calc(100vw-2rem))] flex-col transform shadow-2xl transition-all duration-300 ease-out motion-reduce:duration-0 ${
           isDarkMode ? 'bg-gray-950' : 'bg-white'
         }`}
       >
@@ -135,8 +140,9 @@ export default function UserSidebar({ isOpen, onClose }: UserSidebarProps) {
             </div>
             <h2 className="text-xl font-bold text-[#E06A26]">DTPS</h2>
           </div>
-          <button 
+          <button
             onClick={onClose}
+            aria-label="Close navigation menu"
             className={`flex items-center justify-center w-8 h-8 transition-colors rounded-full active:scale-95 ${
               isDarkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100'
             }`}
@@ -153,9 +159,11 @@ export default function UserSidebar({ isOpen, onClose }: UserSidebarProps) {
         >
           <div className="h-12 w-12 rounded-full bg-[#E06A26]/10 flex items-center justify-center">
             {session?.user?.avatar ? (
-              <img 
-                src={session.user.avatar} 
-                alt="Profile" 
+              <Image
+                src={session.user.avatar}
+                alt="Profile"
+                width={48}
+                height={48}
                 className="object-cover w-full h-full rounded-full"
               />
             ) : (

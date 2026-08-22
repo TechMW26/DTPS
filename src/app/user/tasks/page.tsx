@@ -22,11 +22,12 @@ import {
     Loader2,
     CheckCircle2,
     Circle,
-    RefreshCw
+    RefreshCw,
+    PartyPopper
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 
 interface AssignedWater {
     amount: number;
@@ -231,11 +232,7 @@ export default function TasksPage() {
     const stats = getTaskStats();
 
     if (loading) {
-        return (
-            <div className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-                <SpoonGifLoader size="lg" />
-            </div>
-        );
+        return <ClientPageSkeleton variant="list" showHeader={false} />;
     }
 
     // Always show water card if assigned, even if not completed
@@ -243,7 +240,7 @@ export default function TasksPage() {
 
     return (
         <PageTransition>
-            <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+            <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
                 {/* Header */}
                 <div className={`transition-colors duration-300 px-4 py-4 border-b ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                 <div className="flex items-center justify-between">
@@ -509,8 +506,9 @@ export default function TasksPage() {
                                                 </div>
                                             ) : tasksData.steps.current >= tasksData.steps.target ? (
                                                 <div className="space-y-3">
-                                                    <p className="text-sm text-[#3AB1A0] text-center font-medium">
-                                                        🎉 You've reached your step goal!
+                                                    <p className="flex items-center justify-center gap-2 text-center text-sm font-medium text-[#3AB1A0]">
+                                                        <PartyPopper aria-hidden="true" className="h-4 w-4" />
+                                                        You&apos;ve reached your step goal!
                                                     </p>
                                                     <Button
                                                         onClick={() => handleCompleteTask('steps')}

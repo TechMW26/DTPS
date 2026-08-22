@@ -31,6 +31,7 @@ import {
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { useBodyScrollLock } from '@/hooks';
 
 interface ReceiptData {
@@ -417,19 +418,12 @@ export default function UserSubscriptionsPage() {
   };
 
   if (status === 'loading' || loading) {
-    return (
-      <div
-        className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? 'bg-gray-950' : 'bg-white'
-          }`}
-      >
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="grid" showHeader={false} />;
   }
 
   return (
     <PageTransition>
-      <div className={`min-h-screen pb-24 ${isDarkMode ? 'bg-black' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen ${isDarkMode ? 'bg-black' : 'bg-gray-50'}`}>
         {/* Header */}
         <div className={`border-b ${isDarkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-100'}`}>
           <div className="flex items-center gap-3 px-4 py-3">
@@ -683,9 +677,9 @@ export default function UserSubscriptionsPage() {
 
         {/* Receipt/Details Modal */}
         {showReceiptModal && selectedSubscription && (
-          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="client-popup-above-nav fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
             <div
-              className={`rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto ${isDarkMode ? 'bg-gray-900 text-white border border-gray-800' : 'bg-white'
+              className={`client-popup-panel max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl ${isDarkMode ? 'bg-gray-900 text-white border border-gray-800' : 'bg-white'
                 }`}
             >
               {/* Modal Header */}

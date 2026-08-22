@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import FileUpload from '@/components/ui/file-upload';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { DashboardContentSkeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   User,
@@ -161,9 +161,7 @@ export default function HealthCounselorProfilePage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <LoadingSpinner />
-        </div>
+        <DashboardContentSkeleton statCards={3} sections={2} />
       </DashboardLayout>
     );
   }

@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { getMediaProxyUrl } from '@/lib/media';
 import { uploadFileReliably } from '@/lib/client-upload';
 
@@ -337,11 +337,7 @@ export default function MedicalInfoPage() {
   };
 
   if (loading) {
-    return (
-      <div className={`fixed inset-0 ${isDarkMode ? 'bg-gray-950' : 'bg-white'} flex items-center justify-center z-100`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="form" showHeader={false} />;
   }
 
   return (
@@ -366,7 +362,7 @@ export default function MedicalInfoPage() {
         </div>
       </div>
 
-      <div className="px-4 py-6 pb-24 space-y-6">
+      <div className="space-y-6 px-4 py-6">
         {/* Blood Group */}
         <Section title="Blood Group" icon={Droplets}>
           <div className="flex flex-wrap gap-2">
@@ -778,7 +774,7 @@ export default function MedicalInfoPage() {
       {/* Lightbox Modal - View on same screen */}
       {lightboxOpen && lightboxImage && (
         <div
-          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
+          className="client-popup-above-nav fixed inset-0 z-50 flex items-center justify-center bg-black/95"
           onClick={closeLightbox}
         >
           {/* Controls */}

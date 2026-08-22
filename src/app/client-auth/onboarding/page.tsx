@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { ChevronRight, Loader2, Target, Flame, Zap, Check } from 'lucide-react';
+import { ChevronRight, Loader2, Target, Flame, Zap, Check, PartyPopper, Rocket } from 'lucide-react';
 
 type OnboardingStep = 'welcome' | 'profile' | 'goals' | 'preferences' | 'complete';
 
@@ -131,8 +131,9 @@ export default function OnboardingPage() {
                 {currentStep === 'welcome' && (
                     <Card className="border-0 shadow-lg">
                         <CardHeader className="text-center">
-                            <CardTitle className="text-3xl font-bold text-[#E06A26] mb-2">
-                                Welcome! 🎉
+                            <CardTitle className="mb-2 inline-flex items-center justify-center gap-2 text-3xl font-bold text-[#E06A26]">
+                                Welcome!
+                                <PartyPopper aria-hidden="true" className="h-7 w-7" />
                             </CardTitle>
                             <CardDescription className="text-base">
                                 Let's set up your health and fitness profile
@@ -381,7 +382,10 @@ export default function OnboardingPage() {
                             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#3AB1A0]/20 mx-auto mb-4">
                                 <Check className="w-8 h-8 text-[#3AB1A0]" />
                             </div>
-                            <CardTitle className="text-2xl">All Set! 🚀</CardTitle>
+                            <CardTitle className="inline-flex items-center justify-center gap-2 text-2xl">
+                                All set!
+                                <Rocket aria-hidden="true" className="h-6 w-6" />
+                            </CardTitle>
                             <CardDescription>Your profile is ready</CardDescription>
                         </CardHeader>
                         <CardContent className="text-center">

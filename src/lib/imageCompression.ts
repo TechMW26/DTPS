@@ -1,3 +1,5 @@
+import { uploadFileReliably } from "@/lib/client-upload";
+
 /**
  * Image compression utility using browser canvas API
  * Compresses images before uploading to Vercel Blob
@@ -165,21 +167,9 @@ export async function uploadCompressedImage(
   fileName: string,
   folder: string = "recipes",
 ): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", blob, fileName);
-  formData.append("folder", folder);
-
-  const response = await fetch("/api/upload-image", {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to upload image");
-  }
-
-  const data = await response.json();
+  const file = new File([blob], fileName, { type: blob.type || "image/webp" });
+  const uploadType = folder.includes("profile") ? "avatar" : "recipe-image";
+  const data = await uploadFileReliably(file, uploadType);
   return data.url;
 }
 

@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import mongoose from "mongoose";
+import { createHash } from "node:crypto";
 import { authOptions } from "@/lib/auth/config";
 import connectDB from "@/lib/db/connection";
 import { File as FileModel } from "@/lib/db/models/File";
@@ -195,10 +196,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File too large" }, { status: 400 });
     }
 
-    // Generate unique filename
-    const timestamp = Date.now();
-    const fileExtension = file.name.split(".").pop();
-    const fileName = `${session.user.id}-${timestamp}.${fileExtension}`;
+    // A stable operation key ensures a retried POST targets the same Blob and
+    // metadata record if the first response was lost after the upload finished.
+    const rawOperationId = request.headers.get("x-idempotency-key")?.trim();
+    const validOperationId = rawOperationId && /^[a-zA-Z0-9._:-]{8,128}$/.test(rawOperationId)
+      ? rawOperationId
+      : `${Date.now()}-${new mongoose.Types.ObjectId().toHexString()}`;
+    const operationHash = createHash("sha256")
+      .update(`${session.user.id}:${validOperationId}`)
+      .digest("hex");
+    const fileExtension = (file.name.split(".").pop() || "bin").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12) || "bin";
+    const fileName = `${session.user.id}-${operationHash.slice(0, 24)}.${fileExtension}`;
 
     // Convert file to buffer
     const bytes = await file.arrayBuffer();
@@ -242,21 +250,26 @@ export async function POST(request: NextRequest) {
 
     // Pre-allocate the stable file id, then persist metadata after the upload
     // response. Blob availability must not depend on MongoDB availability.
-    const fileId = new mongoose.Types.ObjectId();
+    const fileId = new mongoose.Types.ObjectId(operationHash.slice(0, 24));
     const inlineMetadataTask = scheduleAfterResponse(async () => {
       try {
         await connectDB();
-        await FileModel.create({
-          _id: fileId,
-          filename: fileName,
-          originalName: file.name,
-          mimeType: responseMimeType,
-          size: file.size,
-          type: fileType,
-          imageKitFileId: blobResult.pathname,
-          imageKitUrl: blobResult.url,
-          uploadedBy: session.user.id,
-        });
+        await FileModel.updateOne(
+          { _id: fileId },
+          {
+            $set: {
+              filename: fileName,
+              originalName: file.name,
+              mimeType: responseMimeType,
+              size: file.size,
+              type: fileType,
+              imageKitFileId: blobResult.pathname,
+              imageKitUrl: blobResult.url,
+              uploadedBy: session.user.id,
+            },
+          },
+          { upsert: true },
+        );
       } catch (metadataError) {
         console.error("[Upload] Blob uploaded but metadata persistence failed:", metadataError);
       }

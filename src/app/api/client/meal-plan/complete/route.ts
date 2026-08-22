@@ -20,6 +20,8 @@ import {
 import { clearCacheByTag } from "@/lib/api/utils";
 import { logActivity } from "@/lib/utils/activityLogger";
 import { isPublicMediaUrl } from "@/lib/media";
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
+import { calculateCompletedMealNutrition } from '@/lib/meal-nutrition';
 
 // Map camelCase meal types to canonical UPPERCASE keys
 const CAMELCASE_TO_CANONICAL: Record<string, MealTypeKey> = {
@@ -101,6 +103,23 @@ function queueMealCompletionSideEffects(
           userName,
           userEmail,
         } = args;
+
+        // Publish the durable completion immediately. Chat mirroring and
+        // notifications are helpful side effects, but must not be able to
+        // suppress the nutrition refresh event if either one fails.
+        try {
+          socketManager.sendToUser(clientId, SOCKET_EVENTS.MEAL_COMPLETION_UPDATED, {
+            type: SOCKET_EVENTS.MEAL_COMPLETION_UPDATED,
+            mealPlanId,
+            date: requestedDate,
+            mealType,
+            completed: true,
+            imagePath,
+            timestamp: Date.now(),
+          });
+        } catch (socketError) {
+          console.error("Meal completion notification error:", socketError);
+        }
 
         let resolvedDietitianId = primaryDietitianId;
         if (imagePath && !resolvedDietitianId) {
@@ -209,19 +228,6 @@ function queueMealCompletionSideEffects(
           },
         }).catch(() => {});
 
-        try {
-          socketManager.sendToUser(clientId, "meal_completion_updated", {
-            type: "meal_completion_updated",
-            mealPlanId,
-            date: requestedDate,
-            mealType,
-            completed: true,
-            imagePath: imagePath,
-            timestamp: Date.now(),
-          });
-        } catch (sseError) {
-          console.error("SSE notification error:", sseError);
-        }
       } catch (error) {
         console.error("Error in meal completion side effects:", error);
       }
@@ -316,7 +322,7 @@ export async function POST(request: NextRequest) {
       clientId: session.user.id,
       status: "active",
     })
-      .select("mealCompletions analytics name")
+      .select("mealCompletions analytics name startDate meals")
       .lean()) as any;
 
     if (!mealPlan) {
@@ -463,6 +469,21 @@ export async function POST(request: NextRequest) {
         imagePath: imagePath || undefined,
         imageKitFileId: imageKitFileId || undefined,
       });
+    }
+
+    // Store the completed meal's nutrition as an immutable snapshot. This
+    // keeps historical progress accurate even if a dietitian edits the plan
+    // or recipe nutrition later.
+    const savedCompletionIndex = existingCompletionIndex >= 0
+      ? existingCompletionIndex
+      : mealCompletions.length - 1;
+    const savedCompletion = mealCompletions[savedCompletionIndex];
+    const completionNutrition = calculateCompletedMealNutrition(
+      { ...mealPlan, mealCompletions: [savedCompletion] },
+      requestedDateKey,
+    ).nutrition;
+    if (Object.values(completionNutrition).some((value) => value > 0)) {
+      savedCompletion.nutrition = completionNutrition;
     }
 
     // Update analytics

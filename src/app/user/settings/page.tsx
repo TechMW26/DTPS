@@ -27,7 +27,7 @@ import {
 import Link from 'next/link';
 import UserNavBar from '@/components/client/UserNavBar';
 import { SpoonLoader } from '@/components/ui/SpoonLoader';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
 import PageTransition from '@/components/animations/PageTransition';
@@ -265,13 +265,13 @@ export default function UserSettingsPage() {
       items: [
         {
           key: 'pushNotifications',
-          label: 'Push Notifications',
+          label: 'Push notifications',
           description: 'Receive push notifications on your device',
           icon: Smartphone,
         },
         {
           key: 'emailNotifications',
-          label: 'Email Notifications',
+          label: 'Email notifications',
           description: 'Receive updates via email',
           icon: Mail,
         },
@@ -284,19 +284,19 @@ export default function UserSettingsPage() {
       items: [
         {
           key: 'mealReminders',
-          label: 'Meal Reminders',
+          label: 'Meal reminders',
           description: 'Get reminded about your meals at scheduled times',
           icon: Bell,
         },
         {
           key: 'appointmentReminders',
-          label: 'Appointment Reminders',
+          label: 'Appointment reminders',
           description: 'Get notified 30 minutes before appointments',
           icon: Bell,
         },
         {
           key: 'progressUpdates',
-          label: 'Weekly Progress Updates',
+          label: 'Weekly progress updates',
           description: 'Receive weekly progress summaries',
           icon: Bell,
         },
@@ -309,13 +309,13 @@ export default function UserSettingsPage() {
       items: [
         {
           key: 'darkMode',
-          label: 'Dark Mode',
+          label: 'Dark mode',
           description: 'Use dark theme for better night viewing',
           icon: Moon,
         },
         {
           key: 'soundEnabled',
-          label: 'Sound Effects',
+          label: 'Sound effects',
           description: 'Play sounds for notifications and actions',
           icon: Volume2,
         },
@@ -328,33 +328,29 @@ export default function UserSettingsPage() {
       title: 'Support',
       icon: HelpCircle,
       links: [
-        { label: 'Help Center', href: '/user/settings/help-center', icon: HelpCircle },
-        { label: 'Contact Support', href: '/user/settings/contact-support', icon: MessageCircle },
-        { label: 'Report a Problem', href: '/user/settings/report-problem', icon: MessageCircle },
+        { label: 'Help center', href: '/user/settings/help-center', icon: HelpCircle },
+        { label: 'Contact support', href: '/user/settings/contact-support', icon: MessageCircle },
+        { label: 'Report a problem', href: '/user/settings/report-problem', icon: MessageCircle },
       ],
     },
     {
       title: 'Legal',
       icon: FileText,
       links: [
-        { label: 'Terms of Service', href: '/user/settings/terms-of-service', icon: FileText },
-        { label: 'Privacy Policy', href: '/user/settings/privacy-policy', icon: FileText },
-        { label: 'Refund & Cancellation Policy', href: '/user/settings/refund', icon: FileText },
+        { label: 'Terms of service', href: '/user/settings/terms-of-service', icon: FileText },
+        { label: 'Privacy policy', href: '/user/settings/privacy-policy', icon: FileText },
+        { label: 'Refund and cancellation policy', href: '/user/settings/refund', icon: FileText },
       ],
     },
   ];
 
   if (loading) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center z-100 bg-white dark:bg-gray-950">
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="list" showHeader={false} />;
   }
 
   return (
     <PageTransition>
-      <div className={`min-h-screen pb-24 transition-colors duration-500 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {/* Navigation Bar */}
         <UserNavBar
           title="Settings"
@@ -427,6 +423,7 @@ export default function UserSettingsPage() {
                       <Switch
                         checked={settings[item.key as keyof UserSettings] as boolean}
                         onCheckedChange={(checked) => updateSetting(item.key, checked)}
+                        aria-label={item.label}
                         className="data-[state=checked]:bg-[#3AB1A0]"
                       />
                     </div>
@@ -520,12 +517,12 @@ export default function UserSettingsPage() {
             {loggingOut ? (
               <>
                 <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                Signing Out...
+                Signing out...
               </>
             ) : (
               <>
                 <LogOut className="h-5 w-5 mr-2" />
-                Sign Out
+                Sign out
               </>
             )}
           </Button>
@@ -542,7 +539,7 @@ export default function UserSettingsPage() {
                     <Trash2 className="h-5 w-5 text-red-500" />
                   </div>
                   <div>
-                    <p className={`text-sm font-medium text-red-600`}>Delete Account</p>
+                    <p className="text-sm font-medium text-red-600">Delete account</p>
                     <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       Permanently delete your account and all data
                     </p>
@@ -562,10 +559,11 @@ export default function UserSettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">
+                    <label htmlFor="delete-account-password" className="text-sm font-medium text-gray-700">
                       Enter your password to confirm
                     </label>
                     <input
+                      id="delete-account-password"
                       type="password"
                       value={deletePassword}
                       onChange={(e) => { setDeletePassword(e.target.value); setDeleteError(''); }}
@@ -602,7 +600,7 @@ export default function UserSettingsPage() {
                           Deleting...
                         </>
                       ) : (
-                        'Delete Account'
+                        'Delete account'
                       )}
                     </Button>
                   </div>
@@ -614,7 +612,7 @@ export default function UserSettingsPage() {
           {/* Support Contact Details */}
           <Card className="border-0 shadow-sm bg-white">
             <CardContent className="p-4 text-center">
-              <p className="text-sm font-semibold text-gray-900">For Support:</p>
+              <p className="text-sm font-semibold text-gray-900">Support</p>
               <p className="text-sm text-gray-700">Email: support@dtpoonamsagar.com</p>
               <p className="text-sm text-gray-700">Phone: +91 98930 27688</p>
             </CardContent>

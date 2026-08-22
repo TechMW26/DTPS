@@ -27,6 +27,7 @@ export { default as Counter } from './Counter';
 export { default as Notification } from './Notification';
 export { default as NotificationDeliveryAudit } from './NotificationDeliveryAudit';
 export { default as RealtimeSignal } from './RealtimeSignal';
+export { default as SystemRefreshState } from './SystemRefreshState';
 
 // Payment & subscription models
 export { default as ServicePlan } from './ServicePlan';

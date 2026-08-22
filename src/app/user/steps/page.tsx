@@ -18,7 +18,7 @@ import {
     Check
 } from 'lucide-react';
 import { toast } from 'sonner';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { useBodyScrollLock } from '@/hooks';
 
 interface StepsEntry {
@@ -281,15 +281,11 @@ export default function StepsPage() {
     const distance = (stepsData.totalToday / 1315).toFixed(2);
 
     if (loading) {
-        return (
-            <div className="fixed inset-0 flex items-center justify-center z-100 bg-white dark:bg-gray-950">
-                <SpoonGifLoader size="lg" />
-            </div>
-        );
+        return <ClientPageSkeleton variant="home" showHeader={false} />;
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-24">
+        <div className="min-h-screen bg-gray-50">
             {/* Header */}
             <div className="sticky top-0 z-40 bg-white border-b border-gray-100">
                 <div className="relative flex items-center justify-center px-4 py-4">
@@ -453,19 +449,17 @@ export default function StepsPage() {
                                         <animate attributeName="r" values="6;7;6" dur="1s" repeatCount="indefinite" />
                                     </circle>
 
-                                    {/* Footprint markers on path */}
+                                    {/* Progress markers on path */}
                                     {[20, 40, 60, 80].map((pos, i) => (
-                                        <text
+                                        <circle
                                             key={i}
-                                            x={pos}
-                                            y="10"
-                                            textAnchor="middle"
-                                            fontSize="8"
+                                            cx={pos}
+                                            cy="10"
+                                            r="2.5"
+                                            fill="currentColor"
                                             opacity={animatedFill >= pos ? "0.8" : "0.2"}
                                             style={{ transition: 'opacity 0.3s ease-out' }}
-                                        >
-                                            👣
-                                        </text>
+                                        />
                                     ))}
                                 </g>
                             </svg>
@@ -552,8 +546,8 @@ export default function StepsPage() {
                             disabled={saving}
                             className="bg-white rounded-2xl p-5 shadow-sm flex flex-col items-center gap-3 hover:shadow-md transition-all active:scale-95"
                         >
-                            <div className="h-12 w-12 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center text-xl">
-                                👣
+                            <div className="h-12 w-12 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center">
+                                <Footprints aria-hidden="true" className="h-6 w-6 text-[#3AB1A0]" />
                             </div>
                             <span className="font-semibold text-gray-900 text-sm">1K</span>
                         </button>
@@ -564,8 +558,8 @@ export default function StepsPage() {
                             disabled={saving}
                             className="bg-white rounded-2xl p-5 shadow-sm flex flex-col items-center gap-3 hover:shadow-md transition-all active:scale-95"
                         >
-                            <div className="h-12 w-12 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center text-xl">
-                                👣
+                            <div className="h-12 w-12 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center">
+                                <Footprints aria-hidden="true" className="h-6 w-6 text-[#3AB1A0]" />
                             </div>
                             <span className="font-semibold text-gray-900 text-sm">5K</span>
                         </button>
@@ -576,8 +570,8 @@ export default function StepsPage() {
                             disabled={saving}
                             className="bg-white rounded-2xl p-5 shadow-sm flex flex-col items-center gap-3 hover:shadow-md transition-all active:scale-95"
                         >
-                            <div className="h-12 w-12 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center text-xl">
-                                👣
+                            <div className="h-12 w-12 rounded-full bg-[#3AB1A0]/10 flex items-center justify-center">
+                                <Footprints aria-hidden="true" className="h-6 w-6 text-[#3AB1A0]" />
                             </div>
                             <span className="font-semibold text-gray-900 text-sm">10K</span>
                         </button>
@@ -602,8 +596,8 @@ export default function StepsPage() {
                                     className="bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between"
                                 >
                                     <div className="flex items-center gap-4">
-                                        <div className="h-12 w-12 rounded-full flex items-center justify-center bg-[#3AB1A0]/10 text-xl">
-                                            👣
+                                        <div className="h-12 w-12 rounded-full flex items-center justify-center bg-[#3AB1A0]/10">
+                                            <Footprints aria-hidden="true" className="h-6 w-6 text-[#3AB1A0]" />
                                         </div>
                                         <div>
                                             <p className="font-semibold text-gray-900">Steps</p>
@@ -635,8 +629,8 @@ export default function StepsPage() {
 
             {/* Custom Steps Modal */}
             {showAddModal && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center">
-                    <div className="bg-white rounded-t-3xl w-full max-w-lg p-6 pb-8 animate-slide-up max-h-[90vh] overflow-y-auto">
+                <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50">
+                    <div className="client-bottom-sheet-panel max-h-full w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 pb-8">
                         {/* Handle */}
                         <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6" />
 

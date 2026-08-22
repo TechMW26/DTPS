@@ -12,6 +12,7 @@ import {
   FileText,
   AlertCircle
 } from 'lucide-react';
+import { uploadFileReliably } from '@/lib/client-upload';
 
 interface FileUploadProps {
   type: 'avatar' | 'document' | 'recipe-image';
@@ -102,21 +103,7 @@ export default function FileUpload({
     setError('');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', type);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
-      }
-
-      const data = await response.json();
+      const data = await uploadFileReliably(file, type);
       onUpload(data.url, data.filename);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Upload failed';

@@ -24,6 +24,12 @@ const noteSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
+    operationId: {
+        type: String,
+        trim: true,
+        maxlength: 128,
+        required: false
+    },
     topicType: {
         type: String,
         enum: NOTE_TOPIC_TYPES,
@@ -58,6 +64,8 @@ const noteSchema = new mongoose.Schema({
 }, {
     timestamps: true
 });
+
+noteSchema.index({ client: 1, createdBy: 1, operationId: 1 }, { sparse: true });
 
 const ClientNote = mongoose.models.ClientNote || mongoose.model('ClientNote', noteSchema);
 

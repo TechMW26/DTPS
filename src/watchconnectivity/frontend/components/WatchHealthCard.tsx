@@ -27,56 +27,48 @@ const WATCH_METRIC_CONFIG = {
     label: 'Steps',
     color: '#3AB1A0',
     bgColor: '#3AB1A0/10',
-    emoji: '👣',
   },
   heartrate: {
     icon: Heart,
     label: 'Heart Rate',
     color: '#E06A26',
     bgColor: '#E06A26/10',
-    emoji: '❤️',
   },
   sleep: {
     icon: Moon,
     label: 'Sleep',
     color: '#6366F1',
     bgColor: '#6366F1/10',
-    emoji: '😴',
   },
   oxygen: {
     icon: Droplets,
     label: 'SpO2',
     color: '#0EA5E9',
     bgColor: '#0EA5E9/10',
-    emoji: '🫁',
   },
   stress: {
     icon: Brain,
     label: 'Stress',
     color: '#F59E0B',
     bgColor: '#F59E0B/10',
-    emoji: '🧠',
   },
   breathing: {
     icon: Wind,
     label: 'Breathing',
     color: '#10B981',
     bgColor: '#10B981/10',
-    emoji: '🌬️',
   },
   activity: {
     icon: Activity,
     label: 'Activity',
     color: '#8B5CF6',
     bgColor: '#8B5CF6/10',
-    emoji: '🏃',
   },
   calories: {
     icon: Flame,
     label: 'Calories',
     color: '#EF4444',
     bgColor: '#EF4444/10',
-    emoji: '🔥',
   },
 };
 
@@ -106,7 +98,7 @@ export function WatchHealthCard({
           className="w-10 h-10 rounded-xl flex items-center justify-center"
           style={{ backgroundColor: `${config.color}15` }}
         >
-          <span className="text-xl">{config.emoji}</span>
+          <Icon aria-hidden="true" className="h-5 w-5" style={{ color: config.color }} />
         </div>
         {watchTrend && (
           <span className={`text-xs font-medium ${

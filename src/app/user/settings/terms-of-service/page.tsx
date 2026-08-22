@@ -119,7 +119,7 @@ Our total liability shall not exceed the amount paid by you in the 12 months pre
   ];
 
   return (
-    <div className={`min-h-screen pb-24 ${isDarkMode ? 'bg-slate-950' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen ${isDarkMode ? 'bg-slate-950' : 'bg-gray-50'}`}>
       <UserNavBar 
         title="Terms of Service" 
         showBack={true}

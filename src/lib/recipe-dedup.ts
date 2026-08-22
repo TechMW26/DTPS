@@ -145,9 +145,9 @@ export function compareIngredients(
   b: { name: string }[],
 ): { similar: boolean; overlap: number; primaryMatch: boolean } {
   if (a.length === 0 || b.length === 0) {
-    // If either has no ingredients (e.g. name-only check during bulk), 
-    // fall back to name matching only — treat as potentially similar.
-    return { similar: true, overlap: 0, primaryMatch: true };
+    // Blank records are invalid recipes, not evidence that two dishes are
+    // duplicates. Publication validation handles them separately.
+    return { similar: false, overlap: 0, primaryMatch: false };
   }
 
   const namesA = a.map((i) => (SYNONYMS[i.name.toLowerCase().trim()] || i.name.toLowerCase().trim()));
@@ -199,7 +199,7 @@ export async function findSimilarRecipes(
   let results: any[] = [];
   try {
     const allPattern = new RegExp(regexParts.join(''), 'i');
-    results = await Recipe.find({ name: { $regex: allPattern } })
+    results = await Recipe.find({ mergedInto: null, name: { $regex: allPattern } })
       .select('name ingredients calories protein carbs fat')
       .limit(limit)
       .lean();
@@ -213,7 +213,7 @@ export async function findSimilarRecipes(
       const subsetParts = regexParts.slice(0, size);
       try {
         const subsetPattern = new RegExp(subsetParts.join(''), 'i');
-        results = await Recipe.find({ name: { $regex: subsetPattern } })
+        results = await Recipe.find({ mergedInto: null, name: { $regex: subsetPattern } })
           .select('name ingredients calories protein carbs fat')
           .limit(limit)
           .lean();
@@ -261,7 +261,7 @@ export async function batchFindDuplicates(
   // 3. One DB call: find all recipes whose name contains any relevant token
   let candidates: any[];
   try {
-    candidates = await Recipe.find({ name: { $regex: broadPattern } })
+    candidates = await Recipe.find({ mergedInto: null, name: { $regex: broadPattern } })
       .select('name ingredients')
       .limit(2000) // safety cap
       .lean();

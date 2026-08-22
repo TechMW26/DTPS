@@ -36,13 +36,6 @@ const getGreeting = () => {
   return 'Good Evening';
 };
 
-const getGreetingEmoji = () => {
-  const hour = new Date().getHours();
-  if (hour < 12) return '🌅';
-  if (hour < 17) return '☀️';
-  return '🌙';
-};
-
 // Page titles for different routes
 const getPageInfo = (pathname: string, session: any) => {
   const firstName = session?.user?.firstName || 'Welcome';
@@ -50,7 +43,7 @@ const getPageInfo = (pathname: string, session: any) => {
   const routeMap: Record<string, { title: string; subtitle?: string }> = {
     '/client-dashboard': {
       title: firstName,
-      subtitle: `${getGreeting()} ${getGreetingEmoji()}`
+      subtitle: getGreeting()
     },
     '/my-plan': {
       title: 'My Meal Plan',

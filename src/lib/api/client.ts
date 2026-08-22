@@ -13,6 +13,7 @@
  */
 
 import { toast } from 'sonner';
+import { diagnoseApiFailure, resilientFetch } from '@/lib/api/resilient-fetch';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0';
 
@@ -38,6 +39,8 @@ export interface ApiClientOptions extends Omit<RequestInit, 'cache'> {
   successMessage?: string;
   /** Skip version check */
   skipVersionCheck?: boolean;
+  /** Retry a POST/PATCH only when its route is independently idempotent. */
+  retryUnsafe?: boolean;
 }
 
 // Error codes for specific handling
@@ -89,22 +92,6 @@ function getErrorMessage(status: number, serverMessage?: string): string {
 }
 
 /**
- * Calculate delay with exponential backoff and jitter
- */
-function calculateBackoff(attempt: number, baseDelay: number): number {
-  const exponentialDelay = baseDelay * Math.pow(2, attempt);
-  const jitter = Math.random() * 0.3 * exponentialDelay;
-  return Math.min(exponentialDelay + jitter, 30000);
-}
-
-/**
- * Check if error is retryable
- */
-function isRetryable(status: number): boolean {
-  return [408, 429, 500, 502, 503, 504].includes(status);
-}
-
-/**
  * Show appropriate toast based on error type
  */
 function showErrorToast(status: number, message: string, retryAfter?: number): void {
@@ -150,32 +137,34 @@ export async function apiClient<T = any>(
     showSuccessToast = false,
     successMessage,
     skipVersionCheck = false,
+    retryUnsafe = false,
     ...fetchOptions
   } = options;
 
-  let lastError: string | null = null;
-  let lastStatus = 0;
+  try {
+    const requestHeaders = new Headers(fetchOptions.headers);
+    if (!requestHeaders.has('Content-Type')) requestHeaders.set('Content-Type', 'application/json');
+    requestHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    requestHeaders.set('Pragma', 'no-cache');
+    requestHeaders.set('X-App-Version', APP_VERSION);
+    const idempotencyKey = requestHeaders.get('x-idempotency-key') || undefined;
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const response = await fetch(url, {
-        ...fetchOptions,
-        signal: controller.signal,
-        cache: 'no-store',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'X-App-Version': APP_VERSION,
-          ...fetchOptions.headers,
-        },
-      });
-
-      clearTimeout(timeoutId);
-      lastStatus = response.status;
+    const response = await resilientFetch(url, {
+      ...fetchOptions,
+      cache: 'no-store',
+      headers: requestHeaders,
+    }, {
+      attempts: retries + 1,
+      timeoutMs: timeout,
+      baseDelayMs: retryDelay,
+      idempotencyKey,
+      retryUnsafe,
+      onRecoveryState: (state) => {
+        if (state.phase === 'retrying') {
+          console.info(`[API] Recovering ${url}; automatic attempt ${state.attempt + 1}/${state.maxAttempts}`);
+        }
+      },
+    });
 
       // Check version from response headers
       if (!skipVersionCheck) {
@@ -208,18 +197,7 @@ export async function apiClient<T = any>(
       // Handle errors
       const serverMessage = data?.error || data?.message;
       const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10);
-      lastError = getErrorMessage(response.status, serverMessage);
-
-      // Should we retry?
-      if (isRetryable(response.status) && attempt < retries) {
-        const delay = response.status === 429 && retryAfter > 0 
-          ? retryAfter * 1000 
-          : calculateBackoff(attempt, retryDelay);
-        
-        console.log(`API retry ${attempt + 1}/${retries} for ${url} after ${delay}ms`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
+      const lastError = getErrorMessage(response.status, serverMessage);
 
       // Show error toast
       if (showError) {
@@ -227,43 +205,16 @@ export async function apiClient<T = any>(
       }
 
       return { data: null, error: lastError, status: response.status, success: false };
-
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-
-      // Handle abort/timeout
-      if (error.name === 'AbortError') {
-        lastError = 'Request timed out. Please try again.';
-        lastStatus = 408;
-        
-        if (attempt < retries) {
-          const delay = calculateBackoff(attempt, retryDelay);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-      } else {
-        // Network error
-        lastError = 'Network error. Please check your connection.';
-        lastStatus = 0;
-        
-        if (attempt < retries) {
-          const delay = calculateBackoff(attempt, retryDelay);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-      }
-    }
-  }
-
-  // All retries exhausted
-  if (showError && lastError) {
-    toast.error(lastError, {
+  } catch (error) {
+    const diagnosis = diagnoseApiFailure({ error });
+    if (showError) {
+      toast.error(diagnosis.message, {
       description: 'Please try again later.',
       duration: 5000,
-    });
+      });
+    }
+    return { data: null, error: diagnosis.message, status: 0, success: false };
   }
-
-  return { data: null, error: lastError, status: lastStatus, success: false };
 }
 
 /**

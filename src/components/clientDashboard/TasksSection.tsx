@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Calendar, Clock, Trash2, CheckCircle2, AlertCircle, Loader2, Tag } from 'lucide-react';
+import { ListSkeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { CreateTaskDialog } from '@/components/tasks/CreateTaskDialog';
@@ -309,11 +310,7 @@ export default function TasksSection({
   };
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-48">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    );
+    return <ListSkeleton rows={6} />;
   }
 
   return (

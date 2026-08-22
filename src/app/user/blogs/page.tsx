@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
-import { ArrowLeft, Clock, Bookmark, Search, BookOpen, TrendingUp, Heart, Sparkles, User, ImageOff } from 'lucide-react';
+import { ArrowLeft, Clock, Bookmark, Search, BookOpen, TrendingUp, Heart, Sparkles, User, ImageOff, Salad, Dumbbell, PersonStanding, CookingPot, Leaf } from 'lucide-react';
 import UserNavBar from '@/components/client/UserNavBar';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 
 interface Blog {
   _id: string;
@@ -44,21 +44,26 @@ const getCategoryColor = (category: string) => {
   }
 };
 
-const getCategoryIcon = (category: string) => {
+const CategoryIcon = ({ category, className = 'h-4 w-4' }: { category: string; className?: string }) => {
+  let Icon = BookOpen;
   switch (category.toLowerCase()) {
     case 'nutrition':
-      return '🥗';
+      Icon = Salad;
+      break;
     case 'fitness':
-      return '💪';
+      Icon = Dumbbell;
+      break;
     case 'wellness':
-      return '🧘';
+      Icon = PersonStanding;
+      break;
     case 'recipes':
-      return '🍳';
+      Icon = CookingPot;
+      break;
     case 'lifestyle':
-      return '🌟';
-    default:
-      return '📖';
+      Icon = Leaf;
+      break;
   }
+  return <Icon aria-hidden="true" className={className} />;
 };
 
 const formatDate = (dateString: string) => {
@@ -139,17 +144,13 @@ export default function BlogsPage() {
   const regularBlogs = filteredBlogs.filter(blog => !blog.isFeatured);
 
   if (loading) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center z-100 bg-white dark:bg-gray-950">
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="grid" showHeader={false} />;
   }
 
   if (error) {
     return (
       <PageTransition>
-        <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
           <div className="px-4 pt-10">
             <Link href="/user" className="inline-flex items-center gap-2 text-[#3AB1A0] font-semibold">
               <ArrowLeft className="h-5 w-5" />
@@ -173,7 +174,7 @@ export default function BlogsPage() {
 
   return (
     <PageTransition>
-      <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {/* Header */}
         <div className={`sticky top-0 z-40 backdrop-blur-sm border-b transition-colors duration-300 ${isDarkMode ? 'bg-gray-800/95 border-gray-700' : 'bg-white/95 border-gray-100'}`}>
           <div className="px-4 py-4">
@@ -221,7 +222,7 @@ export default function BlogsPage() {
                         : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
                 >
-                  {category !== 'All' && <span className="mr-1">{getCategoryIcon(category)}</span>}
+                  {category !== 'All' && <CategoryIcon category={category} className="mr-1 inline h-4 w-4" />}
                   {category}
                 </button>
               ))}
@@ -259,7 +260,8 @@ export default function BlogsPage() {
                       </div>
                     )}
                     <span className={`absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full border ${getCategoryColor(blog.category)}`}>
-                      {getCategoryIcon(blog.category)} {blog.category.charAt(0).toUpperCase() + blog.category.slice(1)}
+                      <CategoryIcon category={blog.category} className="mr-1 inline h-3.5 w-3.5" />
+                      {blog.category.charAt(0).toUpperCase() + blog.category.slice(1)}
                     </span>
                     <button
                       className={`absolute top-3 right-3 h-8 w-8 rounded-full flex items-center justify-center transition-all ${bookmarkedBlogs.has(blog._id)
@@ -317,8 +319,8 @@ export default function BlogsPage() {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className={`w-full h-full flex items-center justify-center text-3xl ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                      {getCategoryIcon(blog.category)}
+                    <div className={`flex h-full w-full items-center justify-center ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                      <CategoryIcon category={blog.category} className="h-8 w-8 text-gray-400" />
                     </div>
                   )}
                 </div>

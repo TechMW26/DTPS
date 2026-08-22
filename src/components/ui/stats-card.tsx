@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './card';
 import { cn } from '@/lib/utils';
+import { Skeleton } from './skeleton';
 
 interface StatsCardProps {
   title: string;
@@ -12,6 +13,7 @@ interface StatsCardProps {
     isPositive: boolean;
   };
   className?: string;
+  loading?: boolean;
 }
 
 export function StatsCard({
@@ -20,7 +22,8 @@ export function StatsCard({
   description,
   icon,
   trend,
-  className
+  className,
+  loading = false,
 }: StatsCardProps) {
   return (
     <Card className={cn("", className)}>
@@ -35,17 +38,23 @@ export function StatsCard({
         )}
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold text-gray-900 dark:text-white">
-          {value}
-        </div>
+        {loading ? (
+          <Skeleton className="h-8 w-20" />
+        ) : (
+          <div className="text-2xl font-bold text-gray-900 dark:text-white">
+            {value}
+          </div>
+        )}
         {(description || trend) && (
           <div className="flex items-center justify-between mt-2">
-            {description && (
+            {loading ? (
+              <Skeleton className="h-3 w-28" />
+            ) : description ? (
               <p className="text-xs text-gray-600 dark:text-gray-400">
                 {description}
               </p>
-            )}
-            {trend && (
+            ) : null}
+            {!loading && trend && (
               <div className={cn(
                 "text-xs font-medium",
                 trend.isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"

@@ -352,8 +352,8 @@ export async function runMealEngagementNotifications(now = new Date()) {
       try {
         const result = await sendNotificationToUser(clientId, {
           title: isPhotoPrompt
-            ? `📸 ${event.label} time — show us your plate!`
-            : `🍽️ ${event.label} in 30 minutes`,
+            ? `${event.label} time — show us your plate`
+            : `${event.label} in 30 minutes`,
           body: isPhotoPrompt
             ? `Your ${event.label.toLowerCase()}${foodSummary} is ready. Tap to take a photo and complete your meal.`
             : `Your meal is scheduled for ${event.displayTime}${foodSummary}. Time to get it ready!`,

@@ -8,7 +8,7 @@ import PaymentForm from '@/components/payments/PaymentForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { DashboardContentSkeleton } from '@/components/ui/skeleton';
 import { 
   Calendar, 
   Clock, 
@@ -81,9 +81,7 @@ export default function AppointmentPaymentPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <LoadingSpinner />
-        </div>
+        <DashboardContentSkeleton statCards={3} sections={2} />
       </DashboardLayout>
     );
   }

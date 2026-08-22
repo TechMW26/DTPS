@@ -30,6 +30,7 @@ import { useRealtime } from '@/hooks/useRealtime';
 import { useNotifications } from '@/hooks/useNotifications';
 import { toast } from 'sonner';
 import { getClientId } from '@/lib/utils';
+import { DashboardContentSkeleton } from '@/components/ui/skeleton';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -342,6 +343,14 @@ export default function DietitianDashboard() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <DashboardContentSkeleton sections={6} />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="dietitian-dashboard-page p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -374,9 +383,10 @@ export default function DietitianDashboard() {
           />
           <StatsCard
             title="Total Pending Plans"
-            value={loading || loadingPendingPlans ? '-' : pendingPlansCount}
-            description={loading || loadingPendingPlans ? 'Loading...' : `${criticalCount} critical`}
+            value={pendingPlansCount}
+            description={`${criticalCount} critical`}
             icon={<Activity className="h-4 w-4" />}
+            loading={loadingPendingPlans}
           />
           <StatsCard
             title="Total Revenue"

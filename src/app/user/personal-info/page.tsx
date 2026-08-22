@@ -24,7 +24,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { uploadFileReliably } from '@/lib/client-upload';
 
 interface PersonalData {
   firstName: string;
@@ -224,22 +225,9 @@ export default function PersonalInfoPage() {
 
     try {
       setUploading(true);
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'avatar');
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (res.ok) {
-        const result = await res.json();
-        setData({ ...data, profileImage: result.url });
-        toast.success("Profile image uploaded");
-      } else {
-        toast.error("Failed to upload image");
-      }
+      const result = await uploadFileReliably(file, 'avatar');
+      setData({ ...data, profileImage: result.url });
+      toast.success("Profile image uploaded");
     } catch (error) {
       console.error("Error uploading image:", error);
       toast.error("Failed to upload image");
@@ -272,11 +260,7 @@ export default function PersonalInfoPage() {
   };
 
   if (loading) {
-    return (
-      <div className={`fixed inset-0 ${isDarkMode ? 'bg-gray-950' : 'bg-white'} flex items-center justify-center z-100`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="form" showHeader={false} />;
   }
 
   const heightDisplay = cmToFeetInches(data.heightCm);
@@ -310,7 +294,7 @@ export default function PersonalInfoPage() {
         </div>
       </div>
 
-      <div className="px-4 py-6 pb-24 space-y-6">
+      <div className="space-y-6 px-4 py-6">
         {/* Profile Image */}
         <div className="flex justify-center">
           <div className="relative">

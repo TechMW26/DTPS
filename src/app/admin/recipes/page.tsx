@@ -71,7 +71,7 @@ export default function AdminRecipesPage() {
       const sortParam = searchQuery ? 'sortBy=relevance' : 'sortBy=uuid';
       const searchParam = searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : '';
       const res = await fetch(
-        `/api/recipes?limit=${itemsPerPage}&page=${page}&includeTotal=true&${sortParam}${searchParam}`,
+        `/api/recipes?limit=${itemsPerPage}&page=${page}&includeTotal=true&includeInactive=true&${sortParam}${searchParam}`,
         { signal: abortControllerRef.current.signal }
       );
       const body = await res.json();

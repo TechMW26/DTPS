@@ -26,11 +26,20 @@ import {
   Loader2,
   Calendar,
   Phone,
-  Mail
+  Mail,
+  Target,
+  CheckCircle2,
+  PartyPopper,
+  Salad,
+  Dumbbell,
+  PersonStanding,
+  CookingPot
 } from 'lucide-react';
-import SpoonGifLoader, { FullPageLoader } from '@/components/ui/SpoonGifLoader';
+import { CardGridSkeleton, ClientPageSkeleton } from '@/components/ui/skeleton';
 import SmoothComponent from '@/components/animations/SmoothComponent';
 import StaggerList from '@/components/animations/StaggerList';
+import { socketClient } from '@/lib/realtime/socket-client';
+import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 
 // Lazy load heavy components for better performance
 const ServicePlansSwiper = lazy(() => import('@/components/client/ServicePlansSwiper'));
@@ -152,6 +161,8 @@ export default function UserHomePage() {
   const cardsContainerRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const redirectingRef = useRef(false);
+  const healthFetchInFlightRef = useRef<Promise<void> | null>(null);
+  const lastHealthFetchAtRef = useRef(0);
   const [data, setData] = useState<DashboardData>({
     caloriesLeft: 0,
     caloriesGoal: 2000,
@@ -161,7 +172,7 @@ export default function UserHomePage() {
     carbsGoal: 250,
     fat: 0,
     fatGoal: 65,
-    water: { current: 0, goal: 2500 },
+    water: { current: 0, goal: 2.5 },
     sleep: { hours: 0, minutes: 0, quality: 0 },
     activity: { minutes: 0, active: false },
     meals: { eaten: 0, total: 4, calories: 0 },
@@ -199,9 +210,23 @@ export default function UserHomePage() {
       } finally {
         clearTimeout(timeoutId);
       }
-    } catch {
-      // Retry without `signal` for WebViews that error on it.
-      return await doFetch();
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+
+      // Some older WebViews throw immediately when a signal is supplied. Keep
+      // that compatibility fallback bounded by the same timeout.
+      if (error instanceof TypeError) {
+        return await Promise.race([
+          doFetch(),
+          new Promise<Response>((_, reject) =>
+            setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
+          ),
+        ]);
+      }
+
+      throw error;
     }
   }, []);
 
@@ -218,46 +243,56 @@ export default function UserHomePage() {
 
   // Function to fetch real-time health data (water, sleep, activity, steps, calories)
   // Uses aggregated dashboard-summary API to reduce round-trips (1 call instead of 4+)
-  const fetchHealthData = useCallback(async () => {
+  const performHealthFetch = useCallback(async () => {
     try {
       const today = format(new Date(), 'yyyy-MM-dd');
-      // Fetch aggregated health data + meal plan + food log in parallel (3 calls instead of 6)
-      const [summaryRes, mealPlanRes, foodLogRes] = await Promise.all([
-        fetch(`/api/client/dashboard-summary?date=${today}`, { cache: 'no-store' }),
-        fetch(`/api/client/meal-plan?date=${today}`, { cache: 'no-store' }),
-        fetch(`/api/food-logs?date=${today}`, { cache: 'no-store' })
-      ]);
+      const summaryRes = await fetch(
+        `/api/client/dashboard-summary?date=${today}`,
+        { cache: 'no-store' },
+      );
 
-      const newData = { ...data };
-
-      // Process aggregated health summary (hydration, sleep, activity, steps, profile)
       if (summaryRes.ok) {
         const summary = await summaryRes.json();
+        const nutrition = summary.nutrition || {};
+        const consumed = nutrition.consumed || {};
+        const goal = nutrition.goal || {};
 
-        // Hydration
-        newData.water = {
-          current: (summary.hydration?.totalToday / 1000) || 0,
-          goal: (summary.hydration?.goal / 1000) || 2.5
-        };
-
-        // Sleep
         const totalHours = summary.sleep?.totalToday || 0;
         const hours = Math.floor(totalHours);
         const minutes = Math.round((totalHours - hours) * 60);
         const quality = summary.sleep?.goal > 0 ? Math.round((totalHours / summary.sleep.goal) * 100) : 0;
-        newData.sleep = { hours, minutes, quality: Math.min(quality, 100) };
 
-        // Activity
-        newData.activity = {
-          minutes: Math.round(summary.activity?.totalToday || 0),
-          active: (summary.activity?.totalToday || 0) > 0
-        };
-
-        // Steps
-        newData.steps = {
-          current: summary.steps?.totalToday || 0,
-          goal: summary.steps?.goal || 10000
-        };
+        setData((previous) => ({
+          ...previous,
+          caloriesGoal: Math.round(goal.calories || 2000),
+          caloriesLeft: Math.max(0, Math.round(
+            nutrition.remaining?.calories ?? (goal.calories || 2000) - (consumed.calories || 0),
+          )),
+          protein: Math.round(consumed.protein || 0),
+          proteinGoal: Math.round(goal.protein || 120),
+          carbs: Math.round(consumed.carbs || 0),
+          carbsGoal: Math.round(goal.carbs || 250),
+          fat: Math.round(consumed.fat || 0),
+          fatGoal: Math.round(goal.fat || 65),
+          water: {
+            current: (summary.hydration?.totalToday / 1000) || 0,
+            goal: (summary.hydration?.goal / 1000) || 2.5,
+          },
+          sleep: { hours, minutes, quality: Math.min(quality, 100) },
+          activity: {
+            minutes: Math.round(summary.activity?.totalToday || 0),
+            active: (summary.activity?.totalToday || 0) > 0,
+          },
+          steps: {
+            current: summary.steps?.totalToday || 0,
+            goal: summary.steps?.goal || 10000,
+          },
+          meals: {
+            eaten: nutrition.completedMeals || 0,
+            total: nutrition.totalMeals || 0,
+            calories: Math.round(consumed.calories || 0),
+          },
+        }));
 
         // Update profile if available from summary
         if (summary.profile && !unmountedRef.current) {
@@ -278,122 +313,46 @@ export default function UserHomePage() {
           }
         }
       }
-
-      // Calculate calories from meal plan and food log
-      let caloriesGoal = 2000; // Default goal
-      let proteinGoal = 120; // Default protein goal in grams
-      let carbsGoal = 250; // Default carbs goal in grams
-      let fatGoal = 65; // Default fat goal in grams
-      let caloriesConsumed = 0;
-      let proteinConsumed = 0;
-      let carbsConsumed = 0;
-      let fatConsumed = 0;
-      let mealsEaten = 0;
-      let totalMeals = 4;
-
-      if (mealPlanRes.ok) {
-        const mealPlanData = await mealPlanRes.json();
-        if (mealPlanData.hasPlan) {
-          totalMeals = mealPlanData.meals?.length || 4;
-
-          // Calculate total goals from all meals in the plan (sum of all food items)
-          let totalProteinFromMeals = 0;
-          let totalCarbsFromMeals = 0;
-          let totalFatFromMeals = 0;
-          let totalCaloriesFromMeals = 0;
-
-          if (mealPlanData.meals && Array.isArray(mealPlanData.meals)) {
-            mealPlanData.meals.forEach((meal: any) => {
-              // Sum up from items/foods in each meal
-              const items = meal.items || meal.foods || meal.foodOptions || [];
-              if (Array.isArray(items) && items.length > 0) {
-                // Only count MAIN foods (exclude alternatives)
-                const mainItems = items.filter((item: any) => !item?.isAlternative);
-                mainItems.forEach((item: any) => {
-                  totalCaloriesFromMeals += parseFloat(item.calories) || parseFloat(item.cal) || 0;
-                  totalProteinFromMeals += parseFloat(item.protein) || 0;
-                  totalCarbsFromMeals += parseFloat(item.carbs) || 0;
-                  totalFatFromMeals += parseFloat(item.fats) || parseFloat(item.fat) || 0;
-                });
-              } else if (meal.totalCalories) {
-                // Only use meal level totals if no items exist
-                totalCaloriesFromMeals += parseFloat(meal.totalCalories) || 0;
-                totalProteinFromMeals += parseFloat(meal.protein) || 0;
-                totalCarbsFromMeals += parseFloat(meal.carbs) || 0;
-                totalFatFromMeals += parseFloat(meal.fat) || 0;
-              }
-            });
-          }
-
-          // Use API's totalCalories first, then calculated, then customizations
-          caloriesGoal = mealPlanData.totalCalories || totalCaloriesFromMeals || mealPlanData.planDetails?.customizations?.targetCalories || 2000;
-          proteinGoal = totalProteinFromMeals || mealPlanData.planDetails?.customizations?.proteinGoal || 120;
-          carbsGoal = totalCarbsFromMeals || mealPlanData.planDetails?.customizations?.carbsGoal || 250;
-          fatGoal = totalFatFromMeals || mealPlanData.planDetails?.customizations?.fatGoal || 65;
-
-          // Count completed meals
-          mealsEaten = (mealPlanData.meals || []).filter((meal: any) => meal.isCompleted).length;
-
-          // Calculate calories and macros from completed meals
-          const completedMeals = (mealPlanData.meals || []).filter((meal: any) => meal.isCompleted);
-          completedMeals.forEach((meal: any) => {
-            const items = meal.items || meal.foods || meal.foodOptions || [];
-            if (Array.isArray(items) && items.length > 0) {
-              // Only count MAIN foods (exclude alternatives)
-              const mainItems = items.filter((item: any) => !item?.isAlternative);
-              mainItems.forEach((item: any) => {
-                caloriesConsumed += parseFloat(item.calories) || parseFloat(item.cal) || 0;
-                proteinConsumed += parseFloat(item.protein) || 0;
-                carbsConsumed += parseFloat(item.carbs) || 0;
-                fatConsumed += parseFloat(item.fats) || parseFloat(item.fat) || 0;
-              });
-            } else if (meal.totalCalories) {
-              // Fallback to meal level totals only if no items
-              caloriesConsumed += parseFloat(meal.totalCalories) || 0;
-              proteinConsumed += parseFloat(meal.protein) || 0;
-              carbsConsumed += parseFloat(meal.carbs) || 0;
-              fatConsumed += parseFloat(meal.fat) || 0;
-            }
-          });
-        }
-      }
-
-      // Also add calories from food log entries (manual food logging)
-      if (foodLogRes.ok) {
-        const foodLogData = await foodLogRes.json();
-        const totals = foodLogData?.dailyTotals || {};
-        caloriesConsumed += totals.calories || 0;
-        proteinConsumed += totals.protein || 0;
-        carbsConsumed += totals.carbs || 0;
-        fatConsumed += totals.fat || 0;
-      }
-
-      // Round all values for display
-      newData.caloriesGoal = Math.round(caloriesGoal);
-      newData.caloriesLeft = Math.max(0, Math.round(caloriesGoal - caloriesConsumed));
-      newData.protein = Math.round(proteinConsumed);
-      newData.proteinGoal = Math.round(proteinGoal);
-      newData.carbs = Math.round(carbsConsumed);
-      newData.carbsGoal = Math.round(carbsGoal);
-      newData.fat = Math.round(fatConsumed);
-      newData.fatGoal = Math.round(fatGoal);
-      newData.meals = { eaten: mealsEaten, total: totalMeals, calories: Math.round(caloriesConsumed) };
-
-      setData(prev => ({ ...prev, ...newData }));
     } catch (error) {
       console.error('Error fetching health data:', error);
     }
   }, []);
 
+  const fetchHealthData = useCallback((force = false): Promise<void> => {
+    if (healthFetchInFlightRef.current) {
+      return healthFetchInFlightRef.current;
+    }
+
+    if (!force && Date.now() - lastHealthFetchAtRef.current < 1500) {
+      return Promise.resolve();
+    }
+
+    const request = performHealthFetch().finally(() => {
+      lastHealthFetchAtRef.current = Date.now();
+      if (healthFetchInFlightRef.current === request) {
+        healthFetchInFlightRef.current = null;
+      }
+    });
+    healthFetchInFlightRef.current = request;
+    return request;
+  }, [performHealthFetch]);
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    return socketClient.on(SOCKET_EVENTS.MEAL_COMPLETION_UPDATED, () => {
+      void fetchHealthData(true);
+    });
+  }, [status, fetchHealthData]);
+
   // Function to refresh all data (called when meal plan, purchases, or payments change)
   const refreshAllData = useCallback(async () => {
     console.log('Refreshing all user data...');
     try {
-      // Fetch service plans + health data (which includes profile)
-      const planRes = await fetch('/api/client/service-plans', { cache: 'no-store' });
-
-      // Also fetch health data (includes profile via dashboard-summary)
-      fetchHealthData();
+      // Service-plan and dashboard-summary requests are independent.
+      const [planRes] = await Promise.all([
+        fetch('/api/client/service-plans', { cache: 'no-store' }),
+        fetchHealthData(true),
+      ]);
 
       if (planRes.ok) {
         const planData = await planRes.json();
@@ -422,7 +381,7 @@ export default function UserHomePage() {
     ],
     () => {
       console.log('Form data changed, refreshing user data...');
-      fetchHealthData();
+      fetchHealthData(true);
     },
     []
   );
@@ -430,7 +389,10 @@ export default function UserHomePage() {
   // Helper to load service plans (used by onboarding check fast path)
   const loadServicePlans = async () => {
     try {
-      const planRes = await fetchWithTimeout('/api/client/service-plans', undefined, 4000);
+      const [planRes] = await Promise.all([
+        fetchWithTimeout('/api/client/service-plans', undefined, 4000),
+        fetchHealthData(),
+      ]);
       if (planRes.ok) {
         const planData = await planRes.json();
         setHasActivePlan(planData.hasActivePlan || false);
@@ -439,9 +401,6 @@ export default function UserHomePage() {
         setActivePurchases(planData.activePurchases || []);
         setCurrentMealPlan(planData.currentMealPlan || null);
       }
-
-      // Fetch health data (which includes profile from dashboard-summary)
-      fetchHealthData();
     } catch (error) {
       console.error('Error loading service plans:', error);
     }
@@ -592,25 +551,6 @@ export default function UserHomePage() {
         // IMPORTANT: don't block the whole /user page on other API calls
         setCheckingOnboarding(false);
 
-        // Fetch user profile data (BMI, weight, height, etc.)
-        (async () => {
-          try {
-            const profileRes = await fetchWithTimeout('/api/client/profile', undefined, 4000);
-            if (profileRes.ok && !unmountedRef.current) {
-              const profileData = await profileRes.json();
-              setUserProfile({
-                bmi: profileData.bmi || '',
-                bmiCategory: profileData.bmiCategory || '',
-                weightKg: profileData.weightKg || '',
-                heightCm: profileData.heightCm || '',
-                generalGoal: profileData.generalGoal || ''
-              });
-            }
-          } catch (profileError) {
-            console.error('Error fetching profile:', profileError);
-          }
-        })();
-
         // Fetch real-time health data (water, sleep, activity, steps)
         fetchHealthData();
 
@@ -650,14 +590,11 @@ export default function UserHomePage() {
         }
 
         const blogsData = await blogsRes.json();
-        console.log('Blogs API response:', blogsData); // Debug log
-
         // Handle both response formats: { blogs: [...] } and direct array
         const blogsList = Array.isArray(blogsData) ? blogsData : (blogsData.blogs || []);
 
         if (!unmountedRef.current) {
           setBlogs(blogsList);
-          console.log('Blogs set:', blogsList); // Debug log
         }
       } catch (blogsError) {
         console.error('Error fetching blogs:', blogsError);
@@ -689,33 +626,31 @@ export default function UserHomePage() {
   const dayName = format(today, 'EEEE').toUpperCase();
   const dateStr = format(today, 'MMM d').toUpperCase();
 
-  const caloriesConsumed = data.caloriesGoal - data.caloriesLeft;
-  const caloriesPercent = (caloriesConsumed / data.caloriesGoal) * 100;
-  const waterPercent = (data.water.current / data.water.goal) * 100;
-  const mealsPercent = (data.meals.eaten / data.meals.total) * 100;
+  const clampedPercentage = (current: number, goal: number) => {
+    if (!Number.isFinite(current) || !Number.isFinite(goal) || goal <= 0) return 0;
+    return Math.min(Math.max((current / goal) * 100, 0), 100);
+  };
+  const caloriesConsumed = Math.max(data.caloriesGoal - data.caloriesLeft, 0);
+  const caloriesPercent = clampedPercentage(caloriesConsumed, data.caloriesGoal);
+  const waterPercent = clampedPercentage(data.water.current, data.water.goal);
+  const mealsPercent = clampedPercentage(data.meals.eaten, data.meals.total);
 
-  // Use state userName (from API) with fallback to session, then 'Alex'
-  const displayName = userName || session?.user?.firstName || 'Alex';
+  // Never show a fabricated name while profile data is loading or incomplete.
+  const displayName = userName || session?.user?.firstName || 'there';
   const displayAvatar = userAvatar || session?.user?.avatar;
 
   // Show loading while mounting, session is loading, checking onboarding, or verifying payment
   if (!mounted || status === 'loading' || checkingOnboarding || paymentVerifying) {
-    return (
-      <FullPageLoader
-        size="lg"
-        isDarkMode={isDarkMode}
-        text={paymentVerifying ? 'Verifying your payment...' : undefined}
-      />
-    );
+    return <ClientPageSkeleton variant="home" showHeader={false} />;
   }
 
   // Redirect to login if not authenticated
   if (status === 'unauthenticated') {
-    return <FullPageLoader size="lg" isDarkMode={isDarkMode} />;
+    return <ClientPageSkeleton variant="home" showHeader={false} />;
   }
 
   return (
-    <div className={isDarkMode ? 'bg-gray-950 text-gray-100' : 'bg-gray-50 text-gray-900'}>
+    <div className={`w-full overflow-x-clip ${isDarkMode ? 'bg-gray-950 text-gray-100' : 'bg-gray-50 text-gray-900'}`}>
       {/* Header */}
       <SmoothComponent animation="fade-in">
         <div className={`px-4 pt-6 pb-4 ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
@@ -747,7 +682,7 @@ export default function UserHomePage() {
       </SmoothComponent>
 
       {/* Main Content */}
-      <div className="px-4 py-4 space-y-4">
+      <div className="mx-auto w-full max-w-7xl space-y-4 px-4 py-4 sm:px-6">
         {/* Calories Card */}
         <div
           className={`rounded-3xl p-5 shadow-sm border ${isDarkMode
@@ -758,7 +693,7 @@ export default function UserHomePage() {
           <div className="flex items-start justify-between">
             <div>
               <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                Calories Left
+                Calories remaining
               </p>
               <div className="flex items-baseline mt-1">
                 <span className={`text-5xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
@@ -770,7 +705,10 @@ export default function UserHomePage() {
                 className={`flex items-center px-3 py-1 mt-2 rounded-full w-fit ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'
                   }`}
               >
-                <span className="text-[#3AB1A0] text-sm">🏁 Goal: {data.caloriesGoal.toLocaleString()}</span>
+                <span className="inline-flex items-center gap-1.5 text-sm text-[#3AB1A0]">
+                  <Target aria-hidden="true" className="h-4 w-4" />
+                  Goal: {data.caloriesGoal.toLocaleString()}
+                </span>
               </div>
             </div>
 
@@ -864,7 +802,7 @@ export default function UserHomePage() {
         {/* Service Plans Swiper - Only shown when user has no purchases at all */}
         {!hasAnyPurchase && (
           <div className="pt-6 pb-4">
-            <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><SpoonGifLoader size="md" /></div>}>
+            <Suspense fallback={<CardGridSkeleton cards={2} className="min-h-[18rem]" />}>
               <ServicePlansSwiper />
             </Suspense>
           </div>
@@ -928,7 +866,8 @@ export default function UserHomePage() {
                           {currentPurchase.hasDietitian ? 'Your Dietitian' : 'Your Plan'}
                         </h3>
                         <span className="px-2 py-0.5 bg-[#3AB1A0] text-white text-xs font-semibold rounded-full">
-                          Active ✓
+                          <CheckCircle2 aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />
+                          Active
                         </span>
                       </div>
                       {currentPurchase.hasDietitian && (
@@ -963,7 +902,8 @@ export default function UserHomePage() {
                     <div className="flex items-center justify-between mb-3">
                       <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Active Plan</span>
                       <span className="px-3 py-1 bg-[#61a035]/15 text-[#61a035] text-xs font-semibold rounded-full">
-                        🟢 Active
+                        <CheckCircle2 aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />
+                        Active
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -1054,7 +994,8 @@ export default function UserHomePage() {
                       <div className="flex items-center gap-2">
                         <h3 className={`text-lg font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Your Dietitian</h3>
                         <span className="px-2 py-0.5 bg-[#3AB1A0] text-white text-xs font-semibold rounded-full">
-                          Assigned ✓
+                          <UserCheck aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />
+                          Assigned
                         </span>
                       </div>
                       <p className="text-base font-semibold text-[#3AB1A0] mt-1">
@@ -1170,7 +1111,10 @@ export default function UserHomePage() {
                       />
                     </div>
                     <div className="flex-1">
-                      <h3 className={`text-lg font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>Plan Purchased! 🎉</h3>
+                      <h3 className={`flex items-center gap-2 text-lg font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+                        <PartyPopper aria-hidden="true" className="h-5 w-5 text-[#E06A26]" />
+                        Plan purchased
+                      </h3>
                       <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                         You've successfully purchased <span className="font-semibold text-[#E06A26]">{currentPurchase.planName}</span>
                       </p>
@@ -1341,17 +1285,17 @@ export default function UserHomePage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-sm">
                     <div className="flex items-center justify-center h-24 mb-3 overflow-hidden bg-white/30 rounded-xl">
-                      <span className="text-4xl" role="img" aria-label="Healthy breakfast">🥗</span>
+                      <CookingPot aria-hidden="true" className="h-9 w-9" />
                     </div>
-                    <p className="text-sm font-semibold">Healthy Breakfast</p>
+                    <p className="text-sm font-semibold">Healthy breakfast</p>
                     <p className="mt-1 text-xs text-white/80">Start your day right</p>
                   </div>
                   <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-sm">
                     <div className="flex items-center justify-center h-24 mb-3 overflow-hidden bg-white/30 rounded-xl">
-                      <span className="text-4xl" role="img" aria-label="Fresh salad">🥬</span>
+                      <Salad aria-hidden="true" className="h-9 w-9" />
                     </div>
-                    <p className="text-sm font-semibold">Fresh Salads</p>
-                    <p className="mt-1 text-xs text-white/80">Colorful vegetables</p>
+                    <p className="text-sm font-semibold">Fresh salads</p>
+                    <p className="mt-1 text-xs text-white/80">Enjoy colorful vegetables</p>
                   </div>
                 </div>
               </div>
@@ -1362,16 +1306,16 @@ export default function UserHomePage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-sm">
                     <div className="flex items-center justify-center h-24 mb-3 overflow-hidden bg-white/30 rounded-xl">
-                      <span className="text-4xl" role="img" aria-label="Workout">🏋️</span>
+                      <Dumbbell aria-hidden="true" className="h-9 w-9" />
                     </div>
-                    <p className="text-sm font-semibold">Daily Workout</p>
-                    <p className="mt-1 text-xs text-white/80">30 mins exercise</p>
+                    <p className="text-sm font-semibold">Daily workout</p>
+                    <p className="mt-1 text-xs text-white/80">Exercise for 30 minutes</p>
                   </div>
                   <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-sm">
                     <div className="flex items-center justify-center h-24 mb-3 overflow-hidden bg-white/30 rounded-xl">
-                      <span className="text-4xl" role="img" aria-label="Running">🏃</span>
+                      <PersonStanding aria-hidden="true" className="h-9 w-9" />
                     </div>
-                    <p className="text-sm font-semibold">Cardio Run</p>
+                    <p className="text-sm font-semibold">Cardio run</p>
                     <p className="mt-1 text-xs text-white/80">Build endurance</p>
                   </div>
                 </div>
@@ -1383,17 +1327,17 @@ export default function UserHomePage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-sm">
                     <div className="flex items-center justify-center h-24 mb-3 overflow-hidden bg-white/30 rounded-xl">
-                      <span className="text-4xl" role="img" aria-label="Yoga">🧘</span>
+                      <Activity aria-hidden="true" className="h-9 w-9" />
                     </div>
-                    <p className="text-sm font-semibold">Morning Yoga</p>
-                    <p className="mt-1 text-xs text-white/80">Stretch & relax</p>
+                    <p className="text-sm font-semibold">Morning yoga</p>
+                    <p className="mt-1 text-xs text-white/80">Stretch and relax</p>
                   </div>
                   <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-sm">
                     <div className="flex items-center justify-center h-24 mb-3 overflow-hidden bg-white/30 rounded-xl">
-                      <span className="text-4xl" role="img" aria-label="Sleep">😴</span>
+                      <Bed aria-hidden="true" className="h-9 w-9" />
                     </div>
-                    <p className="text-sm font-semibold">Quality Sleep</p>
-                    <p className="mt-1 text-xs text-white/80">7-8 hours rest</p>
+                    <p className="text-sm font-semibold">Quality sleep</p>
+                    <p className="mt-1 text-xs text-white/80">Rest for 7–8 hours</p>
                   </div>
                 </div>
               </div>
@@ -1561,7 +1505,7 @@ export default function UserHomePage() {
             </div>
             <p className="text-center">
               <span className={`text-2xl font-bold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>{data.steps.current.toLocaleString()}</span>
-              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}> Steps</span>
+              <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}> steps</span>
             </p>
           </Link>
         </div>
@@ -1643,7 +1587,7 @@ export default function UserHomePage() {
         )}
 
         {/* Transformation Success Stories */}
-        <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><SpoonGifLoader size="md" /></div>}>
+        <Suspense fallback={<CardGridSkeleton cards={2} className="min-h-[22rem]" />}>
           <TransformationSwiper />
         </Suspense>
 
@@ -1653,18 +1597,13 @@ export default function UserHomePage() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-[#E06A26]">Blogs</h2>
               <Link href="/user/blogs" className="text-[#3AB1A0] text-sm font-medium uppercase tracking-wider hover:underline">
-                View All
+                View all
               </Link>
             </div>
           </div>
 
           {blogsLoading ? (
-            <div className={`rounded-2xl p-6 ${isDarkMode ? 'bg-gray-900/60 border border-gray-800' : 'bg-white shadow-md'}`}>
-              <div className="flex items-center gap-3">
-                <SpoonGifLoader size="sm" />
-                <p className={`${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Loading blogs…</p>
-              </div>
-            </div>
+            <CardGridSkeleton cards={3} />
           ) : blogsError ? (
             <div className={`rounded-2xl p-6 ${isDarkMode ? 'bg-gray-900/60 border border-gray-800' : 'bg-white shadow-md'}`}>
               <p className={`${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>{blogsError}</p>
@@ -1699,7 +1638,7 @@ export default function UserHomePage() {
               <p className={`${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>No blogs available yet.</p>
             </div>
           ) : (
-            <div className="px-">
+            <div className="px-0">
               <div className="flex gap-4 pb-2 overflow-x-auto snap-x snap-mandatory scrollbar-hide">
                 {blogs.map((blog) => {
                   const getCategoryColor = (category: string) => {

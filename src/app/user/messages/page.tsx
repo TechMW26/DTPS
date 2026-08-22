@@ -7,7 +7,6 @@ import Link from "next/link";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useUnreadCountsSafe } from "@/contexts/UnreadCountContext";
 import { useRealtime } from "@/hooks/useRealtime";
-import { ResponsiveLayout } from "@/components/client/layouts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,7 +56,7 @@ import {
 } from "lucide-react";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { toast } from "sonner";
-import SpoonGifLoader from "@/components/ui/SpoonGifLoader";
+import { ClientPageSkeleton } from "@/components/ui/skeleton";
 import {
   getMediaKind,
   getMediaProxyUrl,
@@ -1689,21 +1688,15 @@ export default function UserMessagesPage() {
   };
 
   if (loading) {
-    return (
-      <div
-        className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? "bg-gray-950" : "bg-white"}`}
-      >
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="list" showHeader={false} />;
   }
 
   return (
     <>
       <div
-        className={`h-dvh md:h-screen overflow-hidden ${isDarkMode ? "bg-gray-950" : "bg-[#ECE5DD]"}`}
+        className={`client-messages-height overflow-hidden ${isDarkMode ? "bg-gray-950" : "bg-[#ECE5DD]"}`}
       >
-        <div className="h-full md:h-[calc(100vh-120px)] flex flex-col md:flex-row md:gap-4 md:p-6 overflow-hidden">
+        <div className="flex h-full flex-col overflow-hidden md:flex-row md:gap-4 md:p-6">
           {/* Conversations List - Hidden on mobile when conversation selected */}
           <div
             className={`md:w-80 shrink-0 md:rounded-xl md:shadow-sm md:border ${
@@ -1720,7 +1713,7 @@ export default function UserMessagesPage() {
                   : "md:bg-white border-gray-100"
               }`}
             >
-              <Link href="/user" className="p-2 -ml-2 md:hidden">
+              <Link href="/user" aria-label="Back to dashboard" className="-ml-2 p-2 md:hidden">
                 <ArrowLeft className="w-5 h-5 text-white md:text-gray-700" />
               </Link>
               <h2
@@ -1811,15 +1804,15 @@ export default function UserMessagesPage() {
                         }`}
                       >
                         {conv.lastMessage?.type === "image"
-                          ? "📷 Photo"
+                          ? "Photo"
                           : conv.lastMessage?.type === "video"
-                            ? "🎬 Video"
+                            ? "Video"
                             : conv.lastMessage?.type === "audio"
-                              ? "🎵 Audio"
+                              ? "Audio"
                               : conv.lastMessage?.type === "voice"
-                                ? "🎤 Voice message"
+                                ? "Voice message"
                                 : conv.lastMessage?.type === "file"
-                                  ? "📄 Document"
+                                  ? "Document"
                                   : conv.lastMessage?.content ||
                                     "Start a conversation"}
                       </p>

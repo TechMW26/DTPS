@@ -103,6 +103,7 @@ import HistorySection from "@/components/clientDashboard/HistorySection";
 import TasksSection from "@/components/clientDashboard/TasksSection";
 import ImageLightbox from "@/components/ui/image-lightbox";
 import { uploadFileReliably } from "@/lib/client-upload";
+import { resilientFetch } from "@/lib/api/resilient-fetch";
 import {
   getPreferredVoiceMimeType,
   getVoiceFileExtension,
@@ -420,6 +421,7 @@ export default function ClientDetailPage() {
   const [clientTasks, setClientTasks] = useState<ClientTask[]>([]);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
+  const taskOperationIdRef = useRef<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<ClientTask | null>(null);
   const [newTask, setNewTask] = useState<ClientTask>({
     taskType: "General Followup",
@@ -443,6 +445,7 @@ export default function ClientDetailPage() {
   const [renewalStartDate, setRenewalStartDate] = useState("");
   const [renewalEndDate, setRenewalEndDate] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const noteOperationIdRef = useRef<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
 
   // Audio recording state
@@ -606,36 +609,26 @@ export default function ClientDetailPage() {
   const [weightLog, setWeightLog] = useState<ClientWeightLogEntry[]>([]);
 
   const fetchWithRetry = useCallback(
-    async (input: RequestInfo | URL, init: RequestInit = {}, retries = 1) => {
-      let lastError: unknown = null;
+    async (input: RequestInfo | URL, init: RequestInit = {}, retries = 2) => {
+      const target = String(input);
+      const method = String(init.method || "GET").toUpperCase();
+      // These POST routes replace/upsert one client-owned record, so replaying
+      // them is safe. Create routes such as notes/tasks remain single-attempt
+      // unless their API gains explicit idempotency support.
+      const isReplaceStyleMutation = method === "POST" && [
+        "/lifestyle",
+        "/medical",
+        "/recall",
+      ].some((suffix) => target.includes(suffix));
 
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 15000);
-
-        try {
-          const response = await fetch(input, {
-            ...init,
-            signal: controller.signal,
-            cache: init.cache || "no-store",
-          });
-          window.clearTimeout(timeoutId);
-          return response;
-        } catch (error) {
-          window.clearTimeout(timeoutId);
-          lastError = error;
-          if (attempt < retries) {
-            await new Promise((resolve) =>
-              window.setTimeout(resolve, 250 * (attempt + 1)),
-            );
-            continue;
-          }
-        }
-      }
-
-      throw lastError instanceof Error
-        ? lastError
-        : new Error("Request failed");
+      return resilientFetch(input, {
+        ...init,
+        cache: init.cache || "no-store",
+      }, {
+        attempts: retries + 1,
+        timeoutMs: 30_000,
+        retryUnsafe: isReplaceStyleMutation,
+      });
     },
     [],
   );
@@ -1164,11 +1157,16 @@ export default function ClientDetailPage() {
             : newNote.content,
       };
 
+      noteOperationIdRef.current ??= crypto.randomUUID();
+
       const response = await fetchWithRetry(
         `/api/users/${params.clientId}/notes`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-idempotency-key": noteOperationIdRef.current,
+          },
           body: JSON.stringify(noteToSave),
         },
       );
@@ -1195,6 +1193,7 @@ export default function ClientDetailPage() {
         setRenewalStartDate("");
         setRenewalEndDate("");
         setIsAddingNote(false);
+        noteOperationIdRef.current = null;
         emitDataChange(DataEventTypes.NOTES_UPDATED, {
           clientId: params.clientId,
           noteId: savedNote?._id || null,
@@ -2300,14 +2299,22 @@ export default function ClientDetailPage() {
 
     try {
       setSavingTask(true);
-      const response = await fetch(`/api/users/${params.clientId}/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...newTask,
-          title: newTask.title || newTask.taskType,
-        }),
-      });
+      taskOperationIdRef.current ??= crypto.randomUUID();
+      const response = await resilientFetch(
+        `/api/users/${params.clientId}/tasks`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-idempotency-key": taskOperationIdRef.current,
+          },
+          body: JSON.stringify({
+            ...newTask,
+            title: newTask.title || newTask.taskType,
+          }),
+        },
+        { attempts: 3, timeoutMs: 30_000 },
+      );
 
       if (response.ok) {
         const data = await response.json();
@@ -2325,6 +2332,7 @@ export default function ClientDetailPage() {
           status: "pending",
         });
         setIsAddingTask(false);
+        taskOperationIdRef.current = null;
         fetchClientTasks();
       } else {
         let errorMsg = "Failed to create task";

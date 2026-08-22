@@ -11,6 +11,7 @@ import TrackingStatsGrid from './TrackingStatsGrid';
 // import TimeBasedBarChart from './TimeBasedBarChart';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { ListSkeleton } from '@/components/ui/skeleton';
 
 interface StepsEntry {
   _id: string;
@@ -268,11 +269,7 @@ export default function StepsSection({ clientId, selectedDate }: StepsSectionPro
   ];
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-      </div>
-    );
+    return <ListSkeleton rows={5} />;
   }
 
   return (

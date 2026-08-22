@@ -139,6 +139,17 @@ describe('height + recipe CRUD integrations (supertest)', () => {
             });
 
             try {
+                const invalidPublishResponse = await request(updateDeleteServer)
+                    .put(`/api/recipes/${createdRecipeId}`)
+                    .send({ ingredients: [], instructions: [] });
+
+                expect(invalidPublishResponse.status).toBe(400);
+                expect(invalidPublishResponse.body?.error).toBe('Recipe is incomplete');
+
+                const recipeAfterRejectedPublish = await Recipe.findById(createdRecipeId).lean();
+                expect(recipeAfterRejectedPublish?.ingredients).toHaveLength(2);
+                expect(recipeAfterRejectedPublish?.instructions).toHaveLength(2);
+
                 const updateResponse = await request(updateDeleteServer)
                     .put(`/api/recipes/${createdRecipeId}`)
                     .send({

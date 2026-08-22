@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import mongoose from 'mongoose';
 import Task from '@/lib/db/models/Task';
+import '@/lib/db/models/Tag';
 import { logHistoryServer } from '@/lib/server/history';
 import { TASK_TYPES, TIME_OPTIONS } from '@/lib/constants/tasks';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
@@ -90,6 +91,23 @@ export async function POST(
 
     const clientObjectId = new mongoose.Types.ObjectId(id);
     const dietitianObjectId = new mongoose.Types.ObjectId(session.user.id);
+    const rawOperationId = request.headers.get('x-idempotency-key')?.trim();
+    const operationId = rawOperationId && /^[a-zA-Z0-9._:-]{8,128}$/.test(rawOperationId)
+      ? rawOperationId
+      : undefined;
+
+    if (operationId) {
+      const existingTask = await Task.findOne({
+        client: clientObjectId,
+        dietitian: dietitianObjectId,
+        operationId,
+      })
+        .populate('dietitian', 'firstName lastName email')
+        .populate('tags', 'name color icon');
+      if (existingTask) {
+        return NextResponse.json({ message: 'Task already created', task: existingTask, replayed: true });
+      }
+    }
 
     // Create the task
     const newTask = new Task({
@@ -105,7 +123,8 @@ export async function POST(
       notifyClientOnChat: notifyClientOnChat || false,
       notifyDieticianOnCompletion: notifyDieticianOnCompletion || '',
       status: 'pending',
-      tags: Array.isArray(tags) ? tags.slice(0, 1) : []
+      tags: Array.isArray(tags) ? tags.slice(0, 1) : [],
+      operationId,
     });
 
     await newTask.save();

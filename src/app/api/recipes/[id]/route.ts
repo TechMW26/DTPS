@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import { clearCacheByTag } from '@/lib/api/utils';
 import { normalizeToArray, normalizeNutritionValue } from '@/lib/recipe-normalize';
 import { deleteMultipleFromBlob } from '@/lib/storage/blob-storage';
+import { getRecipePublicationIssues } from '@/lib/recipe-quality';
 
 function jsonNoStore(body: unknown, init?: ResponseInit) {
   const response = NextResponse.json(body, init);
@@ -215,6 +216,15 @@ export async function POST(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
+    const sourceIssues = getRecipePublicationIssues(sourceRecipe);
+    if (sourceIssues.length > 0) {
+      return NextResponse.json({
+        error: 'Recipe is incomplete',
+        message: 'Complete this recipe before duplicating or publishing it',
+        details: sourceIssues,
+      }, { status: 400 });
+    }
+
     const duplicateName = await buildUniqueDuplicateName(String(sourceRecipe.name || ''), session.user.id);
 
     const duplicateData: Record<string, any> = {
@@ -312,6 +322,14 @@ export async function PUT(
         }));
     }
 
+    if (Array.isArray(data.instructions)) {
+      data.instructions = data.instructions
+        .filter((instruction: unknown) =>
+          typeof instruction === 'string' && instruction.trim().length > 0,
+        )
+        .map((instruction: string) => instruction.trim());
+    }
+
     // Transform nutrition if provided
     if (data.nutrition && typeof data.nutrition === 'object') {
       data.calories = normalizeNutritionValue(data.nutrition.calories);
@@ -331,6 +349,19 @@ export async function PUT(
     // Calculate total time if times changed
     if (data.prepTime !== undefined || data.cookTime !== undefined) {
       data.totalTime = (data.prepTime || recipe.prepTime || 0) + (data.cookTime || recipe.cookTime || 0);
+    }
+
+    const nextRecipe = {
+      ...recipe.toObject(),
+      ...data,
+    };
+    const publicationIssues = getRecipePublicationIssues(nextRecipe);
+    if (nextRecipe.isActive !== false && publicationIssues.length > 0) {
+      return NextResponse.json({
+        error: 'Recipe is incomplete',
+        message: 'Complete the recipe before publishing it.',
+        issues: publicationIssues,
+      }, { status: 400 });
     }
 
     const updated = await Recipe.findByIdAndUpdate(id, {

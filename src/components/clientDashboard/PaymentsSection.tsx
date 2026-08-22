@@ -11,6 +11,7 @@ import { useRealtime } from "@/hooks/useRealtime";
 import { useDataRefresh, DataEventTypes } from "@/lib/events/useDataRefresh";
 import ImageLightbox from "@/components/ui/image-lightbox";
 import { resolvePaymentStatus, type ResolvedPaymentStatus } from '@/lib/payments/payment-status';
+import { TableSkeleton } from '@/components/ui/skeleton';
 
 // Service Plan interfaces
 interface PricingTier {
@@ -1267,10 +1268,7 @@ export default function PaymentsSection({
 
       <CardContent>
         {loading || loadingPurchases ? (
-          <div className="py-12 text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-400" />
-            <p className="mt-2 text-sm text-gray-500">Loading payments...</p>
-          </div>
+          <TableSkeleton rows={6} columns={5} />
         ) : (() => {
           // Combine payment links and imported purchases (without payment links) into unified view
           const importedPurchases = clientPurchases.filter(purchase => {

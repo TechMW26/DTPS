@@ -7,6 +7,16 @@ import { useNativeApp, ForegroundNotification } from '@/hooks/useNativeApp';
 import { socketClient } from '@/lib/realtime/socket-client';
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 import { toast } from 'sonner';
+import {
+    Bell,
+    CalendarDays,
+    CheckCircle2,
+    CreditCard,
+    MessageCircle,
+    NotebookText,
+    Phone,
+    Utensils,
+} from 'lucide-react';
 
 interface PushNotificationProviderProps {
     children: React.ReactNode;
@@ -112,33 +122,33 @@ export function PushNotificationProvider({
         switch (notificationType) {
             case 'new_message':
             case 'message':
-                return '💬';
+                return MessageCircle;
             case 'appointment':
             case 'appointment_booked':
             case 'appointment_cancelled':
             case 'appointment_reminder':
-                return '📅';
+                return CalendarDays;
             case 'meal':
             case 'meal_plan':
             case 'meal_plan_created':
             case 'meal_plan_updated':
             case 'meal_upcoming':
             case 'meal_photo_prompt':
-                return '🍽️';
+                return Utensils;
             case 'payment':
             case 'payment_link':
             case 'payment_link_created':
-                return '💳';
+                return CreditCard;
             case 'task_assigned':
-                return '✅';
+                return CheckCircle2;
             case 'call':
-                return '📞';
+                return Phone;
             case 'update':
             case 'custom':
             case 'client_update':
-                return '📝';
+                return NotebookText;
             default:
-                return '🔔';
+                return Bell;
         }
     }, []);
 
@@ -286,7 +296,7 @@ export function PushNotificationProvider({
 
     const showPushBanner = useCallback((payload: any) => {
         const { title, body, type } = extractNotificationMeta(payload);
-        const icon = getNotificationIcon(type);
+        const NotificationIcon = getNotificationIcon(type);
         const detailLine = buildDetailLine(payload);
         const targetPath = resolveTargetPath(payload);
 
@@ -301,7 +311,10 @@ export function PushNotificationProvider({
                 title="Open related work"
             >
                 <div className="web-push-banner-header">
-                    <span className="web-push-banner-title">{icon} {title}</span>
+                    <span className="web-push-banner-title">
+                        <NotificationIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
+                        <span>{title}</span>
+                    </span>
                     <span className="web-push-banner-open">Open &gt;</span>
                 </div>
                 {body ? <p className="web-push-banner-body">{body}</p> : null}

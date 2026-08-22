@@ -23,6 +23,7 @@ export function GlobalFetchInterceptor() {
     // Retry configuration — fast retries
     const MAX_RETRIES = 1; // Reduced from 2 to 1 for faster perceived response
     const RETRY_DELAY = 200; // ms (was 300)
+    const pendingGetRequests = new Map<string, Promise<Response>>();
 
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -77,17 +78,19 @@ export function GlobalFetchInterceptor() {
       // GET requests are allowed to be cached by the service worker for offline support
       const method = (init?.method || 'GET').toUpperCase();
       const needsCacheBust = method !== 'GET' && method !== 'HEAD';
+      const requestHeaders = new Headers(init?.headers);
+      const retryManaged = requestHeaders.get('x-dtps-retry-managed') === '1';
+      const availableRetries = retryManaged ? 0 : retriesLeft;
+
+      if (needsCacheBust) {
+        requestHeaders.set('Cache-Control', 'no-cache');
+        requestHeaders.set('Pragma', 'no-cache');
+      }
 
       const modifiedInit: RequestInit = {
         ...init,
         credentials: 'same-origin',
-        headers: {
-          ...init?.headers,
-          ...(needsCacheBust ? {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-          } : {}),
-        },
+        headers: requestHeaders,
       };
 
       try {
@@ -103,13 +106,13 @@ export function GlobalFetchInterceptor() {
         }
 
         // Retry on 401 Unauthorized (session might not be ready) - skip for auth calls
-        if (response.status === 401 && retriesLeft > 0 && !isAuthCall) {
+        if (response.status === 401 && availableRetries > 0 && !isAuthCall) {
           await sleep(RETRY_DELAY);
           return fetchWithRetry(input, init, retriesLeft - 1);
         }
 
         // Retry on server errors — only for GET requests
-        if (response.status >= 500 && retriesLeft > 0 && method === 'GET') {
+        if (response.status >= 500 && availableRetries > 0 && method === 'GET') {
           await sleep(RETRY_DELAY);
           return fetchWithRetry(input, init, retriesLeft - 1);
         }
@@ -121,7 +124,7 @@ export function GlobalFetchInterceptor() {
         return response;
       } catch (error) {
         // Retry on network errors (including "Failed to fetch")
-        if (retriesLeft > 0 && error instanceof Error) {
+        if (availableRetries > 0 && error instanceof Error) {
           const isNetworkError =
             error.message.includes('Failed to fetch') ||
             error.message.includes('NetworkError') ||
@@ -144,10 +147,47 @@ export function GlobalFetchInterceptor() {
       }
     };
 
-    window.fetch = fetchWithRetry;
+    // Coalesce only concurrent, signal-free GET requests. Each caller receives
+    // its own Response clone, so consuming one body never affects another.
+    // This removes duplicate profile/count/service-plan requests mounted by
+    // adjacent client components without introducing stale response caching.
+    const fetchOptimized = async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (input instanceof Request || init?.signal) {
+        return fetchWithRetry(input, init);
+      }
+
+      const url = typeof input === 'string' ? input : input.href;
+      const method = (init?.method || 'GET').toUpperCase();
+      const isApiGet = method === 'GET' && (
+        url.startsWith('/api') || url.startsWith(window.location.origin + '/api')
+      );
+
+      if (!isApiGet) return fetchWithRetry(input, init);
+
+      const requestKey = new URL(url, window.location.origin).href;
+      const pendingRequest = pendingGetRequests.get(requestKey);
+      if (pendingRequest) return (await pendingRequest).clone();
+
+      const request = fetchWithRetry(input, init);
+      pendingGetRequests.set(requestKey, request);
+
+      try {
+        return (await request).clone();
+      } finally {
+        if (pendingGetRequests.get(requestKey) === request) {
+          pendingGetRequests.delete(requestKey);
+        }
+      }
+    };
+
+    window.fetch = fetchOptimized;
 
     return () => {
       window.fetch = originalFetch;
+      pendingGetRequests.clear();
     };
   }, []);
 

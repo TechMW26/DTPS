@@ -9,6 +9,7 @@ import { useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
 interface MobileHeaderProps {
   title: string;
   subtitle?: string;
+  subtitleIcon?: React.ReactNode;
   showBack?: boolean;
   showNotification?: boolean;
   showSettings?: boolean;
@@ -19,6 +20,7 @@ interface MobileHeaderProps {
 export function MobileHeader({
   title,
   subtitle,
+  subtitleIcon,
   showBack = false,
   showNotification = false,
   showSettings = false,
@@ -57,7 +59,12 @@ export function MobileHeader({
           {/* Center - Title and Subtitle */}
           <div className="flex-1 text-center">
             <h1 className="text-lg font-bold text-gray-900 truncate">{title}</h1>
-            {subtitle && <p className="text-sm text-gray-500 truncate">{subtitle}</p>}
+            {subtitle && (
+              <p className="flex min-w-0 items-center justify-center gap-1 text-sm text-gray-500">
+                {subtitleIcon}
+                <span className="truncate">{subtitle}</span>
+              </p>
+            )}
           </div>
 
           {/* Right side - Notification */}

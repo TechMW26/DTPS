@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { MealGridTable } from './MealGridTable';
 import { DietPlanExport } from './DietPlanExport';
-import { Save, User, Download, RefreshCw, Trash2 } from 'lucide-react';
+import { Save, User, Download, RefreshCw, Trash2, CloudOff, CircleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
 import {
@@ -59,7 +59,9 @@ type DietPlanDashboardProps = {
   clientId?: string; // Client ID for saving
   clientName?: string; // Client name for display
   readOnly?: boolean; // View mode - hide save buttons and disable editing
-  draftSaveStatus?: 'idle' | 'saving' | 'saved' | 'error'; // Draft save status from parent
+  draftSaveStatus?: 'idle' | 'saving' | 'retrying' | 'offline' | 'saved' | 'error';
+  draftSaveMessage?: string;
+  onRetryDraftSave?: () => void;
   clientDietaryRestrictions?: string; // comma-separated dietary restrictions
   clientMedicalConditions?: string;   // comma-separated medical conditions
   clientAllergies?: string;           // comma-separated allergies
@@ -204,7 +206,7 @@ const normalizeMealKeys = (meals: Record<string, Meal>): Record<string, Meal> =>
   return normalized;
 };
 
-export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMealDataChange, onDurationChange, duration = 7, startDate, initialMeals, initialMealTypes, clientId, clientName, readOnly = false, draftSaveStatus, clientDietaryRestrictions, clientMedicalConditions, clientAllergies, holdDays = [], totalHeldDays = 0 }: DietPlanDashboardProps) {
+export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMealDataChange, onDurationChange, duration = 7, startDate, initialMeals, initialMealTypes, clientId, clientName, readOnly = false, draftSaveStatus, draftSaveMessage, onRetryDraftSave, clientDietaryRestrictions, clientMedicalConditions, clientAllergies, holdDays = [], totalHeldDays = 0 }: DietPlanDashboardProps) {
   // Get session for role-based export visibility
   const { data: session } = useSession();
   const userRole = session?.user?.role as string | undefined;
@@ -610,7 +612,19 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
                   {draftSaveStatus === 'saving' && (
                     <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                       <RefreshCw className="h-3 w-3 animate-spin" />
-                      Auto-saving...
+                      Saving...
+                    </span>
+                  )}
+                  {draftSaveStatus === 'retrying' && (
+                    <span className="text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1" title={draftSaveMessage}>
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      Retrying...
+                    </span>
+                  )}
+                  {draftSaveStatus === 'offline' && (
+                    <span className="text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1" title={draftSaveMessage}>
+                      <CloudOff className="h-3 w-3" />
+                      Saved on this device
                     </span>
                   )}
                   {draftSaveStatus === 'saved' && (
@@ -620,9 +634,15 @@ export function DietPlanDashboard({ clientData, onBack, onSavePlan, onSave, onMe
                     </span>
                   )}
                   {draftSaveStatus === 'error' && (
-                    <span className="text-xs text-red-500 dark:text-red-400">
-                      Save failed
-                    </span>
+                    <button
+                      type="button"
+                      onClick={onRetryDraftSave}
+                      className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1 hover:underline"
+                      title={draftSaveMessage || 'Automatic retries were unsuccessful. Select to try again.'}
+                    >
+                      <CircleAlert className="h-3 w-3" />
+                      Could not sync. Try again
+                    </button>
                   )}
                 </>
               )}

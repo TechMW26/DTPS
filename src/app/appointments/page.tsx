@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { ListSkeleton } from '@/components/ui/skeleton';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import {
   Calendar,
@@ -28,17 +28,20 @@ import dynamic from 'next/dynamic';
 
 // Import mobile version for clients
 const MobileAppointmentsPage = dynamic(() => import('./page-mobile'), {
-  ssr: false
+  ssr: false,
+  loading: () => <ListSkeleton rows={6} />,
 });
 
 // Import DietitianSlotsView for slots tab
 const DietitianSlotsView = dynamic(() => import('@/components/appointments/DietitianSlotsView'), {
-  ssr: false
+  ssr: false,
+  loading: () => <ListSkeleton rows={6} />,
 });
 
 // Import TimeSlotManagement for managing availability
 const TimeSlotManagement = dynamic(() => import('@/components/appointments/TimeSlotManagement'), {
-  ssr: false
+  ssr: false,
+  loading: () => <ListSkeleton rows={6} />,
 });
 
 interface LifecycleEvent {
@@ -421,9 +424,7 @@ function DesktopAppointmentsPage() {
 
           <TabsContent value="upcoming" className="space-y-4">
             {loading ? (
-              <div className="flex items-center justify-center h-32">
-                <LoadingSpinner />
-              </div>
+              <ListSkeleton rows={6} />
             ) : appointmentGroups.upcoming.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-12">

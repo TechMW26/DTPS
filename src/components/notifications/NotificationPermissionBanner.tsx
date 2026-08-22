@@ -59,7 +59,7 @@ export function NotificationPermissionBanner({
             toast.dismiss(toastIdRef.current);
             toastIdRef.current = null;
           }
-          toast.success('Push notifications enabled! You will receive timely alerts and reminders.');
+          toast.success('Push notifications enabled. You will receive timely alerts and reminders.');
         }
       }
     } catch (error) {
@@ -97,7 +97,7 @@ export function NotificationPermissionBanner({
                 <Bell className="h-4 w-4 text-[#E06A26] shrink-0" />
               )}
               <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                {isDenied ? 'Notifications Blocked' : 'Enable Notifications'}
+                {isDenied ? 'Notifications blocked' : 'Enable notifications'}
               </span>
             </div>
             <button
@@ -106,6 +106,7 @@ export function NotificationPermissionBanner({
                 toastIdRef.current = null;
                 handleDismiss();
               }}
+              aria-label="Dismiss notification prompt"
               className="rounded-md p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
             >
               <X className="h-3.5 w-3.5" />
@@ -129,7 +130,7 @@ export function NotificationPermissionBanner({
               }}
               className="rounded-md px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             >
-              Maybe Later
+              Maybe later
             </button>
             {isDenied ? (
               <button
@@ -140,7 +141,7 @@ export function NotificationPermissionBanner({
                 }}
                 className="rounded-md bg-[#E06A26] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#c55a1f] transition-colors"
               >
-                Browser Settings
+                Browser settings
               </button>
             ) : (
               <button
@@ -158,6 +159,7 @@ export function NotificationPermissionBanner({
         position: 'bottom-right',
         duration: Infinity,
         dismissible: true,
+        className: 'notification-permission-toast',
       }
     );
   }, [shouldShow, permission, isStaffRole, isRequesting, status]);

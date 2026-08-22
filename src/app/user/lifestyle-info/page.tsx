@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 
 interface LifestyleData {
   heightFeet: string;
@@ -236,11 +236,7 @@ export default function LifestyleInfoPage() {
   };
 
   if (loading) {
-    return (
-      <div className={`fixed inset-0 ${isDarkMode ? 'bg-gray-950' : 'bg-white'} flex items-center justify-center z-100`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="form" showHeader={false} />;
   }
 
   return (
@@ -265,7 +261,7 @@ export default function LifestyleInfoPage() {
         </div>
       </div>
 
-      <div className="px-4 py-6 pb-24 space-y-6">
+      <div className="space-y-6 px-4 py-6">
         {/* Activity Level */}
         <Section title="Activity Level" icon={Activity}>
           <div className="space-y-2">

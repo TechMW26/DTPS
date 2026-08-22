@@ -8,6 +8,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
+import {
   Users,
   TrendingUp,
   DollarSign,
@@ -19,9 +31,13 @@ import {
   Edit,
   Trash2,
   MoreHorizontal,
-  Tag
+  Tag,
+  RefreshCw,
+  ShieldCheck,
 } from 'lucide-react';
 import Link from 'next/link';
+import { SYSTEM_REFRESH_BROWSER_EVENT } from '@/lib/system-refresh';
+import { DashboardContentSkeleton } from '@/components/ui/skeleton';
 
 // Helper function to check if an alert can be deleted
 const isAlertDeletable = (alertId: string) => {
@@ -81,6 +97,42 @@ export default function AdminDashboard() {
   const [systemAlerts, setSystemAlerts] = useState<SystemAlert[]>([]);
   const [topDietitians, setTopDietitians] = useState<TopDietitian[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshingAllSessions, setRefreshingAllSessions] = useState(false);
+
+  const handleSystemRefresh = async () => {
+    if (refreshingAllSessions) return;
+    setRefreshingAllSessions(true);
+
+    try {
+      const response = await fetch('/api/admin/system-refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: 'Admin dashboard cache clear and session-safe refresh',
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Unable to start the system refresh');
+      }
+
+      toast.success(
+        `Refresh sent to ${result.connectedUsers || 0} connected user${result.connectedUsers === 1 ? '' : 's'}. Other users will refresh when they return.`,
+      );
+      window.dispatchEvent(
+        new CustomEvent(SYSTEM_REFRESH_BROWSER_EVENT, { detail: result }),
+      );
+      setRefreshingAllSessions(false);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Unable to start the system refresh',
+      );
+      setRefreshingAllSessions(false);
+    }
+  };
 
   // Delete alert function
   const handleDeleteAlert = async (alertId: string) => {
@@ -212,12 +264,7 @@ export default function AdminDashboard() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="p-6 flex items-center justify-center min-h-100">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading admin dashboard...</p>
-          </div>
-        </div>
+        <DashboardContentSkeleton />
       </DashboardLayout>
     );
   }
@@ -235,9 +282,60 @@ export default function AdminDashboard() {
               System overview and management
             </p>
           </div>
-          <Button asChild className="w-full sm:w-auto">
-            <Link href="/admin/reports">Generate Report</Link>
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 sm:w-auto"
+                  disabled={refreshingAllSessions}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${refreshingAllSessions ? 'animate-spin' : ''}`}
+                  />
+                  {refreshingAllSessions
+                    ? 'Refreshing everyone…'
+                    : 'Clear cache & refresh all'}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5 text-green-600" />
+                    Refresh every active session?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-2">
+                    <span className="block">
+                      This clears DTPS application caches and reloads connected
+                      admins, dietitians, health counsellors, and clients.
+                    </span>
+                    <span className="block font-medium text-gray-700">
+                      Authentication cookies, saved sessions, drafts, and user
+                      data are preserved. Users who are offline will refresh
+                      when they next open or focus the application.
+                    </span>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={refreshingAllSessions}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleSystemRefresh}
+                    disabled={refreshingAllSessions}
+                    className="gap-2 bg-green-600 hover:bg-green-700"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh all sessions
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            <Button asChild className="w-full sm:w-auto">
+              <Link href="/admin/reports">Generate Report</Link>
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}

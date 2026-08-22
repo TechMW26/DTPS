@@ -49,12 +49,17 @@ export const SOCKET_EVENTS = {
   CLIENT_UPDATED: "client_updated",
   CLIENT_ADDED: "client_added",
   CLIENT_WEIGHT_UPDATED: "client_weight_updated",
+  MEAL_COMPLETION_UPDATED: "meal_completion_updated",
   INITIAL_DATA: "initial_data",
   NEW_LOGS: "new_logs",
 
   // Unread counts (replaces the separate SSE streams)
   UNREAD_COUNTS: "unread_counts",
   STAFF_UNREAD_COUNTS: "staff_unread_counts",
+
+  // Admin-triggered application refresh. Authentication credentials are
+  // intentionally preserved by the client listener.
+  SYSTEM_REFRESH: "system_refresh",
 
   // Client → Server: typing indicator
   SEND_TYPING: "send_typing",

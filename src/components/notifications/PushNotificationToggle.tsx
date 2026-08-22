@@ -49,7 +49,7 @@ export function PushNotificationToggle({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    title: 'Test Notification 🔔',
+                    title: 'Test notification',
                     body: 'This is a test notification from DTPS!',
                 }),
             });

@@ -9,7 +9,7 @@ import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Bell, Check, CheckCheck, Trash2, Calendar, MessageSquare, Utensils, TrendingUp, Clock, CreditCard, Settings, RefreshCw, ArrowLeft } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton, ListSkeleton } from '@/components/ui/skeleton';
 
 interface Notification {
   _id: string;
@@ -207,16 +207,12 @@ export default function NotificationsPage() {
   ];
 
   if (status === 'loading') {
-    return (
-      <div className="fixed inset-0 z-100 flex items-center justify-center bg-white dark:bg-gray-950">
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="list" showHeader={false} />;
   }
 
   return (
     <PageTransition>
-      <div className={`min-h-screen pb-20 overflow-x-hidden transition-colors duration-500 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen overflow-x-hidden transition-colors duration-500 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       {/* Header with centered title */}
       {/* Header with centered title */}
       <div className={`sticky top-0 z-40 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'} border-b`}>
@@ -292,9 +288,7 @@ export default function NotificationsPage() {
       {/* Notifications List */}
       <div className="p-4">
         {loading ? (
-          <div className="fixed inset-0 z-100 flex items-center justify-center bg-white dark:bg-gray-950">
-            <SpoonGifLoader size="lg" />
-          </div>
+          <ListSkeleton rows={7} />
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>

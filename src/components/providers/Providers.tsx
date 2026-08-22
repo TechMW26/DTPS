@@ -9,6 +9,7 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import ServiceWorkerProvider from '@/components/providers/ServiceWorkerProvider';
 import GlobalFetchInterceptor from '@/components/providers/GlobalFetchInterceptor';
 import { SocketProvider } from '@/contexts/SocketContext';
+import SystemRefreshListener from '@/components/providers/SystemRefreshListener';
 
 interface ProvidersProps {
     children: ReactNode;
@@ -20,6 +21,7 @@ export function Providers({ children }: ProvidersProps) {
             <ServiceWorkerProvider />
             <GlobalFetchInterceptor />
             <SocketProvider>
+                <SystemRefreshListener />
                 <ThemeProvider>
                     <PushNotificationProvider autoRegister={true}>
                         <ClientAppLayout>

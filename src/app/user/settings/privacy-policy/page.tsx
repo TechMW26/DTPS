@@ -135,7 +135,7 @@ export default function PrivacyPolicyPage() {
   ];
 
   return (
-    <div className={`min-h-screen pb-24 ${isDarkMode ? 'bg-slate-950' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen ${isDarkMode ? 'bg-slate-950' : 'bg-gray-50'}`}>
       <UserNavBar 
         title="Privacy Policy" 
         showBack={true}

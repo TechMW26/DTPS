@@ -1,7 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Save, Loader2 } from 'lucide-react';
+import {
+  Activity,
+  Brain,
+  Droplets,
+  Flame,
+  Footprints,
+  HeartPulse,
+  Loader2,
+  Moon,
+  NotebookText,
+  Save,
+  Wind,
+  X,
+} from 'lucide-react';
 
 interface WatchManualEntryModalProps {
   watchIsOpen: boolean;
@@ -60,17 +73,21 @@ export function WatchManualEntryModal({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="client-popup-above-nav fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onWatchClose();
       }}
     >
-      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="client-popup-panel flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-5 bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B]">
-          <h3 className="text-lg font-bold text-white">📝 Manual Entry</h3>
-          <button 
+          <h3 className="flex items-center gap-2 text-lg font-bold text-white">
+            <NotebookText aria-hidden="true" className="h-5 w-5" />
+            Manual entry
+          </h3>
+          <button
             onClick={onWatchClose}
+            aria-label="Close manual entry"
             className="p-2 rounded-full hover:bg-white/20 transition-colors"
           >
             <X className="w-5 h-5 text-white" />
@@ -81,10 +98,12 @@ export function WatchManualEntryModal({
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {/* Steps */}
           <div className="bg-gray-50 rounded-xl p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              👣 Steps Count
+            <label htmlFor="watch-steps" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+              <Footprints aria-hidden="true" className="h-4 w-4" />
+              Steps count
             </label>
             <input
+              id="watch-steps"
               type="number"
               value={watchFormData.watchSteps?.count || 0}
               onChange={(e) => setWatchFormData({
@@ -101,10 +120,12 @@ export function WatchManualEntryModal({
 
           {/* Heart Rate */}
           <div className="bg-gray-50 rounded-xl p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              ❤️ Heart Rate (BPM)
+            <label htmlFor="watch-heart-rate" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+              <HeartPulse aria-hidden="true" className="h-4 w-4" />
+              Heart rate (bpm)
             </label>
             <input
+              id="watch-heart-rate"
               type="number"
               value={watchFormData.watchHeartRate?.current || 0}
               onChange={(e) => setWatchFormData({
@@ -118,10 +139,12 @@ export function WatchManualEntryModal({
 
           {/* Sleep */}
           <div className="bg-gray-50 rounded-xl p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              😴 Sleep Hours
+            <label htmlFor="watch-sleep" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+              <Moon aria-hidden="true" className="h-4 w-4" />
+              Sleep hours
             </label>
             <input
+              id="watch-sleep"
               type="number"
               step="0.5"
               value={watchFormData.watchSleep?.totalHours || 0}
@@ -136,10 +159,12 @@ export function WatchManualEntryModal({
 
           {/* SpO2 */}
           <div className="bg-gray-50 rounded-xl p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              🫁 Blood Oxygen (SpO2 %)
+            <label htmlFor="watch-oxygen" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+              <Droplets aria-hidden="true" className="h-4 w-4" />
+              Blood oxygen (SpO2 %)
             </label>
             <input
+              id="watch-oxygen"
               type="number"
               min="0"
               max="100"
@@ -155,10 +180,12 @@ export function WatchManualEntryModal({
 
           {/* Stress */}
           <div className="bg-gray-50 rounded-xl p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              🧠 Stress Level (0-100)
+            <label htmlFor="watch-stress" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+              <Brain aria-hidden="true" className="h-4 w-4" />
+              Stress level (0–100)
             </label>
             <input
+              id="watch-stress"
               type="range"
               min="0"
               max="100"
@@ -184,10 +211,12 @@ export function WatchManualEntryModal({
 
           {/* Breathing */}
           <div className="bg-gray-50 rounded-xl p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              🌬️ Breathing Rate (breaths/min)
+            <label htmlFor="watch-breathing" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+              <Wind aria-hidden="true" className="h-4 w-4" />
+              Breathing rate (breaths/min)
             </label>
             <input
+              id="watch-breathing"
               type="number"
               value={watchFormData.watchBreathing?.current || 0}
               onChange={(e) => setWatchFormData({
@@ -201,10 +230,12 @@ export function WatchManualEntryModal({
 
           {/* Activity */}
           <div className="bg-gray-50 rounded-xl p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              🏃 Active Minutes
+            <label htmlFor="watch-activity" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+              <Activity aria-hidden="true" className="h-4 w-4" />
+              Active minutes
             </label>
             <input
+              id="watch-activity"
               type="number"
               value={watchFormData.watchActivity?.activeMinutes || 0}
               onChange={(e) => setWatchFormData({
@@ -218,10 +249,12 @@ export function WatchManualEntryModal({
 
           {/* Calories */}
           <div className="bg-gray-50 rounded-xl p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              🔥 Calories Burned
+            <label htmlFor="watch-calories" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+              <Flame aria-hidden="true" className="h-4 w-4" />
+              Calories burned
             </label>
             <input
+              id="watch-calories"
               type="number"
               value={watchFormData.watchCalories?.total || 0}
               onChange={(e) => setWatchFormData({
@@ -249,7 +282,7 @@ export function WatchManualEntryModal({
             ) : (
               <Save className="w-5 h-5" />
             )}
-            Save Data
+            Save data
           </button>
         </div>
       </div>

@@ -24,10 +24,11 @@ import {
 } from 'lucide-react';
 import { format, subDays, subMonths, subYears } from 'date-fns';
 import { toast } from 'sonner';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { compressImage } from '@/lib/imageCompression';
 import { socketClient } from '@/lib/realtime/socket-client';
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
+import { uploadFileReliably } from '@/lib/client-upload';
 
 type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y';
 
@@ -460,6 +461,16 @@ export default function UserProgressPage() {
     }
   };
 
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    return socketClient.on(SOCKET_EVENTS.MEAL_COMPLETION_UPDATED, () => {
+      void fetchProgressData();
+    });
+    // The subscription is recreated when the selected range changes so its
+    // refresh always requests the currently displayed history window.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, timeRange]);
+
   // Handler for Add Measurement button click
   const handleAddMeasurementClick = () => {
     if (progressData?.canAddMeasurement === false) {
@@ -586,23 +597,8 @@ export default function UserProgressPage() {
       // Use the compressed blob directly.
       const compressedFile = new File([compressed.blob], `transformation-${Date.now()}.webp`, { type: 'image/webp' });
 
-      // Upload the compressed file
-      const formData = new FormData();
-      formData.append('file', compressedFile);
-      formData.append('type', 'progress');
-
       toast.info('Uploading to cloud...');
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!uploadRes.ok) {
-        toast.error('Failed to upload image');
-        return;
-      }
-
-      const uploadResult = await uploadRes.json();
+      const uploadResult = await uploadFileReliably(compressedFile, 'progress');
       const photoUrl = uploadResult.url || `/api/files/${uploadResult.fileId || uploadResult._id}`;
 
       // Save the photo entry
@@ -774,14 +770,10 @@ export default function UserProgressPage() {
     : '--';
 
   if (status === 'loading' || loading) {
-    return (
-      <div className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="home" showHeader={false} />;
   }
   return (
-    <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {/* Header */}
       <div className={`border-b transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
         <div className="flex items-center justify-between px-4 py-3">
@@ -1514,8 +1506,8 @@ export default function UserProgressPage() {
 
       {/* Weight Modal */}
       {showWeightModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black/50 sm:items-center">
-          <div className="w-full max-w-md p-6 bg-white rounded-t-3xl sm:rounded-3xl">
+        <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+          <div className="client-bottom-sheet-panel w-full max-w-md rounded-t-3xl bg-white p-6 sm:rounded-3xl">
             <h3 className="mb-4 text-xl font-bold text-gray-900">Log Today's Weight</h3>
 
             <div className="space-y-4">
@@ -1554,8 +1546,8 @@ export default function UserProgressPage() {
 
       {/* Measurements Modal */}
       {showMeasurementsModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black/50 sm:items-center">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md p-6 max-h-[80vh] overflow-y-auto">
+        <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+          <div className="client-bottom-sheet-panel max-h-full w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-6 sm:rounded-3xl">
             <h3 className="mb-2 text-xl font-bold text-gray-900">Add New Measurements</h3>
             <p className="mb-4 text-sm text-gray-500">
               Recording for: {format(new Date(), 'MMMM d, yyyy')}
@@ -1605,8 +1597,8 @@ export default function UserProgressPage() {
 
       {/* Photo Upload Modal */}
       {showPhotoModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black/50 sm:items-center">
-          <div className="w-full max-w-md p-6 bg-white rounded-t-3xl sm:rounded-3xl">
+        <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+          <div className="client-bottom-sheet-panel w-full max-w-md rounded-t-3xl bg-white p-6 sm:rounded-3xl">
             <h3 className="mb-2 text-xl font-bold text-gray-900">Add Transformation Photo</h3>
             <p className="mb-4 text-sm text-gray-500">
               Date: {format(new Date(), 'MMMM d, yyyy')}
@@ -1685,7 +1677,7 @@ export default function UserProgressPage() {
 
       {/* Photo Viewer Modal */}
       {showPhotoViewer && selectedPhoto && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
+        <div className="client-popup-above-nav fixed inset-0 z-50 flex flex-col bg-black/90">
           <div className="flex items-center justify-between p-4 text-white">
             <div>
               <p className="font-medium">{format(new Date(selectedPhoto.date), 'MMMM d, yyyy')}</p>
@@ -1727,8 +1719,8 @@ export default function UserProgressPage() {
 
       {/* Measurement Reminder Popup - Shows after 7 days */}
       {showMeasurementReminderPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="w-full max-w-sm p-6 text-center bg-white rounded-3xl animate-bounce-in">
+        <div className="client-popup-above-nav fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="client-popup-panel w-full max-w-sm rounded-3xl bg-white p-6 text-center">
             <div className="w-16 h-16 bg-[#3AB1A0]/20 rounded-full flex items-center justify-center mx-auto mb-4">
               <Ruler className="w-8 h-8 text-[#3AB1A0]" />
             </div>
@@ -1759,8 +1751,8 @@ export default function UserProgressPage() {
 
       {/* Measurement Restriction Popup - Shows when trying to add before 7 days */}
       {showMeasurementRestrictionPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="w-full max-w-sm p-6 text-center bg-white rounded-3xl">
+        <div className="client-popup-above-nav fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="client-popup-panel w-full max-w-sm rounded-3xl bg-white p-6 text-center">
             <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 rounded-full bg-amber-100">
               <Calendar className="w-8 h-8 text-amber-600" />
             </div>

@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useTheme } from '@/contexts/ThemeContext';
-import { ArrowLeft, Star, Check, Sparkles, Clock, Users, ChevronRight, Zap, Award, TrendingUp, Tag } from 'lucide-react';
+import { ArrowLeft, Star, Check, Sparkles, Clock, Users, ChevronRight, Zap, Award, TrendingUp, Tag, PersonStanding, Dumbbell, Leaf, Stethoscope, Salad } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 
 interface ServicePlan {
   _id: string;
@@ -44,21 +44,26 @@ const stripHtmlTags = (html: string): string => {
   return text;
 };
 
-const getCategoryIcon = (category: string) => {
+const CategoryIcon = ({ category, className = 'h-5 w-5' }: { category: string; className?: string }) => {
+  let Icon = Salad;
   switch (category?.toLowerCase()) {
     case 'weight loss':
-      return '🏃';
+      Icon = PersonStanding;
+      break;
     case 'muscle gain':
-      return '💪';
+      Icon = Dumbbell;
+      break;
     case 'general wellness':
-      return '🌿';
+      Icon = Leaf;
+      break;
     case 'sports nutrition':
-      return '⚡';
+      Icon = Zap;
+      break;
     case 'medical diet':
-      return '🏥';
-    default:
-      return '🥗';
+      Icon = Stethoscope;
+      break;
   }
+  return <Icon aria-hidden="true" className={className} />;
 };
 
 const getCategoryColor = (category: string) => {
@@ -109,15 +114,11 @@ export default function ServicesPage() {
     : services.filter(s => s.category === selectedCategory);
 
   if (loading) {
-    return (
-      <div className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="grid" showHeader={false} />;
   }
 
   return (
-      <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {/* Header */}
         <div className={`sticky top-0 z-40 transition-colors duration-300 border-b ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
         <div className="relative flex items-center justify-center px-4 py-4">
@@ -145,7 +146,7 @@ export default function ServicesPage() {
                       : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                 }`}
               >
-                {category !== 'All' && <span className="mr-1">{getCategoryIcon(category)}</span>}
+                {category !== 'All' && <CategoryIcon category={category} className="mr-1 inline h-4 w-4" />}
                 {category}
               </button>
             ))}
@@ -212,7 +213,9 @@ export default function ServicesPage() {
                       Popular
                     </div>
                   )}
-                  <div className="text-4xl mb-2 mt-4">{getCategoryIcon(service.category)}</div>
+                  <div className="mb-2 mt-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/70">
+                    <CategoryIcon category={service.category} className="h-7 w-7 text-[#3AB1A0]" />
+                  </div>
                   <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${isDarkMode ? 'bg-gray-900/60 text-gray-200' : 'bg-white/80 text-gray-700'}`}>
                     {service.category || 'General'}
                   </span>

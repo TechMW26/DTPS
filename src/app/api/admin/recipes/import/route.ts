@@ -160,7 +160,7 @@ function transformRecipeData(rawData: Record<string, any>): Record<string, any> 
     );
 
     if (transformed.instructions.length === 0) {
-      transformed.instructions = ['To be added'];
+      return null; // A publishable recipe must contain real preparation steps
     }
 
     // Time fields

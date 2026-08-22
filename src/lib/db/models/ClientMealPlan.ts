@@ -49,6 +49,12 @@ interface IMealCompletion {
   notes?: string;
   imagePath?: string;
   imageKitFileId?: string;
+  nutrition?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
   rating?: 1 | 2 | 3 | 4 | 5;
 }
 
@@ -65,6 +71,8 @@ export interface IClientMealPlan extends Document {
   phaseNumber?: number; // 1, 2, 3, etc.
   phaseTag?: string; // PHASE-1, PHASE-2, PHASE-3, etc.
   previousPhaseId?: mongoose.Types.ObjectId; // Links to prior phase meal plan
+  operationId?: string; // Makes retried create requests return the original plan
+  lastOperationId?: string; // Makes retried updates return the committed plan
 
   // Extension tracking (when creating new plan from extend)
   isExtendedPlan?: boolean; // true if this plan was created from extend
@@ -223,6 +231,12 @@ const MealCompletionSchema = new Schema(
     notes: { type: String, maxlength: 300 },
     imagePath: { type: String, maxlength: 1000 },
     imageKitFileId: { type: String },
+    nutrition: {
+      calories: { type: Number, min: 0 },
+      protein: { type: Number, min: 0 },
+      carbs: { type: Number, min: 0 },
+      fat: { type: Number, min: 0 },
+    },
     rating: { type: Number, min: 1, max: 5 },
   },
   { _id: false },
@@ -280,6 +294,18 @@ const ClientMealPlanSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "ClientMealPlan",
       required: false, // Links to prior phase meal plan
+    },
+    operationId: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+      required: false,
+    },
+    lastOperationId: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+      required: false,
     },
 
     // Extension tracking (when creating new plan from extend)
@@ -550,6 +576,7 @@ ClientMealPlanSchema.index({ "mealCompletions.date": 1 });
 ClientMealPlanSchema.index({ clientId: 1, "mealCompletions.imagePath": 1 });
 ClientMealPlanSchema.index({ clientId: 1, phaseNumber: 1 }); // Phase tracking index
 ClientMealPlanSchema.index({ purchaseId: 1 }); // Payment-linked index
+ClientMealPlanSchema.index({ dietitianId: 1, operationId: 1 }, { sparse: true });
 ClientMealPlanSchema.index({ isDeleted: 1, status: 1, createdAt: -1 });
 
 // Virtual for calculated duration (fallback if duration field is not set)

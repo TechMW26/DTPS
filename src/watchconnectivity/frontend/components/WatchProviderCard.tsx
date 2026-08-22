@@ -1,22 +1,24 @@
 'use client';
 
-import { useState } from 'react';
-import { 
-  Watch, 
-  Smartphone, 
-  Wifi, 
+import {
+  Watch,
+  Wifi,
   WifiOff,
   Loader2,
-  Check,
-  X,
-  ChevronRight 
+  Activity,
+  HeartPulse,
+  Heart,
+  Navigation,
+  Headphones,
+  Timer,
+  type LucideIcon,
 } from 'lucide-react';
 
 interface WatchProviderCardProps {
   watchProvider: {
     id: string;
     name: string;
-    icon: string;
+    icon: LucideIcon;
     description: string;
     color: string;
     supported: string[];
@@ -34,6 +36,7 @@ export function WatchProviderCard({
   onWatchDisconnect,
   watchConnecting = false,
 }: WatchProviderCardProps) {
+  const ProviderIcon = watchProvider.icon;
   return (
     <div className={`p-4 bg-white rounded-2xl shadow-sm border-2 transition-all ${
       watchIsConnected ? 'border-green-400 bg-green-50/50' : 'border-transparent hover:border-gray-200'
@@ -44,7 +47,7 @@ export function WatchProviderCard({
             className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
             style={{ backgroundColor: `${watchProvider.color}20` }}
           >
-            {watchProvider.icon}
+            <ProviderIcon aria-hidden="true" className="h-6 w-6" style={{ color: watchProvider.color }} />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">{watchProvider.name}</h3>
@@ -104,7 +107,7 @@ export const WATCH_PROVIDERS = [
   {
     id: 'apple_watch',
     name: 'Apple Watch',
-    icon: '⌚',
+    icon: Watch,
     description: 'Connect via HealthKit',
     color: '#000000',
     supported: ['Apple Watch Series 4+', 'Apple Watch SE', 'Apple Watch Ultra'],
@@ -112,7 +115,7 @@ export const WATCH_PROVIDERS = [
   {
     id: 'google_fit',
     name: 'Google Fit',
-    icon: '💚',
+    icon: HeartPulse,
     description: 'For Wear OS & Android watches',
     color: '#4285F4',
     supported: ['Wear OS', 'Samsung Galaxy Watch', 'Fossil', 'TicWatch'],
@@ -120,7 +123,7 @@ export const WATCH_PROVIDERS = [
   {
     id: 'fitbit',
     name: 'Fitbit',
-    icon: '💙',
+    icon: Activity,
     description: 'Connect Fitbit devices',
     color: '#00B0B9',
     supported: ['Fitbit Sense', 'Fitbit Versa', 'Fitbit Charge', 'Fitbit Inspire'],
@@ -128,7 +131,7 @@ export const WATCH_PROVIDERS = [
   {
     id: 'samsung',
     name: 'Samsung Health',
-    icon: '💜',
+    icon: Heart,
     description: 'For Samsung devices',
     color: '#1428A0',
     supported: ['Galaxy Watch 4', 'Galaxy Watch 5', 'Galaxy Fit'],
@@ -136,7 +139,7 @@ export const WATCH_PROVIDERS = [
   {
     id: 'garmin',
     name: 'Garmin Connect',
-    icon: '🧡',
+    icon: Navigation,
     description: 'For Garmin watches',
     color: '#007CC3',
     supported: ['Garmin Forerunner', 'Garmin Venu', 'Garmin Fenix'],
@@ -144,7 +147,7 @@ export const WATCH_PROVIDERS = [
   {
     id: 'noisefit',
     name: 'NoiseFit / Noise',
-    icon: '🎧',
+    icon: Headphones,
     description: 'ColorFit, NoiseFit watches',
     color: '#FF6B35',
     supported: ['ColorFit Vision 3', 'ColorFit Pro 4', 'NoiseFit Halo', 'ColorFit Pulse'],
@@ -152,7 +155,7 @@ export const WATCH_PROVIDERS = [
   {
     id: 'other',
     name: 'Other Watch',
-    icon: '⏱️',
+    icon: Timer,
     description: 'Manual data entry',
     color: '#6B7280',
     supported: ['Mi Band', 'Amazfit', 'Honor Band', 'Other'],

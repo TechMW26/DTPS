@@ -1,14 +1,11 @@
 'use client';
 
 import WeightTracker from '@/components/weight-tracker/WeightTracker';
-import DashboardLayout from '@/components/layout/DashboardLayout';
 
 export default function WeightTrackerPage() {
     return (
-        <DashboardLayout>
-            <div className="container mx-auto py-6">
-                <WeightTracker />
-            </div>
-        </DashboardLayout>
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+            <WeightTracker />
+        </div>
     );
 }

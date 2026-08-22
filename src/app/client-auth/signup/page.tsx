@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
     User,
     Mail,
-    Phone
+    Phone,
+    Flag,
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
@@ -313,7 +314,7 @@ export default function ClientSignUpPage() {
                                                     value={country.code}
                                                 >
                                                     <span className="flex items-center gap-2">
-                                                        <span>{country.flag}</span>
+                                                        <Flag aria-hidden="true" className="h-4 w-4 text-gray-500" />
                                                         <span>{country.code}</span>
                                                     </span>
                                                 </SelectItem>

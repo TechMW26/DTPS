@@ -1,17 +1,20 @@
 /// <reference types="jest" />
 
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import { UserStatus } from '@/types';
-import { entityId } from '../utils/assertions';
-import { createAssignedDietitianClientPair, ensureDatabaseConnection } from '../utils/database';
-import { invokeRoute } from '../utils/routes';
+import UnifiedPayment from "@/lib/db/models/UnifiedPayment";
+import { UserStatus } from "@/types";
+import { entityId } from "../utils/assertions";
+import {
+  createAssignedDietitianClientPair,
+  ensureDatabaseConnection,
+} from "../utils/database";
+import { invokeRoute } from "../utils/routes";
 
-describe('pending plans completeness', () => {
+describe("pending plans completeness", () => {
   beforeEach(async () => {
     await ensureDatabaseConnection();
   });
 
-  it('includes assigned inactive clients with paid allocations still needing a plan', async () => {
+  it("includes assigned inactive clients with paid allocations still needing a plan", async () => {
     const { client, dietitian } = await createAssignedDietitianClientPair();
     client.status = UserStatus.INACTIVE;
     await client.save();
@@ -19,19 +22,19 @@ describe('pending plans completeness', () => {
     await UnifiedPayment.create({
       client: client._id,
       dietitian: dietitian._id,
-      planName: 'Completed Payment Allocation',
+      planName: "Completed Payment Allocation",
       durationDays: 30,
-      durationLabel: '30 Days',
-      status: 'completed',
-      paymentStatus: 'paid',
+      durationLabel: "30 Days",
+      status: "completed",
+      paymentStatus: "paid",
       daysUsed: 0,
       mealPlanCreated: false,
     });
 
-    const route = await import('@/app/api/dashboard/pending-plans/route');
+    const route = await import("@/app/api/dashboard/pending-plans/route");
     const result = await invokeRoute(route.GET, {
-      method: 'GET',
-      url: 'http://localhost/api/dashboard/pending-plans',
+      method: "GET",
+      url: "http://localhost/api/dashboard/pending-plans",
       user: dietitian,
     });
 
@@ -39,38 +42,94 @@ describe('pending plans completeness', () => {
     expect(result.json.pendingPlans).toEqual([
       expect.objectContaining({
         clientId: entityId(client),
-        purchasedPlanName: 'Completed Payment Allocation',
+        purchasedPlanName: "Completed Payment Allocation",
         pendingDaysToCreate: 30,
-        reason: 'no_meal_plan',
+        reason: "no_meal_plan",
       }),
     ]);
   });
 
-  it('does not treat an expired purchase counter as pending plan work', async () => {
+  it("does not treat an expired purchase counter as pending plan work", async () => {
     const { client, dietitian } = await createAssignedDietitianClientPair();
 
     await UnifiedPayment.create({
       client: client._id,
       dietitian: dietitian._id,
-      planName: 'Expired Trial',
+      planName: "Expired Trial",
       durationDays: 10,
-      durationLabel: '10 Days',
-      status: 'completed',
-      paymentStatus: 'paid',
+      durationLabel: "10 Days",
+      status: "completed",
+      paymentStatus: "paid",
       daysUsed: 0,
       mealPlanCreated: false,
-      expectedStartDate: new Date('2026-06-01T00:00:00.000Z'),
-      expectedEndDate: new Date('2026-06-10T00:00:00.000Z'),
+      expectedStartDate: new Date("2026-06-01T00:00:00.000Z"),
+      expectedEndDate: new Date("2026-06-10T00:00:00.000Z"),
     });
 
-    const route = await import('@/app/api/dashboard/pending-plans/route');
+    const route = await import("@/app/api/dashboard/pending-plans/route");
     const result = await invokeRoute(route.GET, {
-      method: 'GET',
-      url: 'http://localhost/api/dashboard/pending-plans',
+      method: "GET",
+      url: "http://localhost/api/dashboard/pending-plans",
       user: dietitian,
     });
 
     expect(result.status).toBe(200);
     expect(result.json.pendingPlans).toEqual([]);
+  });
+
+  it("uses the authoritative counter when an imported entitlement has duplicate rows", async () => {
+    const { client, dietitian } = await createAssignedDietitianClientPair();
+    const startDate = new Date("2026-07-15T00:00:00.000Z");
+    const endDate = new Date("2026-10-25T00:00:00.000Z");
+    const common = {
+      client: client._id,
+      dietitian: dietitian._id,
+      planName: "Weight Loss",
+      durationDays: 90,
+      durationLabel: "3 Months",
+      status: "paid",
+      paymentStatus: "paid",
+      startDate,
+      endDate,
+      expectedStartDate: startDate,
+      expectedEndDate: endDate,
+      finalAmount: 5000,
+      amount: 5000,
+    } as const;
+
+    await UnifiedPayment.create({
+      ...common,
+      mealPlanCreated: true,
+      daysUsed: 13,
+      remainingDays: 77,
+    });
+    await UnifiedPayment.create({
+      ...common,
+      mealPlanCreated: false,
+      daysUsed: 0,
+      remainingDays: 90,
+    });
+    await UnifiedPayment.create({
+      ...common,
+      mealPlanCreated: true,
+      daysUsed: 37,
+      remainingDays: 53,
+    });
+
+    const route = await import("@/app/api/dashboard/pending-plans/route");
+    const result = await invokeRoute(route.GET, {
+      method: "GET",
+      url: "http://localhost/api/dashboard/pending-plans",
+      user: dietitian,
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.json.pendingPlans).toEqual([
+      expect.objectContaining({
+        clientId: entityId(client),
+        totalMealPlanDays: 37,
+        pendingDaysToCreate: 53,
+      }),
+    ]);
   });
 });

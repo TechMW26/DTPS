@@ -86,7 +86,7 @@ export default function ContactSupportPage() {
 
   if (submitted) {
     return (
-      <div className={isDarkMode ? 'min-h-screen pb-24 bg-slate-950' : 'min-h-screen pb-24 bg-gray-50'}>
+      <div className={isDarkMode ? 'min-h-screen bg-slate-950' : 'min-h-screen bg-gray-50'}>
         <UserNavBar 
           title="Contact Support" 
           showBack={true}
@@ -128,7 +128,7 @@ export default function ContactSupportPage() {
   }
 
   return (
-    <div className={isDarkMode ? 'min-h-screen pb-24 bg-slate-950' : 'min-h-screen pb-24 bg-gray-50'}>
+    <div className={isDarkMode ? 'min-h-screen bg-slate-950' : 'min-h-screen bg-gray-50'}>
       <UserNavBar 
         title="Contact Support" 
         showBack={true}

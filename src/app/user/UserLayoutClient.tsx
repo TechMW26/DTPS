@@ -7,7 +7,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import BottomNavBar from '@/components/client/BottomNavBar';
 import UserSidebar from '@/components/client/UserSidebar';
-import { FullPageLoader } from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { Menu, Bell } from 'lucide-react';
 import { UnreadCountProvider, useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -37,9 +37,6 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [isNavigating, setIsNavigating] = useState(false);
-  const [showLoader, setShowLoader] = useState(false);
-  const [prevPathname, setPrevPathname] = useState(pathname);
   const redirectingRef = useRef(false);
 
   // Enable scroll restoration
@@ -59,32 +56,10 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
     router.replace('/client-auth/signin');
   }, [mounted, status, router]);
 
-  // Handle route changes - show loader only after delay
+  // Close the drawer after navigation. Route-level loading files handle slow
+  // transitions without dimming content that is already interactive.
   useEffect(() => {
-    if (pathname !== prevPathname) {
-      setPrevPathname(pathname);
-      setIsNavigating(true);
-      setSidebarOpen(false);
-      setShowLoader(false);
-
-      // Delay showing loader by 400ms - if page loads fast, no loader shown
-      const loaderTimer = setTimeout(() => {
-        if (isNavigating) {
-          setShowLoader(true);
-        }
-      }, 400);
-
-      // Content is ready after a short delay for smooth transition
-      const contentTimer = setTimeout(() => {
-        setIsNavigating(false);
-        setShowLoader(false);
-      }, 150);
-
-      return () => {
-        clearTimeout(loaderTimer);
-        clearTimeout(contentTimer);
-      };
-    }
+    setSidebarOpen(false);
   }, [pathname]);
 
   // Check if current page should show navigation
@@ -92,12 +67,12 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
 
   // Show loading state only on initial mount, not on route changes
   if (!mounted || status === 'loading') {
-    return <FullPageLoader size="lg" text="Loading..." />;
+    return <ClientPageSkeleton variant="home" />;
   }
 
   // Redirect if not authenticated - use replace to avoid back button issues
   if (status === 'unauthenticated') {
-    return <FullPageLoader size="lg" />;
+    return <ClientPageSkeleton variant="home" />;
   }
 
   // If navigation should be hidden (e.g., onboarding), still wrap in ThemeProvider
@@ -117,8 +92,6 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
         <UserLayoutContent
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
-          showLoader={showLoader}
-          isNavigating={isNavigating}
         >
           {children}
         </UserLayoutContent>
@@ -132,20 +105,19 @@ function UserLayoutContent({
   children,
   sidebarOpen,
   setSidebarOpen,
-  showLoader,
-  isNavigating
 }: {
   children: ReactNode;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
-  showLoader: boolean;
-  isNavigating: boolean;
 }) {
   const { counts } = useUnreadCountsSafe();
   const { isDarkMode } = useTheme();
+  const pathname = usePathname();
+
+  const showAppHeader = pathname === '/user';
 
   return (
-    <div className={`relative flex flex-col min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
+    <div className={`relative flex min-h-screen w-full flex-col overflow-x-clip transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       <NotificationPermissionBanner allowedRoles={['client']} />
 
       {/* Sidebar — self-contained overlay (handles its own backdrop + positioning) */}
@@ -154,18 +126,14 @@ function UserLayoutContent({
         onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Navigation Loader - OUTSIDE main, true viewport center */}
-      {showLoader && isNavigating && (
-        <FullPageLoader size="lg" isDarkMode={isDarkMode} />
-      )}
-
       {/* Main Content Area - this is what reloads on route change */}
-      <main className="flex-1 pb-20">
+      <main className="client-content-safe-bottom min-w-0 flex-1">
         {/* Mobile Header */}
-        <div className={`sticky top-0 z-40 flex items-center justify-between px-4 py-3 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'} border-b shadow-sm`}>
+        {showAppHeader && <div className={`client-header-safe-top sticky top-0 z-40 flex min-h-14 items-center justify-between border-b px-4 py-2 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900/95 border-gray-800' : 'bg-white/95 border-gray-100'} shadow-sm backdrop-blur`}>
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 transition-all duration-150 rounded-lg hover:bg-gray-100 active:scale-95"
+            aria-label="Open navigation menu"
+            className={`flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-150 active:scale-95 ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100'}`}
           >
             <Menu className={`w-6 h-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
           </button>
@@ -175,14 +143,15 @@ function UserLayoutContent({
               alt="DTPS"
               width={28}
               height={28}
-              className="object-contain"
+              className="h-7 w-auto object-contain"
             />
             <span className="text-lg font-bold text-[#E06A26]">DTPS</span>
           </div>
           {/* Bell Notification Icon */}
           <Link
             href="/user/notifications"
-            className="relative p-2 transition-all duration-150 rounded-lg hover:bg-gray-100 active:scale-95"
+            aria-label="Open notifications"
+            className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-150 active:scale-95 ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100'}`}
           >
             <Bell className={`w-6 h-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
             {counts.notifications > 0 && (
@@ -191,20 +160,19 @@ function UserLayoutContent({
               </span>
             )}
           </Link>
-        </div>
+        </div>}
 
         {/* Page Content */}
-        <div className="min-h-[calc(100vh-140px)]">
-          <div className={`transition-opacity duration-300 ${isNavigating ? 'opacity-50' : 'opacity-100'}`}>
-            {children}
-          </div>
+        <div
+          key={pathname}
+          className="client-route-transition mx-auto min-h-[calc(100dvh-8rem)] w-full max-w-7xl"
+        >
+          {children}
         </div>
       </main>
 
       {/* Bottom Navigation - always visible on mobile, persists across route changes */}
-      <div className="fixed bottom-0 left-0 right-0 z-30">
-        <BottomNavBar />
-      </div>
+      <BottomNavBar />
     </div>
   );
 }

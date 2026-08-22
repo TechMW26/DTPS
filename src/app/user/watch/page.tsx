@@ -17,12 +17,17 @@ import {
   ChevronRight,
   Loader2,
   Lightbulb,
-  LightbulbOff
+  LightbulbOff,
+  BarChart3,
+  TrendingUp,
+  Info,
+  Apple,
+  Headphones
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { 
   useWatchConnection, 
   WatchDashboard, 
@@ -84,7 +89,8 @@ export default function WatchPage() {
   const handleWatchConnect = async (providerId: string) => {
     // For NoiseFit, show special instructions
     if (providerId === 'noisefit') {
-      toast.info('💡 Tip: Sync your NoiseFit app to Google Fit, then connect via Google Fit for automatic data sync!', {
+      toast.info('Sync your NoiseFit app to Google Fit, then connect Google Fit for automatic data syncing.', {
+        icon: <Lightbulb className="h-4 w-4" />,
         duration: 6000,
       });
     }
@@ -137,14 +143,14 @@ export default function WatchPage() {
       const data = await response.json();
       
       if (data.success) {
-        toast.success(newState ? '🔦 Flashlight ON' : '🔦 Flashlight OFF');
+        toast.success(newState ? 'Flashlight on' : 'Flashlight off', { icon: newState ? <Lightbulb className="h-4 w-4" /> : <LightbulbOff className="h-4 w-4" /> });
       } else {
         // Even if API fails, show visual feedback (watch might not support remote flashlight)
-        toast.info(newState ? '🔦 Flashlight signal sent!' : '🔦 Flashlight off signal sent!');
+        toast.info(newState ? 'Flashlight-on signal sent.' : 'Flashlight-off signal sent.', { icon: newState ? <Lightbulb className="h-4 w-4" /> : <LightbulbOff className="h-4 w-4" /> });
       }
     } catch (error) {
       // Show visual feedback even on error
-      toast.info(watchFlashlightOn ? '🔦 Flashlight ON (visual only)' : '🔦 Flashlight OFF (visual only)');
+      toast.info(watchFlashlightOn ? 'Flashlight on (visual preview only).' : 'Flashlight off (visual preview only).', { icon: watchFlashlightOn ? <Lightbulb className="h-4 w-4" /> : <LightbulbOff className="h-4 w-4" /> });
     } finally {
       setWatchFlashlightLoading(false);
     }
@@ -181,15 +187,11 @@ export default function WatchPage() {
   };
 
   if (status === 'loading' || watchLoading) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center z-100 bg-white dark:bg-gray-950">
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="home" showHeader={false} />;
   }
 
   return (
-    <div className="min-h-screen pb-24 bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="px-4 py-4 bg-white border-b border-gray-100">
         <div className="flex items-center justify-between">
@@ -287,7 +289,7 @@ export default function WatchPage() {
                 : 'bg-gray-100 text-gray-600'
             }`}
           >
-            📊 Dashboard
+            <span className="inline-flex items-center justify-center gap-2"><BarChart3 aria-hidden="true" className="h-4 w-4" /> Dashboard</span>
           </button>
           <button
             onClick={() => setWatchActiveTab('connect')}
@@ -297,7 +299,7 @@ export default function WatchPage() {
                 : 'bg-gray-100 text-gray-600'
             }`}
           >
-            ⌚ Connect
+            <span className="inline-flex items-center justify-center gap-2"><Watch aria-hidden="true" className="h-4 w-4" /> Connect</span>
           </button>
         </div>
       </div>
@@ -341,7 +343,7 @@ export default function WatchPage() {
             {/* Quick Stats */}
             {watchHealthData && (
               <div className="bg-white rounded-2xl p-4 shadow-sm">
-                <h3 className="text-sm font-bold text-gray-900 mb-3">📈 Summary</h3>
+                <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-900"><TrendingUp aria-hidden="true" className="h-4 w-4" /> Summary</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between py-2 border-b border-gray-100">
                     <span className="text-sm text-gray-600">Total Steps</span>
@@ -390,7 +392,7 @@ export default function WatchPage() {
 
             {/* Info Section */}
             <div className="mt-6 p-4 bg-blue-50 rounded-2xl">
-              <h3 className="text-sm font-bold text-blue-900 mb-2">ℹ️ How it works</h3>
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-blue-900"><Info aria-hidden="true" className="h-4 w-4" /> How it works</h3>
               <ul className="space-y-2 text-xs text-blue-800">
                 <li className="flex items-start gap-2">
                   <span>1.</span>
@@ -413,7 +415,7 @@ export default function WatchPage() {
 
             {/* Apple Watch Note */}
             <div className="mt-4 p-4 bg-gray-100 rounded-2xl">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">🍎 Apple Watch Users</h3>
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-gray-900"><Apple aria-hidden="true" className="h-4 w-4" /> Apple Watch users</h3>
               <p className="text-xs text-gray-600">
                 Apple Watch uses HealthKit which requires our iOS app for data sync. 
                 Download the app from App Store or use manual entry for now.
@@ -422,7 +424,7 @@ export default function WatchPage() {
 
             {/* NoiseFit Note */}
             <div className="mt-4 p-4 bg-orange-50 rounded-2xl border border-orange-200">
-              <h3 className="text-sm font-bold text-orange-900 mb-2">🎧 NoiseFit / ColorFit Users</h3>
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-orange-900"><Headphones aria-hidden="true" className="h-4 w-4" /> NoiseFit and ColorFit users</h3>
               <p className="text-xs text-orange-700 mb-2">
                 NoiseFit watches (ColorFit Vision, ColorFit Pro, etc.) don't have a public API. 
                 You have two options:
@@ -432,7 +434,7 @@ export default function WatchPage() {
                 <li><strong>Option 2:</strong> Sync NoiseFit app → Google Fit → Connect via Google Fit</li>
               </ul>
               <p className="text-xs text-orange-600 mt-2 italic">
-                💡 Tip: Open NoiseFit app → Profile → Settings → Enable "Sync to Google Fit"
+                <span className="inline-flex items-start gap-1.5"><Lightbulb aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Tip: Open the NoiseFit app, then go to Profile → Settings and enable “Sync to Google Fit.”</span>
               </p>
             </div>
           </>

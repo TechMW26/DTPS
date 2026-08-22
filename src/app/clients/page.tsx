@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { ListSkeleton } from '@/components/ui/skeleton';
 import {
   Search,
   Plus,
@@ -123,9 +123,7 @@ export default function ClientsPage() {
 
         {/* Clients List */}
         {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <LoadingSpinner />
-          </div>
+          <ListSkeleton rows={8} />
         ) : filteredClients.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">

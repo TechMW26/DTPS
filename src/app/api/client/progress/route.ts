@@ -7,20 +7,22 @@ import ProgressEntry from "@/lib/db/models/ProgressEntry";
 import FoodLog from "@/lib/db/models/FoodLog";
 import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
 import JournalTracking from "@/lib/db/models/JournalTracking";
-import { startOfDay, endOfDay, format } from "date-fns";
+import { startOfDay, endOfDay, parseISO } from "date-fns";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
-import { MEAL_TYPES, MEAL_TYPE_KEYS } from "@/lib/mealConfig";
 import { logActivity } from "@/lib/utils/activityLogger";
 import { emitClientWeightUpdate } from "@/lib/realtime/weight-notify";
 import { notifyClientDataUpdate } from "@/lib/notifications/staffPushService";
 import mongoose from "mongoose";
 import { deleteFromBlob } from "@/lib/storage/blob-storage";
-
-// Get all possible meal type keys (canonical + common variations for DB compatibility)
-const ALL_MEAL_KEYS = [
-  ...MEAL_TYPE_KEYS,
-  ...MEAL_TYPE_KEYS.map((k) => MEAL_TYPES[k].label),
-];
+import {
+  addNutrition,
+  buildDailyNutritionSummary,
+  calculateCompletedMealNutrition,
+  calculateFoodLogNutrition,
+  getNutritionDateKey,
+  roundNutrition,
+  type NutritionTotals,
+} from '@/lib/meal-nutrition';
 
 // Helper to get date range based on filter
 function getStartDate(range: string): Date {
@@ -51,9 +53,9 @@ export async function GET(request: Request) {
     const includeAllWeights = searchParams.get("allWeights") === "true";
     const startDate = getStartDate(range);
     const progressStartDate = range === "ALL" ? new Date(0) : startDate;
-    const today = startOfDay(new Date());
-    const todayEnd = endOfDay(new Date());
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getNutritionDateKey(new Date());
+    const today = startOfDay(parseISO(todayStr));
+    const todayEnd = endOfDay(today);
 
     // OPTIMIZATION: Run auth + DB connect in PARALLEL
     const [session] = await Promise.all([
@@ -82,7 +84,7 @@ export async function GET(request: Request) {
         `client:progress:user:${userId}`,
         () =>
           User.findById(userId)
-            .select("weightKg firstWeight targetWeightKg heightCm goals")
+            .select("weightKg firstWeight targetWeightKg heightCm goals dailyGoals")
             .lean(),
         { ttl: 120000, tags: ["client"] },
       ),
@@ -119,16 +121,21 @@ export async function GET(request: Request) {
           }).lean(),
         { ttl: 120000, tags: ["client"] },
       ),
-      // Active meal plan - NOW CACHED
+      // Plan applicable to today's calendar date. Paused/completed plans can
+      // still own valid completions for that date.
       withCache(
-        `client:progress:mealplan:${userId}`,
+        `client:progress:mealplan:${userId}:${todayStr}`,
         () =>
           ClientMealPlan.findOne({
             clientId: userId,
-            status: "active",
+            status: { $in: ["active", "completed", "paused"] },
+            isDeleted: { $ne: true },
             startDate: { $lte: todayEnd },
             endDate: { $gte: today },
-          }).lean(),
+          })
+            .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
+            .select("startDate endDate meals mealCompletions customizations")
+            .lean(),
         { ttl: 120000, tags: ["client"] },
       ),
       // Food logs for history - CACHED
@@ -297,326 +304,63 @@ export async function GET(request: Request) {
     const progressPercent =
       totalToLose > 0 ? Math.round((lost / totalToLose) * 100) : 0;
 
-    // Initialize nutrition totals - todayFoodLog already fetched in parallel above
-    let todayIntake = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-
-    if ((todayFoodLog as any)?.totalNutrition) {
-      const tfl = todayFoodLog as any;
-      todayIntake.calories += tfl.totalNutrition.calories || 0;
-      todayIntake.protein += tfl.totalNutrition.protein || 0;
-      todayIntake.carbs += tfl.totalNutrition.carbs || 0;
-      todayIntake.fat += tfl.totalNutrition.fat || 0;
-    }
-
-    // Also check individual food log entries if totalNutrition is empty
-    const tflAny = todayFoodLog as any;
-    if (tflAny?.entries?.length > 0 && !tflAny.totalNutrition?.calories) {
-      for (const entry of tflAny.entries) {
-        todayIntake.calories += entry.calories || 0;
-        todayIntake.protein += entry.protein || 0;
-        todayIntake.carbs += entry.carbs || 0;
-        todayIntake.fat += entry.fat || 0;
-      }
-    }
-
-    // 2. ALWAYS check completed meals from ClientMealPlan (already fetched in parallel)
-    try {
-      const activeMealPlanAny = activeMealPlan as any;
-
-      if (activeMealPlanAny?.mealCompletions?.length > 0) {
-        // Get today's completed meals
-        const todayCompletions = activeMealPlanAny.mealCompletions.filter(
-          (mc: any) => {
-            const completionDate = format(new Date(mc.date), "yyyy-MM-dd");
-            return completionDate === todayStr && mc.completed;
-          },
-        );
-
-        if (
-          todayCompletions.length > 0 &&
-          activeMealPlanAny.meals?.length > 0
-        ) {
-          // Calculate day index
-          const planStartDate = startOfDay(
-            new Date(activeMealPlanAny.startDate),
-          );
-          const dayIndex = Math.floor(
-            (today.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24),
-          );
-          const dayData =
-            activeMealPlanAny.meals[dayIndex % activeMealPlanAny.meals.length];
-
-          if (dayData?.meals) {
-            const mealsObj = dayData.meals;
-
-            // Sum nutrition from completed meals
-            for (const completion of todayCompletions) {
-              const mealType = completion.mealType;
-              // Try different case variations and formats
-              const mealData =
-                mealsObj[mealType] ||
-                mealsObj[mealType.toLowerCase()] ||
-                mealsObj[
-                  mealType.charAt(0).toUpperCase() +
-                    mealType.slice(1).toLowerCase()
-                ] ||
-                // Also check by meal name (e.g., "Breakfast", "Lunch")
-                Object.values(mealsObj).find(
-                  (m: any) =>
-                    m.name?.toLowerCase() === mealType.toLowerCase() ||
-                    m.id === mealType,
-                );
-
-              if (mealData) {
-                // Check for foodOptions array (new meal plan structure)
-                if (
-                  mealData.foodOptions &&
-                  Array.isArray(mealData.foodOptions)
-                ) {
-                  for (const food of mealData.foodOptions) {
-                    // Parse string values to numbers - handle "cal", "carbs", "fats", "protein" fields
-                    todayIntake.calories +=
-                      parseFloat(food.cal) || parseFloat(food.calories) || 0;
-                    todayIntake.protein += parseFloat(food.protein) || 0;
-                    todayIntake.carbs += parseFloat(food.carbs) || 0;
-                    todayIntake.fat +=
-                      parseFloat(food.fats) || parseFloat(food.fat) || 0;
-                  }
-                }
-                // Check for direct nutrition values on meal
-                else if (
-                  mealData.totalCalories ||
-                  mealData.calories ||
-                  mealData.cal
-                ) {
-                  todayIntake.calories +=
-                    parseFloat(mealData.totalCalories) ||
-                    parseFloat(mealData.calories) ||
-                    parseFloat(mealData.cal) ||
-                    0;
-                  todayIntake.protein +=
-                    parseFloat(mealData.totalProtein) ||
-                    parseFloat(mealData.protein) ||
-                    0;
-                  todayIntake.carbs +=
-                    parseFloat(mealData.totalCarbs) ||
-                    parseFloat(mealData.carbs) ||
-                    0;
-                  todayIntake.fat +=
-                    parseFloat(mealData.totalFat) ||
-                    parseFloat(mealData.fat) ||
-                    parseFloat(mealData.fats) ||
-                    0;
-                }
-                // Calculate nutrition from items array
-                else if (mealData.items && Array.isArray(mealData.items)) {
-                  for (const item of mealData.items) {
-                    todayIntake.calories +=
-                      parseFloat(item.cal) ||
-                      parseFloat(item.calories) ||
-                      item.nutrition?.calories ||
-                      0;
-                    todayIntake.protein +=
-                      parseFloat(item.protein) || item.nutrition?.protein || 0;
-                    todayIntake.carbs +=
-                      parseFloat(item.carbs) || item.nutrition?.carbs || 0;
-                    todayIntake.fat +=
-                      parseFloat(item.fats) ||
-                      parseFloat(item.fat) ||
-                      item.nutrition?.fat ||
-                      0;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (mealPlanError) {
-      console.error("Error fetching meal plan for nutrition:", mealPlanError);
-    }
-
-    // Round nutrition values
-    todayIntake = {
-      calories: Math.round(todayIntake.calories),
-      protein: Math.round(todayIntake.protein),
-      carbs: Math.round(todayIntake.carbs),
-      fat: Math.round(todayIntake.fat),
+    const dailyNutrition = buildDailyNutritionSummary({
+      plan: activeMealPlan as any,
+      foodLog: todayFoodLog as any,
+      user: userAny,
+      date: todayStr,
+    });
+    const todayIntake = dailyNutrition.consumed;
+    const goals = {
+      ...dailyNutrition.goal,
+      water: userAny?.goals?.water || 8,
+      steps: userAny?.goals?.steps || userAny?.dailyGoals?.steps || 10000,
     };
-
-    // Get goals from user profile or meal plan (userAny already defined above)
-    let goals = {
-      calories:
-        userAny?.goals?.calories || userAny?.goals?.targetCalories || 2000,
-      protein: userAny?.goals?.protein || userAny?.goals?.proteinGoal || 120,
-      carbs: userAny?.goals?.carbs || userAny?.goals?.carbsGoal || 250,
-      fat: userAny?.goals?.fat || userAny?.goals?.fatGoal || 65,
-      water: userAny?.goals?.water || userAny?.goals?.waterGoal || 8,
-      steps: userAny?.goals?.steps || userAny?.goals?.stepsGoal || 10000,
-    };
-
-    // Use activeMealPlan already fetched in parallel for goals
-    try {
-      const mealPlanForGoals = activeMealPlan as any;
-
-      if (mealPlanForGoals) {
-        // First check if customizations have explicit goals set
-        if (mealPlanForGoals.customizations?.targetCalories) {
-          goals.calories = mealPlanForGoals.customizations.targetCalories;
-        } else if (mealPlanForGoals.totalCaloriesPerDay) {
-          goals.calories = mealPlanForGoals.totalCaloriesPerDay;
-        }
-        if (mealPlanForGoals.customizations?.proteinGoal) {
-          goals.protein = mealPlanForGoals.customizations.proteinGoal;
-        }
-        if (mealPlanForGoals.customizations?.carbsGoal) {
-          goals.carbs = mealPlanForGoals.customizations.carbsGoal;
-        }
-        if (mealPlanForGoals.customizations?.fatGoal) {
-          goals.fat = mealPlanForGoals.customizations.fatGoal;
-        }
-
-        // Calculate total daily macros from actual meal plan data for today
-        if (mealPlanForGoals.meals?.length > 0) {
-          const planStart = startOfDay(new Date(mealPlanForGoals.startDate));
-          const dayIndex = Math.floor(
-            (today.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24),
-          );
-          const dayData =
-            mealPlanForGoals.meals[dayIndex % mealPlanForGoals.meals.length];
-
-          if (dayData?.meals) {
-            let totalCalories = 0;
-            let totalProtein = 0;
-            let totalCarbs = 0;
-            let totalFat = 0;
-
-            // Iterate through all meal types for the day using canonical config
-            for (const mealType of ALL_MEAL_KEYS) {
-              const mealData = dayData.meals[mealType];
-              if (
-                mealData?.foodOptions &&
-                Array.isArray(mealData.foodOptions)
-              ) {
-                for (const food of mealData.foodOptions) {
-                  totalCalories +=
-                    parseFloat(food.cal) || parseFloat(food.calories) || 0;
-                  totalProtein += parseFloat(food.protein) || 0;
-                  totalCarbs += parseFloat(food.carbs) || 0;
-                  totalFat +=
-                    parseFloat(food.fats) || parseFloat(food.fat) || 0;
-                }
-              }
-            }
-
-            // Update goals with calculated totals if they are greater than 0
-            if (totalCalories > 0) {
-              goals.calories = Math.round(totalCalories);
-            }
-            if (totalProtein > 0) {
-              goals.protein = Math.round(totalProtein);
-            }
-            if (totalCarbs > 0) {
-              goals.carbs = Math.round(totalCarbs);
-            }
-            if (totalFat > 0) {
-              goals.fat = Math.round(totalFat);
-            }
-          }
-        }
-      }
-    } catch (goalsError) {
-      console.error("Error fetching meal plan goals:", goalsError);
-    }
 
     // Build nutrition history with macros - foodLogs already fetched in parallel
-    const nutritionHistoryMap = new Map<
-      string,
-      { calories: number; protein: number; carbs: number; fat: number }
-    >();
+    const nutritionHistoryMap = new Map<string, NutritionTotals>();
+    const historyStartKey = getNutritionDateKey(progressStartDate);
 
     // Add food log data to history
     for (const log of foodLogs as any[]) {
-      const dateKey = format(new Date(log.date), "yyyy-MM-dd");
+      const dateKey = getNutritionDateKey(new Date(log.date));
       const existing = nutritionHistoryMap.get(dateKey) || {
         calories: 0,
         protein: 0,
         carbs: 0,
         fat: 0,
       };
-
-      if (log.totalNutrition?.calories) {
-        existing.calories += log.totalNutrition.calories || 0;
-        existing.protein += log.totalNutrition.protein || 0;
-        existing.carbs += log.totalNutrition.carbs || 0;
-        existing.fat += log.totalNutrition.fat || 0;
-      } else if (log.entries?.length > 0) {
-        for (const entry of log.entries) {
-          existing.calories += entry.calories || 0;
-          existing.protein += entry.protein || 0;
-          existing.carbs += entry.carbs || 0;
-          existing.fat += entry.fat || 0;
-        }
-      }
-
-      nutritionHistoryMap.set(dateKey, existing);
+      nutritionHistoryMap.set(
+        dateKey,
+        roundNutrition(addNutrition(existing, calculateFoodLogNutrition(log))),
+      );
     }
 
-    // Also get nutrition history from meal completions - already fetched in parallel
-    try {
-      for (const plan of mealPlansWithCompletions as any[]) {
-        if (!plan.mealCompletions?.length || !plan.meals?.length) continue;
+    // Add the nutrition represented by each completed meal picture. Grouping
+    // by date ensures multiple completions are calculated once per day.
+    for (const plan of mealPlansWithCompletions as any[]) {
+      if (!plan.mealCompletions?.length) continue;
+      const completionDates = new Set<string>(
+        plan.mealCompletions
+          .filter((completion: any) => completion?.completed && completion?.date)
+          .map((completion: any) => getNutritionDateKey(new Date(completion.date)))
+          .filter((dateKey: string) => dateKey >= historyStartKey),
+      );
 
-        for (const completion of plan.mealCompletions) {
-          if (!completion.completed) continue;
-
-          const completionDate = format(
-            new Date(completion.date),
-            "yyyy-MM-dd",
-          );
-          const existing = nutritionHistoryMap.get(completionDate) || {
-            calories: 0,
-            protein: 0,
-            carbs: 0,
-            fat: 0,
-          };
-
-          // Calculate day index
-          const planStart = startOfDay(new Date(plan.startDate));
-          const completionDay = startOfDay(new Date(completion.date));
-          const dayIdx = Math.floor(
-            (completionDay.getTime() - planStart.getTime()) /
-              (1000 * 60 * 60 * 24),
-          );
-          const dayData = plan.meals[dayIdx % plan.meals.length];
-
-          if (dayData?.meals) {
-            const mealType = completion.mealType;
-            const mealData =
-              dayData.meals[mealType] ||
-              dayData.meals[mealType.toLowerCase()] ||
-              dayData.meals[
-                mealType.charAt(0).toUpperCase() +
-                  mealType.slice(1).toLowerCase()
-              ];
-
-            if (mealData?.foodOptions && Array.isArray(mealData.foodOptions)) {
-              for (const food of mealData.foodOptions) {
-                existing.calories +=
-                  parseFloat(food.cal) || parseFloat(food.calories) || 0;
-                existing.protein += parseFloat(food.protein) || 0;
-                existing.carbs += parseFloat(food.carbs) || 0;
-                existing.fat +=
-                  parseFloat(food.fats) || parseFloat(food.fat) || 0;
-              }
-            }
-          }
-
-          nutritionHistoryMap.set(completionDate, existing);
-        }
+      for (const completionDate of completionDates) {
+        const completed = calculateCompletedMealNutrition(plan, completionDate);
+        if (completed.completedMeals === 0) continue;
+        const existing = nutritionHistoryMap.get(completionDate) || {
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+        };
+        nutritionHistoryMap.set(
+          completionDate,
+          roundNutrition(addNutrition(existing, completed.nutrition)),
+        );
       }
-    } catch (historyError) {
-      console.error("Error fetching meal completion history:", historyError);
     }
 
     // Convert map to arrays sorted by date

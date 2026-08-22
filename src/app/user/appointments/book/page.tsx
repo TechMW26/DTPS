@@ -23,11 +23,12 @@ import {
   Check,
   Wifi,
   WifiOff,
-  RefreshCw
+  RefreshCw,
+  Bell
 } from 'lucide-react';
 import { format, addDays, isBefore, isAfter } from 'date-fns';
 import { toast } from 'sonner';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { getDietitianId } from '@/lib/utils';
 
 // Helper to parse 12-hour time format to hours and minutes
@@ -100,11 +101,12 @@ export default function BookAppointmentPage() {
         if (dietitian && selectedDate) {
           generateTimeSlots();
           toast.info(
-            event.type === 'appointment_booked' 
-              ? '🔔 A slot was just booked - refreshing availability' 
+            event.type === 'appointment_booked'
+              ? 'A slot was just booked — refreshing availability.'
               : event.type === 'appointment_cancelled'
-              ? '🔔 A slot was just freed - refreshing availability'
-              : '🔔 An appointment was rescheduled - refreshing availability'
+              ? 'A slot is available again — refreshing availability.'
+              : 'An appointment was rescheduled — refreshing availability.',
+            { icon: <Bell className="h-4 w-4" /> }
           );
         }
       }
@@ -288,16 +290,12 @@ export default function BookAppointmentPage() {
   };
 
   if (status === 'loading' || loading) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center z-100 bg-white dark:bg-gray-950">
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="form" showHeader={false} />;
   }
 
   if (!dietitian) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-24">
+      <div className="min-h-screen bg-gray-50">
         <div className="bg-white border-b border-gray-100">
           <div className="flex items-center gap-3 px-4 py-3">
             <Link href="/user/appointments" className="p-2 -ml-2 rounded-xl hover:bg-gray-100">
@@ -319,7 +317,7 @@ export default function BookAppointmentPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-100">
         <div className="flex items-center gap-3 px-4 py-3">

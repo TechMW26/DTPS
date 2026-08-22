@@ -154,6 +154,7 @@ function RecipesPageContent() {
       params.append('limit', String(RECIPES_PER_PAGE));
       params.append('page', String(pageNum));
       params.append('includeTotal', 'true');
+      params.append('includeInactive', 'true');
 
       const response = await fetch(`/api/recipes?${params.toString()}`, {
         signal: abortControllerRef.current.signal

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { TableSkeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -825,9 +825,7 @@ export default function DieticianClientsPage() {
         <Card>
           <CardContent className="p-0">
             {loading ? (
-              <div className="flex items-center justify-center h-64">
-                <LoadingSpinner />
-              </div>
+              <TableSkeleton rows={9} columns={7} />
             ) : (
               <>
                 <div className="dietitian-clients-table-wrap overflow-x-auto">

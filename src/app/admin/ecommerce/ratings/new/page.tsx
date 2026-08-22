@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { ArrowLeft, Save } from 'lucide-react';
 import { toast } from 'sonner';
+import { uploadFileReliably } from '@/lib/client-upload';
 
 export default function AdminEcommerceRatingNewPage() {
   const { data: session, status } = useSession();
@@ -36,13 +37,7 @@ export default function AdminEcommerceRatingNewPage() {
   const handleUpload = async (file: File) => {
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'ecommerce');
-
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
+      const data = await uploadFileReliably(file, 'ecommerce');
       setImageUrl(data.url || '');
       setImageKitFileId(data.imageKitFileId || data.fileId || '');
       toast.success('Image uploaded');

@@ -31,6 +31,7 @@ import { useRealtime } from '@/hooks/useRealtime';
 import { useNotifications } from '@/hooks/useNotifications';
 import { toast } from 'sonner';
 import { getClientId } from '@/lib/utils';
+import { DashboardContentSkeleton } from '@/components/ui/skeleton';
 
 interface DashboardStats {
   totalClients: number;
@@ -188,6 +189,14 @@ export default function HealthCounselorDashboard() {
     }
   };
 
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <DashboardContentSkeleton statCards={5} />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -207,34 +216,34 @@ export default function HealthCounselorDashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6">
           <StatsCard
             title="Total Clients"
-            value={loading ? '-' : stats.totalClients}
-            description={loading ? 'Loading...' : `${stats.activeClients} active`}
+            value={stats.totalClients}
+            description={`${stats.activeClients} active`}
             icon={<Users className="h-4 w-4" />}
             trend={{ value: 12, isPositive: true }}
           />
           <StatsCard
             title="Today's Appointments"
-            value={loading ? '-' : stats.todaysAppointments}
-            description={loading ? 'Loading...' : `${stats.confirmedAppointments} confirmed, ${stats.pendingAppointments} pending`}
+            value={stats.todaysAppointments}
+            description={`${stats.confirmedAppointments} confirmed, ${stats.pendingAppointments} pending`}
             icon={<Calendar className="h-4 w-4" />}
           />
           <StatsCard
             title="Active Programs"
-            value={loading ? '-' : stats.clientsWithMealPlans}
-            description={loading ? 'Loading...' : 'Clients with Diet plans'}
+            value={stats.clientsWithMealPlans}
+            description="Clients with diet plans"
             icon={<Activity className="h-4 w-4" />}
             trend={{ value: 15, isPositive: true }}
           />
           <StatsCard
             title="Completed Sessions"
-            value={loading ? '-' : stats.completedSessions}
-            description={loading ? 'Loading...' : `${stats.completionRate}% completion rate`}
+            value={stats.completedSessions}
+            description={`${stats.completionRate}% completion rate`}
             icon={<CheckCircle className="h-4 w-4" />}
           />
           <StatsCard
             title="Total Revenue"
-            value={loading ? '-' : `₹${stats.totalRevenue?.toLocaleString() || 0}`}
-            description={loading ? 'Loading...' : `${stats.completedPaymentsCount} completed, ${stats.pendingPaymentsCount} pending`}
+            value={`₹${stats.totalRevenue?.toLocaleString() || 0}`}
+            description={`${stats.completedPaymentsCount} completed, ${stats.pendingPaymentsCount} pending`}
             icon={<TrendingUp className="h-4 w-4" />}
             trend={{ value: 8, isPositive: true }}
           />
@@ -305,7 +314,7 @@ export default function HealthCounselorDashboard() {
               <Button asChild variant="outline" className="w-full justify-start">
                 <Link href="/health-counselor/plan-templates">
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Plan Plan
+                  Create Plan
                 </Link>
               </Button>
               <Button asChild variant="outline" className="w-full justify-start">

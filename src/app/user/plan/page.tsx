@@ -21,11 +21,32 @@ import {
   Upload,
   ImageIcon,
   Loader2,
-  CalendarDays
+  CalendarDays,
+  Sunrise,
+  EggFried,
+  Apple,
+  Sun,
+  CircleDot,
+  CupSoda,
+  Moon,
+  Utensils,
+  NotebookText,
+  Snowflake,
+  MessageCircle,
+  ShoppingCart,
+  Zap,
+  CheckCircle2,
+  BarChart3,
+  Salad,
+  TriangleAlert,
+  CookingPot,
+  Lightbulb,
+  Wrench,
+  Refrigerator
 } from 'lucide-react';
 import { format, addDays, startOfWeek, isToday, isSameDay } from 'date-fns';
 
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import MealCompletionCelebration from '@/components/engagement/MealCompletionCelebration';
 import { toast } from 'sonner';
 import { MEAL_TYPES, type MealTypeKey } from '@/lib/mealConfig';
@@ -486,7 +507,9 @@ export default function UserPlanPage() {
         // Legacy plans sometimes stored the same recipe words in a different order.
         if (!recipeData && recipeModal.item.name) {
           const searchName = encodeURIComponent(recipeModal.item.name.trim());
-          const searchResponse = await fetch(`/api/recipes?search=${searchName}&limit=25`);
+          // Resolve the exact recipe directly. A paginated broad search can
+          // contain dozens of similarly named foods before the exact match.
+          const searchResponse = await fetch(`/api/recipes?exactName=${searchName}&limit=10`);
           if (searchResponse.ok) {
             const searchData = await searchResponse.json();
             if (searchData.success && searchData.recipes && searchData.recipes.length > 0) {
@@ -896,21 +919,22 @@ export default function UserPlanPage() {
   };
 
   const getMealIcon = (type: string) => {
+    let Icon = Utensils;
     switch (type) {
-      case 'earlyMorning': return '🌅';
-      case 'breakfast': return '🍳';
-      case 'midMorning': return '🍎';
-      case 'lunch': return '☀️';
-      case 'midEvening': return '🥜';
-      case 'evening': return '🍵';
-      case 'dinner': return '🌙';
-      case 'pastDinner': return '🌛';
+      case 'earlyMorning': Icon = Sunrise; break;
+      case 'breakfast': Icon = EggFried; break;
+      case 'midMorning': Icon = Apple; break;
+      case 'lunch': Icon = Sun; break;
+      case 'midEvening': Icon = CircleDot; break;
+      case 'evening': Icon = CupSoda; break;
+      case 'dinner': Icon = Moon; break;
+      case 'pastDinner': Icon = Moon; break;
       // Legacy types for backward compatibility
-      case 'morningSnack': return '🍎';
-      case 'afternoonSnack': return '🥜';
-      case 'eveningSnack': return '🍵';
-      default: return '🍽️';
+      case 'morningSnack': Icon = Apple; break;
+      case 'afternoonSnack': Icon = CircleDot; break;
+      case 'eveningSnack': Icon = CupSoda; break;
     }
+    return <Icon aria-hidden="true" className="h-6 w-6" />;
   };
 
   const getMealLabel = (type: string) => {
@@ -1132,18 +1156,11 @@ export default function UserPlanPage() {
   }, [allMealSlots, dayPlan, deepLinkRequest, isChangingDate, selectedDate]);
 
   if (status === 'loading' || loading) {
-    return (
-      <div
-        className={`fixed inset-0 flex items-center justify-center z-50 ${isDarkMode ? 'bg-gray-950' : 'bg-white'
-          }`}
-      >
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="plan" showHeader={false} />;
   }
 
   return (
-    <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
 
       <MealCompletionCelebration
         open={celebration.open}
@@ -1246,7 +1263,7 @@ export default function UserPlanPage() {
       {dayPlan?.dailyNote && !isChangingDate && (
         <div className={`mx-4 mt-4 p-4 rounded-xl border ${isDarkMode ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-yellow-50 border-yellow-200'}`}>
           <div className="flex items-start gap-2">
-            <span className="text-lg">📝</span>
+            <NotebookText aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
               <p className={`text-xs font-semibold mb-1 ${isDarkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>Note from Dietitian</p>
               <div className={`text-sm space-y-1 ${isDarkMode ? 'text-yellow-100' : 'text-yellow-800'}`}>
@@ -1314,11 +1331,9 @@ export default function UserPlanPage() {
             className={`p-8 text-center shadow-sm rounded-2xl border-2 relative overflow-hidden ${isDarkMode ? 'bg-gray-900 border-blue-500/40 ring-1 ring-white/10' : 'bg-white border-blue-200'
               }`}
           >
-            {/* <style>{`@keyframes snowFall { to { transform: translateY(350px) rotateZ(360deg); opacity: 0; } } .snowflake-anim { position: absolute; color: #b3d9ff; font-size: 1.5rem; pointer-events: none; animation: snowFall 5s linear infinite; }`}</style> */}
-            {/* {[...Array(6)].map((_, i) => (<div key={i} className="snowflake-anim" style={{left: `${15 + i * 15}%`, top: `-10px`, animationDelay: `${i * 0.8}s`}}>❄️</div>))} */}
             <div className="relative z-10">
               <div className="w-24 h-24 mx-auto mb-4 bg-linear-to-br from-blue-100 to-cyan-100 rounded-full flex items-center justify-center animate-pulse">
-                <span className="text-5xl">❄️</span>
+                <Snowflake aria-hidden="true" className="h-11 w-11 text-blue-500" />
               </div>
               <h3 className={`mb-2 text-xl font-bold ${isDarkMode ? 'text-blue-200' : 'text-blue-800'}`}>This Day is Frozen</h3>
             </div>
@@ -1354,7 +1369,8 @@ export default function UserPlanPage() {
                   className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${isDarkMode ? 'bg-blue-500/10 text-blue-200 hover:bg-blue-500/15' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
                     }`}
                 >
-                  💬 Contact Dietitian
+                  <MessageCircle aria-hidden="true" className="h-4 w-4" />
+                  Contact dietitian
                 </Link>
               </div>
             </div>
@@ -1363,7 +1379,7 @@ export default function UserPlanPage() {
           /* No Plan Message - Show Buy Plan option */
           <div className={`p-8 text-center shadow-sm rounded-2xl ${isDarkMode ? 'bg-gray-900 ring-1 ring-white/10' : 'bg-white'}`}>
             <div className="w-20 h-20 mx-auto mb-4 bg-linear-to-br from-[#E06A26]/20 to-[#DB9C6E]/20 rounded-full flex items-center justify-center">
-              <span className="text-4xl">🍽️</span>
+              <Utensils aria-hidden="true" className="h-9 w-9 text-[#E06A26]" />
             </div>
             <h3 className={`mb-2 text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
               {upcomingPlanWindow ? 'Your Meal Plan Starts Soon' : 'No Meal Plan Available'}
@@ -1401,7 +1417,8 @@ export default function UserPlanPage() {
                     href="/user/services"
                     className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-linear-to-r from-[#E06A26] to-[#DB9C6E] text-white rounded-xl text-sm font-bold hover:opacity-90 transition-all shadow-lg"
                   >
-                    🛒 Buy a Plan
+                    <ShoppingCart aria-hidden="true" className="h-4 w-4" />
+                    Buy a plan
                     <ChevronRight className="w-4 h-4" />
                   </Link>
                 </>
@@ -1410,7 +1427,8 @@ export default function UserPlanPage() {
                 href="/user/messages"
                 className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#3AB1A0]/10 text-[#3AB1A0] rounded-xl text-sm font-medium hover:bg-[#3AB1A0]/20 transition-colors"
               >
-                💬 Contact Dietitian
+                <MessageCircle aria-hidden="true" className="h-4 w-4" />
+                Contact dietitian
               </Link>
             </div>
           </div>
@@ -1474,7 +1492,7 @@ export default function UserPlanPage() {
                       </div>
                     ) : (
                       <div className="bg-[#E06A26]/10 text-[#E06A26] px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
-                        <span>⚡</span>
+                        <Zap aria-hidden="true" className="h-4 w-4" />
                         <span>{formatNum(meal.totalCalories)} kcal</span>
                       </div>
                     )}
@@ -1483,7 +1501,7 @@ export default function UserPlanPage() {
                   {/* Meal Notes if any */}
                   {meal.notes && (
                     <div className={`mb-4 p-3 rounded-xl border ${isDarkMode ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-yellow-50 border-yellow-200'}`}>
-                      <p className={`text-xs font-semibold mb-1 ${isDarkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>📝 Notes from Dietitian</p>
+                      <p className={`flex items-center gap-1.5 text-xs font-semibold mb-1 ${isDarkMode ? 'text-yellow-200' : 'text-yellow-700'}`}><NotebookText aria-hidden="true" className="h-3.5 w-3.5" /> Notes from dietitian</p>
                       <div className={`text-sm space-y-1 ${isDarkMode ? 'text-yellow-100' : 'text-yellow-800'}`}>
                         {formatNotesWithLineBreaks(meal.notes).map((line, idx) => (
                           <p key={idx}>• {line}</p>
@@ -1549,7 +1567,7 @@ export default function UserPlanPage() {
                       {(meal.items.some(item => item.isAlternative) || meal.items.some(item => item.alternatives && item.alternatives.length > 0)) && (
                         <div className={`mt-3 p-3 rounded-xl border-2 border-dashed ${isDarkMode ? 'border-orange-700/50 bg-orange-900/20' : 'border-orange-200 bg-orange-50/50'}`}>
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="text-base">🔄</span>
+                            <RefreshCw aria-hidden="true" className="h-4 w-4" />
                             <p className={`text-xs font-semibold uppercase tracking-wide ${isDarkMode ? 'text-orange-300' : 'text-orange-600'}`}>
                               Optional Alternatives
                             </p>
@@ -1606,7 +1624,7 @@ export default function UserPlanPage() {
                     </div>
                   ) : (
                     <div className={`py-6 mb-4 text-center rounded-xl ${isDarkMode ? 'text-gray-400 bg-black/40' : 'text-gray-400 bg-gray-50'}`}>
-                      <span className="block mb-2 text-2xl">🍽️</span>
+                      <Utensils aria-hidden="true" className="mx-auto mb-2 h-7 w-7" />
                       <p className="text-sm">No food assigned for this meal</p>
                     </div>
                   )}
@@ -1615,7 +1633,8 @@ export default function UserPlanPage() {
                   <div className="flex items-center gap-3 flex-wrap">
                     {meal.isCompleted ? (
                       <button className="flex-1 min-w-30 py-2.5 px-4 bg-[#3AB1A0]/10 text-[#3AB1A0] rounded-xl text-sm font-semibold cursor-default">
-                        ✓ Completed
+                        <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                        Completed
                       </button>
                     ) : !isTodaySelected ? (
                       /* Disabled for past/future dates */
@@ -1699,16 +1718,21 @@ export default function UserPlanPage() {
       {/* Recipe Modal */}
       {recipeModal.isOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-hidden"
+          className="client-popup-above-nav fixed inset-x-0 top-0 z-50 flex items-stretch justify-center overflow-hidden bg-black/50"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               closeRecipeModal();
             }
           }}
         >
-          <div className={`w-full max-w-lg mx-4 rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${recipeModal.item?.name || 'Recipe'} details`}
+            className={`client-popup-panel flex h-full min-h-0 w-full flex-col overflow-hidden shadow-2xl ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}
+          >
             {/* Modal Header - Sticky */}
-            <div className="flex items-center justify-between p-5 bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B]">
+            <div className="flex shrink-0 items-center justify-between bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B] p-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
               <div className="flex-1 pr-4">
                 <h3 className="text-lg font-bold text-white">{recipeModal.item?.name}</h3>
                 {fullRecipeData?.createdBy && (
@@ -1726,7 +1750,7 @@ export default function UserPlanPage() {
             </div>
 
             {/* Modal Content - Scrollable */}
-            <div className="overflow-y-auto flex-1 overscroll-contain">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {loadingRecipe ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 className="w-10 h-10 text-[#3AB1A0] animate-spin mb-3" />
@@ -1736,7 +1760,7 @@ export default function UserPlanPage() {
                 <div className="p-5 space-y-5">
                   {/* Recipe Image */}
                   {(fullRecipeData?.image || recipeModal.item.recipe?.image) && (
-                    <div className="rounded-xl overflow-hidden -mx-5 -mt-5">
+                    <div className="-mx-5 -mt-5 overflow-hidden">
                       <img
                         src={fullRecipeData?.image || recipeModal.item.recipe?.image}
                         alt={fullRecipeData?.name || recipeModal.item.name}
@@ -1754,7 +1778,7 @@ export default function UserPlanPage() {
                   {/* Dietitian Note for this food item */}
                   {recipeModal.item?.notes?.trim() && (
                     <div className={`max-w-full p-4 rounded-xl border ${isDarkMode ? 'bg-[#3AB1A0]/15 border-[#3AB1A0]/30' : 'bg-[#3AB1A0]/10 border-[#3AB1A0]/25'}`}>
-                      <p className={`text-xs font-semibold mb-1 ${isDarkMode ? 'text-[#7CE0D3]' : 'text-[#1F6F67]'}`}>📝 Note from Dietitian</p>
+                      <p className={`flex items-center gap-1.5 text-xs font-semibold mb-1 ${isDarkMode ? 'text-[#7CE0D3]' : 'text-[#1F6F67]'}`}><NotebookText aria-hidden="true" className="h-3.5 w-3.5" /> Note from dietitian</p>
                       <div className={`max-w-full text-sm space-y-1 ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
                         {formatNotesWithLineBreaks(recipeModal.item.notes).map((line, idx) => (
                           <p key={idx} className="flex items-start gap-1.5">
@@ -1788,7 +1812,7 @@ export default function UserPlanPage() {
                   {/* Nutrition Info */}
                   {(fullRecipeData?.nutrition || recipeModal.item.recipe?.nutrition) && (
                     <div>
-                      <h4 className={`mb-3 text-base font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>📊 Nutrition (per serving)</h4>
+                      <h4 className={`mb-3 flex items-center gap-2 text-base font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><BarChart3 aria-hidden="true" className="h-4 w-4" /> Nutrition per serving</h4>
                       <div className="grid grid-cols-4 gap-2">
                         <div className="text-center p-2 bg-red-50 rounded-lg">
                           <p className="text-lg font-bold text-red-600">{formatNum((fullRecipeData?.nutrition || recipeModal.item.recipe?.nutrition)?.calories || 0)}</p>
@@ -1814,7 +1838,7 @@ export default function UserPlanPage() {
                   {((fullRecipeData?.dietaryRestrictions && fullRecipeData.dietaryRestrictions.length > 0) ||
                     (recipeModal.item?.recipe?.dietaryRestrictions && recipeModal.item.recipe.dietaryRestrictions.length > 0)) && (
                       <div>
-                        <h4 className={`mb-2 text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>🥗 Dietary Info</h4>
+                        <h4 className={`mb-2 flex items-center gap-2 text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><Salad aria-hidden="true" className="h-4 w-4" /> Dietary information</h4>
                         <div className="flex flex-wrap gap-2">
                           {(fullRecipeData?.dietaryRestrictions || recipeModal.item.recipe?.dietaryRestrictions)?.map((restriction, i) => (
                             <span key={i} className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">{restriction}</span>
@@ -1826,7 +1850,7 @@ export default function UserPlanPage() {
                   {/* Medical Contraindications */}
                   {fullRecipeData?.medicalContraindications && fullRecipeData.medicalContraindications.length > 0 && (
                     <div className="p-3 bg-red-50 rounded-xl">
-                      <p className="text-xs font-bold text-red-800 mb-2">⚠️ Not recommended for:</p>
+                      <p className="mb-2 flex items-center gap-1.5 text-xs font-bold text-red-800"><TriangleAlert aria-hidden="true" className="h-4 w-4" /> Not recommended for:</p>
                       <div className="flex flex-wrap gap-1">
                         {fullRecipeData.medicalContraindications.map((condition, i) => (
                           <span key={i} className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">{condition}</span>
@@ -1839,24 +1863,37 @@ export default function UserPlanPage() {
                   {((fullRecipeData?.ingredients && fullRecipeData.ingredients.length > 0) ||
                     (recipeModal.item.recipe?.ingredients && recipeModal.item.recipe.ingredients.length > 0)) && (
                       <div>
-                        <h4 className={`mb-3 text-base font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>🥗 Ingredients</h4>
+                        <h4 className={`mb-3 flex items-center gap-2 text-base font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><Salad aria-hidden="true" className="h-4 w-4" /> Ingredients</h4>
                         <ul className="space-y-2">
+                          {/* Reference-only checklist: selections intentionally reset when the dialog closes. */}
                           {fullRecipeData?.ingredients ? (
                             fullRecipeData.ingredients.map((ing, i) => (
-                              <li key={i} className="flex items-start gap-3 p-3 bg-[#3AB1A0]/5 rounded-lg">
-                                <div className="w-2 h-2 rounded-full bg-[#3AB1A0] mt-1.5 shrink-0" />
-                                <div className="flex-1">
-                                  <span className={`font-medium text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{ing.name}</span>
-                                  <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}> - {ing.quantity} {ing.unit}</span>
-                                  {ing.remarks && <span className={`text-xs ml-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>({ing.remarks})</span>}
-                                </div>
+                              <li key={i} className={`rounded-xl border ${isDarkMode ? 'border-gray-700 bg-gray-800/70' : 'border-[#3AB1A0]/15 bg-[#3AB1A0]/5'}`}>
+                                <label className="flex w-full cursor-pointer items-start gap-3 p-3">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Mark ${ing.name} as prepared`}
+                                    className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#3AB1A0]"
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className={`font-medium text-sm ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{ing.name}</span>
+                                    <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}> - {ing.quantity} {ing.unit}</span>
+                                    {ing.remarks && <span className={`text-xs ml-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`}>({ing.remarks})</span>}
+                                  </span>
+                                </label>
                               </li>
                             ))
                           ) : (
                             recipeModal.item.recipe?.ingredients?.map((ing, i) => (
-                              <li key={i} className="flex items-start gap-3 p-3 bg-[#3AB1A0]/5 rounded-lg">
-                                <div className="w-2 h-2 rounded-full bg-[#3AB1A0] mt-1.5 shrink-0" />
-                                <span className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>{ing}</span>
+                              <li key={i} className={`rounded-xl border ${isDarkMode ? 'border-gray-700 bg-gray-800/70' : 'border-[#3AB1A0]/15 bg-[#3AB1A0]/5'}`}>
+                                <label className="flex w-full cursor-pointer items-start gap-3 p-3">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Mark ${ing} as prepared`}
+                                    className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#3AB1A0]"
+                                  />
+                                  <span className={`min-w-0 flex-1 text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>{ing}</span>
+                                </label>
                               </li>
                             ))
                           )}
@@ -1868,14 +1905,17 @@ export default function UserPlanPage() {
                   {((fullRecipeData?.instructions && fullRecipeData.instructions.length > 0) ||
                     (recipeModal.item.recipe?.instructions && recipeModal.item.recipe.instructions.length > 0)) && (
                       <div>
-                        <h4 className={`mb-3 text-base font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>👨‍🍳 Instructions</h4>
-                        <ol className="space-y-3">
+                        <h4 className={`mb-3 flex items-center gap-2 text-base font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><CookingPot aria-hidden="true" className="h-4 w-4" /> Instructions</h4>
+                        <ol className="list-none space-y-3 p-0">
                           {(fullRecipeData?.instructions || recipeModal.item.recipe?.instructions)?.map((step, i) => (
-                            <li key={i} className="flex gap-3">
+                            <li
+                              key={i}
+                              className={`flex items-start gap-3 rounded-xl border p-3 ${isDarkMode ? 'border-gray-700 bg-gray-800/70' : 'border-orange-100 bg-orange-50/70'}`}
+                            >
                               <span className="shrink-0 w-7 h-7 rounded-full bg-[#E06A26] text-white flex items-center justify-center text-xs font-bold">
                                 {i + 1}
                               </span>
-                              <span className={`text-sm pt-0.5 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>{step}</span>
+                              <span className={`min-w-0 flex-1 pt-0.5 text-sm leading-relaxed ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>{step}</span>
                             </li>
                           ))}
                         </ol>
@@ -1886,7 +1926,7 @@ export default function UserPlanPage() {
                   {((fullRecipeData?.tips && fullRecipeData.tips.length > 0) ||
                     (recipeModal.item.recipe?.tips && recipeModal.item.recipe.tips.length > 0)) && (
                       <div className="p-4 bg-blue-50 rounded-xl">
-                        <h4 className="mb-2 text-sm font-bold text-blue-900">💡 Pro Tips</h4>
+                        <h4 className="mb-2 flex items-center gap-2 text-sm font-bold text-blue-900"><Lightbulb aria-hidden="true" className="h-4 w-4" /> Helpful tips</h4>
                         <ul className="space-y-1">
                           {(fullRecipeData?.tips || recipeModal.item.recipe?.tips)?.map((tip, i) => (
                             <li key={i} className="text-sm text-blue-800 flex items-start gap-2">
@@ -1902,7 +1942,7 @@ export default function UserPlanPage() {
                   {((fullRecipeData?.equipment && fullRecipeData.equipment.length > 0) ||
                     (recipeModal.item.recipe?.equipment && recipeModal.item.recipe.equipment.length > 0)) && (
                       <div>
-                        <h4 className={`mb-2 text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>🔧 Equipment Needed</h4>
+                        <h4 className={`mb-2 flex items-center gap-2 text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><Wrench aria-hidden="true" className="h-4 w-4" /> Equipment needed</h4>
                         <div className="flex flex-wrap gap-2">
                           {(fullRecipeData?.equipment || recipeModal.item.recipe?.equipment)?.map((eq, i) => (
                             <span key={i} className={`px-3 py-1 rounded-full text-xs ${isDarkMode ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-700'}`}>{eq}</span>
@@ -1915,13 +1955,13 @@ export default function UserPlanPage() {
                   {((fullRecipeData?.storage && (fullRecipeData.storage.refrigerator || fullRecipeData.storage.freezer)) ||
                     (recipeModal.item.recipe?.storage && (recipeModal.item.recipe.storage.refrigerator || recipeModal.item.recipe.storage.freezer))) && (
                       <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-black/40' : 'bg-gray-50'}`}>
-                        <h4 className={`mb-2 text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>🧊 Storage</h4>
+                        <h4 className={`mb-2 flex items-center gap-2 text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><Refrigerator aria-hidden="true" className="h-4 w-4" /> Storage</h4>
                         <div className={`space-y-1 text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                           {(fullRecipeData?.storage || recipeModal.item.recipe?.storage)?.refrigerator && (
-                            <p>🥶 Refrigerator: {(fullRecipeData?.storage || recipeModal.item.recipe?.storage)?.refrigerator}</p>
+                            <p>Refrigerator: {(fullRecipeData?.storage || recipeModal.item.recipe?.storage)?.refrigerator}</p>
                           )}
                           {(fullRecipeData?.storage || recipeModal.item.recipe?.storage)?.freezer && (
-                            <p>❄️ Freezer: {(fullRecipeData?.storage || recipeModal.item.recipe?.storage)?.freezer}</p>
+                            <p>Freezer: {(fullRecipeData?.storage || recipeModal.item.recipe?.storage)?.freezer}</p>
                           )}
                           {(fullRecipeData?.storage || recipeModal.item.recipe?.storage)?.instructions && (
                             <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{(fullRecipeData?.storage || recipeModal.item.recipe?.storage)?.instructions}</p>
@@ -1933,7 +1973,7 @@ export default function UserPlanPage() {
                   {/* Alternatives */}
                   {recipeModal.item.alternatives && recipeModal.item.alternatives.length > 0 && (
                     <div className="p-4 bg-[#3AB1A0]/10 rounded-xl">
-                      <h4 className={`mb-2 text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>🔄 Alternative Options</h4>
+                      <h4 className={`mb-2 flex items-center gap-2 text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}><RefreshCw aria-hidden="true" className="h-4 w-4" /> Alternative options</h4>
                       <div className="space-y-2">
                         {recipeModal.item.alternatives.map((alt, i) => (
                           <div key={i} className={`flex items-center justify-between p-2 rounded-lg ${isDarkMode ? 'bg-gray-900 ring-1 ring-white/10' : 'bg-white'}`}>
@@ -1949,7 +1989,9 @@ export default function UserPlanPage() {
                   )}
 
                   {/* No Recipe Data Message */}
-                  {!fullRecipeData && !recipeModal.item.recipe && !loadingRecipe && (
+                  {!loadingRecipe &&
+                    !(fullRecipeData?.ingredients?.length || fullRecipeData?.instructions?.length) &&
+                    !(recipeModal.item.recipe?.ingredients?.length || recipeModal.item.recipe?.instructions?.length) && (
                     <div className={`py-8 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
                       <BookOpen className={`w-12 h-12 mx-auto mb-3 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
                       <p className="text-sm">No recipe details available for this food item</p>
@@ -1961,7 +2003,7 @@ export default function UserPlanPage() {
             </div>
 
             {/* Modal Footer - Close Button */}
-            <div className={`p-4 border-t ${isDarkMode ? 'bg-gray-950 border-gray-800' : 'bg-gray-50 border-gray-200'}`}>
+            <div className={`shrink-0 border-t p-4 ${isDarkMode ? 'bg-gray-950 border-gray-800' : 'bg-gray-50 border-gray-200'}`}>
               <button
                 onClick={closeRecipeModal}
                 className="w-full py-3 bg-[#3AB1A0] text-white rounded-xl font-bold hover:bg-[#2A9A8B] transition-colors"
@@ -1975,8 +2017,8 @@ export default function UserPlanPage() {
 
       {/* Alternatives Modal */}
       {alternativesModal.isOpen && alternativesModal.item.alternatives && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
-          <div className={`w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[80vh] overflow-hidden ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}>
+        <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
+          <div className={`client-bottom-sheet-panel w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[80vh] overflow-hidden ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}>
             <div className={`sticky top-0 flex items-center justify-between p-4 border-b ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
               <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Alternative Foods</h3>
               <button
@@ -2009,14 +2051,14 @@ export default function UserPlanPage() {
       {/* Food Item Selector Modal - Shows all food items in a meal with recipes */}
       {foodSelectorModal.isOpen && foodSelectorModal.meal && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center p-4"
+          className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setFoodSelectorModal({ meal: null, isOpen: false });
             }
           }}
         >
-          <div className={`w-full max-w-lg rounded-3xl shadow-2xl max-h-[85vh] overflow-hidden flex flex-col ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}>
+          <div className={`client-bottom-sheet-panel flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl shadow-2xl ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}>
             {/* Modal Header */}
             <div className="flex items-center justify-between p-5 bg-linear-to-r from-[#DB9C6E] to-[#E06A26]">
               <div>
@@ -2036,7 +2078,7 @@ export default function UserPlanPage() {
               {/* Meal Notes */}
               {foodSelectorModal.meal?.notes && (
                 <div className={`p-4 rounded-xl mb-4 border ${isDarkMode ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-yellow-50 border-yellow-200'}`}>
-                  <p className={`text-xs font-semibold mb-1 ${isDarkMode ? 'text-yellow-200' : 'text-yellow-700'}`}>📝 Notes from Dietitian</p>
+                  <p className={`flex items-center gap-1.5 text-xs font-semibold mb-1 ${isDarkMode ? 'text-yellow-200' : 'text-yellow-700'}`}><NotebookText aria-hidden="true" className="h-3.5 w-3.5" /> Notes from dietitian</p>
                   <p className={`text-sm ${isDarkMode ? 'text-yellow-100' : 'text-yellow-800'}`}>{foodSelectorModal.meal?.notes}</p>
                 </div>
               )}
@@ -2100,7 +2142,7 @@ export default function UserPlanPage() {
                   {/* Alternatives for this item */}
                   {item.alternatives && item.alternatives.length > 0 && (
                     <div className="ml-6 p-3 bg-[#3AB1A0]/5 rounded-xl border-l-2 border-[#3AB1A0]">
-                      <p className="text-xs font-semibold text-[#3AB1A0] mb-2">🔄 Alternatives:</p>
+                      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#3AB1A0]"><RefreshCw aria-hidden="true" className="h-3.5 w-3.5" /> Alternatives:</p>
                       <div className="space-y-2">
                         {item.alternatives.map((alt, altIndex) => (
                           <div
@@ -2136,9 +2178,9 @@ export default function UserPlanPage() {
 
       {/* Meal Completion Modal */}
       {completionModal.isOpen && completionModal.meal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
-          <div className={`w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] overflow-hidden ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}>
-            <div className={`sticky top-0 flex items-center justify-between p-4 border-b ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
+        <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
+          <div className={`client-bottom-sheet-panel flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}>
+            <div className={`flex shrink-0 items-center justify-between border-b p-4 ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
               <div>
                 <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Complete Meal</h3>
                 <p className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
@@ -2153,7 +2195,7 @@ export default function UserPlanPage() {
               </button>
             </div>
 
-            <div className="p-4 overflow-y-auto max-h-[70vh] space-y-5">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
               {/* Meal Type - Auto fetched */}
               <div className="bg-linear-to-r from-[#3AB1A0]/10 to-[#E06A26]/10 rounded-xl p-4">
                 <div className="flex items-center gap-3">
@@ -2273,7 +2315,7 @@ export default function UserPlanPage() {
             </div>
 
             {/* Submit Button */}
-            <div className={`p-4 border-t ${isDarkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-100'}`}>
+            <div className={`shrink-0 border-t p-4 ${isDarkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-100'}`}>
               <button
                 onClick={handleSubmitCompletion}
                 disabled={isSubmitting || isProcessingImage || !completionImage}
@@ -2303,16 +2345,16 @@ export default function UserPlanPage() {
       {/* Date Picker Modal */}
       {showDatePicker && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          className="client-popup-above-nav fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
           onClick={() => setShowDatePicker(false)}
         >
           <div
-            className={`w-full max-w-sm mx-4 rounded-3xl shadow-2xl overflow-hidden ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}
+            className={`client-popup-panel mx-4 w-full max-w-sm overflow-hidden rounded-3xl shadow-2xl ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between p-5 bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B]">
-              <h3 className="text-lg font-bold text-white">📅 Select Date</h3>
+              <h3 className="flex items-center gap-2 text-lg font-bold text-white"><CalendarDays aria-hidden="true" className="h-5 w-5" /> Select date</h3>
               <button
                 onClick={() => setShowDatePicker(false)}
                 className="p-2 rounded-full hover:bg-white/20 transition-colors"

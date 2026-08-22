@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Calendar, Camera } from 'lucide-react';
+import { X, Calendar, Camera, Sparkles, Rocket } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 
 interface ProgressPhoto {
@@ -132,10 +132,10 @@ export function PhotoComparisonModal({
               {/* Motivational Message */}
               <div className="mt-6 text-center">
                 <div className="bg-linear-to-r from-emerald-500 to-teal-600 rounded-2xl p-6 text-white">
-                  <h3 className="text-lg font-bold mb-2">Keep Up the Great Work! 🎉</h3>
+                  <h3 className="mb-2 flex items-center justify-center gap-2 text-lg font-bold"><Sparkles aria-hidden="true" className="h-5 w-5" /> Keep up the great work!</h3>
                   <p className="text-emerald-100">
-                    You've been consistently tracking your progress for {daysDifference} days. 
-                    Every photo is a step forward in your journey!
+                    You&apos;ve tracked your progress consistently for {daysDifference} days.
+                    Every photo is a step forward in your journey.
                   </p>
                 </div>
               </div>
@@ -162,9 +162,9 @@ export function PhotoComparisonModal({
 
               <div className="mt-6">
                 <div className="bg-linear-to-r from-emerald-500 to-teal-600 rounded-2xl p-6 text-white max-w-md mx-auto">
-                  <h3 className="text-lg font-bold mb-2">Your Journey Starts Now! 🚀</h3>
+                  <h3 className="mb-2 flex items-center justify-center gap-2 text-lg font-bold"><Rocket aria-hidden="true" className="h-5 w-5" /> Your journey starts now!</h3>
                   <p className="text-emerald-100">
-                    This is your first progress photo. Keep taking photos regularly to see your amazing transformation!
+                    This is your first progress photo. Keep taking photos regularly to see your transformation over time.
                   </p>
                 </div>
               </div>

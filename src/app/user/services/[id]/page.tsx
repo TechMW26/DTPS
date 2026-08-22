@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Star, Check, X, Loader2, ShoppingCart } from 'lucide-react';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import Script from 'next/script';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -190,11 +190,7 @@ export default function ServiceDetailPage() {
   };
 
   if (loading) {
-    return (
-      <div className={`fixed inset-0 flex items-center justify-center z-100 ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="grid" showHeader={false} />;
   }
 
   if (!service) {
@@ -286,7 +282,9 @@ export default function ServiceDetailPage() {
                         ? 'bg-gray-700 text-gray-100'
                         : 'bg-gray-100 text-gray-700'
                       }`}>
-                      {selectedTier === index ? '✓ Selected' : 'Select'}
+                      {selectedTier === index ? (
+                        <span className="inline-flex items-center gap-1.5"><Check aria-hidden="true" className="h-4 w-4" /> Selected</span>
+                      ) : 'Select'}
                     </div>
                   </div>
                 </button>

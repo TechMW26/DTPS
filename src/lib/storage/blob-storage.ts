@@ -85,6 +85,7 @@ export async function uploadToBlob(
     const { url, pathname } = await put(`${folder}/${finalFilename}`, uploadBuffer, {
       access: options.access || "public",
       contentType: finalContentType,
+      allowOverwrite: true,
     });
 
     console.log(`[VercelBlob] Uploaded: ${pathname} (${uploadBuffer.length} bytes)`);

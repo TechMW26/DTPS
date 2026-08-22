@@ -106,6 +106,21 @@ export async function POST(
 
     const clientObjectId = new mongoose.Types.ObjectId(id);
     const createdByObjectId = new mongoose.Types.ObjectId(session.user.id);
+    const rawOperationId = request.headers.get('x-idempotency-key')?.trim();
+    const operationId = rawOperationId && /^[a-zA-Z0-9._:-]{8,128}$/.test(rawOperationId)
+      ? rawOperationId
+      : undefined;
+
+    if (operationId) {
+      const existingNote = await ClientNote.findOne({
+        client: clientObjectId,
+        createdBy: createdByObjectId,
+        operationId,
+      }).populate('createdBy', 'firstName lastName');
+      if (existingNote) {
+        return NextResponse.json({ success: true, note: existingNote, replayed: true });
+      }
+    }
 
     const newNote = new ClientNote({
       client: clientObjectId,
@@ -114,7 +129,8 @@ export async function POST(
       date: date ? new Date(date) : new Date(),
       content,
       showToClient: showToClient || false,
-      attachments: attachments || []
+      attachments: attachments || [],
+      operationId,
     });
 
     await newNote.save();

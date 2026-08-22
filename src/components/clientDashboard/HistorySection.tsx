@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { ListSkeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { 
   Clock, 
@@ -180,8 +180,8 @@ export default function HistorySection({ clientId, onRegisterReset }: HistorySec
   if (loading) {
     return (
       <Card>
-        <CardContent className="flex items-center justify-center py-12">
-          <LoadingSpinner />
+        <CardContent className="py-6">
+          <ListSkeleton rows={6} />
         </CardContent>
       </Card>
     );

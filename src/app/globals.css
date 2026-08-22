@@ -24,6 +24,7 @@
     --border: #e5e5e5;
     --input: #e5e5e5;
     --ring: #0a0a0a;
+    --client-bottom-nav-clearance: calc(3.5rem + max(0.375rem, env(safe-area-inset-bottom)));
   }
 
   .dark {
@@ -394,6 +395,10 @@
   }
 
   .web-push-banner-title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
     font-size: 16px;
     line-height: 22px;
     font-weight: 600;
@@ -405,6 +410,112 @@
 
   .dark .web-push-banner-title {
     color: #f9fafb;
+  }
+
+  /* Sonner's fixed width can extend past narrow screens when it is offset from
+     the viewport edge. Keep every toast inside the mobile safe area. */
+  [data-sonner-toaster] {
+    width: min(var(--width), calc(100vw - 2rem)) !important;
+    max-width: calc(100vw - 2rem) !important;
+  }
+
+  [data-sonner-toast] {
+    max-width: 100% !important;
+  }
+
+  .notification-permission-toast {
+    margin-bottom: calc(4.75rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  .client-content-safe-bottom {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+
+  .client-bottom-nav-safe {
+    padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
+  }
+
+  /* Keep client dialogs and bottom sheets inside the viewport area that remains
+     above the persistent navigation, including the device safe area. */
+  .client-popup-above-nav {
+    bottom: var(--client-bottom-nav-clearance) !important;
+    min-height: 0;
+    animation: client-popup-backdrop-in 160ms ease-out both;
+  }
+
+  .client-route-transition {
+    animation: client-route-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .client-popup-panel {
+    animation: client-popup-panel-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .client-bottom-sheet-panel {
+    animation: client-bottom-sheet-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes client-route-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 8px, 0);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes client-popup-backdrop-in {
+    from {
+      background-color: transparent;
+    }
+  }
+
+  @keyframes client-popup-panel-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 12px, 0) scale(0.985);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+  }
+
+  @keyframes client-bottom-sheet-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 32px, 0);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .client-route-transition,
+    .client-popup-above-nav,
+    .client-popup-panel,
+    .client-bottom-sheet-panel {
+      animation: none !important;
+    }
+  }
+
+  .client-header-safe-top {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+  }
+
+  .client-section-header-safe-top {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .client-messages-height {
+    height: calc(100dvh - 5rem - env(safe-area-inset-bottom));
   }
 
   .web-push-banner-open {

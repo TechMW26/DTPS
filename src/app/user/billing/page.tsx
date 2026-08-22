@@ -24,7 +24,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { format } from 'date-fns';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { useRealtime } from '@/hooks/useRealtime';
 
 interface Invoice {
@@ -172,17 +172,13 @@ export default function UserBillingPage() {
   };
 
   if (status === 'loading' || loading) {
-    return (
-      <div className={`fixed inset-0 flex items-center justify-center z-[100] ${isDarkMode ? 'bg-gray-950' : 'bg-white'}`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="list" showHeader={false} />;
   }
 
   // Show error state if there's an error
   if (errorMessage && !loading) {
     return (
-      <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
         {/* Header */}
         <div className={`sticky top-0 z-40 transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'} border-b`}>
           <div className="relative flex items-center justify-center px-4 py-4">
@@ -222,7 +218,7 @@ export default function UserBillingPage() {
   // No purchases yet - show empty state
   if (!hasData) {
     return (
-      <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
         {/* Header */}
         <div className={`sticky top-0 z-40 transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'} border-b`}>
           <div className="relative flex items-center justify-center px-4 py-4">
@@ -253,7 +249,7 @@ export default function UserBillingPage() {
   }
 
   return (
-    <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       {/* Header */}
       <div className={`sticky top-0 z-40 transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'} border-b`}>
         <div className="relative flex items-center justify-center px-4 py-4">

@@ -20,6 +20,7 @@ import {
   Info
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { uploadFileReliably } from '@/lib/client-upload';
 
 type BugCategory = 'ui' | 'performance' | 'crash' | 'feature' | 'security' | 'other';
 
@@ -101,21 +102,10 @@ export default function ReportProblemPage() {
     try {
       // Upload screenshots first
       const uploadedUrls: string[] = [];
-      
+
       for (const file of screenshots) {
-        const uploadFormData = new FormData();
-        uploadFormData.append('file', file);
-        uploadFormData.append('type', 'bug');
-        
-        const uploadResponse = await fetch('/api/upload', {
-          method: 'POST',
-          body: uploadFormData
-        });
-        
-        if (uploadResponse.ok) {
-          const uploadData = await uploadResponse.json();
-          uploadedUrls.push(uploadData.url);
-        }
+        const uploadData = await uploadFileReliably(file, 'bug');
+        uploadedUrls.push(uploadData.url);
       }
 
       // Submit bug report
@@ -156,7 +146,7 @@ export default function ReportProblemPage() {
 
   if (submitted) {
     return (
-      <div className={isDarkMode ? 'min-h-screen pb-24 bg-slate-950' : 'min-h-screen pb-24 bg-gray-50'}>
+      <div className={isDarkMode ? 'min-h-screen bg-slate-950' : 'min-h-screen bg-gray-50'}>
         <UserNavBar 
           title="Report a Problem" 
           showBack={true}
@@ -198,7 +188,7 @@ export default function ReportProblemPage() {
   }
 
   return (
-    <div className={isDarkMode ? 'min-h-screen pb-24 bg-slate-950' : 'min-h-screen pb-24 bg-gray-50'}>
+    <div className={isDarkMode ? 'min-h-screen bg-slate-950' : 'min-h-screen bg-gray-50'}>
       <UserNavBar 
         title="Report a Problem" 
         showBack={true}

@@ -9,6 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Apple, Clock, Loader2, CalendarCheck, Camera, X, CheckCircle2, ZoomIn } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { uploadFileReliably } from '@/lib/client-upload';
+import { ListSkeleton } from '@/components/ui/skeleton';
 
 interface Meal {
   _id: string;
@@ -269,12 +271,7 @@ export default function CaloriesSection({ clientId, selectedDate }: CaloriesSect
       setUploadingPhoto(true);
       let photoUrl = '';
       if (selectedPhotoFile) {
-        const uploadData = new FormData();
-        uploadData.append('file', selectedPhotoFile);
-        uploadData.append('type', 'progress');
-        const uploadResponse = await fetch('/api/upload', { method: 'POST', body: uploadData });
-        const uploadResult = await uploadResponse.json();
-        if (!uploadResponse.ok) throw new Error(uploadResult.error || 'Meal photo upload failed');
+        const uploadResult = await uploadFileReliably(selectedPhotoFile, 'progress');
         photoUrl = uploadResult.url;
       }
       await toggleMealConsumed(selectedMeal, true, photoUrl, mealNotes);
@@ -307,11 +304,7 @@ export default function CaloriesSection({ clientId, selectedDate }: CaloriesSect
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-green-500" />
-      </div>
-    );
+    return <ListSkeleton rows={5} />;
   }
 
   // Show frozen day message

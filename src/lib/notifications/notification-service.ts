@@ -242,9 +242,9 @@ export class NotificationService {
     });
 
     const titles: Record<string, string> = {
-      booked: '📅 New Appointment Booked!',
-      cancelled: '❌ Appointment Cancelled',
-      reminder: '⏰ Appointment Reminder'
+      booked: 'New appointment booked',
+      cancelled: 'Appointment cancelled',
+      reminder: 'Appointment reminder'
     };
 
     const bodies: Record<string, string> = {

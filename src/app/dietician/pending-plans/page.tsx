@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import { DashboardContentSkeleton } from '@/components/ui/skeleton';
 
 interface PendingPlan {
   clientId: string;
@@ -230,12 +231,7 @@ export default function PendingPlansPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="p-6 flex items-center justify-center min-h-100">
-          <div className="text-center">
-            <Loader2 className="h-12 w-12 animate-spin text-teal-600 mx-auto mb-4" />
-            <p className="text-gray-600">Loading pending plans...</p>
-          </div>
-        </div>
+        <DashboardContentSkeleton statCards={3} sections={2} />
       </DashboardLayout>
     );
   }

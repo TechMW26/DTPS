@@ -19,11 +19,12 @@ import {
   Sandwich,
   Moon,
   Sunrise,
-  RotateCcw
+  RotateCcw,
+  Lightbulb
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 
 interface MealEntry {
   mealType: string;
@@ -282,11 +283,7 @@ export default function DietaryRecallPage() {
   };
 
   if (loading) {
-    return (
-      <div className={`fixed inset-0 ${isDarkMode ? 'bg-gray-950' : 'bg-white'} flex items-center justify-center z-100`}>
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="form" showHeader={false} />;
   }
 
   return (
@@ -329,7 +326,7 @@ export default function DietaryRecallPage() {
         </div>
       </div>
 
-      <div className="px-4 py-6 pb-24 space-y-4">
+      <div className="space-y-4 px-4 py-6">
         {/* Meal Cards */}
         {meals.map((meal, index) => {
           const mealInfo = getMealInfo(meal.mealType);
@@ -431,7 +428,7 @@ export default function DietaryRecallPage() {
 
         {/* Tips */}
         <div className={isDarkMode ? "bg-white/5 border border-[#2a2a2a] rounded-2xl p-4" : "bg-green-50 border border-green-200 rounded-2xl p-4"}>
-          <h4 className={isDarkMode ? "text-green-300 font-semibold text-sm mb-2" : "text-green-700 font-semibold text-sm mb-2"}>💡 Tips for Accurate Recall</h4>
+          <h4 className={isDarkMode ? "mb-2 flex items-center gap-2 text-sm font-semibold text-green-300" : "mb-2 flex items-center gap-2 text-sm font-semibold text-green-700"}><Lightbulb aria-hidden="true" className="h-4 w-4" /> Tips for an accurate recall</h4>
           <ul className={isDarkMode ? "text-xs text-gray-300 space-y-1" : "text-xs text-gray-600 space-y-1"}>
             <li>• Include portion sizes (e.g., 1 cup, 2 chapatis)</li>
             <li>• Mention cooking method (fried, boiled, grilled)</li>

@@ -148,7 +148,9 @@ export function useAutoSave<T>({
         userId,
       }, {
         showErrorToast: false,
-        retries: 1,
+        retries: 3,
+        // /api/drafts upserts by draft type + id, so replay cannot duplicate it.
+        retryUnsafe: true,
       });
 
       return response.success;

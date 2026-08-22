@@ -6,6 +6,7 @@ import { ReactNode, useState, useEffect } from 'react';
 import { MobileHeader } from '@/components/mobile/MobileHeader';
 import { MobileBottomNav } from '@/components/mobile/MobileBottomNav';
 import { format } from 'date-fns';
+import { Moon, Sun, Sunrise } from 'lucide-react';
 
 interface ClientAppLayoutProps {
   children: ReactNode;
@@ -32,11 +33,10 @@ const getGreeting = () => {
   return 'Good Evening';
 };
 
-const getGreetingEmoji = () => {
+const getGreetingIcon = () => {
   const hour = new Date().getHours();
-  if (hour < 12) return '🌅';
-  if (hour < 17) return '☀️';
-  return '🌙';
+  const Icon = hour < 12 ? Sunrise : hour < 17 ? Sun : Moon;
+  return <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />;
 };
 
 // Page titles for different routes
@@ -47,12 +47,14 @@ const getPageInfo = (pathname: string, session: any) => {
     case '/client-dashboard':
       return {
         title: firstName,
-        subtitle: `${getGreeting()} ${getGreetingEmoji()}`
+        subtitle: getGreeting(),
+        subtitleIcon: getGreetingIcon(),
       };
     case '/progress':
       return {
         title: 'Progress Tracking',
-        subtitle: `${getGreeting()} ${getGreetingEmoji()}`
+        subtitle: getGreeting(),
+        subtitleIcon: getGreetingIcon(),
       };
     case '/profile':
       return {
@@ -109,6 +111,7 @@ export function ClientAppLayout({ children }: ClientAppLayoutProps) {
         <MobileHeader
           title={pageInfo.title}
           subtitle={pageInfo.subtitle}
+          subtitleIcon={pageInfo.subtitleIcon}
           showBack={false}
           showNotification={true}
           showProfile={true}

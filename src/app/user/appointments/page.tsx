@@ -22,12 +22,14 @@ import {
   AlertCircle,
   ArrowLeft,
   X,
-  Edit
+  Edit,
+  NotebookText,
+  RefreshCw
 } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, addDays } from 'date-fns';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
+import { ClientPageSkeleton } from '@/components/ui/skeleton';
 
 interface LifecycleEvent {
   action: string;
@@ -251,17 +253,17 @@ export default function UserAppointmentsPage() {
             <div className="flex flex-wrap gap-2 mb-3">
               {createdByLabel && (
                 <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                  📝 {createdByLabel}
+                  <NotebookText aria-hidden="true" className="mr-1 h-3.5 w-3.5" /> {createdByLabel}
                 </span>
               )}
               {rescheduledByLabel && (
                 <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                  🔄 {rescheduledByLabel}
+                  <RefreshCw aria-hidden="true" className="mr-1 h-3.5 w-3.5" /> {rescheduledByLabel}
                 </span>
               )}
               {cancelledByLabel && (
                 <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-red-50 text-red-700 border border-red-200">
-                  ❌ {cancelledByLabel}
+                  <XCircle aria-hidden="true" className="mr-1 h-3.5 w-3.5" /> {cancelledByLabel}
                 </span>
               )}
             </div>
@@ -300,15 +302,11 @@ export default function UserAppointmentsPage() {
   };
 
   if (status === 'loading' || loading) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center z-100 bg-white dark:bg-gray-950">
-        <SpoonGifLoader size="lg" />
-      </div>
-    );
+    return <ClientPageSkeleton variant="list" showHeader={false} />;
   }
 
   return (
-    <div className={`min-h-screen pb-24 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {/* Header */}
       <div className={`border-b transition-colors duration-300 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
         <div className="flex items-center justify-between px-4 py-3">
@@ -402,8 +400,8 @@ export default function UserAppointmentsPage() {
 
       {/* Cancel Confirmation Modal */}
       {showCancelModal && selectedAppointment && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
+        <div className="client-popup-above-nav fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="client-popup-panel w-full max-w-sm rounded-2xl bg-white p-6">
             <div className="text-center">
               <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
                 <XCircle className="h-8 w-8 text-red-600" />

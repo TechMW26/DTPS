@@ -118,7 +118,7 @@ export function MobileBottomNav() {
       )}
 
       {/* Bottom Navigation */}
-      <div className={`fixed bottom-0 left-0 right-0 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t safe-area-bottom z-50 md:hidden transition-colors duration-300`}>
+      <div className={`fixed bottom-0 left-0 right-0 ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t safe-area-bottom z-40 md:hidden transition-colors duration-300`}>
         <div className="grid grid-cols-5 h-16">
           <Link
             href="/client-dashboard"
