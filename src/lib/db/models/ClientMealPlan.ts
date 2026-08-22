@@ -570,6 +570,14 @@ ClientMealPlanSchema.pre("countDocuments", excludeSoftDeleted);
 // Indexes for better performance
 ClientMealPlanSchema.index({ clientId: 1, status: 1 });
 ClientMealPlanSchema.index({ dietitianId: 1, status: 1 });
+ClientMealPlanSchema.index({ clientId: 1, status: 1, endDate: 1 });
+ClientMealPlanSchema.index({
+  clientId: 1,
+  isDeleted: 1,
+  status: 1,
+  startDate: -1,
+  endDate: -1,
+});
 ClientMealPlanSchema.index({ startDate: 1, endDate: 1 });
 ClientMealPlanSchema.index({ "progress.date": 1 });
 ClientMealPlanSchema.index({ "mealCompletions.date": 1 });

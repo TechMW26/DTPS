@@ -214,17 +214,17 @@ export async function GET(request: NextRequest) {
     const { templates, total, categories } = await withCache(
       cacheKey,
       async () => {
-        const templates = await MealPlanTemplate.find(query)
+        const templatesPromise = MealPlanTemplate.find(query)
           .populate('createdBy', 'firstName lastName')
           .sort(sortOptions)
           .limit(limit)
           .skip(skip)
           .lean();
-
-        const total = await MealPlanTemplate.countDocuments(query);
-
-        // Get categories for filtering
-        const categories = await MealPlanTemplate.distinct('category', { isActive: true, isPublic: true });
+        const [templates, total, categories] = await Promise.all([
+          templatesPromise,
+          MealPlanTemplate.countDocuments(query),
+          MealPlanTemplate.distinct('category', { isActive: true, isPublic: true }),
+        ]);
 
         return { templates, total, categories };
       },

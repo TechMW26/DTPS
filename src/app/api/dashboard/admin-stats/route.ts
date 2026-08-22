@@ -1,180 +1,232 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
 import Appointment from '@/lib/db/models/Appointment';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import User from '@/lib/db/models/User';
 
-// GET /api/dashboard/admin-stats - Get real admin dashboard statistics
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Only allow admins to access this endpoint
     if (session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+      return NextResponse.json(
+        { error: 'Forbidden - Admin access required' },
+        { status: 403 },
+      );
     }
 
-    // Connect to MongoDB
-    await connectDB();
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const sixMonthStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const activeSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Get current date for calculations
-    const today = new Date();
-    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-
-    // Run all independent queries concurrently to avoid N+1 round-trips
-    const [
-      totalClients,
-      activeClients,
-      totalAppointments,
-      completedAppointments,
-      revenueAggregation,
-      monthlyRevenueAggregation,
-      avgOrderAggregation,
-      repeatCustomers,
-      topClients,
-      appointmentTypes
-    ] = await Promise.all([
-      // Total clients
-      User.countDocuments({ role: 'client' }),
-      // Active clients
-      User.countDocuments({
-        role: 'client',
-        $or: [
-          { 'wooCommerceData.totalOrders': { $gt: 0 } },
-          { lastLoginAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
-          { updatedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } }
-        ]
-      }),
-      // Total appointments
-      Appointment.countDocuments({}),
-      // Completed appointments
-      Appointment.countDocuments({ status: 'confirmed', date: { $lt: startOfToday } }),
-      // Total revenue
-      withCache(
-        `dashboard:admin-stats:revenue-total`,
-        async () => User.aggregate([
-          { $match: { role: 'client', 'wooCommerceData.totalSpent': { $exists: true } } },
-          { $group: { _id: null, totalRevenue: { $sum: '$wooCommerceData.totalSpent' } } }
-        ]),
-        { ttl: 120000, tags: ['dashboard'] }
-      ),
-      // Monthly revenue
-      withCache(
-        `dashboard:admin-stats:revenue-month-${startOfMonth.toISOString()}`,
-        async () => User.aggregate([
-          { $match: { role: 'client', 'wooCommerceData.lastOrderDate': { $gte: startOfMonth, $lt: endOfToday } } },
-          { $group: { _id: null, monthlyRevenue: { $sum: '$wooCommerceData.totalSpent' } } }
-        ]),
-        { ttl: 120000, tags: ['dashboard'] }
-      ),
-      // Average order value
-      withCache(
-        `dashboard:admin-stats:avg-order`,
-        async () => User.aggregate([
-          { $match: { role: 'client', 'wooCommerceData.totalOrders': { $gt: 0 } } },
-          { $group: { _id: null, totalOrders: { $sum: '$wooCommerceData.totalOrders' }, totalRevenue: { $sum: '$wooCommerceData.totalSpent' } } }
-        ]),
-        { ttl: 120000, tags: ['dashboard'] }
-      ),
-      // Repeat customers (for retention rate)
-      User.countDocuments({ role: 'client', 'wooCommerceData.totalOrders': { $gt: 1 } }),
-      // Top clients by spending
-      withCache(
-        `dashboard:admin-stats:top-clients`,
-        async () => User.find({ role: 'client', 'wooCommerceData.totalSpent': { $gt: 0 } })
-          .sort({ 'wooCommerceData.totalSpent': -1 })
-          .limit(10)
-          .select('firstName lastName email wooCommerceData.totalSpent wooCommerceData.totalOrders'),
-        { ttl: 120000, tags: ['dashboard'] }
-      ),
-      // Appointment types distribution
-      withCache(
-        `dashboard:admin-stats:appointment-types`,
-        async () => Appointment.aggregate([
-          { $group: { _id: '$type', count: { $sum: 1 } } },
-          { $sort: { count: -1 } }
-        ]),
-        { ttl: 120000, tags: ['dashboard'] }
-      )
+    // These two facets replace repeated full-collection scans and the previous
+    // twelve-query monthly loop while keeping the API response unchanged.
+    const [userFacetRows, appointmentFacetRows] = await Promise.all([
+      User.aggregate([
+        { $match: { role: 'client' } },
+        {
+          $facet: {
+            summary: [
+              {
+                $group: {
+                  _id: null,
+                  totalClients: { $sum: 1 },
+                  activeClients: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $or: [
+                            { $gt: ['$wooCommerceData.totalOrders', 0] },
+                            { $gte: ['$lastLoginAt', activeSince] },
+                            { $gte: ['$updatedAt', activeSince] },
+                          ],
+                        },
+                        1,
+                        0,
+                      ],
+                    },
+                  },
+                  totalRevenue: { $sum: { $ifNull: ['$wooCommerceData.totalSpent', 0] } },
+                  monthlyRevenue: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $and: [
+                            { $gte: ['$wooCommerceData.lastOrderDate', startOfMonth] },
+                            { $lt: ['$wooCommerceData.lastOrderDate', endOfToday] },
+                          ],
+                        },
+                        { $ifNull: ['$wooCommerceData.totalSpent', 0] },
+                        0,
+                      ],
+                    },
+                  },
+                  totalOrders: { $sum: { $ifNull: ['$wooCommerceData.totalOrders', 0] } },
+                  repeatCustomers: {
+                    $sum: { $cond: [{ $gt: ['$wooCommerceData.totalOrders', 1] }, 1, 0] },
+                  },
+                },
+              },
+            ],
+            topClients: [
+              { $match: { 'wooCommerceData.totalSpent': { $gt: 0 } } },
+              { $sort: { 'wooCommerceData.totalSpent': -1 } },
+              { $limit: 10 },
+              {
+                $project: {
+                  firstName: 1,
+                  lastName: 1,
+                  email: 1,
+                  'wooCommerceData.totalSpent': 1,
+                  'wooCommerceData.totalOrders': 1,
+                },
+              },
+            ],
+            revenueByMonth: [
+              {
+                $match: {
+                  'wooCommerceData.lastOrderDate': {
+                    $gte: sixMonthStart,
+                    $lt: nextMonthStart,
+                  },
+                },
+              },
+              {
+                $group: {
+                  _id: {
+                    $dateToString: {
+                      format: '%Y-%m',
+                      date: '$wooCommerceData.lastOrderDate',
+                      timezone: 'Asia/Kolkata',
+                    },
+                  },
+                  revenue: { $sum: { $ifNull: ['$wooCommerceData.totalSpent', 0] } },
+                },
+              },
+            ],
+          },
+        },
+      ]),
+      Appointment.aggregate([
+        {
+          $facet: {
+            summary: [
+              {
+                $group: {
+                  _id: null,
+                  totalAppointments: { $sum: 1 },
+                  completedAppointments: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $and: [
+                            { $lt: ['$scheduledAt', startOfToday] },
+                            { $in: ['$status', ['confirmed', 'completed']] },
+                          ],
+                        },
+                        1,
+                        0,
+                      ],
+                    },
+                  },
+                },
+              },
+            ],
+            appointmentTypes: [
+              { $group: { _id: '$type', count: { $sum: 1 } } },
+              { $sort: { count: -1 } },
+            ],
+            appointmentsByMonth: [
+              { $match: { scheduledAt: { $gte: sixMonthStart, $lt: nextMonthStart } } },
+              {
+                $group: {
+                  _id: {
+                    $dateToString: {
+                      format: '%Y-%m',
+                      date: '$scheduledAt',
+                      timezone: 'Asia/Kolkata',
+                    },
+                  },
+                  count: { $sum: 1 },
+                },
+              },
+            ],
+          },
+        },
+      ]),
     ]);
 
-    const totalRevenue = revenueAggregation[0]?.totalRevenue || 0;
-    const monthlyRevenue = monthlyRevenueAggregation[0]?.monthlyRevenue || 0;
-    const avgOrderValue = avgOrderAggregation[0]
-      ? avgOrderAggregation[0].totalRevenue / avgOrderAggregation[0].totalOrders
-      : 0;
-    const clientRetentionRate = totalClients > 0 ? Math.round((repeatCustomers / totalClients) * 100) : 0;
+    const userFacet = userFacetRows[0] || {};
+    const appointmentFacet = appointmentFacetRows[0] || {};
+    const userSummary = userFacet.summary?.[0] || {};
+    const appointmentSummary = appointmentFacet.summary?.[0] || {};
+    const totalClients = userSummary.totalClients || 0;
+    const totalRevenue = userSummary.totalRevenue || 0;
+    const totalOrders = userSummary.totalOrders || 0;
 
-    // Get appointments by month (last 6 months) — run all 6 months concurrently
-    const monthRanges = Array.from({ length: 6 }, (_, i) => {
-      const idx = 5 - i;
-      const monthStart = new Date(today.getFullYear(), today.getMonth() - idx, 1);
-      const monthEnd = new Date(today.getFullYear(), today.getMonth() - idx + 1, 0);
-      return { monthStart, monthEnd, label: monthStart.toLocaleDateString('en-IN', { month: 'short', timeZone: 'Asia/Kolkata' }) };
-    });
-
-    const monthResults = await Promise.all(
-      monthRanges.map(({ monthStart, monthEnd, label }) =>
-        Promise.all([
-          Appointment.countDocuments({ date: { $gte: monthStart, $lte: monthEnd } }),
-          withCache(
-            `dashboard:admin-stats:revenue-${label}-${monthStart.getFullYear()}`,
-            async () => User.aggregate([
-              { $match: { role: 'client', 'wooCommerceData.lastOrderDate': { $gte: monthStart, $lte: monthEnd } } },
-              { $group: { _id: null, revenue: { $sum: '$wooCommerceData.totalSpent' } } }
-            ]),
-            { ttl: 120000, tags: ['dashboard'] }
-          )
-        ]).then(([appointments, revenue]) => ({
-          month: label,
-          appointments,
-          revenue: revenue[0]?.revenue || 0
-        }))
-      )
+    const revenueByKey = new Map(
+      (userFacet.revenueByMonth || []).map((row: any) => [row._id, row.revenue || 0]),
     );
-    const appointmentsByMonth = monthResults;
+    const appointmentsByKey = new Map(
+      (appointmentFacet.appointmentsByMonth || []).map((row: any) => [row._id, row.count || 0]),
+    );
+    const appointmentsByMonth = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      return {
+        month: date.toLocaleDateString('en-IN', {
+          month: 'short',
+          timeZone: 'Asia/Kolkata',
+        }),
+        appointments: Number(appointmentsByKey.get(key) || 0),
+        revenue: Number(revenueByKey.get(key) || 0),
+      };
+    });
 
     return NextResponse.json({
       totalClients,
-      activeClients,
-      totalAppointments,
-      completedAppointments,
+      activeClients: userSummary.activeClients || 0,
+      totalAppointments: appointmentSummary.totalAppointments || 0,
+      completedAppointments: appointmentSummary.completedAppointments || 0,
       totalRevenue,
-      monthlyRevenue,
-      avgOrderValue,
-      clientRetentionRate,
+      monthlyRevenue: userSummary.monthlyRevenue || 0,
+      avgOrderValue: totalOrders > 0 ? totalRevenue / totalOrders : 0,
+      clientRetentionRate:
+        totalClients > 0
+          ? Math.round(((userSummary.repeatCustomers || 0) / totalClients) * 100)
+          : 0,
       appointmentsByMonth,
-      topClients: topClients.map(client => ({
-        clientName: `${client.firstName} ${client.lastName}`,
+      topClients: (userFacet.topClients || []).map((client: any) => ({
+        clientName: `${client.firstName || ''} ${client.lastName || ''}`.trim(),
         email: client.email,
         totalSpent: client.wooCommerceData?.totalSpent || 0,
-        totalOrders: client.wooCommerceData?.totalOrders || 0
+        totalOrders: client.wooCommerceData?.totalOrders || 0,
       })),
-      appointmentTypes: appointmentTypes.map(type => ({
+      appointmentTypes: (appointmentFacet.appointmentTypes || []).map((type: any) => ({
         type: type._id || 'Consultation',
         count: type.count,
-        revenue: type.count * 100 // Estimate ₹100 per appointment
+        revenue: type.count * 100,
       })),
-      revenueByMonth: appointmentsByMonth.map(month => ({
+      revenueByMonth: appointmentsByMonth.map((month) => ({
         month: month.month,
-        revenue: month.revenue
-      }))
+        revenue: month.revenue,
+      })),
     });
-
   } catch (error) {
     console.error('Error fetching admin stats:', error);
     return NextResponse.json(
       { error: 'Failed to fetch admin dashboard statistics' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

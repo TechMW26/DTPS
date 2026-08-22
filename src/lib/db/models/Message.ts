@@ -116,6 +116,7 @@ const messageSchema = new Schema({
 // Indexes for better query performance
 messageSchema.index({ sender: 1, receiver: 1, createdAt: -1 });
 messageSchema.index({ receiver: 1, isRead: 1 });
+messageSchema.index({ receiver: 1, isRead: 1, createdAt: -1 });
 messageSchema.index({ createdAt: -1 });
 
 // Additional indexes for conversation queries

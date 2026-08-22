@@ -103,16 +103,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const unreadCount = await Notification.countDocuments({
-      userId: session.user.id,
-      read: false
-    });
-
-    // Get message count and broadcast SSE update
-    const messageCount = await Message.countDocuments({
-      receiver: session.user.id,
-      isRead: false
-    });
+    // These counters are independent and can share the same round trip window.
+    const [unreadCount, messageCount] = await Promise.all([
+      Notification.countDocuments({ userId: session.user.id, read: false }),
+      Message.countDocuments({ receiver: session.user.id, isRead: false }),
+    ]);
 
     broadcastUnreadCounts(session.user.id, {
       notifications: unreadCount,

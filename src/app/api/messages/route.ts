@@ -66,12 +66,13 @@ function getDisplayName(person?: PopulatedPerson): string {
 // GET /api/messages - Get messages for current user
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    await connectDB();
 
     const { searchParams } = new URL(request.url);
     const conversationWith = searchParams.get('conversationWith');
@@ -155,10 +156,11 @@ export async function GET(request: NextRequest) {
       .skip((page - 1) * limit)
       .limit(limit);
 
-    const newestFirst = await messageQuery.lean();
+    const [newestFirst, total] = await Promise.all([
+      messageQuery.lean(),
+      Message.countDocuments(query),
+    ]);
     const messages = newestFirst.reverse();
-
-    const total = await Message.countDocuments(query);
 
     // Mark messages as read if viewing conversation
     if (conversationWith) {
@@ -184,22 +186,21 @@ export async function GET(request: NextRequest) {
 
       // Broadcast socket update for unread counts
       try {
-        const messageCount = await Message.countDocuments({
-          receiver: session.user.id,
-          isRead: false
-        });
-
         if (sessionRole === 'client') {
-          const notificationCount = await Notification.countDocuments({
-            userId: session.user.id,
-            read: false
-          });
+          const [messageCount, notificationCount] = await Promise.all([
+            Message.countDocuments({ receiver: session.user.id, isRead: false }),
+            Notification.countDocuments({ userId: session.user.id, read: false }),
+          ]);
 
           broadcastUnreadCounts(session.user.id, {
             notifications: notificationCount,
             messages: messageCount
           });
         } else {
+          const messageCount = await Message.countDocuments({
+            receiver: session.user.id,
+            isRead: false,
+          });
           broadcastStaffUnreadCounts(session.user.id, { messages: messageCount });
         }
       } catch {

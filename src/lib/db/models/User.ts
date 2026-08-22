@@ -581,6 +581,10 @@ userSchema.index({ createdAt: -1 }); // For sorting by newest
 userSchema.index({ role: 1, clientStatus: 1 });
 userSchema.index({ role: 1, assignedDietitian: 1 });
 userSchema.index({ role: 1, createdAt: -1 });
+userSchema.index({ role: 1, assignedDietitians: 1 });
+userSchema.index({ role: 1, assignedHealthCounselor: 1 });
+userSchema.index({ role: 1, assignedHealthCounselors: 1 });
+userSchema.index({ role: 1, 'createdBy.userId': 1 });
 // Text index for search functionality
 userSchema.index({ firstName: 'text', lastName: 'text', email: 'text' });
 

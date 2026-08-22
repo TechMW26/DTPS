@@ -195,6 +195,8 @@ appointmentSchema.index({ dietitian: 1, scheduledAt: 1 });
 appointmentSchema.index({ client: 1, scheduledAt: 1 });
 appointmentSchema.index({ status: 1 });
 appointmentSchema.index({ scheduledAt: 1 });
+appointmentSchema.index({ healthCounselor: 1, scheduledAt: 1, status: 1 });
+appointmentSchema.index({ scheduledAt: 1, status: 1 });
 
 // Compound index for finding conflicts
 appointmentSchema.index({ 

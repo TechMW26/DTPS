@@ -28,6 +28,30 @@ function toAuthUser(user: any) {
 }
 
 describe('Client messages route branch coverage', () => {
+    it('loads only the primary dietitian conversation summary', async () => {
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+        await createMessageRecord({
+            sender: dietitian._id,
+            receiver: client._id,
+            content: 'latest primary message',
+            createdAt: new Date('2026-03-27T06:00:00.000Z'),
+        });
+
+        const route = await import('@/app/api/client/messages/conversations/route');
+        const result = await invokeRoute(route.GET, {
+            method: 'GET',
+            url: 'http://localhost/api/client/messages/conversations',
+            user: client,
+        });
+
+        expect(result.status).toBe(200);
+        expect(result.json.hasDietitian).toBe(true);
+        expect(result.json.conversations).toHaveLength(1);
+        expect(String(result.json.conversations[0]._id)).toBe(entityId(dietitian));
+        expect(result.json.conversations[0].lastMessage.content).toBe('latest primary message');
+        expect(result.json.conversations[0].unreadCount).toBe(1);
+    });
+
     it('returns paginated conversation history with populated sender and receiver details', async () => {
         const { client, dietitian } = await createAssignedDietitianClientPair();
         const anotherUser = await createUser({ role: UserRole.ADMIN });
@@ -75,15 +99,9 @@ describe('Client messages route branch coverage', () => {
 
         expect(result.status).toBe(200);
         expect(result.json.messages).toHaveLength(1);
-        expect(result.json.messages[0].content).toBe('history-3');
-        expect(result.json.messages[0].type).toBe('file');
-        expect(result.json.messages[0].attachments).toEqual([
-            expect.objectContaining({
-                filename: 'meal-plan.pdf',
-                mimeType: 'application/pdf',
-                size: 2048,
-            }),
-        ]);
+        // Page one contains the newest messages; later pages walk backwards
+        // through history while preserving chronological order within a page.
+        expect(result.json.messages[0].content).toBe('history-1');
         expect(result.json.messages[0].sender).toEqual(
             expect.objectContaining({
                 _id: entityId(client),
@@ -103,6 +121,7 @@ describe('Client messages route branch coverage', () => {
             limit: 2,
             total: 3,
             pages: 2,
+            hasMore: false,
         });
     });
 

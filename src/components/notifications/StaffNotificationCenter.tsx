@@ -72,25 +72,17 @@ export default function StaffNotificationCenter({ isDarkMode = false, className 
         }
 
         try {
-            const [listResponse, unreadResponse] = await Promise.all([
-                fetch('/api/client/notifications?limit=20', {
-                    credentials: 'same-origin',
-                    cache: 'no-store',
-                }),
-                fetch('/api/client/notifications/unread-count', {
-                    credentials: 'same-origin',
-                    cache: 'no-store',
-                }),
-            ]);
+            // The list endpoint already returns the unread count. A second
+            // request doubled auth and Mongo work on every 30-second refresh.
+            const listResponse = await fetch('/api/client/notifications?limit=20', {
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
 
             if (listResponse.ok) {
                 const listPayload = await listResponse.json();
                 setNotifications(Array.isArray(listPayload.notifications) ? listPayload.notifications : []);
-            }
-
-            if (unreadResponse.ok) {
-                const unreadPayload = await unreadResponse.json();
-                setUnreadCount(Number(unreadPayload.count || 0));
+                setUnreadCount(Number(listPayload.unreadCount || 0));
             }
         } catch (error) {
             console.error('Failed to fetch staff notifications:', error);

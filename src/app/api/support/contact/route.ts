@@ -2,18 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
-
-// Contact support message schema - we'll store these in MongoDB
-interface ContactMessage {
-  name: string;
-  email: string;
-  subject: string;
-  message: string;
-  userId?: string;
-  createdAt: Date;
-  status: 'pending' | 'responded' | 'resolved';
-}
+import { withCache } from '@/lib/api/utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -121,7 +110,7 @@ export async function GET(request: NextRequest) {
     const query: Record<string, unknown> = {};
     if (status) query.status = status;
 
-    const messages = await withCache(
+    const messagesPromise = withCache(
       `support:contact:${JSON.stringify(query)}:page=${page}:limit=${limit}`,
       async () => await ContactMessage.find(query)
       .sort({ createdAt: -1 })
@@ -130,8 +119,10 @@ export async function GET(request: NextRequest) {
       .populate('userId', 'name email'),
       { ttl: 120000, tags: ['support'] }
     );
-
-    const total = await ContactMessage.countDocuments(query);
+    const [messages, total] = await Promise.all([
+      messagesPromise,
+      ContactMessage.countDocuments(query),
+    ]);
 
     return NextResponse.json({
       messages,

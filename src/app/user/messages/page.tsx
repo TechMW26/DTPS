@@ -155,6 +155,8 @@ export default function UserMessagesPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messagePage, setMessagePage] = useState(1);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [hasDietitian, setHasDietitian] = useState(true);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(
@@ -211,6 +213,8 @@ export default function UserMessagesPage() {
   const recordingReplyToIdRef = useRef<string | undefined>(undefined);
   const recordingCancelledRef = useRef(false);
   const isInitialLoadRef = useRef(false);
+  const loadingOlderMessagesRef = useRef(false);
+  const suppressAutoScrollRef = useRef(false);
   const userPressedBackRef = useRef(false);
   const lastTappedMessageRef = useRef<{ id: string; at: number } | null>(null);
 
@@ -522,15 +526,29 @@ export default function UserMessagesPage() {
       isInitialLoadRef.current = true;
       // Clear previous messages first for a clean slate
       setMessages([]);
+      setMessagePage(1);
+      setHasOlderMessages(false);
       setReplyingToMessage(null);
       fetchMessages(selectedConversation._id);
     }
   }, [selectedConversation]);
 
-  // Scroll to bottom when NEW messages arrive (not on initial load — that's handled in fetchMessages)
+  // Only follow new messages while the reader is already near the latest
+  // message. Loading history must never pull the screen back to the bottom.
   useEffect(() => {
-    if (messages.length > 0 && !isInitialLoadRef.current) {
-      // Smooth scroll for new incoming messages
+    if (suppressAutoScrollRef.current) {
+      suppressAutoScrollRef.current = false;
+      return;
+    }
+    const container = messagesContainerRef.current;
+    const distanceFromBottom = container
+      ? container.scrollHeight - container.scrollTop - container.clientHeight
+      : 0;
+    if (
+      messages.length > 0 &&
+      !isInitialLoadRef.current &&
+      distanceFromBottom < 350
+    ) {
       const timer = setTimeout(() => scrollToBottom(false), 50);
       return () => clearTimeout(timer);
     }
@@ -579,9 +597,8 @@ export default function UserMessagesPage() {
     try {
       if (showLoader) setLoadingMessages(true);
 
-      // Fetch ALL messages in one call - no limit
       const response = await fetch(
-        `/api/client/messages?conversationWith=${userId}`,
+        `/api/client/messages?conversationWith=${userId}&limit=120&page=1`,
       );
       if (!response.ok) {
         console.error("Failed to fetch messages");
@@ -589,11 +606,25 @@ export default function UserMessagesPage() {
       }
 
       const data = await response.json();
-      const allMessages: Message[] = data.messages || [];
+      const latestMessages: Message[] = data.messages || [];
+      const pages = Number(data?.pagination?.pages || 0);
+      setMessagePage(1);
+      setHasOlderMessages(pages > 1 || data?.pagination?.hasMore === true);
 
-      // Messages are already sorted by createdAt from API (oldest first)
-      // Set messages AND stop loading in same tick so messages render immediately
-      setMessages(allMessages);
+      if (showLoader) {
+        setMessages(latestMessages);
+      } else {
+        // Background refreshes merge the latest page with already-loaded
+        // history instead of deleting older messages and shifting the viewport.
+        setMessages((current) => {
+          const byId = new Map(current.map((message) => [message._id, message]));
+          for (const message of latestMessages) byId.set(message._id, message);
+          return Array.from(byId.values()).sort(
+            (a, b) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          );
+        });
+      }
       setLoadingMessages(false);
 
       // Reset unread count for this conversation locally
@@ -637,6 +668,61 @@ export default function UserMessagesPage() {
     } catch (error) {
       console.error("Error fetching messages:", error);
       setLoadingMessages(false);
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    const conversationId = selectedConversation?._id;
+    const container = messagesContainerRef.current;
+    if (
+      !conversationId ||
+      !container ||
+      !hasOlderMessages ||
+      loadingOlderMessagesRef.current
+    ) {
+      return;
+    }
+
+    loadingOlderMessagesRef.current = true;
+    const nextPage = messagePage + 1;
+    const previousHeight = container.scrollHeight;
+    const previousTop = container.scrollTop;
+
+    try {
+      const response = await fetch(
+        `/api/client/messages?conversationWith=${conversationId}&limit=120&page=${nextPage}`,
+      );
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const olderMessages: Message[] = data.messages || [];
+      suppressAutoScrollRef.current = true;
+      setMessages((current) => {
+        const byId = new Map<string, Message>();
+        for (const message of olderMessages) byId.set(message._id, message);
+        for (const message of current) byId.set(message._id, message);
+        return Array.from(byId.values()).sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+      });
+      setMessagePage(nextPage);
+      setHasOlderMessages(
+        data?.pagination?.hasMore === true ||
+          nextPage < Number(data?.pagination?.pages || 0),
+      );
+
+      requestAnimationFrame(() => {
+        const updatedContainer = messagesContainerRef.current;
+        if (updatedContainer) {
+          updatedContainer.scrollTop =
+            previousTop + updatedContainer.scrollHeight - previousHeight;
+        }
+      });
+    } catch {
+      // A later scroll/focus can retry without disturbing the open chat.
+    } finally {
+      loadingOlderMessagesRef.current = false;
     }
   };
 
@@ -688,6 +774,7 @@ export default function UserMessagesPage() {
     const distanceFromBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight;
     setShowScrollToBottom(distanceFromBottom > 250);
+    if (container.scrollTop < 160) void loadOlderMessages();
   };
 
   const handleSendMessage = async () => {

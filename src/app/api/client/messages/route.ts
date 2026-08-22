@@ -15,18 +15,21 @@ import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 // GET /api/client/messages - Get messages for current client
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { searchParams } = new URL(request.url);
     const conversationWith = searchParams.get('conversationWith');
-    const requestedLimit = Number.parseInt(searchParams.get('limit') || '', 10);
+    const requestedLimit = Number.parseInt(searchParams.get('limit') || '120', 10);
     const requestedPage = Number.parseInt(searchParams.get('page') || '1', 10);
-    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : null;
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 200)
+      : 120;
     const page = Number.isFinite(requestedPage) ? Math.max(requestedPage, 1) : 1;
 
     if (conversationWith && !mongoose.isValidObjectId(conversationWith)) {
@@ -74,7 +77,6 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    const total = await Message.countDocuments(query);
     const messagesQuery = Message.find(query)
       .populate('sender', 'firstName lastName avatar role')
       .populate('receiver', 'firstName lastName avatar role')
@@ -86,16 +88,19 @@ export async function GET(request: NextRequest) {
           select: 'firstName lastName avatar'
         }
       })
-      .sort({ createdAt: 1 }); // Oldest first for chronological display
+      // Page backwards from the newest messages, then reverse only the small
+      // page for chronological rendering. This avoids reading and serializing
+      // an entire multi-year conversation during every refresh.
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
 
-    if (limit !== null) {
-      messagesQuery.skip((page - 1) * limit).limit(limit);
-    }
-
-    // NO CACHE for real-time messaging - always fetch fresh data.
-    const messages = await messagesQuery.lean();
-
-    console.log(`[Messages API] Found ${messages.length} messages for conversation ${conversationWith || 'all'}`);
+    // The page and its total are independent and should share one DB wait.
+    const [newestFirst, total] = await Promise.all([
+      messagesQuery.lean(),
+      Message.countDocuments(query),
+    ]);
+    const messages = newestFirst.reverse();
 
     // Mark messages as read if viewing conversation
     if (conversationWith) {
@@ -141,9 +146,10 @@ export async function GET(request: NextRequest) {
       total,
       pagination: {
         page,
-        limit: limit ?? total,
+        limit,
         total,
-        pages: limit === null ? (total > 0 ? 1 : 0) : Math.ceil(total / limit),
+        pages: Math.ceil(total / limit),
+        hasMore: page * limit < total,
       },
     });
 

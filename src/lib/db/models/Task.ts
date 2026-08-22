@@ -119,6 +119,7 @@ const taskSchema = new Schema<ITask>(
 taskSchema.index({ client: 1, startDate: 1 });
 taskSchema.index({ dietitian: 1, startDate: 1 });
 taskSchema.index({ status: 1 });
+taskSchema.index({ dietitian: 1, startDate: 1, endDate: 1, status: 1 });
 taskSchema.index({ client: 1, dietitian: 1, operationId: 1 }, { sparse: true });
 
 // Pre-save validation

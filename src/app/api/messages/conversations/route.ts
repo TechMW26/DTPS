@@ -36,14 +36,15 @@ type CurrentUserAssignments = {
 // GET /api/messages/conversations - Get conversation list
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const sessionRole = String((session.user as unknown as { role?: unknown })?.role || '').toLowerCase();
-
-    await connectDB();
 
     // Convert session user ID to ObjectId for proper matching
     const userId = new mongoose.Types.ObjectId(session.user.id);

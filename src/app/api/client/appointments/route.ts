@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
 
     // Build query for client's appointments
-    let query: any = {
+    const query: any = {
       client: session.user.id
     };
 
@@ -60,8 +60,6 @@ export async function GET(request: NextRequest) {
       .lean(),
       { ttl: 60000, tags: ['client'] }
     );
-
-    const total = await Appointment.countDocuments(query);
 
     // Transform appointments to match frontend interface
     const transformedAppointments = appointments.map((apt: any) => ({

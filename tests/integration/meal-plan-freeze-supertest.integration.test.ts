@@ -253,8 +253,12 @@ describe('meal plan freeze/unfreeze integrations (supertest + jest)', () => {
         });
         const { client, dietitian } = await createAssignedDietitianClientPair();
 
-        const pauseStart = addDays(new Date(), 1);
-        pauseStart.setUTCHours(0, 0, 0, 0);
+        // Use the next local calendar day. At UTC-positive offsets, rounding a
+        // UTC `now + 1 day` down to midnight can still produce today's local
+        // date and incorrectly exercise the route's same-day safety guard.
+        const pauseStart = new Date();
+        pauseStart.setDate(pauseStart.getDate() + 1);
+        pauseStart.setHours(12, 0, 0, 0);
         const preparedEnd = addDays(pauseStart, 1);
         const pauseDates = Array.from({ length: 8 }, (_, index) => toYMD(addDays(pauseStart, index)));
 

@@ -2,22 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
-
-// Bug report schema
-interface BugReport {
-  title: string;
-  category: 'ui' | 'performance' | 'crash' | 'feature' | 'security' | 'other';
-  description: string;
-  steps?: string;
-  expectedBehavior?: string;
-  deviceInfo?: string;
-  screenshots: string[];
-  userId?: string;
-  status: 'open' | 'in-progress' | 'resolved' | 'closed';
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  createdAt: Date;
-}
+import { withCache } from '@/lib/api/utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -196,7 +181,7 @@ export async function GET(request: NextRequest) {
     if (priority) query.priority = priority;
     if (category) query.category = category;
 
-    const reports = await withCache(
+    const reportsPromise = withCache(
       `support:bug-report:${JSON.stringify(query)}:page=${page}:limit=${limit}`,
       async () => await BugReport.find(query)
       .sort({ createdAt: -1 })
@@ -206,16 +191,50 @@ export async function GET(request: NextRequest) {
       .populate('assignedTo', 'name email'),
       { ttl: 120000, tags: ['support'] }
     );
-
-    const total = await BugReport.countDocuments(query);
-
-    // Get stats
-    const stats = {
-      total: await BugReport.countDocuments({}),
-      open: await BugReport.countDocuments({ status: 'open' }),
-      inProgress: await BugReport.countDocuments({ status: 'in-progress' }),
-      resolved: await BugReport.countDocuments({ status: 'resolved' }),
-      critical: await BugReport.countDocuments({ priority: 'critical', status: { $ne: 'closed' } })
+    const [reports, metricRows] = await Promise.all([
+      reportsPromise,
+      BugReport.aggregate([
+        {
+          $facet: {
+            filtered: [{ $match: query }, { $count: 'count' }],
+            stats: [
+              {
+                $group: {
+                  _id: null,
+                  total: { $sum: 1 },
+                  open: { $sum: { $cond: [{ $eq: ['$status', 'open'] }, 1, 0] } },
+                  inProgress: {
+                    $sum: { $cond: [{ $eq: ['$status', 'in-progress'] }, 1, 0] },
+                  },
+                  resolved: { $sum: { $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0] } },
+                  critical: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $and: [
+                            { $eq: ['$priority', 'critical'] },
+                            { $ne: ['$status', 'closed'] },
+                          ],
+                        },
+                        1,
+                        0,
+                      ],
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ]),
+    ]);
+    const total = metricRows[0]?.filtered?.[0]?.count || 0;
+    const stats = metricRows[0]?.stats?.[0] || {
+      total: 0,
+      open: 0,
+      inProgress: 0,
+      resolved: 0,
+      critical: 0,
     };
 
     return NextResponse.json({

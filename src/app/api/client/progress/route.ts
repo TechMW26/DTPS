@@ -69,15 +69,15 @@ export async function GET(request: Request) {
 
     const userId = session.user.id;
 
-    // OPTIMIZATION: Run ALL database queries in PARALLEL with AGGRESSIVE CACHING
+    // Fetch each collection once. Today's food log is part of the history query,
+    // and today's plan is part of the completion-plan query, so separate reads
+    // only increase Mongo round-trips and payload duplication.
     const [
       user,
       allProgressEntries,
       allWeightEntriesRaw,
-      todayFoodLog,
-      activeMealPlan,
       foodLogs,
-      mealPlansWithCompletions,
+      relevantMealPlans,
     ] = await Promise.all([
       // User data - CACHED
       withCache(
@@ -111,34 +111,7 @@ export async function GET(request: Request) {
             { ttl: 120000, tags: ["client"] },
           )
         : Promise.resolve(null),
-      // Today's food log - CACHED
-      withCache(
-        `client:progress:foodlog:${userId}:${todayStr}`,
-        () =>
-          FoodLog.findOne({
-            client: userId,
-            date: { $gte: today, $lt: todayEnd },
-          }).lean(),
-        { ttl: 120000, tags: ["client"] },
-      ),
-      // Plan applicable to today's calendar date. Paused/completed plans can
-      // still own valid completions for that date.
-      withCache(
-        `client:progress:mealplan:${userId}:${todayStr}`,
-        () =>
-          ClientMealPlan.findOne({
-            clientId: userId,
-            status: { $in: ["active", "completed", "paused"] },
-            isDeleted: { $ne: true },
-            startDate: { $lte: todayEnd },
-            endDate: { $gte: today },
-          })
-            .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
-            .select("startDate endDate meals mealCompletions customizations")
-            .lean(),
-        { ttl: 120000, tags: ["client"] },
-      ),
-      // Food logs for history - CACHED
+      // One food-log query supplies both today's summary and history.
       withCache(
         `client:progress:foodlogs:${userId}:${range}`,
         () =>
@@ -151,19 +124,55 @@ export async function GET(request: Request) {
             .lean(),
         { ttl: 120000, tags: ["client"] },
       ),
-      // Meal plans with completions - NOW CACHED
+      // One meal-plan query supplies today's applicable plan and historical
+      // completion nutrition. The date predicate prevents loading unrelated
+      // historical plans and their large meal arrays.
       withCache(
-        `client:progress:completions:${userId}`,
+        `client:progress:plans:${userId}:${range}:${todayStr}`,
         () =>
           ClientMealPlan.find({
             clientId: userId,
-            "mealCompletions.0": { $exists: true },
+            isDeleted: { $ne: true },
+            $or: [
+              {
+                status: { $in: ["active", "completed", "paused"] },
+                startDate: { $lte: todayEnd },
+                endDate: { $gte: today },
+              },
+              {
+                mealCompletions: {
+                  $elemMatch: {
+                    completed: true,
+                    date: { $gte: progressStartDate },
+                  },
+                },
+              },
+            ],
           })
-            .select("meals mealCompletions startDate")
+            .select(
+              "startDate endDate status lastPublishedAt createdAt meals mealCompletions customizations",
+            )
+            .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
             .lean(),
         { ttl: 120000, tags: ["client"] },
       ),
     ]);
+
+    const todayFoodLog = (foodLogs as any[]).find(
+      (log) => getNutritionDateKey(new Date(log.date)) === todayStr,
+    );
+    const activeMealPlan = (relevantMealPlans as any[]).find((plan) => {
+      const planStart = new Date(plan.startDate).getTime();
+      const planEnd = new Date(plan.endDate).getTime();
+      return (
+        ["active", "completed", "paused"].includes(plan.status) &&
+        planStart <= todayEnd.getTime() &&
+        planEnd >= today.getTime()
+      );
+    });
+    const mealPlansWithCompletions = (relevantMealPlans as any[]).filter(
+      (plan) => Array.isArray(plan.mealCompletions) && plan.mealCompletions.length > 0,
+    );
 
     // Filter measurements from allProgressEntries (no separate query needed)
     const measurementTypes = [

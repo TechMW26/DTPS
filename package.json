@@ -10,6 +10,7 @@
     "lint": "eslint",
     "export": "next build && next export",
     "test": "jest",
+    "db:indexes": "node tools/ensure-performance-indexes.mjs",
     "test:socket": "jest tests/integration/socket --coverage",
     "test:socket:ci": "jest tests/integration/socket --coverage --ci"
   },

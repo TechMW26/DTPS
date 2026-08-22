@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
@@ -9,10 +9,10 @@ import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import Task from '@/lib/db/models/Task';
 import { UserRole } from '@/types';
 import mongoose from 'mongoose';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { withCache } from '@/lib/api/utils';
 
 // GET /api/dashboard/dietitian-stats - Get real dashboard statistics
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -60,8 +60,8 @@ export async function GET(request: NextRequest) {
     const todayDate  = today.getDate();
 
     // ─── Role-based query scoping ──────────────────────────────────────────────
-    let clientQuery: any   = { role: 'client' };
-    let appointmentQuery: any = {};
+    const clientQuery: any = { role: 'client' };
+    const appointmentQuery: any = {};
 
     if (
       session.user.role === UserRole.DIETITIAN ||
@@ -83,99 +83,96 @@ export async function GET(request: NextRequest) {
       appointmentQuery.dietitian = staffObjectId;
     }
 
-    // ─── Status helpers ────────────────────────────────────────────────────────
-    const buildStatusQuery = (status: string) => ({ ...clientQuery, clientStatus: status });
-
-    const leadStatusOr = [
-      { clientStatus: 'lead' },
-      { clientStatus: { $exists: false } },
-      { clientStatus: null },
-    ];
-    const leadQuery = clientQuery.$or
-      ? { role: 'client', $and: [{ $or: clientQuery.$or }, { $or: leadStatusOr }] }
-      : { ...clientQuery, $or: leadStatusOr };
-
-    const holdStatusOr = [
-      { clientStatus: 'hold' },
-      { 'holdStatus.isOnHold': true },
-    ];
-    const holdQuery = clientQuery.$or
-      ? { role: 'client', $and: [{ $or: clientQuery.$or }, { $or: holdStatusOr }] }
-      : { ...clientQuery, $or: holdStatusOr };
-
-    // ─── Concurrent DB queries ────────────────────────────────────────────────
-    const [
-      totalClients,
-      activeClients,
-      leadClients,
-      inactiveClients,
-      holdClients,
-      totalAppointments,
-      todaysAppointments,
-      confirmedAppointments,
-      pendingAppointments,
-      completedSessions,
-      totalPastAppointments,
-      assignedClients,
-      todaysSchedule,
-    ] = await Promise.all([
-      User.countDocuments(clientQuery),
-      User.countDocuments(buildStatusQuery('active')),
-      User.countDocuments(leadQuery),
-      User.countDocuments(buildStatusQuery('inactive')),
-      User.countDocuments(holdQuery),
-
-      // Upcoming appointments (not cancelled)
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $gte: startOfToday },
-        status:      { $ne: 'cancelled' },
-      }),
-
-      // Today's appointments (any status)
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $gte: startOfToday, $lt: endOfToday },
-      }),
-
-      // Confirmed/scheduled today
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $gte: startOfToday, $lt: endOfToday },
-        status:      { $in: ['confirmed', 'scheduled'] },
-      }),
-
-      // Pending today
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $gte: startOfToday, $lt: endOfToday },
-        status:      'pending',
-      }),
-
-      // Completed sessions (past)
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $lt: startOfToday },
-        status:      { $in: ['confirmed', 'completed'] },
-      }),
-
-      // Total past appointments (for completion rate)
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $lt: startOfToday },
-      }),
-
-      // Assigned clients (for celebrations / identifiers)
+    // Read assigned clients once and derive all five status counters from that
+    // result. The previous implementation ran five additional scans over the
+    // same user scope before loading the same clients again.
+    const [assignedClients, appointmentMetricRows, todaysSchedule] = await Promise.all([
       withCache(
         `dashboard:dietitian-stats:assigned-clients:${JSON.stringify(clientQuery)}`,
         async () =>
           User.find({ ...clientQuery })
             .sort({ createdAt: -1 })
-            .select('firstName lastName email phone dateOfBirth anniversary createdAt'),
+            .select(
+              'firstName lastName email phone dateOfBirth anniversary createdAt clientStatus holdStatus.isOnHold',
+            )
+            .lean(),
         { ttl: 120000, tags: ['dashboard'] }
       ),
-
-      // Today's schedule
+      // One conditional aggregation replaces six independent appointment
+      // counts over the same role-scoped collection.
+      Appointment.aggregate([
+        { $match: appointmentQuery },
+        {
+          $group: {
+            _id: null,
+            totalAppointments: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $gte: ['$scheduledAt', startOfToday] }, { $ne: ['$status', 'cancelled'] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            todaysAppointments: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $gte: ['$scheduledAt', startOfToday] }, { $lt: ['$scheduledAt', endOfToday] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            confirmedAppointments: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gte: ['$scheduledAt', startOfToday] },
+                      { $lt: ['$scheduledAt', endOfToday] },
+                      { $in: ['$status', ['confirmed', 'scheduled']] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            pendingAppointments: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gte: ['$scheduledAt', startOfToday] },
+                      { $lt: ['$scheduledAt', endOfToday] },
+                      { $eq: ['$status', 'pending'] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            completedSessions: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $lt: ['$scheduledAt', startOfToday] },
+                      { $in: ['$status', ['confirmed', 'completed']] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            totalPastAppointments: {
+              $sum: { $cond: [{ $lt: ['$scheduledAt', startOfToday] }, 1, 0] },
+            },
+          },
+        },
+      ]),
       withCache(
         `dashboard:dietitian-stats:schedule-${startOfToday.toISOString()}`,
         async () =>
@@ -184,10 +181,30 @@ export async function GET(request: NextRequest) {
             scheduledAt: { $gte: startOfToday, $lt: endOfToday },
           })
             .populate('client', 'firstName lastName email')
-            .sort({ scheduledAt: 1 }),
+            .sort({ scheduledAt: 1 })
+            .lean(),
         { ttl: 120000, tags: ['dashboard'] }
       ),
     ]);
+
+    const totalClients = assignedClients.length;
+    const activeClients = assignedClients.filter((client: any) => client.clientStatus === 'active').length;
+    const leadClients = assignedClients.filter(
+      (client: any) => !client.clientStatus || client.clientStatus === 'lead',
+    ).length;
+    const inactiveClients = assignedClients.filter(
+      (client: any) => client.clientStatus === 'inactive',
+    ).length;
+    const holdClients = assignedClients.filter(
+      (client: any) => client.clientStatus === 'hold' || client.holdStatus?.isOnHold === true,
+    ).length;
+    const appointmentMetrics = appointmentMetricRows[0] || {};
+    const totalAppointments = appointmentMetrics.totalAppointments || 0;
+    const todaysAppointments = appointmentMetrics.todaysAppointments || 0;
+    const confirmedAppointments = appointmentMetrics.confirmedAppointments || 0;
+    const pendingAppointments = appointmentMetrics.pendingAppointments || 0;
+    const completedSessions = appointmentMetrics.completedSessions || 0;
+    const totalPastAppointments = appointmentMetrics.totalPastAppointments || 0;
 
     // ─── Celebrations ─────────────────────────────────────────────────────────
     const isTodayMonthDay = (value?: Date | string | null) => {
@@ -248,68 +265,8 @@ export async function GET(request: NextRequest) {
     // ─── Client IDs for meal-plan / payment queries ────────────────────────────
     const clientIds = assignedClients.map((c: any) => c._id);
 
-    // ─── Expiring meal plans (ClientMealPlan) – today through +3 days ─────────
-    const expiringMealPlans =
-      clientIds.length > 0
-        ? await withCache(
-            `dashboard:dietitian-stats:expiring-meal-plans-${startOfToday.toISOString()}`,
-            async () =>
-              ClientMealPlan.find({
-                clientId: { $in: clientIds },
-                status:   'active',
-                // Inclusive: today 00:00 → exclusive: today+4 00:00
-                endDate:  { $gte: startOfToday, $lt: endOfPendingWindow },
-              })
-                .populate('clientId', 'firstName lastName email phone avatar')
-                .sort({ endDate: 1 }),
-            { ttl: 60000, tags: ['dashboard'] }
-          )
-        : [];
-
-    // ─── FIX: Expired meal plans (UnifiedPayment) – last 3 days through today ──
-    // UnifiedPayment uses "client" (not "clientId") for the client reference.
-    // Query: expectedEndDate >= (today - 3 days) AND expectedEndDate < midnight tomorrow
-    // This captures plans that expired on:
-    //   today-3, today-2, today-1  → already expired
-    //   today                      → expires today
-    const expiredMealPlans =
-      clientIds.length > 0
-        ? await withCache(
-            `dashboard:dietitian-stats:expired-meal-plans-v2-${startOfToday.toISOString()}-${startOfExpiredWindow.toISOString()}`,
-            async () =>
-              UnifiedPayment.find({
-                client: { $in: clientIds },          // ← correct field name (matches recentPayments query)
-                expectedEndDate: {
-                  $gte: startOfExpiredWindow,        // today - 3 days (inclusive)
-                  $lt:  endOfToday,                  // midnight tonight (exclusive) → captures all of "today"
-                },
-              })
-                .populate({
-                  path:   'client',                  // ← correct field name
-                  select: 'firstName lastName clientId email phone avatar',
-                })
-                .select('_id client expectedEndDate')
-                .sort({ expectedEndDate: -1 }),      // most recently expired first
-            { ttl: 60000, tags: ['dashboard'] }
-          )
-        : [];
-
-    // ─── Clients with active meal plans ───────────────────────────────────────
-    const clientsWithMealPlans =
-      clientIds.length > 0
-        ? await ClientMealPlan.distinct('clientId', {
-            clientId: { $in: clientIds },
-            status:   'active',
-          }).then((ids) => ids.length)
-        : 0;
-
-    // ─── Completion rate ───────────────────────────────────────────────────────
-    const completionRate =
-      totalPastAppointments > 0
-        ? Math.round((completedSessions / totalPastAppointments) * 100)
-        : 0;
-
-    // ─── Payments ─────────────────────────────────────────────────────────────
+    // All remaining queries depend only on the client IDs and can run in one
+    // wave. Previously they were split into four sequential network waits.
     let paymentQuery: any = {};
     if (
       session.user.role === UserRole.DIETITIAN ||
@@ -320,58 +277,124 @@ export async function GET(request: NextRequest) {
         : { _id: null };
     }
 
-    const [recentPayments, totalRevenueResult, pendingPaymentsCount, completedPaymentsCount] =
-      await Promise.all([
-        withCache(
-          `dashboard:dietitian-stats:payments-${JSON.stringify(paymentQuery)}`,
-          async () =>
-            UnifiedPayment.find(paymentQuery)
-              .populate('client', 'firstName lastName email phone')
-              .sort({ createdAt: -1 })
-              .limit(10),
-          { ttl: 120000, tags: ['dashboard'] }
-        ),
-        withCache(
-          `dashboard:dietitian-stats:revenue-${JSON.stringify(paymentQuery)}`,
-          async () =>
-            UnifiedPayment.aggregate([
-              {
-                $match: {
-                  ...paymentQuery,
-                  status: { $in: ['completed', 'pending', 'paid'] },
-                },
+    const [
+      expiringMealPlans,
+      expiredMealPlans,
+      activeMealPlanClientIds,
+      recentPayments,
+      totalRevenueResult,
+      pendingPaymentsCount,
+      completedPaymentsCount,
+      todaysTasks,
+    ] = await Promise.all([
+      clientIds.length > 0
+        ? withCache(
+            `dashboard:dietitian-stats:expiring-meal-plans-${startOfToday.toISOString()}`,
+            async () =>
+              ClientMealPlan.find({
+                clientId: { $in: clientIds },
+                status: 'active',
+                endDate: { $gte: startOfToday, $lt: endOfPendingWindow },
+              })
+                .select('_id clientId name startDate endDate status')
+                .populate('clientId', 'firstName lastName email phone avatar')
+                .sort({ endDate: 1 })
+                .lean(),
+            { ttl: 60000, tags: ['dashboard'] },
+          )
+        : Promise.resolve([]),
+      clientIds.length > 0
+        ? withCache(
+            `dashboard:dietitian-stats:expired-meal-plans-v2-${startOfToday.toISOString()}-${startOfExpiredWindow.toISOString()}`,
+            async () =>
+              UnifiedPayment.find({
+                client: { $in: clientIds },
+                expectedEndDate: { $gte: startOfExpiredWindow, $lt: endOfToday },
+              })
+                .populate({
+                  path: 'client',
+                  select: 'firstName lastName clientId email phone avatar',
+                })
+                .select('_id client expectedEndDate')
+                .sort({ expectedEndDate: -1 })
+                .lean(),
+            { ttl: 60000, tags: ['dashboard'] },
+          )
+        : Promise.resolve([]),
+      clientIds.length > 0
+        ? ClientMealPlan.distinct('clientId', {
+            clientId: { $in: clientIds },
+            status: 'active',
+          })
+        : Promise.resolve([]),
+      withCache(
+        `dashboard:dietitian-stats:payments-${JSON.stringify(paymentQuery)}`,
+        async () =>
+          UnifiedPayment.find(paymentQuery)
+            .select(
+              'client amount currency status planName planCategory durationDays durationLabel transactionId createdAt',
+            )
+            .populate('client', 'firstName lastName email phone')
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .lean(),
+        { ttl: 120000, tags: ['dashboard'] },
+      ),
+      withCache(
+        `dashboard:dietitian-stats:revenue-${JSON.stringify(paymentQuery)}`,
+        async () =>
+          UnifiedPayment.aggregate([
+            {
+              $match: {
+                ...paymentQuery,
+                status: { $in: ['completed', 'pending', 'paid'] },
               },
-              { $group: { _id: null, total: { $sum: '$amount' } } },
-            ]),
-          { ttl: 120000, tags: ['dashboard'] }
-        ),
-        UnifiedPayment.countDocuments({ ...paymentQuery, status: 'pending'   }),
-        UnifiedPayment.countDocuments({ ...paymentQuery, status: 'completed' }),
-      ]);
+            },
+            { $group: { _id: null, total: { $sum: '$amount' } } },
+          ]),
+        { ttl: 120000, tags: ['dashboard'] },
+      ),
+      UnifiedPayment.countDocuments({ ...paymentQuery, status: 'pending' }),
+      UnifiedPayment.countDocuments({ ...paymentQuery, status: 'completed' }),
+      withCache(
+        `dashboard:dietitian-stats:tasks-${startOfToday.toISOString()}`,
+        async () =>
+          Task.find(
+            session.user.role === UserRole.ADMIN
+              ? {
+                  startDate: { $lte: endOfToday },
+                  endDate: { $gte: startOfToday },
+                  status: { $ne: 'cancelled' },
+                }
+              : {
+                  dietitian: new mongoose.Types.ObjectId(session.user.id),
+                  startDate: { $lte: endOfToday },
+                  endDate: { $gte: startOfToday },
+                  status: { $ne: 'cancelled' },
+                },
+          )
+            .select(
+              'client title taskType allottedTime status startDate endDate createdAt',
+            )
+            .populate('client', 'firstName lastName email phone avatar')
+            .sort({ startDate: 1, createdAt: -1 })
+            .limit(10)
+            .lean(),
+        { ttl: 120000, tags: ['dashboard'] },
+      ),
+    ]);
 
-    // ─── Today's tasks ────────────────────────────────────────────────────────
-    const todaysTasks = await withCache(
-      `dashboard:dietitian-stats:tasks-${startOfToday.toISOString()}`,
-      async () =>
-        Task.find(
-          session.user.role === UserRole.ADMIN
-            ? {
-                startDate: { $lte: endOfToday   },
-                endDate:   { $gte: startOfToday  },
-                status:    { $ne: 'cancelled'    },
-              }
-            : {
-                dietitian: new mongoose.Types.ObjectId(session.user.id),
-                startDate: { $lte: endOfToday   },
-                endDate:   { $gte: startOfToday  },
-                status:    { $ne: 'cancelled'    },
-              }
-        )
-          .populate('client', 'firstName lastName email phone avatar')
-          .sort({ startDate: 1, createdAt: -1 })
-          .limit(10),
-      { ttl: 120000, tags: ['dashboard'] }
-    );
+    const clientsWithMealPlans = activeMealPlanClientIds.length;
+    const completionRate =
+      totalPastAppointments > 0
+        ? Math.round((completedSessions / totalPastAppointments) * 100)
+        : 0;
+
+    /*
+      Queries above intentionally remain fresh because this dashboard includes
+      appointments, messages and payments. `withCache` currently acts only as
+      request de-duplication compatibility and does not serve stale data.
+    */
 
     const totalRevenue    = totalRevenueResult[0]?.total || 0;
     const activePercentage =

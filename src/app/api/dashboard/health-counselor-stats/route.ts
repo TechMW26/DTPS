@@ -1,186 +1,201 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import mongoose from 'mongoose';
+import { NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
 import Appointment from '@/lib/db/models/Appointment';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
+import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
+import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
-import mongoose from 'mongoose';
-import { withCache } from '@/lib/api/utils';
 
-// GET /api/dashboard/health-counselor-stats - Get health counselor specific dashboard statistics
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
+    const [session] = await Promise.all([
+      getServerSession(authOptions),
+      connectDB(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Only allow health counselors and admins to access this endpoint
-    if (session.user.role !== UserRole.HEALTH_COUNSELOR &&
-      session.user.role !== UserRole.ADMIN) {
-      return NextResponse.json({ error: 'Forbidden - Health Counselor access required' }, { status: 403 });
+    if (
+      session.user.role !== UserRole.HEALTH_COUNSELOR &&
+      session.user.role !== UserRole.ADMIN
+    ) {
+      return NextResponse.json(
+        { error: 'Forbidden - Health Counselor access required' },
+        { status: 403 },
+      );
     }
 
-    // Connect to MongoDB
-    await connectDB();
-
-    // Get current date for today's calculations
     const today = new Date();
     const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-
-    // Build query based on role - Health Counselors see only their assigned clients
-    let clientQuery: any = { role: 'client' };
-    let appointmentQuery: any = {};
+    const clientQuery: Record<string, unknown> = { role: UserRole.CLIENT };
+    const appointmentQuery: Record<string, unknown> = {};
 
     if (session.user.role === UserRole.HEALTH_COUNSELOR) {
-      const healthCounselorObjectId = new mongoose.Types.ObjectId(session.user.id);
-      // Health counselors see clients assigned specifically to them
+      const counselorId = new mongoose.Types.ObjectId(session.user.id);
       clientQuery.$or = [
-        { assignedHealthCounselor: healthCounselorObjectId },
-        { assignedHealthCounselors: healthCounselorObjectId },
-        { 'createdBy.userId': healthCounselorObjectId }
+        { assignedHealthCounselor: counselorId },
+        { assignedHealthCounselors: counselorId },
+        { 'createdBy.userId': counselorId },
       ];
-      // Appointments where this health counselor is the dietitian (provider)
       appointmentQuery.$or = [
-        { dietitian: healthCounselorObjectId },
-        { healthCounselor: healthCounselorObjectId }
+        { dietitian: counselorId },
+        { healthCounselor: counselorId },
       ];
     }
-    // Admin sees all clients (no filter needed)
 
-    // Build status-based queries
-    const buildStatusQuery = (status: string) => {
-      return { ...clientQuery, clientStatus: status };
-    };
-
-    // Build lead query
-    const leadStatusOr = [{ clientStatus: 'lead' }, { clientStatus: { $exists: false } }, { clientStatus: null }];
-    const leadQuery = clientQuery.$or
-      ? { role: 'client', $and: [{ $or: clientQuery.$or }, { $or: leadStatusOr }] }
-      : { ...clientQuery, $or: leadStatusOr };
-
-    // Run all independent queries concurrently
-    const [
-      totalClients,
-      activeClients,
-      leadClients,
-      inactiveClients,
-      todaysAppointments,
-      confirmedAppointments,
-      pendingAppointments,
-      completedSessions,
-      totalPastAppointments,
-      recentClients,
-      todaysSchedule
-    ] = await Promise.all([
-      // Total clients assigned to this health counselor
-      User.countDocuments(clientQuery),
-      // Active clients
-      User.countDocuments(buildStatusQuery('active')),
-      // Lead clients
-      User.countDocuments(leadQuery),
-      // Inactive clients
-      User.countDocuments(buildStatusQuery('inactive')),
-      // Today's appointments
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $gte: startOfToday, $lt: endOfToday }
-      }),
-      // Confirmed appointments for today
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $gte: startOfToday, $lt: endOfToday },
-        status: { $in: ['confirmed', 'scheduled'] }
-      }),
-      // Pending appointments for today
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $gte: startOfToday, $lt: endOfToday },
-        status: 'pending'
-      }),
-      // Completed sessions
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $lt: startOfToday },
-        status: { $in: ['confirmed', 'completed'] }
-      }),
-      // Total past appointments
-      Appointment.countDocuments({
-        ...appointmentQuery,
-        scheduledAt: { $lt: startOfToday }
-      }),
-      // Recent clients
+    // One client read supplies IDs, status counts and the recent-client list.
+    // One appointment aggregation supplies all five counters.
+    const [assignedClients, appointmentRows, todaysSchedule] = await Promise.all([
       User.find(clientQuery)
+        .select('firstName lastName email phone avatar clientStatus createdAt')
         .sort({ createdAt: -1 })
-        .limit(10)
-        .select('firstName lastName email phone avatar clientStatus createdAt'),
-      // Today's schedule
+        .lean(),
+      Appointment.aggregate([
+        { $match: appointmentQuery },
+        {
+          $group: {
+            _id: null,
+            todaysAppointments: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $gte: ['$scheduledAt', startOfToday] }, { $lt: ['$scheduledAt', endOfToday] }] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            confirmedAppointments: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gte: ['$scheduledAt', startOfToday] },
+                      { $lt: ['$scheduledAt', endOfToday] },
+                      { $in: ['$status', ['confirmed', 'scheduled']] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            pendingAppointments: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gte: ['$scheduledAt', startOfToday] },
+                      { $lt: ['$scheduledAt', endOfToday] },
+                      { $eq: ['$status', 'pending'] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            completedSessions: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $lt: ['$scheduledAt', startOfToday] },
+                      { $in: ['$status', ['confirmed', 'completed']] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            totalPastAppointments: {
+              $sum: { $cond: [{ $lt: ['$scheduledAt', startOfToday] }, 1, 0] },
+            },
+          },
+        },
+      ]),
       Appointment.find({
         ...appointmentQuery,
-        scheduledAt: { $gte: startOfToday, $lt: endOfToday }
+        scheduledAt: { $gte: startOfToday, $lt: endOfToday },
       })
+        .select('client scheduledAt duration status')
         .populate('client', 'firstName lastName email avatar')
         .sort({ scheduledAt: 1 })
+        .lean(),
     ]);
 
-    // Get client IDs for meal plan and payment queries
-    const clientIds = await User.find(clientQuery).distinct('_id');
+    const clientIds = assignedClients.map((client: any) => client._id);
+    const paymentQuery =
+      session.user.role === UserRole.HEALTH_COUNSELOR
+        ? clientIds.length > 0
+          ? { client: { $in: clientIds } }
+          : { _id: null }
+        : {};
 
-    // Get clients with active meal plans
-    const clientsWithMealPlans = clientIds.length > 0
-      ? await ClientMealPlan.distinct('clientId', {
-        clientId: { $in: clientIds },
-        status: 'active'
-      }).then(ids => ids.length)
-      : 0;
-
-    const completionRate = totalPastAppointments > 0
-      ? Math.round((completedSessions / totalPastAppointments) * 100)
-      : 0;
-
-    // Get payments from assigned clients
-    let paymentQuery: any = {};
-
-    if (session.user.role === UserRole.HEALTH_COUNSELOR) {
-      if (clientIds.length > 0) {
-        paymentQuery = { client: { $in: clientIds } };
-      } else {
-        paymentQuery = { _id: null };
-      }
-    }
-
-    // Run payment queries
-    const [totalRevenueResult, pendingPaymentsCount, completedPaymentsCount] = await Promise.all([
+    const [activePlanClientIds, paymentRows] = await Promise.all([
+      clientIds.length > 0
+        ? ClientMealPlan.distinct('clientId', {
+            clientId: { $in: clientIds },
+            status: 'active',
+          })
+        : Promise.resolve([]),
       UnifiedPayment.aggregate([
-        { $match: { ...paymentQuery, status: 'completed' } },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
+        { $match: paymentQuery },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'completed'] }, { $ifNull: ['$amount', 0] }, 0],
+              },
+            },
+            pendingPaymentsCount: {
+              $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] },
+            },
+            completedPaymentsCount: {
+              $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
+            },
+          },
+        },
       ]),
-      UnifiedPayment.countDocuments({ ...paymentQuery, status: 'pending' }),
-      UnifiedPayment.countDocuments({ ...paymentQuery, status: 'completed' })
     ]);
 
-    const totalRevenue = totalRevenueResult[0]?.total || 0;
-
-    // Calculate active percentage
-    const activePercentage = totalClients > 0 ? Math.round((activeClients / totalClients) * 100) : 0;
+    const metrics = appointmentRows[0] || {};
+    const paymentMetrics = paymentRows[0] || {};
+    const totalClients = assignedClients.length;
+    const activeClients = assignedClients.filter(
+      (client: any) => client.clientStatus === 'active',
+    ).length;
+    const leadClients = assignedClients.filter(
+      (client: any) => !client.clientStatus || client.clientStatus === 'lead',
+    ).length;
+    const inactiveClients = assignedClients.filter(
+      (client: any) => client.clientStatus === 'inactive',
+    ).length;
+    const totalPastAppointments = metrics.totalPastAppointments || 0;
+    const completedSessions = metrics.completedSessions || 0;
 
     return NextResponse.json({
       totalClients,
       activeClients,
       leadClients,
       inactiveClients,
-      clientsWithMealPlans,
-      todaysAppointments,
-      confirmedAppointments,
-      pendingAppointments,
+      clientsWithMealPlans: activePlanClientIds.length,
+      todaysAppointments: metrics.todaysAppointments || 0,
+      confirmedAppointments: metrics.confirmedAppointments || 0,
+      pendingAppointments: metrics.pendingAppointments || 0,
       completedSessions,
-      completionRate,
-      activePercentage,
-      recentClients: recentClients.map(client => ({
+      completionRate:
+        totalPastAppointments > 0
+          ? Math.round((completedSessions / totalPastAppointments) * 100)
+          : 0,
+      activePercentage:
+        totalClients > 0 ? Math.round((activeClients / totalClients) * 100) : 0,
+      recentClients: assignedClients.slice(0, 10).map((client: any) => ({
         _id: client._id,
         firstName: client.firstName,
         lastName: client.lastName,
@@ -188,30 +203,31 @@ export async function GET(request: NextRequest) {
         phone: client.phone,
         avatar: client.avatar,
         clientStatus: client.clientStatus,
-        createdAt: client.createdAt
+        createdAt: client.createdAt,
       })),
-      todaysSchedule: todaysSchedule.map(appointment => ({
-        _id: (appointment as any)._id,
-        client: (appointment as any).client ? {
-          _id: (appointment as any).client._id,
-          firstName: (appointment as any).client.firstName,
-          lastName: (appointment as any).client.lastName,
-          avatar: (appointment as any).client.avatar
-        } : null,
-        scheduledAt: (appointment as any).scheduledAt,
-        duration: (appointment as any).duration,
-        status: (appointment as any).status
+      todaysSchedule: todaysSchedule.map((appointment: any) => ({
+        _id: appointment._id,
+        client: appointment.client
+          ? {
+              _id: appointment.client._id,
+              firstName: appointment.client.firstName,
+              lastName: appointment.client.lastName,
+              avatar: appointment.client.avatar,
+            }
+          : null,
+        scheduledAt: appointment.scheduledAt,
+        duration: appointment.duration,
+        status: appointment.status,
       })),
-      totalRevenue,
-      pendingPaymentsCount,
-      completedPaymentsCount
+      totalRevenue: paymentMetrics.totalRevenue || 0,
+      pendingPaymentsCount: paymentMetrics.pendingPaymentsCount || 0,
+      completedPaymentsCount: paymentMetrics.completedPaymentsCount || 0,
     });
-
   } catch (error) {
     console.error('Error fetching health counselor stats:', error);
     return NextResponse.json(
       { error: 'Failed to fetch dashboard statistics' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
