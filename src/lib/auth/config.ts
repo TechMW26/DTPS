@@ -70,6 +70,11 @@ export function invalidateUserStatusCache(userId: string): void {
   userStatusCache.delete(userId);
 }
 
+// Browsers cap persistent cookies at roughly 400 days. NextAuth rotates the
+// JWT and cookie whenever the session endpoint is read, making this a rolling
+// lifetime for clients who continue using the app.
+export const PERSISTENT_SESSION_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
+
 function getHeaderValue(requestObj: any, headerName: string): string | undefined {
   if (!requestObj) return undefined;
 
@@ -444,10 +449,10 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: PERSISTENT_SESSION_MAX_AGE_SECONDS,
   },
   jwt: {
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: PERSISTENT_SESSION_MAX_AGE_SECONDS,
   },
   cookies: {
     sessionToken: {
@@ -459,8 +464,7 @@ export const authOptions: NextAuthOptions = {
         sameSite: 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
-        // IMPORTANT: Set maxAge to make cookie persistent (not session cookie)
-        maxAge: 30 * 24 * 60 * 60, // 30 days in seconds
+        maxAge: PERSISTENT_SESSION_MAX_AGE_SECONDS,
       },
     },
     callbackUrl: {

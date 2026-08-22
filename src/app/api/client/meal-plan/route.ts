@@ -127,9 +127,11 @@ export async function GET(request: NextRequest) {
         const mealPlan = await ClientMealPlan.findOne({
           clientId: session.user.id,
           status: { $in: ['active', 'completed', 'paused'] },
+          isDeleted: { $ne: true },
           startDate: { $lte: endOfDay(effectiveDate) },
           endDate: { $gte: startOfDay(effectiveDate) }
         })
+          .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
           .select('clientId status startDate endDate meals mealTypes templateId mealCompletions freezedDays customizations goals name')
           .populate('templateId')
           .lean() as any;

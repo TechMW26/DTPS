@@ -7,11 +7,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import BottomNavBar from '@/components/client/BottomNavBar';
 import UserSidebar from '@/components/client/UserSidebar';
-import SpoonGifLoader, { FullPageLoader } from '@/components/ui/SpoonGifLoader';
+import { FullPageLoader } from '@/components/ui/SpoonGifLoader';
 import { Menu, Bell } from 'lucide-react';
 import { UnreadCountProvider, useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
-import PageTransition from '@/components/animations/PageTransition';
 import { useScrollRestoration } from '@/hooks/useScrollRestoration';
 import { NotificationPermissionBanner } from '@/components/notifications/NotificationPermissionBanner';
 
@@ -33,7 +32,7 @@ const PAGES_WITHOUT_NAV = ['/user/onboarding'];
  * - Bottom navigation for mobile
  */
 export default function UserLayoutClient({ children }: UserLayoutClientProps) {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -42,7 +41,6 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
   const [showLoader, setShowLoader] = useState(false);
   const [prevPathname, setPrevPathname] = useState(pathname);
   const redirectingRef = useRef(false);
-  const [sessionTimedOut, setSessionTimedOut] = useState(false);
 
   // Enable scroll restoration
   useScrollRestoration(!pathname.startsWith('/user/recipes'));
@@ -51,36 +49,15 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
     setMounted(true);
   }, []);
 
-  // Session loading timeout — don't show FullPageLoader forever
-  // On WebViews, useSession can get stuck in 'loading' state if cookies are flaky
-  useEffect(() => {
-    if (status !== 'loading') {
-      setSessionTimedOut(false);
-      return;
-    }
-    const timeout = setTimeout(() => {
-      setSessionTimedOut(true);
-    }, 4000); // 4s max for session resolution
-
-    return () => clearTimeout(timeout);
-  }, [status]);
-
   // Redirect if not authenticated (in effect to avoid navigation flooding)
   useEffect(() => {
     if (!mounted) return;
-    // If session timed out, redirect to sign in
-    if (sessionTimedOut && status === 'loading') {
-      if (redirectingRef.current) return;
-      redirectingRef.current = true;
-      router.replace('/client-auth/signin');
-      return;
-    }
     if (status !== 'unauthenticated') return;
     if (redirectingRef.current) return;
 
     redirectingRef.current = true;
     router.replace('/client-auth/signin');
-  }, [mounted, status, router, sessionTimedOut]);
+  }, [mounted, status, router]);
 
   // Handle route changes - show loader only after delay
   useEffect(() => {
@@ -114,8 +91,7 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
   const showNavigation = !PAGES_WITHOUT_NAV.some(page => pathname.startsWith(page));
 
   // Show loading state only on initial mount, not on route changes
-  // Cap at 4s to avoid infinite loader on WebViews with flaky cookies
-  if (!mounted || (status === 'loading' && !sessionTimedOut)) {
+  if (!mounted || status === 'loading') {
     return <FullPageLoader size="lg" text="Loading..." />;
   }
 

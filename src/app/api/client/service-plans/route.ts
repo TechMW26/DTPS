@@ -6,7 +6,8 @@ import { ServicePlan } from '@/lib/db/models/ServicePlan';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import User from '@/lib/db/models/User';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { withCache } from '@/lib/api/utils';
+import { prioritizeClientDashboardPurchases } from '@/lib/client-plan-visibility';
 
 // GET - Fetch service plans visible to clients (for user dashboard)
 export async function GET(request: NextRequest) {
@@ -31,24 +32,33 @@ export async function GET(request: NextRequest) {
         const allPurchases = await withCache(
             `client:service-plans:${JSON.stringify({
                 client: session.user.id,
-                status: { $in: ['paid', 'completed'] },
+                status: { $in: ['paid', 'completed', 'active'] },
                 paymentStatus: 'paid'
             })}`,
             async () => await UnifiedPayment.find({
                 client: session.user.id,
-                status: { $in: ['paid', 'completed'] },
+                status: { $in: ['paid', 'completed', 'active'] },
                 paymentStatus: 'paid'
             }).populate('dietitian', 'firstName lastName email phone avatar role').sort({ createdAt: -1 }),
             { ttl: 120000, tags: ['client'] }
         );
 
         // Check if client has an active meal plan running (current date within plan dates)
+        const now = new Date();
+        const startOfToday = new Date(now);
+        startOfToday.setHours(0, 0, 0, 0);
+        const endOfToday = new Date(now);
+        endOfToday.setHours(23, 59, 59, 999);
+
         const activeClientMealPlan = await ClientMealPlan.findOne({
             clientId: session.user.id,
             status: 'active',
-            startDate: { $lte: new Date() },
-            endDate: { $gte: new Date() }
-        }).lean() as any;
+            isDeleted: { $ne: true },
+            startDate: { $lte: endOfToday },
+            endDate: { $gte: startOfToday }
+        })
+            .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
+            .lean() as any;
 
         const hasActiveMealPlan = !!activeClientMealPlan;
 
@@ -66,13 +76,23 @@ export async function GET(request: NextRequest) {
         const completedPayments = allPurchases;
 
         // Check for active purchases specifically (paid and not expired)
-        const activePurchaseRecords = allPurchases.filter(p =>
-            p.paymentStatus === 'paid' && (!p.endDate || new Date(p.endDate) >= new Date())
+        const activePurchaseRecords = allPurchases.filter((p: any) =>
+            p.paymentStatus === 'paid' &&
+            (
+                (!p.expectedEndDate && !p.endDate) ||
+                new Date(p.expectedEndDate || p.endDate) >= startOfToday
+            )
         );
         const hasActivePlan = activePurchaseRecords.length > 0;
 
-        // Prefer active purchase cards; if none are active, fall back to historical purchases.
-        const purchasesToDisplay = activePurchaseRecords.length > 0 ? activePurchaseRecords : allPurchases;
+        // Early-retention records are newer than the purchase currently delivering
+        // the client's diet. Always surface the purchase that owns today's published
+        // meal plan first so a future renewal cannot produce a false "Plan Soon" state.
+        const purchasesToDisplay = prioritizeClientDashboardPurchases(
+            activePurchaseRecords.length > 0 ? activePurchaseRecords : allPurchases,
+            activeClientMealPlan?.purchaseId,
+            now,
+        );
 
         // Build a per-purchase map of the latest created meal plan (active/paused/completed),
         // so upcoming plans are shown as created even before their start date.
@@ -84,7 +104,8 @@ export async function GET(request: NextRequest) {
             ? await ClientMealPlan.find({
                 clientId: session.user.id,
                 purchaseId: { $in: purchaseIds },
-                status: { $in: ['active', 'paused', 'completed'] }
+                status: { $in: ['active', 'paused', 'completed'] },
+                isDeleted: { $ne: true }
             })
                 .select('purchaseId name startDate endDate duration goals status createdAt')
                 .sort({ createdAt: -1 })

@@ -1,7 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useLayoutEffect } from 'react';
+import {
+  buildCachedSessionResponse,
+  clearLastValidSession,
+  persistSessionPayload,
+} from '@/lib/auth/session-recovery';
 
 /**
  * Global fetch interceptor that adds:
@@ -12,14 +16,10 @@ import { useSession } from 'next-auth/react';
  * Optimized: Only intercepts API calls, skips static/page fetches for speed.
  */
 export function GlobalFetchInterceptor() {
-  const { status } = useSession();
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
 
     const originalFetch = window.fetch;
-    let interceptorInstalled = false;
-
     // Retry configuration — fast retries
     const MAX_RETRIES = 1; // Reduced from 2 to 1 for faster perceived response
     const RETRY_DELAY = 200; // ms (was 300)
@@ -27,12 +27,10 @@ export function GlobalFetchInterceptor() {
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     const getAuthFallbackResponse = (url: string): Response | null => {
-      // NextAuth session poll expects JSON payload; return null session on transient network failures
+      // Never turn a temporary network/server failure into a logout. The real
+      // session endpoint will authoritatively clear this cache once reachable.
       if (url.includes('/api/auth/session')) {
-        return new Response('null', {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return buildCachedSessionResponse(window.localStorage);
       }
 
       // Logout-notification check can safely degrade to empty payload
@@ -62,9 +60,12 @@ export function GlobalFetchInterceptor() {
         : input instanceof URL
           ? input.href
           : (input as Request)?.url || '';
+      const pathname = new URL(url || window.location.href, window.location.origin).pathname;
 
       const isApiCall = url.startsWith('/api') || url.startsWith(window.location.origin + '/api');
       const isAuthCall = url.includes('/api/auth');
+      const isSessionCall = pathname === '/api/auth/session';
+      const isLogoutCall = pathname === '/api/auth/logout' || pathname === '/api/auth/signout';
       const isSameOrigin = url.startsWith('/') || url.startsWith(window.location.origin);
 
       // For external URLs or non-API same-origin requests, pass through WITHOUT modification
@@ -92,6 +93,15 @@ export function GlobalFetchInterceptor() {
       try {
         const response = await originalFetch(input, modifiedInit);
 
+        if (isLogoutCall && response.ok) clearLastValidSession(window.localStorage);
+
+        if (isSessionCall && response.ok) {
+          try {
+            const sessionPayload = await response.clone().json();
+            persistSessionPayload(window.localStorage, sessionPayload);
+          } catch { /* let NextAuth handle malformed successful responses */ }
+        }
+
         // Retry on 401 Unauthorized (session might not be ready) - skip for auth calls
         if (response.status === 401 && retriesLeft > 0 && !isAuthCall) {
           await sleep(RETRY_DELAY);
@@ -102,6 +112,10 @@ export function GlobalFetchInterceptor() {
         if (response.status >= 500 && retriesLeft > 0 && method === 'GET') {
           await sleep(RETRY_DELAY);
           return fetchWithRetry(input, init, retriesLeft - 1);
+        }
+
+        if (isSessionCall && (response.status === 408 || response.status === 429 || response.status >= 500)) {
+          return buildCachedSessionResponse(window.localStorage) || response;
         }
 
         return response;
@@ -130,17 +144,12 @@ export function GlobalFetchInterceptor() {
       }
     };
 
-    if (!interceptorInstalled && status !== 'loading') {
-      window.fetch = fetchWithRetry;
-      interceptorInstalled = true;
-    }
+    window.fetch = fetchWithRetry;
 
     return () => {
-      if (interceptorInstalled) {
-        window.fetch = originalFetch;
-      }
+      window.fetch = originalFetch;
     };
-  }, [status]);
+  }, []);
 
   return null;
 }

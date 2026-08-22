@@ -20,12 +20,11 @@ function LogoutNotificationListener({ children }: { children: ReactNode }) {
 
 export default function SessionProvider({ children }: SessionProviderProps) {
   return (
-    <NextAuthSessionProvider 
-      // Refetch session when window regains focus to detect logout/login in other tabs
+    <NextAuthSessionProvider
+      // A focus refresh rotates the long-lived cookie. Avoid interval polling:
+      // NextAuth treats a transient failed poll as an unauthenticated session.
       refetchOnWindowFocus={true}
-      // Refetch session every 5 minutes to ensure session doesn't go stale
-      refetchInterval={5 * 60}
-      // Also refetch when the browser comes back online
+      refetchInterval={0}
       refetchWhenOffline={false}
     >
       <LogoutNotificationListener>
