@@ -13,6 +13,7 @@ import { logActivity } from '@/lib/utils/activityLogger';
 import { addDays, differenceInDays, format, startOfDay } from 'date-fns';
 import { UserRole } from '@/types';
 import { grantDietPlanAccess } from '@/lib/auth/onboarding-access';
+import { checkPhaseContinuity } from '@/lib/meal-plan-phase-continuity';
 
 const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
   if (!Array.isArray(meals) || meals.length === 0) return false;
@@ -761,6 +762,67 @@ export async function PUT(
           },
           { status: 400 }
         );
+      }
+    }
+
+    // A later phase in the same purchase must begin immediately after the
+    // previous phase. Planned breaks are represented by freeze/pause actions,
+    // which shift the linked phase chain without creating uncovered days.
+    if (existingPlan.purchaseId && (isPublishing || startDate !== undefined)) {
+      const proposedStart = new Date(updateData.startDate || existingPlan.startDate);
+      let previousPlan: any = null;
+
+      if (existingPlan.previousPhaseId) {
+        previousPlan = await ClientMealPlan.findOne({
+          _id: existingPlan.previousPhaseId,
+          purchaseId: existingPlan.purchaseId,
+          status: { $in: ['active', 'completed', 'paused'] },
+          isDeleted: { $ne: true },
+        }).select('_id name phaseTag endDate').lean();
+      } else {
+        const previousPhaseQuery: Record<string, any> = {
+          _id: { $ne: existingPlan._id },
+          clientId: existingPlan.clientId,
+          purchaseId: existingPlan.purchaseId,
+          status: { $in: ['active', 'completed', 'paused'] },
+          isDeleted: { $ne: true },
+        };
+
+        if (existingPlan.phaseNumber && existingPlan.phaseNumber > 1) {
+          previousPhaseQuery.phaseNumber = { $lt: existingPlan.phaseNumber };
+        } else if (!isPublishing) {
+          previousPhaseQuery.endDate = { $lt: proposedStart };
+        }
+
+        previousPlan = await ClientMealPlan.findOne(previousPhaseQuery)
+          .sort({ phaseNumber: -1, endDate: -1, createdAt: -1 })
+          .select('_id name phaseTag endDate')
+          .lean();
+      }
+
+      if (previousPlan?.endDate) {
+        const continuity = checkPhaseContinuity(proposedStart, previousPlan.endDate);
+        if (continuity && !continuity.isContinuous) {
+          return NextResponse.json({
+            success: false,
+            error: 'Next phase must continue from the previous phase',
+            code: 'PHASE_START_MUST_FOLLOW_PREVIOUS',
+            message: `This phase must start on ${continuity.expectedStartDateKey}, the day after the previous phase ends. Use the pause/freeze feature for a planned break.`,
+            expectedStartDate: continuity.expectedStartDateKey,
+            proposedStartDate: continuity.actualStartDateKey,
+            gapDays: continuity.gapDays,
+            previousPlan: {
+              id: String(previousPlan._id),
+              name: previousPlan.name,
+              phaseTag: previousPlan.phaseTag,
+              endDate: previousPlan.endDate,
+            },
+          }, { status: 409 });
+        }
+
+        if (isPublishing && !existingPlan.previousPhaseId) {
+          updateData.previousPhaseId = previousPlan._id;
+        }
       }
     }
 

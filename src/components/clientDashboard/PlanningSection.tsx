@@ -21,6 +21,7 @@ import { useDataRefresh, emitDataChange, DataEventTypes } from '@/lib/events/use
 import { DEFAULT_MEAL_TYPES_LIST } from '@/lib/mealConfig';
 import { useRealtime } from '@/hooks/useRealtime';
 import { UserRole } from '@/types';
+import { getRequiredNextPhaseStart } from '@/lib/meal-plan-phase-continuity';
 
 // Client Purchase interface
 interface ClientPurchase {
@@ -1078,15 +1079,35 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     toast.success(`Template "${template.name}" loaded with custom day mapping`);
   };
 
-  // Fetch the latest meal plan's end date from already fetched clientPlans
+  // Fetch the latest phase in the selected purchase. Scoping this lookup is
+  // important when a client has already bought a future retention plan.
   const getLatestMealPlanEndDate = (): string | null => {
     if (clientPlans && clientPlans.length > 0) {
-      const sortedPlans = [...clientPlans].sort((a: any, b: any) =>
+      const selectedPurchaseId = selectedPurchase?._id || paymentCheck?.purchase?._id || null;
+      const publishedPlans = clientPlans.filter((plan: any) =>
+        ['active', 'completed', 'paused'].includes(String(plan?.status || '').toLowerCase())
+        && plan?.isDeleted !== true
+      );
+      const scopedPlans = selectedPurchaseId
+        ? publishedPlans.filter((plan: any) => {
+          const rawPurchaseId = plan?.purchaseId?._id || plan?.purchaseId;
+          return rawPurchaseId && String(rawPurchaseId) === String(selectedPurchaseId);
+        })
+        : publishedPlans;
+      const plansToCompare = scopedPlans;
+      if (plansToCompare.length === 0) return null;
+      const sortedPlans = [...plansToCompare].sort((a: any, b: any) =>
         new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
       );
       return sortedPlans[0].endDate;
     }
     return null;
+  };
+
+  const getRequiredNextPhaseStartDate = (): string | null => {
+    const latestEndDate = getLatestMealPlanEndDate();
+    const requiredStart = getRequiredNextPhaseStart(latestEndDate);
+    return requiredStart ? format(requiredStart, 'yyyy-MM-dd') : null;
   };
 
   // Initialize start date based on latest plan's end date + 1, respecting expected dates
@@ -1100,13 +1121,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
       : null;
 
     // Get latest meal plan's end date
-    const latestEndDate = getLatestMealPlanEndDate();
+    const requiredNextPhaseStartDate = getRequiredNextPhaseStartDate();
 
     let newStartDate = today;
 
-    if (latestEndDate) {
-      // Start from day after last plan ends
-      newStartDate = format(addDays(new Date(latestEndDate), 1), 'yyyy-MM-dd');
+    if (requiredNextPhaseStartDate) {
+      newStartDate = requiredNextPhaseStartDate;
     } else if (expectedStartDate) {
       // No existing plans - use expected start date if available
       newStartDate = expectedStartDate;
@@ -1174,6 +1194,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
     const effectiveRemainingForValidation = selectedPurchase?.remainingDays ?? paymentCheck?.remainingDays ?? 0;
     if (!isEditMode && paymentCheck?.hasPaidPlan && duration > effectiveRemainingForValidation) {
       toast.error(`Duration cannot exceed ${effectiveRemainingForValidation} days (remaining in client's plan)`);
+      return;
+    }
+    const requiredNextPhaseStartDate = getRequiredNextPhaseStartDate();
+    if (!isEditMode && requiredNextPhaseStartDate && startDate !== requiredNextPhaseStartDate) {
+      setStartDate(requiredNextPhaseStartDate);
+      toast.error(`The next phase must start on ${format(parseLocalDate(requiredNextPhaseStartDate), 'dd MMM yyyy')}, immediately after the previous phase.`);
       return;
     }
     const validationPurchase = selectedPurchase || paymentCheck?.purchase;
@@ -1272,6 +1298,13 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         : endDate;
 
       if (!isEditMode) {
+        const requiredNextPhaseStartDate = getRequiredNextPhaseStartDate();
+        if (requiredNextPhaseStartDate && startDate !== requiredNextPhaseStartDate) {
+          setStartDate(requiredNextPhaseStartDate);
+          toast.error(`The next phase must start on ${format(parseLocalDate(requiredNextPhaseStartDate), 'dd MMM yyyy')}, immediately after the previous phase.`);
+          return;
+        }
+
         const purchaseExpectedStartDate = selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate;
         const purchaseExpectedEndDate = selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate;
 
@@ -1336,9 +1369,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         });
 
         if (!res.ok) {
-          const errorText = await res.text();
-          console.error('Failed to publish plan:', res.status, errorText);
-          toast.error('Failed to publish diet plan. Server error.');
+          const errorData = await res.json().catch(() => ({}));
+          console.error('Failed to publish plan:', res.status, errorData);
+          if (errorData.code === 'PHASE_START_MUST_FOLLOW_PREVIOUS' && errorData.expectedStartDate) {
+            setStartDate(errorData.expectedStartDate);
+          }
+          toast.error(errorData.message || errorData.error || 'Failed to publish diet plan. Server error.');
           return;
         }
         data = await res.json();
@@ -1380,9 +1416,12 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
         });
 
         if (!res.ok) {
-          const errorText = await res.text();
-          console.error('Failed to create plan:', res.status, errorText);
-          toast.error('Failed to create diet plan. Server error.');
+          const errorData = await res.json().catch(() => ({}));
+          console.error('Failed to create plan:', res.status, errorData);
+          if (errorData.code === 'PHASE_START_MUST_FOLLOW_PREVIOUS' && errorData.expectedStartDate) {
+            setStartDate(errorData.expectedStartDate);
+          }
+          toast.error(errorData.message || errorData.error || 'Failed to create diet plan. Server error.');
           return;
         }
         data = await res.json();
@@ -3788,6 +3827,11 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     value={startDate}
                     onChange={(e) => {
                       const newStartDate = e.target.value;
+                      const requiredNextPhaseStartDate = getRequiredNextPhaseStartDate();
+                      if (!isEditMode && requiredNextPhaseStartDate && newStartDate !== requiredNextPhaseStartDate) {
+                        toast.error(`The next phase must start on ${format(parseLocalDate(requiredNextPhaseStartDate), 'dd MMM yyyy')}, immediately after the previous phase.`);
+                        return;
+                      }
                       // Validate start date is within expected dates range (only for new plans, not when editing)
                       const formExpectedStart = selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate;
                       const formExpectedEnd = selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate;
@@ -3809,6 +3853,8 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                     }}
                     min={!isEditMode
                       ? (() => {
+                        const requiredNextPhaseStartDate = getRequiredNextPhaseStartDate();
+                        if (requiredNextPhaseStartDate) return requiredNextPhaseStartDate;
                         const today = format(new Date(), 'yyyy-MM-dd');
                         const expectedStartRaw = selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate;
                         if (!expectedStartRaw) return today;
@@ -3816,8 +3862,18 @@ export default function PlanningSection({ client, viewOnly = false, onRegisterRe
                         return expectedStart > today ? expectedStart : today;
                       })()
                       : undefined}
-                    max={!isEditMode && (selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate) ? format(new Date(selectedPurchase?.expectedEndDate || paymentCheck!.purchase!.expectedEndDate!), 'yyyy-MM-dd') : undefined}
+                    max={!isEditMode
+                      ? getRequiredNextPhaseStartDate()
+                        || ((selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate)
+                          ? format(new Date(selectedPurchase?.expectedEndDate || paymentCheck!.purchase!.expectedEndDate!), 'yyyy-MM-dd')
+                          : undefined)
+                      : undefined}
                   />
+                  {!isEditMode && getRequiredNextPhaseStartDate() && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      🔗 This phase continues automatically on {format(parseLocalDate(getRequiredNextPhaseStartDate()!), 'dd MMM yyyy')}.
+                    </p>
+                  )}
                   {!isEditMode && (selectedPurchase?.expectedStartDate || paymentCheck?.purchase?.expectedStartDate) && (selectedPurchase?.expectedEndDate || paymentCheck?.purchase?.expectedEndDate) && (
                     <p className="text-xs text-green-600 mt-1">
                       📅 Start date must be within: {format(new Date(selectedPurchase?.expectedStartDate || paymentCheck!.purchase!.expectedStartDate!), 'dd MMM')} - {format(new Date(selectedPurchase?.expectedEndDate || paymentCheck!.purchase!.expectedEndDate!), 'dd MMM yyyy')}

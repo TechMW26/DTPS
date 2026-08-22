@@ -16,6 +16,7 @@ import { updateClientStatusFromMealPlan } from '@/lib/status/computeClientStatus
 import { logActivity } from '@/lib/utils/activityLogger';
 import { format, startOfDay } from 'date-fns';
 import { grantDietPlanAccess } from '@/lib/auth/onboarding-access';
+import { checkPhaseContinuity } from '@/lib/meal-plan-phase-continuity';
 
 const normalizeRole = (role: unknown): string => {
   const normalized = String(role || '').trim().toLowerCase();
@@ -594,10 +595,11 @@ export async function POST(request: NextRequest) {
     let phaseTag = validatedData.phaseTag;
     let previousPhaseId: string | null = null;
 
-    if (!isDraft && !phaseNumber) {
+    if (!isDraft) {
       const phaseScopeQuery: any = {
         clientId: validatedData.clientId,
-        status: { $in: ['active', 'completed'] }
+        status: { $in: ['active', 'completed', 'paused'] },
+        isDeleted: { $ne: true }
       };
 
       const resolvedPurchaseId = linkedPaymentId || validatedData.purchaseId;
@@ -605,29 +607,45 @@ export async function POST(request: NextRequest) {
         phaseScopeQuery.purchaseId = resolvedPurchaseId;
       }
 
-      // Count previous meal plans for this client in the same purchase scope.
-      const previousPlansCount = await ClientMealPlan.countDocuments({
-        ...phaseScopeQuery
-      });
+      const previousPlansCount = await ClientMealPlan.countDocuments(phaseScopeQuery);
 
       // Find the most recent previous meal plan in the same purchase scope.
-      const lastCompletedPlan = await ClientMealPlan.findOne({
-        ...phaseScopeQuery
-      }).sort({ endDate: -1, createdAt: -1 }).select('_id phaseNumber').lean() as any;
+      const lastCompletedPlan = await ClientMealPlan.findOne(phaseScopeQuery)
+        .sort({ endDate: -1, createdAt: -1 })
+        .select('_id name phaseNumber phaseTag endDate')
+        .lean() as any;
 
-      // Calculate phase number: previous plans count + 1
-      phaseNumber = previousPlansCount + 1;
-      phaseTag = `PHASE-${phaseNumber}`;
+      if (lastCompletedPlan?.endDate) {
+        const continuity = checkPhaseContinuity(startDate, lastCompletedPlan.endDate);
+        if (continuity && !continuity.isContinuous) {
+          return NextResponse.json({
+            error: 'Next phase must continue from the previous phase',
+            code: 'PHASE_START_MUST_FOLLOW_PREVIOUS',
+            message: `This phase must start on ${continuity.expectedStartDateKey}, the day after the previous phase ends. Use the pause/freeze feature for a planned break.`,
+            expectedStartDate: continuity.expectedStartDateKey,
+            proposedStartDate: continuity.actualStartDateKey,
+            gapDays: continuity.gapDays,
+            previousPlan: {
+              id: String(lastCompletedPlan._id),
+              name: lastCompletedPlan.name,
+              phaseTag: lastCompletedPlan.phaseTag,
+              endDate: lastCompletedPlan.endDate,
+            }
+          }, { status: 409 });
+        }
 
-      // Link to previous phase if exists
-      if (lastCompletedPlan) {
         previousPhaseId = String(lastCompletedPlan._id);
       }
 
-      console.log(`[ClientMealPlan] Auto-assigned phase: ${phaseTag} (previous plans: ${previousPlansCount})`);
-    } else if (!isDraft && phaseNumber && !phaseTag) {
-      // If phaseNumber is provided but not phaseTag, generate it
-      phaseTag = `PHASE-${phaseNumber}`;
+      if (!phaseNumber) {
+        // Calculate phase number: previous plans count + 1
+        phaseNumber = previousPlansCount + 1;
+        phaseTag = `PHASE-${phaseNumber}`;
+      } else if (!phaseTag) {
+        phaseTag = `PHASE-${phaseNumber}`;
+      }
+
+      console.log(`[ClientMealPlan] Assigned phase: ${phaseTag} (previous plans: ${previousPlansCount})`);
     }
 
     // Check for overlapping active meal plans for the same client (skip for drafts)
