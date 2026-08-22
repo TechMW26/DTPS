@@ -330,16 +330,14 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                 >
                     {plans.map((plan, index) => {
                         const activeTiers = plan.pricingTiers.filter(t => t.isActive);
-                        const selectedTierId = selectedTiers[plan._id];
-                        const selectedTier = activeTiers.find(t => t._id === selectedTierId) || activeTiers[0];
 
                         return (
                             <div
                                 key={plan._id}
-                                className="shrink-0 w-70 min-w-70 max-w-70 snap-center animate-scale-fade-in"
+                                className="w-[calc(100vw-3rem)] max-w-sm shrink-0 snap-center animate-scale-fade-in"
                                 style={{ animationDelay: `${index * 100}ms` }}
                             >
-                                <div className="rounded-3xl overflow-hidden border-2 border-[#3AB1A0]/30 transition-all duration-300 h-80 flex flex-col">
+                                <div className="flex min-h-80 flex-col overflow-hidden rounded-3xl border-2 border-[#3AB1A0]/30 transition-all duration-300">
                                     <div className="bg-linear-to-r from-[#E06A26] to-[#DB9C6E] p-4 text-white shrink-0">
                                         <div className="flex items-start justify-between">
                                             <div>
@@ -386,19 +384,19 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                                             </div>
                                         </div>
 
-                                        <div className="flex gap-2">
+                                        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] gap-2">
                                             <button
                                                 onClick={() => router.push(`/user/services/${plan._id}`)}
-                                                className="flex-1 py-3 rounded-2xl border-2 border-[#3AB1A0] text-[#3AB1A0] font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] hover:bg-[#3AB1A0]/10"
+                                                className="flex min-h-12 min-w-0 items-center justify-center whitespace-nowrap rounded-2xl border-2 border-[#3AB1A0] px-3 py-3 text-sm font-semibold text-[#3AB1A0] transition-all hover:bg-[#3AB1A0]/10 active:scale-[0.98] sm:text-base"
                                             >
                                                 View Details
                                             </button>
                                             <button
                                                 onClick={() => handleGetStarted(plan)}
-                                                className="flex-1 py-3 rounded-2xl bg-linear-to-r from-[#E06A26] to-[#DB9C6E] text-white font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                                                className="flex min-h-12 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl bg-linear-to-r from-[#E06A26] to-[#DB9C6E] px-3 py-3 text-sm font-semibold text-white transition-all active:scale-[0.98] sm:gap-2 sm:text-base"
                                             >
                                                 Get Started
-                                                <ArrowRight className="h-4 w-4" />
+                                                <ArrowRight className="h-4 w-4 shrink-0" />
                                             </button>
                                         </div>
                                     </div>
@@ -422,8 +420,14 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
 
             {/* Purchase Modal */}
             {showPurchaseModal && selectedPlan && (
-                <div className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
-                    <div 
+                <div
+                    className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="service-purchase-title"
+                    onClick={() => setShowPurchaseModal(false)}
+                >
+                    <div
                         className="client-bottom-sheet-panel max-h-full w-full max-w-md overflow-y-auto rounded-t-3xl bg-white sm:rounded-3xl"
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -440,12 +444,13 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                                         />
                                     </div>
                                     <div>
-                                        <h3 className="text-xl font-bold">{selectedPlan.name}</h3>
+                                        <h3 id="service-purchase-title" className="text-xl font-bold">{selectedPlan.name}</h3>
                                         <p className="text-white/80 text-sm">{getCategoryLabel(selectedPlan.category)}</p>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => setShowPurchaseModal(false)}
+                                    aria-label="Close purchase options"
                                     className="p-2 hover:bg-white/20 rounded-full transition-colors"
                                 >
                                     <X className="h-5 w-5" />

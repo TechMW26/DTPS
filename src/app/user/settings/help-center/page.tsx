@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import UserNavBar from '@/components/client/UserNavBar';
@@ -377,7 +378,7 @@ export default function HelpCenterPage() {
               </div>
               <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>No Results Found</h3>
               <p className={isDarkMode ? 'text-slate-200' : 'text-gray-600'}>
-                Try different keywords or <a href="/user/settings/contact-support" className="text-[#3AB1A0] hover:underline">contact support</a> for help.
+                Try different keywords or <Link href="/user/settings/contact-support" className="text-[#3AB1A0] hover:underline">contact support</Link> for help.
               </p>
             </CardContent>
           </Card>

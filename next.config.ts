@@ -32,6 +32,13 @@ const nextConfig: NextConfig = {
 
   // Experimental features for better performance
   experimental: {
+    // Keep recently visited dynamic route payloads in the browser router cache.
+    // Client-page effects still re-run and request live API data; this only
+    // avoids downloading and rebuilding the same route shell on every switch.
+    staleTimes: {
+      dynamic: 30,
+      static: 300,
+    },
     optimizeCss: true,
     optimizePackageImports: [
       'lucide-react',

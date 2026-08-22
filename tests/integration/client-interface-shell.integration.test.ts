@@ -38,6 +38,13 @@ describe("client interface shell", () => {
     }
   });
 
+  it("uses App Router links for internal user navigation", () => {
+    for (const file of sourceFilesBelow("src/app/user")) {
+      const source = fs.readFileSync(file, "utf8");
+      expect(source).not.toMatch(/<a\s+[^>]*href=["']\/user(?:\/|["'])/);
+    }
+  });
+
   it("uses library icons instead of visible emoji glyphs in the client UI", () => {
     const uiDirectories = [
       "src/app/user",
@@ -131,6 +138,19 @@ describe("client interface shell", () => {
     );
     expect(mealPlanPage).toContain("shrink-0 border-t p-4");
 
+    const servicePlans = fs.readFileSync(
+      path.join(projectRoot, "src/components/client/ServicePlansSwiper.tsx"),
+      "utf8",
+    );
+    const serviceDetails = fs.readFileSync(
+      path.join(projectRoot, "src/app/user/services/[id]/page.tsx"),
+      "utf8",
+    );
+    expect(servicePlans).toContain('role="dialog"');
+    expect(servicePlans).toContain("w-[calc(100vw-3rem)] max-w-sm");
+    expect(serviceDetails).toContain("client-sticky-action-above-nav");
+    expect(serviceDetails).not.toContain("sticky bottom-8");
+
     const navigationFiles = [
       "src/components/client/BottomNavBar.tsx",
       "src/components/client/ClientBottomNav.tsx",
@@ -162,13 +182,40 @@ describe("client interface shell", () => {
     );
 
     expect(globalStyles).toContain(".client-route-transition");
+    expect(globalStyles).toContain("min-width: 0");
+    expect(globalStyles).not.toContain("@keyframes client-route-enter");
+    expect(globalStyles).toContain(".client-sticky-action-above-nav");
     expect(globalStyles).toContain(".client-popup-panel");
     expect(globalStyles).toContain(".client-bottom-sheet-panel");
     expect(globalStyles).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(userLayout).toContain("key={pathname}");
+    expect(userLayout).not.toContain("key={pathname}");
+    expect(userLayout).toContain("routeContentRef");
+    expect(userLayout).toContain("content.animate(");
+    expect(userLayout).toContain("prefers-reduced-motion: reduce");
     expect(userLayout).toContain("client-route-transition");
     expect(bottomNavigation).toContain("useLinkStatus");
     expect(bottomNavigation).toContain("NavigationPendingHint");
+  });
+
+  it("reuses recent route payloads and uses a shell-safe loading fallback", () => {
+    const nextConfig = fs.readFileSync(
+      path.join(projectRoot, "next.config.ts"),
+      "utf8",
+    );
+    const userLoading = fs.readFileSync(
+      path.join(projectRoot, "src/app/user/loading.tsx"),
+      "utf8",
+    );
+    const skeletons = fs.readFileSync(
+      path.join(projectRoot, "src/components/ui/skeleton.tsx"),
+      "utf8",
+    );
+
+    expect(nextConfig).toContain("staleTimes:");
+    expect(nextConfig).toContain("dynamic: 30");
+    expect(userLoading).toContain('showHeader={false}');
+    expect(userLoading).toContain("embedded");
+    expect(skeletons).toContain("--client-bottom-nav-clearance");
   });
 
   it("coalesces dashboard refreshes and loads independent data in parallel", () => {

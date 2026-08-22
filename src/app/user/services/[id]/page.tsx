@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Star, Check, X, Loader2, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, Star, Check, Loader2, ShoppingCart } from 'lucide-react';
 import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import Script from 'next/script';
@@ -13,27 +13,6 @@ declare global {
     Razorpay: any;
   }
 }
-
-// Helper function to strip HTML tags from text
-const stripHtmlTags = (html: string): string => {
-  if (!html) return '';
-  // Replace common HTML entities
-  let text = html
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/<\/p>/gi, ' ')
-    .replace(/<\/div>/gi, ' ')
-    .replace(/<\/li>/gi, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"');
-  // Remove all remaining HTML tags
-  text = text.replace(/<[^>]*>/g, '');
-  // Clean up extra whitespace
-  text = text.replace(/\s+/g, ' ').trim();
-  return text;
-};
 
 interface ServicePlan {
   _id: string;
@@ -372,27 +351,8 @@ export default function ServiceDetailPage() {
           </p>
         </div>
 
-        {/* Nutritional Disclaimer & Citations */}
-        <div className={`p-4 rounded-2xl ${isDarkMode ? 'bg-gray-800/50 ring-1 ring-white/5' : 'bg-gray-50'}`}>
-          <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            <span className="font-semibold">Disclaimer:</span> All diet plans and nutritional recommendations are prepared
-            by certified dietitians at DTPS using evidence-based guidelines from{' '}
-            <a href="https://www.ifct2017.com/" target="_blank" rel="noopener noreferrer" className="text-[#3AB1A0] underline">
-              Indian Food Composition Tables (IFCT 2017, NIN)
-            </a>,{' '}
-            <a href="https://fdc.nal.usda.gov/" target="_blank" rel="noopener noreferrer" className="text-[#3AB1A0] underline">
-              USDA FoodData Central
-            </a>, and{' '}
-            <a href="https://www.who.int/publications/i/item/9241546123" target="_blank" rel="noopener noreferrer" className="text-[#3AB1A0] underline">
-              WHO/FAO dietary guidelines
-            </a>.
-            Plans are personalized and do not replace professional medical advice. Consult your healthcare
-            provider before making significant dietary changes.
-          </p>
-        </div>
-
         {/* Purchase Button */}
-        <div className={`sticky bottom-8 left-0 right-0 pt-4 pb-6 -mx-4 px-4 ${isDarkMode ? 'bg-linear-to-t from-gray-900 via-gray-900 to-transparent' : 'bg-linear-to-t from-white via-white to-transparent'}`}>
+        <div className={`client-sticky-action-above-nav sticky left-0 right-0 z-30 -mx-4 px-4 pb-4 pt-4 ${isDarkMode ? 'bg-linear-to-t from-gray-900 via-gray-900 to-transparent' : 'bg-linear-to-t from-white via-white to-transparent'}`}>
           <button
             onClick={handlePurchase}
             disabled={isPurchasing || selectedTier === null}

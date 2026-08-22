@@ -220,12 +220,25 @@ export function StaffAppSkeleton() {
 export function ClientPageSkeleton({
   variant = 'list',
   showHeader = true,
+  embedded,
 }: {
   variant?: 'home' | 'list' | 'grid' | 'plan' | 'form';
   showHeader?: boolean;
+  embedded?: boolean;
 }) {
+  const isEmbedded = embedded ?? !showHeader;
+
   return (
-    <div className="min-h-dvh w-full bg-gray-50 pb-28 dark:bg-gray-950" role="status" aria-label="Loading page">
+    <div
+      className={cn(
+        'w-full bg-gray-50 dark:bg-gray-950',
+        isEmbedded
+          ? 'min-h-[calc(100dvh-var(--client-bottom-nav-clearance))] pb-6'
+          : 'min-h-dvh pb-28',
+      )}
+      role="status"
+      aria-label="Loading page"
+    >
       <span className="sr-only">Loading page</span>
       {showHeader && (
         <header className="flex h-16 items-center justify-between border-b border-gray-100 bg-white px-4 dark:border-gray-800 dark:bg-gray-900">

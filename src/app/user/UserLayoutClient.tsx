@@ -113,8 +113,26 @@ function UserLayoutContent({
   const { counts } = useUnreadCountsSafe();
   const { isDarkMode } = useTheme();
   const pathname = usePathname();
+  const routeContentRef = useRef<HTMLDivElement>(null);
 
   const showAppHeader = pathname === '/user';
+
+  // Animate the persistent content surface without keying/remounting it. A
+  // transform here would create a containing block for fixed dialogs and can
+  // make them jump on long pages, so this is intentionally opacity-only.
+  useEffect(() => {
+    const content = routeContentRef.current;
+    if (!content || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+
+    const animation = content.animate(
+      [{ opacity: 0.92 }, { opacity: 1 }],
+      { duration: 160, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+    );
+
+    return () => animation.cancel();
+  }, [pathname]);
 
   return (
     <div className={`relative flex min-h-screen w-full flex-col overflow-x-clip transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
@@ -164,7 +182,7 @@ function UserLayoutContent({
 
         {/* Page Content */}
         <div
-          key={pathname}
+          ref={routeContentRef}
           className="client-route-transition mx-auto min-h-[calc(100dvh-8rem)] w-full max-w-7xl"
         >
           {children}

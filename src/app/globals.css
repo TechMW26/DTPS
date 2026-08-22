@@ -50,6 +50,13 @@
   }
 
   /* Apply theme colors to body */
+  html {
+    /* Reserve the desktop scrollbar track so route height changes do not move
+       the entire interface sideways. Overlay-scrollbar mobile browsers ignore
+       this without any extra gutter. */
+    scrollbar-gutter: stable;
+  }
+
   body {
     background-color: var(--background);
     color: var(--foreground);
@@ -444,7 +451,14 @@
   }
 
   .client-route-transition {
-    animation: client-route-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    /* Route motion is driven by Web Animations on this persistent surface.
+       Keeping transforms off the route root avoids layout jitter and keeps
+       fixed dialogs anchored to the viewport. */
+    min-width: 0;
+  }
+
+  .client-sticky-action-above-nav {
+    bottom: var(--client-bottom-nav-clearance);
   }
 
   .client-popup-panel {
@@ -453,18 +467,6 @@
 
   .client-bottom-sheet-panel {
     animation: client-bottom-sheet-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-
-  @keyframes client-route-enter {
-    from {
-      opacity: 0;
-      transform: translate3d(0, 8px, 0);
-    }
-
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0);
-    }
   }
 
   @keyframes client-popup-backdrop-in {
