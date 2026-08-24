@@ -616,6 +616,17 @@ export async function PUT(
     const isPublishing = existingPlan.status === "draft" && status === "active";
     const isStatusChange =
       status !== undefined && status !== existingPlan.status;
+    const existingStartDateKey = dateKey(existingPlan.startDate);
+    const existingEndDateKey = dateKey(existingPlan.endDate);
+    const incomingStartDateKey = dateKey(startDate);
+    const incomingEndDateKey = dateKey(endDate);
+    const startDateChanged =
+      startDate !== undefined &&
+      (incomingStartDateKey === null ||
+        incomingStartDateKey !== existingStartDateKey);
+    const endDateChanged =
+      endDate !== undefined &&
+      (incomingEndDateKey === null || incomingEndDateKey !== existingEndDateKey);
 
     // ------------------------------------------------------------------
     // HOLD STATUS CHECK: Block publishing meal plans to clients on hold
@@ -838,7 +849,7 @@ export async function PUT(
     // dates so an early draft cannot become an incorrectly dated active plan.
     if (
       existingPlan.purchaseId &&
-      (isPublishing || startDate !== undefined || endDate !== undefined)
+      (isPublishing || startDateChanged || endDateChanged)
     ) {
       const purchase = (await UnifiedPayment.findById(existingPlan.purchaseId)
         .select(
@@ -907,7 +918,7 @@ export async function PUT(
     // A later phase in the same purchase must begin immediately after the
     // previous phase. Planned breaks are represented by freeze/pause actions,
     // which shift the linked phase chain without creating uncovered days.
-    if (existingPlan.purchaseId && (isPublishing || startDate !== undefined)) {
+    if (existingPlan.purchaseId && (isPublishing || startDateChanged)) {
       const proposedStart = new Date(
         updateData.startDate || existingPlan.startDate,
       );
@@ -1139,7 +1150,11 @@ export async function PUT(
     clearCacheByTag("client_meal_plans");
 
     // Update client status if status or dates changed (could affect active status)
-    if ((status && status !== "draft") || startDate || endDate) {
+    if (
+      (status && status !== "draft") ||
+      startDateChanged ||
+      endDateChanged
+    ) {
       try {
         const clientId = updatedPlan.clientId?.toString();
         if (clientId) {
@@ -1213,7 +1228,11 @@ export async function PUT(
   } catch (error) {
     console.error("Error updating meal plan:", error);
     // Handle validation errors
-    if (error instanceof Error && error.message.includes("validation")) {
+    if (
+      error instanceof Error &&
+      (error.name === "ValidationError" ||
+        error.message.toLowerCase().includes("validation"))
+    ) {
       return NextResponse.json(
         {
           success: false,

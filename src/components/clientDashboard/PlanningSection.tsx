@@ -2236,12 +2236,23 @@ export default function PlanningSection({
         mealsWithDates.length,
       );
 
+      const originalStartDate = format(
+        new Date(editingPlan.startDate),
+        "yyyy-MM-dd",
+      );
+      const originalMealDayCount = Array.isArray(editingPlan.meals)
+        ? editingPlan.meals.length
+        : Number(editingPlan.duration || 0);
+      const timelineChanged =
+        startDate !== originalStartDate ||
+        actualDuration !== originalMealDayCount;
+
+      // Meal-only edits to an active plan must not re-submit protected
+      // lifecycle metadata. Re-sending an unchanged, already-started date can
+      // make the phase-continuity guard treat a normal content save as a past
+      // scheduling change and reject it with 409.
       const payload: any = {
-        name: planTitle,
         description,
-        startDate,
-        endDate: actualEndDate,
-        duration: actualDuration,
         meals: mealsWithDates,
         mealTypes: finalMealTypes,
         customizations: {
@@ -2269,8 +2280,18 @@ export default function PlanningSection({
         },
       };
 
+      if (editingPlan.status === "draft") {
+        payload.name = planTitle;
+      }
+      if (timelineChanged) {
+        payload.startDate = startDate;
+        payload.endDate = actualEndDate;
+        payload.duration = actualDuration;
+      }
+
       console.log("[Update Plan] Payload:", {
-        duration: payload.duration,
+        timelineChanged,
+        duration: payload.duration ?? editingPlan.duration,
         mealsCount: payload.meals.length,
       });
 
@@ -2289,9 +2310,12 @@ export default function PlanningSection({
       );
 
       if (!res.ok) {
-        const errorText = await res.text();
-        console.error("Failed to update plan:", res.status, errorText);
-        toast.error("Failed to update diet plan. Server error.");
+        const errorMessage = await readApiError(
+          res,
+          "Failed to update diet plan. Please try again.",
+        );
+        console.error("Failed to update plan:", res.status, errorMessage);
+        toast.error(errorMessage);
         return;
       }
       const data = await res.json();
@@ -4511,7 +4535,7 @@ export default function PlanningSection({
                       ? "Saving"
                       : "Save"}
                 </Button>
-                {/* Publish button — always visible */}
+                {/* Publish new plans; update plans that are already active. */}
                 <Button
                   className="bg-green-600 hover:bg-green-700"
                   onClick={() => {
@@ -4521,7 +4545,11 @@ export default function PlanningSection({
                       !currentMealPayload ||
                       !hasMealContent(currentMealPayload.meals)
                     ) {
-                      toast.error("No meal data to publish. Add meals first.");
+                      toast.error(
+                        isEditMode && editingPlan?.status !== "draft"
+                          ? "No meal data to update. Add meals first."
+                          : "No meal data to publish. Add meals first.",
+                      );
                       return;
                     }
 
@@ -4539,12 +4567,16 @@ export default function PlanningSection({
                   {saving ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Publishing...
+                      {isEditMode && editingPlan?.status !== "draft"
+                        ? "Updating..."
+                        : "Publishing..."}
                     </>
                   ) : (
                     <>
                       <Check className="h-4 w-4 mr-2" />
-                      Publish
+                      {isEditMode && editingPlan?.status !== "draft"
+                        ? "Update Plan"
+                        : "Publish"}
                     </>
                   )}
                 </Button>

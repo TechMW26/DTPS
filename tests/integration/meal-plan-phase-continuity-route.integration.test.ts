@@ -39,6 +39,84 @@ describe("POST /api/client-meal-plans phase continuity", () => {
     await ensureDatabaseConnection();
   });
 
+  it("allows meal edits when an active plan re-sends its unchanged past start date", async () => {
+    const { client, dietitian } = await createAssignedDietitianClientPair();
+    const purchase = await UnifiedPayment.create({
+      client: client._id,
+      dietitian: dietitian._id,
+      planName: "Thirty Day Weight Loss",
+      planCategory: "weight-loss",
+      durationDays: 30,
+      durationLabel: "30 Days",
+      status: "paid",
+      paymentStatus: "paid",
+      expectedStartDate: new Date("2026-08-01T00:00:00.000Z"),
+      expectedEndDate: new Date("2026-09-30T00:00:00.000Z"),
+      remainingDays: 24,
+      mealPlanCreated: true,
+    });
+
+    const previousPlan = await ClientMealPlan.create({
+      clientId: client._id,
+      dietitianId: dietitian._id,
+      purchaseId: purchase._id,
+      phaseNumber: 1,
+      phaseTag: "PHASE-1",
+      name: "Detox Plan",
+      startDate: new Date("2026-08-20T00:00:00.000Z"),
+      endDate: new Date("2026-08-22T00:00:00.000Z"),
+      duration: 3,
+      status: "active",
+      meals: publishableMeals,
+      goals: { primaryGoal: "weight-loss" },
+    });
+    const currentPlan = await ClientMealPlan.create({
+      clientId: client._id,
+      dietitianId: dietitian._id,
+      purchaseId: purchase._id,
+      previousPhaseId: previousPlan._id,
+      phaseNumber: 2,
+      phaseTag: "PHASE-2",
+      name: "Current Phase",
+      startDate: new Date("2026-08-23T00:00:00.000Z"),
+      endDate: new Date("2026-08-25T00:00:00.000Z"),
+      duration: 3,
+      status: "active",
+      meals: publishableMeals.map((day, index) => ({
+        ...day,
+        date: `2026-08-${23 + index}`,
+      })),
+      goals: { primaryGoal: "weight-loss" },
+    });
+
+    const editedMeals = currentPlan.meals.map((day: any) => ({
+      ...(typeof day.toObject === "function" ? day.toObject() : day),
+      meals: {
+        ...day.meals,
+        BREAKFAST: {
+          foodOptions: [{ food: "Edited oats with milk" }],
+        },
+      },
+    }));
+    const result = await invokeRouteWithParams(updateMealPlan, {
+      method: "PUT",
+      url: `http://localhost/api/client-meal-plans/${currentPlan._id}`,
+      user: dietitian.toObject(),
+      params: { id: String(currentPlan._id) },
+      body: {
+        startDate: "2026-08-23",
+        endDate: "2026-08-25",
+        duration: 3,
+        meals: editedMeals,
+      },
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.json.success).toBe(true);
+    expect(result.json.mealPlan.meals[0].meals.BREAKFAST.foodOptions[0].food)
+      .toBe("Edited oats with milk");
+  });
+
   it("accepts a deliberate later phase when it remains inside the purchase window", async () => {
     const { client, dietitian } = await createAssignedDietitianClientPair();
     const purchase = await UnifiedPayment.create({
