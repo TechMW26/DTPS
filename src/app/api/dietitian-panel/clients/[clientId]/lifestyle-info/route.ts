@@ -7,6 +7,10 @@ import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { logActivity } from '@/lib/utils/activityLogger';
+import {
+  pickDefinedFields,
+  pickDefinedLifestyleFields,
+} from '@/lib/api/lifestyle-fields';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,28 +124,17 @@ export async function PUT(
       heightInch = Math.round(totalInches % 12);
     }
 
+    const lifestyleUpdate = pickDefinedLifestyleFields({
+      ...data,
+      heightFeet,
+      heightInch,
+    });
     const lifestyleInfo = await LifestyleInfo.findOneAndUpdate(
       { userId: clientId },
       {
         $set: {
+          ...lifestyleUpdate,
           userId: clientId,
-          heightFeet,
-          heightInch,
-          heightCm: data.heightCm,
-          weightKg: data.weightKg,
-          targetWeightKg: data.targetWeightKg,
-          foodPreference: data.foodPreference,
-          preferredCuisine: data.preferredCuisine || [],
-          allergiesFood: data.allergiesFood || [],
-          fastDays: data.fastDays || [],
-          eatOutFrequency: data.eatOutFrequency,
-          smokingFrequency: data.smokingFrequency,
-          alcoholFrequency: data.alcoholFrequency,
-          activityLevel: data.activityLevel,
-          cookingOil: data.cookingOil,
-          cravingType: data.cravingType,
-          sleepPattern: data.sleepPattern,
-          stressLevel: data.stressLevel,
           updatedBy: session.user.id,
           updatedByRole: 'dietitian',
           updatedAt: new Date()
@@ -151,13 +144,14 @@ export async function PUT(
     );
 
     // Also update user profile height/weight
-    await User.findByIdAndUpdate(clientId, {
-      $set: {
+    const userProfileUpdate = pickDefinedFields({
         heightCm: data.heightCm,
         weightKg: data.weightKg,
-        activityLevel: data.activityLevel
-      }
+        activityLevel: data.activityLevel,
     });
+    if (Object.keys(userProfileUpdate).length > 0) {
+      await User.findByIdAndUpdate(clientId, { $set: userProfileUpdate });
+    }
 
     // Log activity
     logActivity({

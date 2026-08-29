@@ -607,6 +607,16 @@ export default function ClientDetailPage() {
   const [currentWeightKg, setCurrentWeightKg] = useState<number | null>(null);
   const [firstWeightKg, setFirstWeightKg] = useState<number | null>(null);
   const [weightLog, setWeightLog] = useState<ClientWeightLogEntry[]>([]);
+  const sectionHydrationRetryRef = useRef<number | null>(null);
+  const sectionHydrationRetryCountRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (sectionHydrationRetryRef.current) {
+        clearTimeout(sectionHydrationRetryRef.current);
+      }
+    };
+  }, []);
 
   const fetchWithRetry = useCallback(
     async (input: RequestInfo | URL, init: RequestInit = {}, retries = 2) => {
@@ -1447,15 +1457,66 @@ export default function ClientDetailPage() {
         }
 
         // Fetch the form sections in parallel so slow networks do not serialize the wait.
-        const [lifestyleResponse, medicalResponse, recallResponse] =
-          await Promise.all([
+        const [lifestyleResult, medicalResult, recallResult] =
+          await Promise.allSettled([
             fetchWithRetry(`/api/users/${params.clientId}/lifestyle`),
             fetchWithRetry(`/api/users/${params.clientId}/medical`),
             fetchWithRetry(`/api/users/${params.clientId}/recall`),
           ]);
 
+        // A single transient subsection failure must not abort hydration for
+        // every form and replace previously loaded values with blank defaults.
+        const lifestyleResponse =
+          lifestyleResult.status === "fulfilled"
+            ? lifestyleResult.value
+            : null;
+        const medicalResponse =
+          medicalResult.status === "fulfilled" ? medicalResult.value : null;
+        const recallResponse =
+          recallResult.status === "fulfilled" ? recallResult.value : null;
+
+        if (lifestyleResult.status === "rejected") {
+          console.warn(
+            "Lifestyle data is temporarily unavailable; retaining current values.",
+            lifestyleResult.reason,
+          );
+        }
+        if (medicalResult.status === "rejected") {
+          console.warn(
+            "Medical data is temporarily unavailable; retaining current values.",
+            medicalResult.reason,
+          );
+        }
+        if (recallResult.status === "rejected") {
+          console.warn(
+            "Recall data is temporarily unavailable; retaining current values.",
+            recallResult.reason,
+          );
+        }
+
+        const hasFailedSection =
+          !lifestyleResponse?.ok ||
+          !medicalResponse?.ok ||
+          !recallResponse?.ok;
+        if (hasFailedSection && sectionHydrationRetryCountRef.current < 3) {
+          if (!sectionHydrationRetryRef.current) {
+            const retryNumber = sectionHydrationRetryCountRef.current + 1;
+            sectionHydrationRetryRef.current = window.setTimeout(() => {
+              sectionHydrationRetryRef.current = null;
+              sectionHydrationRetryCountRef.current = retryNumber;
+              void fetchClientDetails(true);
+            }, 2_000 * retryNumber);
+          }
+        } else if (!hasFailedSection) {
+          sectionHydrationRetryCountRef.current = 0;
+          if (sectionHydrationRetryRef.current) {
+            clearTimeout(sectionHydrationRetryRef.current);
+            sectionHydrationRetryRef.current = null;
+          }
+        }
+
         let lifestyleInfo = null;
-        if (lifestyleResponse.ok) {
+        if (lifestyleResponse?.ok) {
           const lifestyleData = await lifestyleResponse.json();
           lifestyleInfo = lifestyleData?.lifestyleInfo;
         }
@@ -1565,7 +1626,7 @@ export default function ClientDetailPage() {
         });
 
         // Set lifestyle data (food preferences only)
-        setLifestyleData({
+        const nextLifestyleData: LifestyleData = {
           foodPreference:
             lifestyleInfo?.foodPreference || data?.user?.foodPreference || "",
           preferredCuisine:
@@ -1613,10 +1674,35 @@ export default function ClientDetailPage() {
             lifestyleInfo?.sleepPattern || data?.user?.sleepPattern || "",
           stressLevel:
             lifestyleInfo?.stressLevel || data?.user?.stressLevel || "",
-        });
+        };
+
+        if (lifestyleResponse?.ok) {
+          setLifestyleData(nextLifestyleData);
+        } else {
+          // Preserve the edited/last hydrated section. This is especially
+          // important after a successful save followed by a failed silent
+          // refresh, which previously made intact MongoDB data appear blank.
+          setLifestyleData((current) => {
+            const hasCurrentData = Boolean(
+              current.foodPreference ||
+                current.preferredCuisine?.length ||
+                current.nonVegExemptDays?.length ||
+                current.foodLikes ||
+                current.foodDislikes ||
+                current.sleepPattern ||
+                current.stressLevel,
+            );
+            return hasCurrentData ? current : nextLifestyleData;
+          });
+          if (!silent) {
+            toast.warning(
+              "Lifestyle data could not be refreshed yet. Existing values were kept and will reload automatically.",
+            );
+          }
+        }
 
         let medicalInfo = null;
-        if (medicalResponse.ok) {
+        if (medicalResponse?.ok) {
           const medicalData = await medicalResponse.json();
           medicalInfo = medicalData?.medicalInfo;
         }
@@ -1640,7 +1726,7 @@ export default function ClientDetailPage() {
         });
 
         // Set medical data form state (prefer from separate API, fallback to user data)
-        setMedicalData({
+        const nextMedicalData: MedicalData = {
           medicalConditions: medicalConditionsArr?.join(", ") || "",
           allergies: allergiesArr?.join(", ") || "",
           dietaryRestrictions: dietaryRestrictionsArr?.join(", ") || "",
@@ -1663,9 +1749,23 @@ export default function ClientDetailPage() {
           menstrualCycle:
             medicalInfo?.menstrualCycle || data?.user?.menstrualCycle || "",
           bloodFlow: medicalInfo?.bloodFlow || data?.user?.bloodFlow || "",
-        });
+        };
+        if (medicalResponse?.ok) {
+          setMedicalData(nextMedicalData);
+        } else {
+          setMedicalData((current) => {
+            const hasCurrentData = Boolean(
+              current.medicalConditions ||
+                current.allergies ||
+                current.medicalHistory ||
+                current.medication ||
+                current.bloodGroup,
+            );
+            return hasCurrentData ? current : nextMedicalData;
+          });
+        }
 
-        if (recallResponse.ok) {
+        if (recallResponse?.ok) {
           const recallData = await recallResponse.json();
           // Use entries from API response (already formatted with id)
           const loadedEntries = recallData?.entries || [];
@@ -1674,7 +1774,9 @@ export default function ClientDetailPage() {
           }
         } else {
           // Fallback to embedded data if API fails (for backward compatibility)
-          setRecallEntries(data?.user?.dietaryRecall || []);
+          setRecallEntries((current) =>
+            current.length > 0 ? current : data?.user?.dietaryRecall || [],
+          );
         }
       } else {
         toast.error("Failed to fetch client details");
@@ -1773,7 +1875,11 @@ export default function ClientDetailPage() {
 
       const basicRequest = fetchWithRetry(`/api/users/${params.clientId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-dtps-durable": "1",
+          "x-dtps-durable-key": `client:${params.clientId}:basic`,
+        },
         body: JSON.stringify(basicUserData),
       });
 
@@ -1813,7 +1919,11 @@ export default function ClientDetailPage() {
         `/api/users/${params.clientId}/lifestyle`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-dtps-durable": "1",
+            "x-dtps-durable-key": `client:${params.clientId}:lifestyle`,
+          },
           body: JSON.stringify(lifestylePayload),
         },
       );
@@ -1851,7 +1961,11 @@ export default function ClientDetailPage() {
         `/api/users/${params.clientId}/medical`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-dtps-durable": "1",
+            "x-dtps-durable-key": `client:${params.clientId}:medical`,
+          },
           body: JSON.stringify(medicalPayload),
         },
       );
@@ -1871,7 +1985,11 @@ export default function ClientDetailPage() {
           `/api/users/${params.clientId}/recall`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "x-dtps-durable": "1",
+              "x-dtps-durable-key": `client:${params.clientId}:recall`,
+            },
             body: JSON.stringify({ meals: mealsToSave }),
           },
         );

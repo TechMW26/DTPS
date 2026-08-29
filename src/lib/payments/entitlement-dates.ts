@@ -6,6 +6,10 @@ type EntitlementDateInput = {
   linkedMealPlanEndDate?: unknown;
 };
 
+type RemainingEntitlementDateInput = EntitlementDateInput & {
+  remainingDays?: unknown;
+};
+
 function toUtcDay(value: unknown): Date | null {
   if (!value) return null;
   const parsed =
@@ -29,6 +33,12 @@ function addUtcCalendarMonths(date: Date, months: number): Date {
     Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0),
   ).getUTCDate();
   result.setUTCDate(Math.min(originalDay, lastDayOfTargetMonth));
+  return result;
+}
+
+function addUtcCalendarDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
   return result;
 }
 
@@ -64,6 +74,41 @@ export function resolveEntitlementEndDate(
   return candidates.reduce((latest, candidate) =>
     candidate.getTime() > latest.getTime() ? candidate : latest,
   );
+}
+
+/**
+ * Ensures a purchase window is long enough to schedule every unallocated day
+ * after its latest linked meal plan. This intentionally requires a linked plan:
+ * an expired, never-started trial must not be revived merely because its stored
+ * remainingDays counter is greater than zero.
+ */
+export function resolveEntitlementEndDateCoveringRemainingDays(
+  input: RemainingEntitlementDateInput,
+): Date | null {
+  const resolvedEndDate = resolveEntitlementEndDate(input);
+  const linkedMealPlanEndDate = toUtcDay(input.linkedMealPlanEndDate);
+  const numericRemainingDays = Number(input.remainingDays);
+  const remainingDays = Number.isFinite(numericRemainingDays)
+    ? Math.max(0, Math.floor(numericRemainingDays))
+    : 0;
+
+  if (!linkedMealPlanEndDate || remainingDays <= 0) {
+    return resolvedEndDate;
+  }
+
+  // Remaining allocation starts on the day after the latest assigned plan.
+  const allocationCoverageEndDate = addUtcCalendarDays(
+    linkedMealPlanEndDate,
+    remainingDays,
+  );
+
+  if (!resolvedEndDate) {
+    return allocationCoverageEndDate;
+  }
+
+  return allocationCoverageEndDate.getTime() > resolvedEndDate.getTime()
+    ? allocationCoverageEndDate
+    : resolvedEndDate;
 }
 
 export function toDateKey(value: unknown): string | null {

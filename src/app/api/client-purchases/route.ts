@@ -8,7 +8,7 @@ import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
 import { recalculateAndPersistClientStatus } from "@/lib/status/computeClientStatus";
 import { canonicalizePurchaseRecords } from "@/lib/payments/canonicalize-purchases";
-import { resolveEntitlementEndDate } from "@/lib/payments/entitlement-dates";
+import { resolveEntitlementEndDateCoveringRemainingDays } from "@/lib/payments/entitlement-dates";
 
 const getPaidPurchaseQuery = () => ({
   $or: [
@@ -389,13 +389,15 @@ export async function GET(request: NextRequest) {
 
       const linkedMealPlanEndDate =
         latestMealPlanEndDateByPurchase.get(purchaseId) || null;
-      const resolvedExpectedEndDate = resolveEntitlementEndDate({
-        expectedStartDate: purchaseObj.expectedStartDate,
-        expectedEndDate: purchaseObj.expectedEndDate,
-        endDate: purchaseObj.endDate,
-        durationLabel: purchaseObj.durationLabel,
-        linkedMealPlanEndDate,
-      });
+      const resolvedExpectedEndDate =
+        resolveEntitlementEndDateCoveringRemainingDays({
+          expectedStartDate: purchaseObj.expectedStartDate,
+          expectedEndDate: purchaseObj.expectedEndDate,
+          endDate: purchaseObj.endDate,
+          durationLabel: purchaseObj.durationLabel,
+          linkedMealPlanEndDate,
+          remainingDays,
+        });
 
       // Calculate calendar days until end date (for expiration)
       const endDate = resolvedExpectedEndDate || purchaseObj.endDate;
@@ -686,7 +688,7 @@ export async function PUT(request: NextRequest) {
         const linkedMealPlans = await ClientMealPlan.find({
           purchaseId,
           status: { $in: ["active", "completed", "paused"] },
-        }).select("duration");
+        }).select("duration endDate");
 
         const recalculatedDaysUsed = linkedMealPlans.reduce(
           (sum: number, plan: any) => {
@@ -697,6 +699,45 @@ export async function PUT(request: NextRequest) {
 
         updateData.daysUsed = recalculatedDaysUsed;
         updateData.mealPlanCreated = linkedMealPlans.length > 0;
+
+        const latestLinkedMealPlanEndDate = linkedMealPlans.reduce(
+          (latest: Date | null, plan: any) => {
+            const endDate = toValidDate(plan?.endDate);
+            if (!endDate) return latest;
+            return !latest || endDate.getTime() > latest.getTime()
+              ? endDate
+              : latest;
+          },
+          null,
+        );
+        const durationDays = Math.max(
+          0,
+          Number(
+            currentPurchase.durationDays ||
+              (currentPurchase.daysUsed || 0) +
+                (currentPurchase.remainingDays || 0) ||
+              0,
+          ),
+        );
+        const remainingDays = Math.max(0, durationDays - recalculatedDaysUsed);
+        const reconciledExpectedEndDate =
+          resolveEntitlementEndDateCoveringRemainingDays({
+            expectedStartDate: currentPurchase.expectedStartDate,
+            expectedEndDate: currentPurchase.expectedEndDate,
+            endDate: currentPurchase.endDate,
+            durationLabel: currentPurchase.durationLabel,
+            linkedMealPlanEndDate: latestLinkedMealPlanEndDate,
+            remainingDays,
+          });
+
+        if (
+          reconciledExpectedEndDate &&
+          (!currentPurchase.expectedEndDate ||
+            reconciledExpectedEndDate.getTime() >
+              new Date(currentPurchase.expectedEndDate).getTime())
+        ) {
+          updateData.expectedEndDate = reconciledExpectedEndDate;
+        }
       } else {
         updateData.daysUsed = (currentPurchase.daysUsed || 0) + addDaysUsed;
       }
@@ -743,6 +784,7 @@ export async function PUT(request: NextRequest) {
     // (single source of truth: Expected End Date + manual hold).
     if (
       expectedEndDate !== undefined ||
+      updateData.expectedEndDate !== undefined ||
       expectedStartDate !== undefined ||
       status !== undefined
     ) {

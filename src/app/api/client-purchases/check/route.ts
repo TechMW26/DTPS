@@ -4,14 +4,14 @@ import { authOptions } from "@/lib/auth/config";
 import dbConnect from "@/lib/db/connect";
 import UnifiedPayment from "@/lib/db/models/UnifiedPayment";
 import PaymentLink from "@/lib/db/models/PaymentLink";
-import User from "@/lib/db/models/User";
 import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
 import Razorpay from "razorpay";
 import { checkPermission } from "@/lib/permissions/check";
 import { PermissionKey } from "@/lib/db/models/Permission";
 import { UserRole } from "@/types";
 import { canonicalizePurchaseRecords } from "@/lib/payments/canonicalize-purchases";
-import { resolveEntitlementEndDate } from "@/lib/payments/entitlement-dates";
+import { resolveEntitlementEndDateCoveringRemainingDays } from "@/lib/payments/entitlement-dates";
+import { clearCacheByTag } from "@/lib/api/utils";
 
 // Initialize Razorpay for syncing payment status
 const razorpay =
@@ -527,13 +527,15 @@ export async function GET(request: NextRequest) {
 
       const linkedMealPlanEndDate =
         latestMealPlanEndDateByPurchase.get(purchaseId) || null;
-      const resolvedExpectedEndDate = resolveEntitlementEndDate({
-        expectedStartDate: purchase?.expectedStartDate,
-        expectedEndDate: purchase?.expectedEndDate,
-        endDate: purchase?.endDate,
-        durationLabel: purchase?.durationLabel,
-        linkedMealPlanEndDate,
-      });
+      const resolvedExpectedEndDate =
+        resolveEntitlementEndDateCoveringRemainingDays({
+          expectedStartDate: purchase?.expectedStartDate,
+          expectedEndDate: purchase?.expectedEndDate,
+          endDate: purchase?.endDate,
+          durationLabel: purchase?.durationLabel,
+          linkedMealPlanEndDate,
+          remainingDays: effectiveRemainingDays,
+        });
 
       (purchase as any).__effectiveDurationDays = durationDays;
       (purchase as any).__effectiveDaysUsed = effectiveDaysUsed;
@@ -542,6 +544,40 @@ export async function GET(request: NextRequest) {
 
       return purchase;
     });
+
+    // Self-heal purchases whose expected window ended at the latest phase even
+    // though they still have paid, unallocated days. Persisting this before the
+    // status refresh keeps planning, client visibility, and status in agreement.
+    const entitlementDateRepairs = computedPaidPurchases
+      .map((purchase: any) => {
+        const resolvedEndDate = toValidDate(
+          purchase?.__resolvedExpectedEndDate,
+        );
+        const storedEndDate = toValidDate(
+          purchase?.expectedEndDate || purchase?.endDate,
+        );
+
+        if (
+          !resolvedEndDate ||
+          (storedEndDate &&
+            resolvedEndDate.getTime() <= storedEndDate.getTime())
+        ) {
+          return null;
+        }
+
+        return {
+          updateOne: {
+            filter: { _id: purchase._id },
+            update: { $set: { expectedEndDate: resolvedEndDate } },
+          },
+        };
+      })
+      .filter(Boolean) as any[];
+
+    if (entitlementDateRepairs.length > 0) {
+      await UnifiedPayment.bulkWrite(entitlementDateRepairs);
+      clearCacheByTag("client_purchases");
+    }
 
     const allActivePurchases = computedPaidPurchases.filter((purchase: any) =>
       isPurchaseEligibleForPlanning(purchase),

@@ -558,6 +558,7 @@ export async function PUT(
       mealTypes,
       customizations,
       goals,
+      templateId,
       status,
       statusReason,
     } = body;
@@ -825,6 +826,13 @@ export async function PUT(
     if (customizations !== undefined)
       updateData.customizations = customizations;
     if (goals !== undefined) updateData.goals = goals;
+    if (
+      templateId !== undefined &&
+      typeof templateId === "string" &&
+      templateId.trim()
+    ) {
+      updateData.templateId = templateId.trim();
+    }
     if (status !== undefined) updateData.status = status;
 
     // Guarantee endDate covers every meal (including freeze recovery days).

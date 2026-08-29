@@ -3,6 +3,7 @@
 import request from "supertest";
 import { getServerSession } from "next-auth";
 import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
+import DietTemplate from "@/lib/db/models/DietTemplate";
 import User from "@/lib/db/models/User";
 import { UserRole } from "@/types";
 import { entityId } from "../utils/assertions";
@@ -396,6 +397,49 @@ describe("client meal plan lifecycle & immutability (supertest + jest)", () => {
       expect(res.status).toBe(200);
       const fresh: any = await ClientMealPlan.findById(plan._id).lean();
       expect(fresh.name).toBe("Renamed Draft");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("persists a selected template and its meals onto an existing draft", async () => {
+    const { client, dietitian } = await createAssignedDietitianClientPair();
+    const plan = await createDraftPlan({
+      clientId: client._id,
+      dietitianId: dietitian._id,
+      name: "Empty Draft Shell",
+    });
+    const template = await DietTemplate.create({
+      name: "Mapped Diet Template",
+      category: "weight-loss",
+      duration: 3,
+      createdBy: dietitian._id,
+      meals: buildPublishableMeals(3),
+    });
+
+    (getServerSession as jest.Mock).mockResolvedValue({
+      user: toSessionUser(dietitian),
+    });
+    const route = await import("@/app/api/client-meal-plans/[id]/route");
+    const planId = entityId(plan);
+    const server = buildPutServer(planId, route);
+
+    try {
+      const res = await request(server)
+        .put(`/api/client-meal-plans/${planId}`)
+        .send({
+          templateId: entityId(template),
+          meals: template.meals,
+          mealTypes: template.mealTypes,
+        });
+
+      expect(res.status).toBe(200);
+      const fresh: any = await ClientMealPlan.findById(plan._id).lean();
+      expect(entityId(fresh.templateId)).toBe(entityId(template));
+      expect(fresh.meals).toHaveLength(3);
+      expect(fresh.meals[0].meals.BREAKFAST.foodOptions[0].food).toBe(
+        "Oats with milk",
+      );
     } finally {
       server.close();
     }

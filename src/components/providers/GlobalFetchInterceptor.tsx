@@ -6,6 +6,12 @@ import {
   clearLastValidSession,
   persistSessionPayload,
 } from '@/lib/auth/session-recovery';
+import {
+  clearMutationOutbox,
+  markDurableMutationPending,
+  prepareDurableMutation,
+  settleDurableMutation,
+} from '@/lib/api/mutation-outbox';
 
 /**
  * Global fetch interceptor that adds:
@@ -93,10 +99,21 @@ export function GlobalFetchInterceptor() {
         headers: requestHeaders,
       };
 
-      try {
-        const response = await originalFetch(input, modifiedInit);
+      // Persist replay-safe JSON mutations before sending them. If the tab is
+      // closed, the device goes offline, or Vercel returns a transient error,
+      // MutationOutboxProvider will replay the exact payload later.
+      const preparedMutation = prepareDurableMutation(url, modifiedInit);
+      const requestInit = preparedMutation?.init || modifiedInit;
 
-        if (isLogoutCall && response.ok) clearLastValidSession(window.localStorage);
+      try {
+        const response = await originalFetch(input, requestInit);
+
+        if (isLogoutCall && response.ok) {
+          clearLastValidSession(window.localStorage);
+          // Never replay one account's pending healthcare updates after an
+          // explicit logout and a different account login on the same device.
+          clearMutationOutbox(window.localStorage);
+        }
 
         if (isSessionCall && response.ok) {
           try {
@@ -108,17 +125,36 @@ export function GlobalFetchInterceptor() {
         // Retry on 401 Unauthorized (session might not be ready) - skip for auth calls
         if (response.status === 401 && availableRetries > 0 && !isAuthCall) {
           await sleep(RETRY_DELAY);
-          return fetchWithRetry(input, init, retriesLeft - 1);
+          return fetchWithRetry(input, requestInit, retriesLeft - 1);
         }
 
-        // Retry on server errors — only for GET requests
-        if (response.status >= 500 && availableRetries > 0 && method === 'GET') {
+        const transientFailure =
+          response.status === 408 ||
+          response.status === 425 ||
+          response.status === 429 ||
+          response.status >= 500;
+
+        // Mutations are retried only after they have been durably staged with
+        // one stable idempotency key. Unsafe creates remain single-attempt.
+        if (
+          transientFailure &&
+          availableRetries > 0 &&
+          (method === 'GET' || method === 'HEAD' || Boolean(preparedMutation))
+        ) {
           await sleep(RETRY_DELAY);
-          return fetchWithRetry(input, init, retriesLeft - 1);
+          return fetchWithRetry(input, requestInit, retriesLeft - 1);
         }
 
         if (isSessionCall && (response.status === 408 || response.status === 429 || response.status >= 500)) {
           return buildCachedSessionResponse(window.localStorage) || response;
+        }
+
+        if (preparedMutation) {
+          settleDurableMutation(
+            preparedMutation.entry,
+            response,
+            window.localStorage,
+          );
         }
 
         return response;
@@ -131,10 +167,20 @@ export function GlobalFetchInterceptor() {
             error.name === 'TypeError' ||
             !error.name.includes('Abort');
 
-          if (isNetworkError) {
+          if (
+            isNetworkError &&
+            (method === 'GET' || method === 'HEAD' || Boolean(preparedMutation))
+          ) {
             await sleep(RETRY_DELAY);
-            return fetchWithRetry(input, init, retriesLeft - 1);
+            return fetchWithRetry(input, requestInit, retriesLeft - 1);
           }
+        }
+
+        if (preparedMutation) {
+          markDurableMutationPending(
+            preparedMutation.entry,
+            window.localStorage,
+          );
         }
 
         // Graceful fallback for auth polling endpoints on final network failure

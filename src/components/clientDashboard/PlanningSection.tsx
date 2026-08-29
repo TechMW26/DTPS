@@ -698,6 +698,28 @@ export default function PlanningSection({
   // Use a ref for the latest save function to avoid stale closures in setInterval
   const saveDraftRef = useRef<(() => Promise<boolean>) | undefined>(undefined);
 
+  // Template application must persist from the exact mapped payload. Relying
+  // only on the child dashboard's remount callback leaves a race where an
+  // empty draft shell is created but the applied template never gets a
+  // follow-up update.
+  const stageTemplatePayloadForSave = useCallback(
+    (meals: any[], mealTypes: { name: string; time: string }[]) => {
+      latestMealDataRef.current = { meals, mealTypes };
+
+      const editingPublishedPlan =
+        isEditModeRef.current && editingPlanRef.current?.status !== "draft";
+      if (editingPublishedPlan) return;
+
+      // If a draft save is already running, saveDraftToDB queues this latest
+      // ref payload. Otherwise this runs immediately after React commits the
+      // template state.
+      window.setTimeout(() => {
+        void saveDraftRef.current?.();
+      }, 0);
+    },
+    [],
+  );
+
   // Resolve current meal payload from latest callback data, then fallback to loaded plan/template data
   const resolveCurrentMealPayload = useCallback(() => {
     if (latestMealDataRef.current?.meals?.length) {
@@ -814,6 +836,7 @@ export default function PlanningSection({
         goals: { primaryGoal: primaryGoal || "health-improvement" },
         status: "draft",
       };
+      if (selectedTemplate?._id) payload.templateId = selectedTemplate._id;
 
       try {
         localStorage.setItem(
@@ -862,7 +885,6 @@ export default function PlanningSection({
       } else {
         // Create new draft
         payload.clientId = client._id;
-        if (selectedTemplate?._id) payload.templateId = selectedTemplate._id;
         if (selectedPurchase?._id || paymentCheck?.purchase?._id)
           payload.purchaseId =
             selectedPurchase?._id || paymentCheck?.purchase?._id;
@@ -1117,31 +1139,12 @@ export default function PlanningSection({
       }
       const data = await res.json();
       if (data.success) {
-        let fetchedTemplates = data.templates || [];
+        const fetchedTemplates = data.templates || [];
 
-        // Filter out templates that have dietary restrictions matching the client's restrictions
-        // If client has "Non-Vegetarian" restriction, hide templates tagged with "Non-Vegetarian"
-        const clientRestrictions = toCommaString(client.dietaryRestrictions)
-          .split(",")
-          .map((s) => s.trim().toLowerCase())
-          .filter(Boolean);
-
-        if (type === "diet" && clientRestrictions.length > 0) {
-          fetchedTemplates = fetchedTemplates.filter(
-            (template: DietTemplate) => {
-              const templateRestrictions = (
-                template.dietaryRestrictions || []
-              ).map((r) => r.toLowerCase().trim());
-
-              // Exclude template if ANY of its dietary restrictions match client's restrictions
-              const hasMatchingRestriction = clientRestrictions.some(
-                (clientRestr) => templateRestrictions.includes(clientRestr),
-              );
-
-              return !hasMatchingRestriction;
-            },
-          );
-        }
+        // Dietary restriction tags describe the diet a template supports
+        // (for example, Vegetarian). Matching tags are compatible and must not
+        // hide the template from the assigned dietitian. The tags remain
+        // visible in the selector so the dietitian can make the final choice.
 
         setTemplates(fetchedTemplates);
         setTotalTemplates(data.total || fetchedTemplates.length || 0);
@@ -1268,6 +1271,14 @@ export default function PlanningSection({
             }
           : null,
       );
+    }
+
+    if (mealsToSet.length > 0) {
+      const appliedMealTypes =
+        template.mealTypes && template.mealTypes.length > 0
+          ? template.mealTypes
+          : initialMealTypes;
+      stageTemplatePayloadForSave(mealsToSet, appliedMealTypes);
     }
 
     // Force DietPlanDashboard to re-mount with new meals
@@ -1431,6 +1442,12 @@ export default function PlanningSection({
           : null,
       );
     }
+
+    const appliedMealTypes =
+      template.mealTypes && template.mealTypes.length > 0
+        ? template.mealTypes
+        : initialMealTypes;
+    stageTemplatePayloadForSave(mappedMeals, appliedMealTypes);
 
     // Force DietPlanDashboard to re-mount with new meals
     setPlanKey((prev) => prev + 1);

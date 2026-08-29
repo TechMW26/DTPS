@@ -10,6 +10,7 @@ import ServiceWorkerProvider from '@/components/providers/ServiceWorkerProvider'
 import GlobalFetchInterceptor from '@/components/providers/GlobalFetchInterceptor';
 import { SocketProvider } from '@/contexts/SocketContext';
 import SystemRefreshListener from '@/components/providers/SystemRefreshListener';
+import MutationOutboxProvider from '@/components/providers/MutationOutboxProvider';
 
 interface ProvidersProps {
     children: ReactNode;
@@ -20,6 +21,7 @@ export function Providers({ children }: ProvidersProps) {
         <SessionProvider>
             <ServiceWorkerProvider />
             <GlobalFetchInterceptor />
+            <MutationOutboxProvider />
             <SocketProvider>
                 <SystemRefreshListener />
                 <ThemeProvider>

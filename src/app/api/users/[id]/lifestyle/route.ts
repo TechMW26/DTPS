@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
-import { LifestyleInfo } from '@/lib/db/models';
-import { UserRole } from '@/types';
+import LifestyleInfo from '@/lib/db/models/LifestyleInfo';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { pickDefinedLifestyleFields } from '@/lib/api/lifestyle-fields';
 
 const SLEEP_PATTERN_MAP: Record<string, string> = {
   regular: 'regular-sleep',
@@ -158,10 +158,11 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
     const normalizedBody = normalizeLifestylePayload(body);
+    const lifestyleUpdate = pickDefinedLifestyleFields(normalizedBody);
 
     const lifestyleInfo = await LifestyleInfo.findOneAndUpdate(
       { userId: id },
-      { $set: { ...normalizedBody, userId: id } },
+      { $set: { ...lifestyleUpdate, userId: id } },
       { upsert: true, new: true, runValidators: true }
     );
 
