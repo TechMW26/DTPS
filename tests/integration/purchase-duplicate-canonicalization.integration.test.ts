@@ -3,6 +3,7 @@
 import request from "supertest";
 import { getServerSession } from "next-auth";
 import UnifiedPayment from "@/lib/db/models/UnifiedPayment";
+import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
 import { canonicalizePurchaseRecords } from "@/lib/payments/canonicalize-purchases";
 import { UserRole } from "@/types";
 import { entityId } from "../utils/assertions";
@@ -113,5 +114,87 @@ describe("purchase duplicate canonicalization", () => {
 
     expect(result.purchases).toHaveLength(2);
     expect(result.duplicateEntriesDetected).toBe(0);
+  });
+
+  it("returns the actual next published phase despite a stale duplicate purchase", async () => {
+    const { client, dietitian } = await createAssignedDietitianClientPair();
+    const now = new Date();
+    const futureStart = new Date(now);
+    futureStart.setDate(futureStart.getDate() + 12);
+    futureStart.setHours(0, 0, 0, 0);
+    const futureEnd = new Date(futureStart);
+    futureEnd.setDate(futureEnd.getDate() + 9);
+    const entitlementEnd = new Date(futureStart);
+    entitlementEnd.setDate(entitlementEnd.getDate() + 90);
+
+    const commonPurchase = {
+      client: client._id,
+      dietitian: dietitian._id,
+      planName: "Weight Loss",
+      planCategory: "weight-loss",
+      durationDays: 90,
+      durationLabel: "3 Months",
+      baseAmount: 5000,
+      finalAmount: 5000,
+      amount: 5000,
+      status: "paid",
+      paymentStatus: "paid",
+      startDate: now,
+      endDate: entitlementEnd,
+      expectedStartDate: futureStart,
+      expectedEndDate: entitlementEnd,
+      paidAt: now,
+    } as const;
+
+    await UnifiedPayment.create({
+      ...commonPurchase,
+      mealPlanCreated: false,
+      daysUsed: 0,
+      remainingDays: 90,
+    });
+    const authoritative = await UnifiedPayment.create({
+      ...commonPurchase,
+      mealPlanCreated: true,
+      daysUsed: 10,
+      remainingDays: 80,
+    });
+    const plan = await ClientMealPlan.create({
+      clientId: client._id,
+      dietitianId: dietitian._id,
+      purchaseId: authoritative._id,
+      name: "Future Detox Plan",
+      status: "active",
+      startDate: futureStart,
+      endDate: futureEnd,
+      duration: 10,
+      goals: { primaryGoal: "weight-loss" },
+    });
+
+    (getServerSession as jest.Mock).mockResolvedValue({
+      user: {
+        id: entityId(client),
+        email: client.email,
+        role: client.role,
+      },
+    });
+
+    const route = await import("@/app/api/client/service-plans/route");
+    const server = createRouteTestServer(route.GET);
+
+    try {
+      const response = await request(server).get("/api/client/service-plans");
+
+      expect(response.status).toBe(200);
+      expect(response.body.activePurchases).toHaveLength(1);
+      expect(String(response.body.activePurchases[0]._id)).toBe(
+        entityId(authoritative),
+      );
+      expect(String(response.body.nextMealPlan?.id)).toBe(entityId(plan));
+      expect(new Date(response.body.nextMealPlan.startDate).getTime()).toBe(
+        futureStart.getTime(),
+      );
+    } finally {
+      server.close();
+    }
   });
 });

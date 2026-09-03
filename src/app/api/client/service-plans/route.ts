@@ -8,6 +8,7 @@ import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import User from '@/lib/db/models/User';
 import { withCache } from '@/lib/api/utils';
 import { prioritizeClientDashboardPurchases } from '@/lib/client-plan-visibility';
+import { canonicalizePurchaseRecords } from '@/lib/payments/canonicalize-purchases';
 
 // GET - Fetch service plans visible to clients (for user dashboard)
 export async function GET(request: NextRequest) {
@@ -72,11 +73,20 @@ export async function GET(request: NextRequest) {
             purchaseId: activeClientMealPlan.purchaseId ? String(activeClientMealPlan.purchaseId) : null
         } : null;
 
-        // With UnifiedPayment, we already have all payment data in allPurchases
-        const completedPayments = allPurchases;
+        // Collapse duplicate webhook/migration records before deriving client
+        // entitlement. Otherwise a stale duplicate can hide the purchase that
+        // owns the client's published future meal plan.
+        const canonicalPurchases = canonicalizePurchaseRecords(
+            allPurchases.map((purchase: any) =>
+                typeof purchase?.toObject === 'function' ? purchase.toObject() : purchase
+            )
+        ).purchases;
+
+        // With UnifiedPayment, we already have all payment data in canonicalPurchases
+        const completedPayments = canonicalPurchases;
 
         // Check for active purchases specifically (paid and not expired)
-        const activePurchaseRecords = allPurchases.filter((p: any) =>
+        const activePurchaseRecords = canonicalPurchases.filter((p: any) =>
             p.paymentStatus === 'paid' &&
             (
                 (!p.expectedEndDate && !p.endDate) ||
@@ -89,7 +99,7 @@ export async function GET(request: NextRequest) {
         // the client's diet. Always surface the purchase that owns today's published
         // meal plan first so a future renewal cannot produce a false "Plan Soon" state.
         const purchasesToDisplay = prioritizeClientDashboardPurchases(
-            activePurchaseRecords.length > 0 ? activePurchaseRecords : allPurchases,
+            activePurchaseRecords.length > 0 ? activePurchaseRecords : canonicalPurchases,
             activeClientMealPlan?.purchaseId,
             now,
         );
@@ -121,11 +131,21 @@ export async function GET(request: NextRequest) {
             }
         }
 
+        const nextPublishedMealPlan = (linkedMealPlans as any[])
+            .filter((plan) => {
+                const startDate = new Date(plan.startDate);
+                return !Number.isNaN(startDate.getTime()) && startDate > endOfToday;
+            })
+            .sort(
+                (left, right) =>
+                    new Date(left.startDate).getTime() - new Date(right.startDate).getTime()
+            )[0] || null;
+
         // Check if there are any purchases OR payments at all (to hide swiper)
-        const hasAnyPurchase = allPurchases.length > 0 || completedPayments.length > 0;
+        const hasAnyPurchase = canonicalPurchases.length > 0 || completedPayments.length > 0;
 
         // Check for pending purchases (purchased but no dietitian assigned yet)
-        const hasPendingDietitianAssignment = allPurchases.some(p => !p.dietitian);
+        const hasPendingDietitianAssignment = canonicalPurchases.some((p: any) => !p.dietitian);
 
         // Fetch service plans that are active and visible to clients
         const plans = await withCache(
@@ -148,6 +168,13 @@ export async function GET(request: NextRequest) {
             hasPendingDietitianAssignment,
             hasActiveMealPlan,
             currentMealPlan: currentMealPlanDetails,
+            nextMealPlan: nextPublishedMealPlan ? {
+                id: nextPublishedMealPlan._id,
+                name: nextPublishedMealPlan.name,
+                startDate: nextPublishedMealPlan.startDate,
+                endDate: nextPublishedMealPlan.endDate,
+                duration: nextPublishedMealPlan.duration,
+            } : null,
             activePurchases: purchasesToDisplay.map(p => {
                 const paymentDietitian = p.dietitian as any;
                 // Use primary dietitian from User model if available and is a dietitian role

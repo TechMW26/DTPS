@@ -117,4 +117,13 @@ describe('client meal-plan empty-state messaging', () => {
       }),
     ).toBe('upcoming');
   });
+
+  it('keeps the future-plan preview ahead of an unverified entitlement state', () => {
+    expect(
+      resolveClientMealPlanEmptyState({
+        hasUpcomingPlan: true,
+        entitlementStatus: 'unknown',
+      }),
+    ).toBe('upcoming');
+  });
 });

@@ -386,6 +386,16 @@ export default function UserPlanPage() {
           : [];
         setEntitlementStatus(data?.hasActivePlan ? 'active' : 'none');
 
+        // The API resolves this from the earliest actual published future
+        // phase, independent of duplicated or overlapping purchase records.
+        if (data?.nextMealPlan?.startDate && data?.nextMealPlan?.endDate) {
+          setPlanDateWindow({
+            startDate: data.nextMealPlan.startDate,
+            endDate: data.nextMealPlan.endDate,
+          });
+          return;
+        }
+
         // Prefer explicit upcoming/ongoing meal-plan dates from purchase payload when available.
         const firstPurchaseWithMealPlan = activePurchases.length > 0
           ? activePurchases.find((purchase: any) =>
@@ -1419,12 +1429,19 @@ export default function UserPlanPage() {
         ) : !dayPlan?.hasPlan ? (
           /* No Plan Message - Show Buy Plan option */
           <div className={`p-8 text-center shadow-sm rounded-2xl ${isDarkMode ? 'bg-gray-900 ring-1 ring-white/10' : 'bg-white'}`}>
-            <div className="w-20 h-20 mx-auto mb-4 bg-linear-to-br from-[#E06A26]/20 to-[#DB9C6E]/20 rounded-full flex items-center justify-center">
-              <Utensils aria-hidden="true" className="h-9 w-9 text-[#E06A26]" />
+            <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center ${emptyState === 'upcoming'
+              ? 'bg-[#3AB1A0]/12'
+              : 'bg-linear-to-br from-[#E06A26]/20 to-[#DB9C6E]/20'
+              }`}>
+              {emptyState === 'upcoming' ? (
+                <CalendarClock aria-hidden="true" className="h-9 w-9 text-[#3AB1A0]" />
+              ) : (
+                <Utensils aria-hidden="true" className="h-9 w-9 text-[#E06A26]" />
+              )}
             </div>
             <h3 className={`mb-2 text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
               {emptyState === 'upcoming'
-                ? 'Your Meal Plan Starts Soon'
+                ? `Your Plan Starts ${format(upcomingPlanWindow!.start, 'd MMMM')}`
                 : emptyState === 'pending-phase'
                   ? 'Your Next Meal Plan Is Pending'
                   : 'No Meal Plan Available'}
@@ -1435,12 +1452,12 @@ export default function UserPlanPage() {
             <div className="flex flex-col gap-3">
               {emptyState === 'upcoming' && upcomingPlanWindow ? (
                 <>
-                  <div className={`rounded-xl border p-4 ${isDarkMode ? 'bg-[#3AB1A0]/10 border-[#3AB1A0]/30' : 'bg-[#3AB1A0]/5 border-[#3AB1A0]/20'}`}>
-                    <p className={`text-sm font-semibold ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#1f8b7d]'}`}>
-                      Assigned from {format(upcomingPlanWindow.start, 'dd MMM yyyy')} to {format(upcomingPlanWindow.end, 'dd MMM yyyy')}
+                  <div className={`rounded-xl border p-4 text-left ${isDarkMode ? 'bg-[#3AB1A0]/10 border-[#3AB1A0]/30' : 'bg-[#3AB1A0]/5 border-[#3AB1A0]/20'}`}>
+                    <p className={`text-sm font-semibold ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#1f756a]'}`}>
+                      Your dietitian has assigned a plan for {format(upcomingPlanWindow.start, 'd MMM')}–{format(upcomingPlanWindow.end, 'd MMM yyyy')}.
                     </p>
-                    <p className={`mt-2 text-xs leading-relaxed ${isDarkMode ? 'text-amber-200' : 'text-amber-700'}`}>
-                      For the best results, please start and follow this diet only from your assigned start date. Do not begin the plan early.
+                    <p className={`mt-2 text-xs leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                      You can preview it now. For best results, begin following it on the assigned start date.
                     </p>
                   </div>
                   <button
@@ -1449,7 +1466,7 @@ export default function UserPlanPage() {
                     className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-linear-to-r from-[#3AB1A0] to-[#2D8A7C] text-white rounded-xl text-sm font-bold hover:opacity-90 transition-all shadow-lg"
                   >
                     <CalendarDays className="w-4 h-4" />
-                    Jump to {format(upcomingPlanWindow.start, 'dd MMM')}
+                    Preview plan from {format(upcomingPlanWindow.start, 'd MMM')}
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </>
