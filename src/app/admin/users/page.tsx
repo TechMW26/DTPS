@@ -1073,7 +1073,7 @@ export default function AdminUsersPage() {
                   {!editing && form.role === UserRole.CLIENT && (
                     <div className="md:col-span-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                       <p className="text-sm text-blue-700">
-                        <strong>Note:</strong> Password will be auto-generated. Client can log in using WhatsApp OTP with their phone number.
+                        <strong>Note:</strong> Password will be auto-generated. The client can log in with an SMS code sent to their phone number; WhatsApp is used only if SMS delivery is unavailable.
                       </p>
                     </div>
                   )}

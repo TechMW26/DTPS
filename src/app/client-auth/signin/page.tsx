@@ -16,6 +16,16 @@ import { signInSchema, SignInInput } from '@/lib/validations/auth';
 import { validatePhoneNumber } from '@/lib/validations/contact';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 import Image from 'next/image';
+import type { ConfirmationResult } from 'firebase/auth';
+import {
+  clearFirebaseRecaptcha,
+  confirmFirebasePhoneOtp,
+  getFirebaseErrorCode,
+  getPhoneAuthErrorMessage,
+  requestFirebasePhoneOtp,
+  shouldFallbackToWhatsapp,
+  type PhoneOtpProvider,
+} from '@/lib/firebase/phoneAuthClient';
 
 type LoginMode = 'otp' | 'email';
 type OTPStep = 'phone' | 'verify';
@@ -34,13 +44,19 @@ export default function ClientSignInPage() {
   const [otpStep, setOtpStep] = useState<OTPStep>('phone');
   const [countryCode, setCountryCode] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '']);
+  const [otp, setOtp] = useState(Array(6).fill(''));
   const [otpSent, setOtpSent] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
+  const [otpProvider, setOtpProvider] = useState<PhoneOtpProvider>('firebase');
+  const [authIntent, setAuthIntent] = useState('');
+  const [deliveryNotice, setDeliveryNotice] = useState('');
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
+  const firebaseIdTokenRef = useRef('');
 
   useEffect(() => {
     setMounted(true);
+    return () => clearFirebaseRecaptcha();
   }, []);
 
   // Resend timer countdown
@@ -90,17 +106,15 @@ export default function ClientSignInPage() {
   // Handle OTP input change
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) {
-      // Handle paste - take only first 4 digits
-      const pastedDigits = value.replace(/\D/g, '').slice(0, 4).split('');
+      const pastedDigits = value.replace(/\D/g, '').slice(0, otp.length).split('');
       const newOtp = [...otp];
       pastedDigits.forEach((digit, i) => {
-        if (index + i < 4) {
+        if (index + i < otp.length) {
           newOtp[index + i] = digit;
         }
       });
       setOtp(newOtp);
-      // Focus on next empty input or last input
-      const nextIndex = Math.min(index + pastedDigits.length, 3);
+      const nextIndex = Math.min(index + pastedDigits.length, otp.length - 1);
       otpInputRefs.current[nextIndex]?.focus();
       return;
     }
@@ -112,7 +126,7 @@ export default function ClientSignInPage() {
     setOtp(newOtp);
 
     // Auto-focus next input
-    if (value && index < 3) {
+    if (value && index < otp.length - 1) {
       otpInputRefs.current[index + 1]?.focus();
     }
   };
@@ -124,7 +138,24 @@ export default function ClientSignInPage() {
     }
   };
 
-  // Send OTP
+  const requestWhatsappFallback = async (intent: string, fallbackReason: string) => {
+    const response = await fetch('/api/auth/otp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel: 'whatsapp-fallback',
+        authIntent: intent,
+        fallbackReason,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to send a verification code.');
+    confirmationResultRef.current = null;
+    setOtpProvider('whatsapp');
+    setOtp(Array(data.codeLength || 4).fill(''));
+    setDeliveryNotice(data.message);
+  };
+
   const handleSendOtp = async () => {
     // Strip non-digits and remove leading zeros (e.g. UK local 07911... → 7911...)
     const localDigits = phoneNumber.replace(/\D/g, '').replace(/^0+/, '');
@@ -151,10 +182,33 @@ export default function ClientSignInPage() {
         return;
       }
 
+      setAuthIntent(data.authIntent);
+      firebaseIdTokenRef.current = '';
+      try {
+        if (!data.firebaseAvailable) {
+          const configError = Object.assign(new Error('Firebase is unavailable'), {
+            code: 'firebase-config-unavailable',
+          });
+          throw configError;
+        }
+        confirmationResultRef.current = await requestFirebasePhoneOtp(
+          phoneValidation.normalized!,
+          'signin-firebase-recaptcha',
+        );
+        setOtpProvider('firebase');
+        setOtp(Array(data.codeLength || 6).fill(''));
+        setDeliveryNotice('We sent a 6-digit verification code by SMS. Standard messaging rates may apply.');
+      } catch (firebaseError) {
+        if (!shouldFallbackToWhatsapp(firebaseError)) {
+          setError(getPhoneAuthErrorMessage(firebaseError));
+          return;
+        }
+        await requestWhatsappFallback(data.authIntent, getFirebaseErrorCode(firebaseError));
+      }
+
       setOtpSent(true);
       setOtpStep('verify');
-      setResendTimer(60); // 60 seconds cooldown
-      setOtp(['', '', '', '']);
+      setResendTimer(60);
     } catch (err) {
       console.error('Send OTP error:', err);
       setError('Failed to send OTP. Please check your connection and try again.');
@@ -166,8 +220,8 @@ export default function ClientSignInPage() {
   // Verify OTP
   const handleVerifyOtp = async () => {
     const otpValue = otp.join('');
-    if (otpValue.length !== 4) {
-      setError('Please enter the complete 4-digit OTP');
+    if (otpValue.length !== otp.length) {
+      setError(`Please enter the complete ${otp.length}-digit code.`);
       return;
     }
 
@@ -182,10 +236,29 @@ export default function ClientSignInPage() {
     setError('');
 
     try {
+      let idToken = firebaseIdTokenRef.current;
+      if (otpProvider === 'firebase' && !idToken) {
+        if (!confirmationResultRef.current) {
+          setError('This SMS verification session has expired. Please request a new code.');
+          return;
+        }
+        try {
+          idToken = await confirmFirebasePhoneOtp(confirmationResultRef.current, otpValue);
+          firebaseIdTokenRef.current = idToken;
+        } catch (firebaseError) {
+          setError(getPhoneAuthErrorMessage(firebaseError));
+          return;
+        }
+      }
+
       const response = await fetch('/api/auth/otp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneValidation.normalized, otp: otpValue }),
+        body: JSON.stringify({
+          provider: otpProvider,
+          authIntent,
+          ...(otpProvider === 'firebase' ? { idToken } : { otp: otpValue }),
+        }),
       });
 
       const data = await response.json();
@@ -236,7 +309,9 @@ export default function ClientSignInPage() {
     setError('');
     setOtpStep('phone');
     setOtpSent(false);
-    setOtp(['', '', '', '']);
+    setOtp(Array(6).fill(''));
+    setDeliveryNotice('');
+    clearFirebaseRecaptcha();
   };
 
   const switchToOtpLogin = () => {
@@ -366,11 +441,12 @@ export default function ClientSignInPage() {
           {/* OTP Login (Default) */}
           {loginMode === 'otp' && (
             <div className="w-full space-y-4">
+              <div id="signin-firebase-recaptcha" className="h-0 overflow-hidden" />
               {otpStep === 'phone' && (
                 <>
                   {/* Phone Input */}
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">WhatsApp Number</label>
+                    <label className="text-sm font-medium text-gray-700">Phone Number</label>
                     <div className="flex items-center h-12 sm:h-14 bg-[#3AB1A0]/5 border border-[#3AB1A0]/20 rounded-xl overflow-hidden px-2 focus-within:border-[#3AB1A0] focus-within:ring-1 focus-within:ring-[#3AB1A0]">
                       <Select value={countryCode} onValueChange={setCountryCode}>
                         <SelectTrigger className="w-24 h-full border-0 bg-transparent px-2 focus:ring-0 focus:outline-none text-sm">
@@ -402,7 +478,7 @@ export default function ClientSignInPage() {
                     </div>
                     <p className="text-xs text-gray-500 flex items-center gap-1">
                       <MessageSquare className="w-3 h-3" />
-                      OTP will be sent to your WhatsApp
+                      We will send a secure verification code by SMS
                     </p>
                   </div>
 
@@ -434,27 +510,31 @@ export default function ClientSignInPage() {
                   </button>
 
                   <p className="text-center text-gray-600 text-sm mb-4">
-                    Enter the 4-digit OTP sent to
+                    Enter the {otp.length}-digit code sent by {otpProvider === 'firebase' ? 'SMS' : 'WhatsApp'} to
                     <br />
                     <span className="font-semibold text-gray-800">{countryCode} {phoneNumber}</span>
                   </p>
 
                   {/* OTP Input */}
-                  <div className="flex justify-center gap-3 mb-4">
+                  <div className="flex justify-center gap-2 sm:gap-3 mb-4">
                     {otp.map((digit, index) => (
                       <Input
                         key={index}
                         ref={(el) => { otpInputRefs.current[index] = el; }}
                         type="text"
                         inputMode="numeric"
-                        maxLength={4}
+                        maxLength={otp.length}
                         value={digit}
                         onChange={(e) => handleOtpChange(index, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                        className="w-14 h-14 text-center text-xl font-bold bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
+                        className="w-11 h-12 sm:w-14 sm:h-14 text-center text-xl font-bold bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
                       />
                     ))}
                   </div>
+
+                  {deliveryNotice && (
+                    <p className="text-center text-xs leading-5 text-gray-500">{deliveryNotice}</p>
+                  )}
 
                   {/* Resend OTP */}
                   <div className="text-center mb-4">
@@ -479,7 +559,7 @@ export default function ClientSignInPage() {
                     type="button"
                     onClick={handleVerifyOtp}
                     className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
-                    disabled={isLoading || otp.join('').length !== 4}
+                    disabled={isLoading || otp.join('').length !== otp.length}
                   >
                     {isLoading ? 'Verifying...' : 'Verify & Login'}
                   </Button>
@@ -596,7 +676,7 @@ export default function ClientSignInPage() {
                 className="w-full h-12 sm:h-14 border-2 border-gray-200 text-gray-700 font-semibold text-base rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
               >
                 <MessageSquare className="w-5 h-5" />
-                Login with WhatsApp OTP
+                Login with Phone OTP
               </button>
             </form>
           )}

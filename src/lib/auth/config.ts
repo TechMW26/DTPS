@@ -200,7 +200,7 @@ export const authOptions: NextAuthOptions = {
         const loginContext = (credentials as any)?.loginContext as 'staff' | 'client' | undefined;
         const otpToken = (credentials as any)?.otpToken as string | undefined;
 
-        // OTP Token Login (WhatsApp OTP)
+        // Phone OTP login (Firebase SMS primary, verified WhatsApp fallback)
         if (otpToken) {
           try {
             const jwtSecret = process.env.NEXTAUTH_SECRET;

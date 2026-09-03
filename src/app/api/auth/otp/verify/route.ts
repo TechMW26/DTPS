@@ -1,264 +1,107 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuth } from 'firebase-admin/auth';
 import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
 import OTPRecord from '@/lib/db/models/OTPRecord';
-import { UserRole } from '@/types';
 import { OTP_CONFIG } from '@/lib/auth/otpStore';
+import { getFirebaseAdmin } from '@/lib/firebase/firebaseAdmin';
 import { validatePhoneNumber } from '@/lib/validations/contact';
-import { sign } from 'jsonwebtoken';
-import crypto from 'crypto';
-import { grantDietPlanAccessIfPublished } from '@/lib/auth/onboarding-access';
+import {
+    completePhoneAuth,
+    PhoneAuthError,
+    verifyPhoneAuthIntentToken,
+} from '@/lib/auth/phoneAuthServer';
+
+async function verifyFirebaseToken(idToken: string, expectedPhone: string): Promise<void> {
+    const app = await getFirebaseAdmin();
+    if (!app) throw new PhoneAuthError('Firebase verification is temporarily unavailable.', 503);
+
+    let decoded;
+    try {
+        decoded = await getAuth(app).verifyIdToken(idToken, true);
+    } catch (error) {
+        console.warn('Firebase phone token verification failed:', error);
+        throw new PhoneAuthError('The SMS code is invalid or has expired. Please request a new code.', 401);
+    }
+
+    const verifiedPhone = validatePhoneNumber(String(decoded.phone_number || ''), '+91');
+    if (!verifiedPhone.isValid || verifiedPhone.normalized !== expectedPhone) {
+        throw new PhoneAuthError('The verified phone number does not match this login request.', 401);
+    }
+}
+
+async function verifyWhatsappOtp(phone: string, otp: string) {
+    if (!/^\d{4}$/.test(otp)) {
+        throw new PhoneAuthError('Enter the complete 4-digit WhatsApp code.', 400);
+    }
+    const record = await OTPRecord.findOne({ phone }).sort({ createdAt: -1 });
+    if (!record) throw new PhoneAuthError('No WhatsApp code was requested. Please request a new code.', 400);
+    if (new Date() > new Date(record.expiresAt)) {
+        await OTPRecord.deleteOne({ _id: record._id });
+        throw new PhoneAuthError('The WhatsApp code has expired. Please request a new one.', 400);
+    }
+    if (record.attempts >= OTP_CONFIG.MAX_ATTEMPTS) {
+        await OTPRecord.deleteOne({ _id: record._id });
+        throw new PhoneAuthError('Too many incorrect attempts. Please request a new code.', 429);
+    }
+    if (String(record.otp) !== otp) {
+        await OTPRecord.updateOne({ _id: record._id }, { $inc: { attempts: 1 } });
+        const remaining = OTP_CONFIG.MAX_ATTEMPTS - record.attempts - 1;
+        throw new PhoneAuthError(
+            remaining > 0
+                ? `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+                : 'Incorrect code. Please request a new one.',
+            400,
+        );
+    }
+    return record;
+}
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { phone, otp } = body;
-
-        // Validate inputs
-        if (!phone || typeof phone !== 'string') {
+        if (typeof body.authIntent !== 'string') {
             return NextResponse.json(
-                { success: false, error: 'Phone number is required' },
-                { status: 400 }
+                { success: false, error: 'This verification request is missing or expired. Please request a new code.' },
+                { status: 400 },
             );
         }
 
-        if (!otp || typeof otp !== 'string' || !/^\d{4}$/.test(otp)) {
-            return NextResponse.json(
-                { success: false, error: 'Valid 4-digit OTP is required' },
-                { status: 400 }
-            );
-        }
-
-        const phoneValidation = validatePhoneNumber(phone, '+91');
-        if (!phoneValidation.isValid || !phoneValidation.normalized) {
-            return NextResponse.json(
-                { success: false, error: phoneValidation.error || 'Invalid phone number' },
-                { status: 400 }
-            );
-        }
-
-        const normalizedPhone = phoneValidation.normalized;
-
+        const intent = verifyPhoneAuthIntentToken(body.authIntent);
         await connectDB();
+        let whatsappRecordId: unknown;
 
-        // Find the most recent OTP record for this phone (sort by createdAt desc)
-        const otpRecord = await OTPRecord.findOne({
-            phone: normalizedPhone,
-        }).sort({ createdAt: -1 });
-
-        if (!otpRecord) {
-            // No OTP record found at all for this phone
-            return NextResponse.json(
-                { success: false, error: 'Phone number not registered or OTP not requested. Please request a new OTP.' },
-                { status: 400 }
-            );
-        }
-
-        // Check if the OTP has expired
-        if (new Date() > new Date(otpRecord.expiresAt)) {
-            // Clean up expired record
-            await OTPRecord.deleteOne({ _id: otpRecord._id });
-            return NextResponse.json(
-                { success: false, error: 'OTP expired, please resend.' },
-                { status: 400 }
-            );
-        }
-
-        // Check max attempts
-        if (otpRecord.attempts >= OTP_CONFIG.MAX_ATTEMPTS) {
-            await OTPRecord.deleteOne({ _id: otpRecord._id });
-            return NextResponse.json(
-                { success: false, error: 'Too many failed attempts. Please request a new OTP.' },
-                { status: 400 }
-            );
-        }
-
-        // Verify OTP — cast both sides to string to avoid type mismatch
-        if (otpRecord.otp.toString() !== otp.toString()) {
-            await OTPRecord.updateOne(
-                { _id: otpRecord._id },
-                { $inc: { attempts: 1 } }
-            );
-            const remaining = OTP_CONFIG.MAX_ATTEMPTS - otpRecord.attempts - 1;
-            return NextResponse.json(
-                { success: false, error: `Invalid OTP. ${remaining > 0 ? remaining + ' attempts remaining.' : 'Please request a new OTP.'}` },
-                { status: 400 }
-            );
-        }
-
-        // OTP is valid - handle based on purpose
-        let user;
-        let isNewUser = false;
-
-        if (otpRecord.purpose === 'signup') {
-            // Create new user for signup
-            const signupData = otpRecord.signupPayload;
-
-            if (!signupData?.firstName || !signupData?.lastName) {
-                return NextResponse.json(
-                    { success: false, error: 'Signup data is missing. Please try signing up again.' },
-                    { status: 400 }
-                );
+        if (body.provider === 'firebase') {
+            if (typeof body.idToken !== 'string' || !body.idToken) {
+                throw new PhoneAuthError('Firebase verification token is required.', 400);
             }
-
-            // Check if email is provided and already exists
-            if (signupData.email) {
-                const existingEmailUser = await User.findOne({
-                    email: signupData.email.toLowerCase(),
-                });
-                if (existingEmailUser) {
-                    return NextResponse.json(
-                        { success: false, error: 'This email is already registered. Please use a different email or sign in.' },
-                        { status: 409 }
-                    );
-                }
+            await verifyFirebaseToken(body.idToken, intent.phone);
+        } else if (body.provider === 'whatsapp') {
+            const record = await verifyWhatsappOtp(intent.phone, String(body.otp || ''));
+            if (record.purpose !== intent.mode) {
+                throw new PhoneAuthError('This verification request is no longer valid.', 400);
             }
-
-            // Extract raw 10-digit phone number for search
-            // DB stores phones in mixed formats (10-digit, +91, 91)
-            const rawPhone = normalizedPhone.replace(/^\+91/, '').replace(/^91/, '');
-
-            // Create phone variations to search (different formats in DB)
-            const phoneVariations = [
-                rawPhone,                           // 9876543210 (most common in DB)
-                normalizedPhone,                    // +919876543210
-                normalizedPhone.replace('+', ''),   // 919876543210
-                '+91' + rawPhone,                   // +919876543210
-            ];
-
-            // Final check - ensure phone number is not already registered (race condition protection)
-            const existingPhoneUser = await User.findOne({
-                phone: { $in: phoneVariations }
-            });
-            if (existingPhoneUser) {
-                // Clean up the OTP record
-                await OTPRecord.deleteOne({ _id: otpRecord._id });
-                return NextResponse.json(
-                    { success: false, error: 'This phone number is already registered with another account. Please sign in instead.' },
-                    { status: 409 }
-                );
-            }
-
-            // Generate a random password for the user (they will use OTP to login)
-            const randomPassword = crypto.randomBytes(16).toString('hex');
-
-            // Only use email if the client actually provided one — never auto-generate fake emails
-            const clientEmail = signupData.email?.toLowerCase() || undefined;
-
-            // Create user with proper tracking
-            user = new User({
-                firstName: signupData.firstName,
-                lastName: signupData.lastName,
-                ...(clientEmail ? { email: clientEmail } : {}), // Only set email if provided
-                phone: normalizedPhone,
-                password: randomPassword,
-                role: UserRole.CLIENT,
-                status: 'active',
-                emailVerified: false,
-                onboardingCompleted: false,
-                isNewUser: true,
-                // Track who/what created this user
-                createdBy: {
-                    role: 'self', // Self-registered via OTP
-                },
-            });
-
-            await user.save();
-            isNewUser = true;
-
-            console.log('New user created via OTP signup:', user._id, user.email);
+            whatsappRecordId = record._id;
         } else {
-            // Login mode - find existing user
-            if (!otpRecord.userId) {
-                return NextResponse.json(
-                    { success: false, error: 'User not found. Please sign up first.' },
-                    { status: 404 }
-                );
-            }
-
-            user = await User.findById(otpRecord.userId);
-
-            if (!user) {
-                return NextResponse.json(
-                    { success: false, error: 'User not found. Please sign up first.' },
-                    { status: 404 }
-                );
-            }
-
-            if (user.status !== 'active') {
-                return NextResponse.json(
-                    { success: false, error: 'Your account is not active. Please contact support.' },
-                    { status: 403 }
-                );
-            }
-
-            // Update last login
-            await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
+            throw new PhoneAuthError('Unsupported verification provider.', 400);
         }
 
-        // Delete the used OTP record
-        await OTPRecord.deleteOne({ _id: otpRecord._id });
-
-        // Staff-created and migrated clients may already have a visible plan
-        // even though the optional profile onboarding was never completed.
-        const canAccessAssignedPlan = !isNewUser && !user.onboardingCompleted
-            ? await grantDietPlanAccessIfPublished(user._id.toString())
-            : false;
-        const effectiveOnboardingCompleted = Boolean(
-            user.onboardingCompleted || canAccessAssignedPlan
-        );
-
-        // Generate JWT token for NextAuth
-        const jwtSecret = process.env.NEXTAUTH_SECRET;
-        if (!jwtSecret) {
-            return NextResponse.json(
-                { success: false, error: 'Server configuration error' },
-                { status: 500 }
-            );
+        const result = await completePhoneAuth(intent);
+        if (whatsappRecordId) {
+            await OTPRecord.deleteOne({ _id: whatsappRecordId });
         }
-
-        // Use real email if available, otherwise leave empty (phone is the primary identifier)
-        const userEmail = user.email || '';
-
-        const token = sign(
-            {
-                userId: user._id.toString(),
-                email: userEmail,
-                name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-                role: user.role,
-                onboardingCompleted: effectiveOnboardingCompleted,
-            },
-            jwtSecret,
-            { expiresIn: '1h' }
-        );
-
-        // Determine redirect URL based on onboarding status
-        const redirectUrl = canAccessAssignedPlan
-            ? '/user/plan'
-            : effectiveOnboardingCompleted
-                ? '/user'
-                : '/user/onboarding';
-
-        console.log(`[OTP Verify] Success for ${normalizedPhone}, userId: ${user._id}, email: ${userEmail}, purpose: ${otpRecord.purpose}`);
-
-        return NextResponse.json({
-            success: true,
-            message: isNewUser ? 'Account created successfully!' : 'Login successful!',
-            token,
-            redirectUrl,
-            user: {
-                id: user._id.toString(),
-                email: userEmail,
-                name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-                role: user.role,
-                onboardingCompleted: effectiveOnboardingCompleted,
-            },
-        });
+        return NextResponse.json(result);
     } catch (error) {
-        console.error('Error in OTP verify:', error);
+        if (error instanceof PhoneAuthError) {
+            return NextResponse.json({
+                success: false,
+                error: error.message,
+                fallbackEligible: error.status === 503,
+            }, { status: error.status });
+        }
+        console.error('Phone verification failed:', error);
         return NextResponse.json(
-            { success: false, error: 'An error occurred. Please try again.' },
-            { status: 500 }
+            { success: false, error: 'Verification failed. Please try again.' },
+            { status: 500 },
         );
     }
 }

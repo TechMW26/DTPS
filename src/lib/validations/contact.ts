@@ -1,5 +1,8 @@
 export const EMAIL_REGEX = /^(?=.*[a-zA-Z])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-export const PHONE_REGEX = /^\+\d{10,15}$/;
+// E.164 permits a maximum of 15 digits. A practical eight-digit minimum keeps
+// short valid international destinations available while rejecting incomplete
+// country-code-only input.
+export const PHONE_REGEX = /^\+[1-9]\d{7,14}$/;
 
 export function validateEmail(email: string): { isValid: boolean; error?: string } {
     const normalizedEmail = (email || '').trim().toLowerCase();
@@ -77,7 +80,7 @@ export function validatePhoneNumber(
     }
 
     if (!PHONE_REGEX.test(normalizedPhone)) {
-        return { isValid: false, error: 'Please enter a valid phone number with 10 to 15 digits' };
+        return { isValid: false, error: 'Please enter a valid phone number with 8 to 15 digits, including the country code' };
     }
 
     return { isValid: true, normalized: normalizedPhone };

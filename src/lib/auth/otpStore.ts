@@ -56,5 +56,7 @@ export function cleanupExpiredEntries(): void {
 
 // Start cleanup interval (runs every minute)
 if (typeof setInterval !== 'undefined') {
-    setInterval(cleanupExpiredEntries, 60000);
+    const cleanupTimer = setInterval(cleanupExpiredEntries, 60000);
+    // Do not keep serverless/test processes alive solely for in-memory cleanup.
+    cleanupTimer.unref?.();
 }
