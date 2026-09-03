@@ -604,6 +604,9 @@ export async function PUT(request: NextRequest) {
       const isAdmin = normalizedRole === "admin";
       const isDietitian =
         normalizedRole === "dietitian" || normalizedRole === "dietician";
+      const isUnusedPurchase =
+        !currentPurchase.mealPlanCreated &&
+        Math.max(0, Number(currentPurchase.daysUsed || 0)) === 0;
 
       if (!isAdmin && !isDietitian) {
         return NextResponse.json(
@@ -628,7 +631,7 @@ export async function PUT(request: NextRequest) {
         const oneDayBeforeEnd = new Date(existingEndDate);
         oneDayBeforeEnd.setDate(oneDayBeforeEnd.getDate() - 1);
 
-        if (isDietitian) {
+        if (isDietitian && !isUnusedPurchase) {
           // Dietitian: cannot edit on or after the expected end date
           if (today >= existingEndDate) {
             return NextResponse.json(

@@ -108,6 +108,13 @@ const messageSchema = new Schema({
   forwardedFrom: {
     type: Schema.Types.ObjectId,
     ref: 'User'
+  },
+  sourceOperationId: {
+    type: String,
+    trim: true,
+    maxlength: 120,
+    unique: true,
+    sparse: true
   }
 }, {
   timestamps: true

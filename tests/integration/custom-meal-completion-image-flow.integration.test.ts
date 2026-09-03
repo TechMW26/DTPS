@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 
 import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { UserRole } from '@/types';
+import { socketManager } from '@/lib/realtime/socket-manager';
 
 import {
     createUser,
@@ -158,6 +159,7 @@ describe('Custom Meal Type Completion With Image Flow', () => {
         formData.append('date', requestDate);
         formData.append('mealType', 'Second Breakfast');
         formData.append('notes', 'Completed with custom meal image');
+        formData.append('operationId', 'custom-meal-completion-operation');
 
         const imageBlob = new Blob(['custom-meal-image-bytes'], { type: 'image/jpeg' });
         const imageFile = new File([imageBlob], 'custom-brunch.jpg', { type: 'image/jpeg' });
@@ -175,6 +177,30 @@ describe('Custom Meal Type Completion With Image Flow', () => {
         expect(completeData.success).toBe(true);
         expect(completeData.completion.mealTypeOriginal).toBe('Second Breakfast');
         expect(completeData.completion.imagePath).toContain('/complete-meal/');
+
+        // A network timeout may replay the same POST. The durable completion
+        // and its realtime side effects must remain idempotent.
+        const replayResponse = await completeRoute.POST(
+            new NextRequest('http://localhost/api/client/meal-plan/complete', {
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json',
+                    'x-idempotency-key': 'custom-meal-completion-operation',
+                },
+                body: JSON.stringify({
+                    mealId: customMeal.id,
+                    date: requestDate,
+                    mealType: 'Second Breakfast',
+                    notes: 'Completed with custom meal image',
+                    imageUrl: completeData.completion.imagePath,
+                    imagePathname: 'complete-meal/custom-brunch.jpg',
+                    operationId: 'custom-meal-completion-operation',
+                }),
+            }),
+        );
+        expect(replayResponse.status).toBe(200);
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(socketManager.sendToUser).toHaveBeenCalledTimes(1);
 
         // 3) Re-fetch meal plan for today - custom meal should now be completed.
         mockSession(client);
@@ -221,6 +247,7 @@ describe('Custom Meal Type Completion With Image Flow', () => {
         expect(savedCompletion).toBeTruthy();
         expect(savedCompletion.mealTypeOriginal).toBe('Second Breakfast');
         expect(savedCompletion.imagePath).toContain('/complete-meal/');
+        expect(savedCompletion.operationId).toBe('custom-meal-completion-operation');
         expect(savedCompletion.nutrition).toEqual({
             calories: 320,
             protein: 12,

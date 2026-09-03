@@ -29,6 +29,7 @@ import { compressImage } from "@/lib/imageCompression";
 import ImageLightbox from "@/components/ui/image-lightbox";
 import { DocumentViewerModal } from "@/components/chat/DocumentViewerModal";
 import { VoiceNotePlayer } from "@/components/chat/VoiceNotePlayer";
+import ReliableImage from "@/components/media/ReliableImage";
 import {
   Send,
   Paperclip,
@@ -2140,7 +2141,7 @@ export default function UserMessagesPage() {
                         if (attachment) {
                           switch (resolvedType) {
                             case "image":
-                              if (!hasValidUrl || failed) {
+                              if (!hasValidUrl) {
                                 return (
                                   <button
                                     type="button"
@@ -2166,19 +2167,17 @@ export default function UserMessagesPage() {
                                       Meal Picture
                                     </span>
                                   )}
-                                  <img
-                                    src={getMediaProxyUrl(resolvedUrl)}
+                                  <ReliableImage
+                                    reference={resolvedUrl}
                                     alt="Image attachment"
                                     className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                    onClick={() => openLightbox(resolvedUrl)}
+                                    onOpen={() => openLightbox(resolvedUrl)}
                                     style={{
                                       width: "220px",
                                       aspectRatio: "4 / 3",
                                       objectFit: "cover",
                                     }}
-                                    onError={() =>
-                                      markAttachmentFailed(message._id)
-                                    }
+                                    fallbackClassName="w-55 h-40 rounded-lg bg-black/8 text-current opacity-70"
                                   />
                                   {hasCaption &&
                                     (isMealPicture ? (

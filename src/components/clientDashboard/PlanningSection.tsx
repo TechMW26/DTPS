@@ -92,6 +92,7 @@ import {
   checkPhaseStartPolicy,
   getRequiredNextPhaseStart,
 } from "@/lib/meal-plan-phase-continuity";
+import { toISTDateKey } from "@/lib/utils/ist";
 import {
   readApiError,
   resilientFetch,
@@ -268,14 +269,14 @@ const normalizeDateString = (value?: string): string | undefined => {
   if (!value || typeof value !== "string") return value;
 
   const match = value.match(/^(\d{5})(-.+)$/);
-  if (!match)
-    return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : value;
+  if (!match) return toISTDateKey(value) || value;
 
   const [, year, rest] = match;
 
   // Common bad format observed in data: extra 0 in year (e.g., 20206)
   if (year.startsWith("20") && year[3] === "0") {
-    return `${year.slice(0, 3)}${year.slice(4)}${rest}`.slice(0, 10);
+    const repaired = `${year.slice(0, 3)}${year.slice(4)}${rest}`;
+    return toISTDateKey(repaired) || repaired;
   }
 
   return value;
@@ -308,10 +309,7 @@ const normalizePaymentCheckDates = (data: any) => ({
 });
 
 const toLocalDayStart = (value: string | Date): Date => {
-  const key =
-    value instanceof Date
-      ? value.toISOString().slice(0, 10)
-      : String(value).slice(0, 10);
+  const key = toISTDateKey(value) || String(value).slice(0, 10);
   const [year, month, day] = key.split("-").map(Number);
   return new Date(year, month - 1, day, 0, 0, 0, 0);
 };
@@ -2123,8 +2121,8 @@ export default function PlanningSection({
     const planDuration =
       plan.duration ||
       Math.ceil(
-        (new Date(plan.endDate).getTime() -
-          new Date(plan.startDate).getTime()) /
+        (parseLocalDate(plan.endDate).getTime() -
+          parseLocalDate(plan.startDate).getTime()) /
           (1000 * 60 * 60 * 24),
       ) + 1;
     const planMeals = plan.meals || [];
@@ -2137,8 +2135,8 @@ export default function PlanningSection({
     setViewingPlan(plan);
     setPlanTitle(plan.name);
     setDescription(plan.description || "");
-    setStartDate(format(new Date(plan.startDate), "yyyy-MM-dd"));
-    setEndDate(format(new Date(plan.endDate), "yyyy-MM-dd"));
+    setStartDate(plan.startDate);
+    setEndDate(plan.endDate);
     setDuration(planDuration);
     setPrimaryGoal(plan.goals?.primaryGoal || "health-improvement");
     setInitialMeals(planMeals);
@@ -2157,8 +2155,8 @@ export default function PlanningSection({
     const planDuration =
       plan.duration ||
       Math.ceil(
-        (new Date(plan.endDate).getTime() -
-          new Date(plan.startDate).getTime()) /
+        (parseLocalDate(plan.endDate).getTime() -
+          parseLocalDate(plan.startDate).getTime()) /
           (1000 * 60 * 60 * 24),
       ) + 1;
     const planMeals = plan.meals || [];
@@ -2168,8 +2166,8 @@ export default function PlanningSection({
     setIsEditMode(true);
     setPlanTitle(plan.name);
     setDescription(plan.description || "");
-    setStartDate(format(new Date(plan.startDate), "yyyy-MM-dd"));
-    setEndDate(format(new Date(plan.endDate), "yyyy-MM-dd"));
+    setStartDate(plan.startDate);
+    setEndDate(plan.endDate);
     setDuration(planDuration);
     setPrimaryGoal(plan.goals?.primaryGoal || "health-improvement");
     setInitialMeals(planMeals);
@@ -2601,8 +2599,9 @@ export default function PlanningSection({
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // A freeze changes a full day's entitlement, so only future dates qualify.
-      if (date <= today) return false;
+      // Staff may intentionally pause today's plan before the client consumes
+      // it. Only completed calendar days are ineligible.
+      if (date < today) return false;
 
       // A pause can extend beyond the currently prepared diet, up to the
       // remaining freeze entitlement.
@@ -3897,8 +3896,8 @@ export default function PlanningSection({
                     </Badge>
                   </div>
                   <p className="text-sm text-gray-500">
-                    {format(new Date(startDate), "MMM d, yyyy")} -{" "}
-                    {format(new Date(endDate), "MMM d, yyyy")} ({duration} days)
+                    {format(parseLocalDate(startDate), "MMM d, yyyy")} -{" "}
+                    {format(parseLocalDate(endDate), "MMM d, yyyy")} ({duration} days)
                   </p>
                 </div>
               </div>
@@ -4061,11 +4060,7 @@ export default function PlanningSection({
               <DietPlanDashboard
                 key={`view-${viewingPlan._id}-${planKey}`}
                 duration={duration}
-                startDate={
-                  viewingPlan?.startDate
-                    ? format(new Date(viewingPlan.startDate), "yyyy-MM-dd")
-                    : startDate
-                }
+                startDate={viewingPlan?.startDate || startDate}
                 initialMeals={viewingPlan?.meals || []}
                 initialMealTypes={viewingPlan?.mealTypes || initialMealTypes}
                 clientId={client._id}
@@ -4105,8 +4100,8 @@ export default function PlanningSection({
                 <div>
                   <h2 className="text-xl font-semibold">{planTitle}</h2>
                   <p className="text-sm text-gray-500">
-                    {format(new Date(startDate), "MMM d, yyyy")} -{" "}
-                    {format(new Date(endDate), "MMM d, yyyy")} ({duration} days)
+                    {format(parseLocalDate(startDate), "MMM d, yyyy")} -{" "}
+                    {format(parseLocalDate(endDate), "MMM d, yyyy")} ({duration} days)
                   </p>
                 </div>
               </div>
@@ -4607,7 +4602,7 @@ export default function PlanningSection({
               duration={duration}
               startDate={
                 isEditMode && editingPlan?.startDate
-                  ? format(new Date(editingPlan.startDate), "yyyy-MM-dd")
+                  ? editingPlan.startDate
                   : startDate
               }
               initialMeals={
@@ -5511,7 +5506,7 @@ export default function PlanningSection({
                                 aria-hidden="true"
                               />{" "}
                               Complete the current plan (
-                              {paymentCheck.purchase?.daysUsed} days used)
+                              {paymentCheck.purchase?.daysUsed} diet days planned)
                               before switching.
                             </p>
                           )}
@@ -5529,7 +5524,7 @@ export default function PlanningSection({
                       onClick={() => recalculateDaysUsed()}
                       disabled={recalculating}
                       className="text-xs text-gray-500 hover:text-green-700"
-                      title="Recalculate days used from actual meal plans"
+                      title="Recalculate planned days from actual meal plans"
                     >
                       <RefreshCw
                         className={`h-3 w-3 mr-1 ${recalculating ? "animate-spin" : ""}`}
@@ -5548,7 +5543,7 @@ export default function PlanningSection({
                       </p>
                     </div>
                     <div className="bg-white rounded p-2 border border-green-200">
-                      <p className="text-gray-600 text-xs">Days Used</p>
+                      <p className="text-gray-600 text-xs">Diet Days Planned</p>
                       <p className="font-bold text-green-700">
                         {selectedPurchase?.daysUsed ??
                           paymentCheck.totalDaysUsed ??
@@ -5557,7 +5552,7 @@ export default function PlanningSection({
                       </p>
                     </div>
                     <div className="bg-white rounded p-2 border border-green-200">
-                      <p className="text-gray-600 text-xs">Remaining</p>
+                      <p className="text-gray-600 text-xs">Diet Days Available</p>
                       <p className="font-bold text-blue-600">
                         {selectedPurchase?.remainingDays ??
                           paymentCheck.remainingDays}{" "}
@@ -5694,7 +5689,7 @@ export default function PlanningSection({
                             {paymentCheck.allPurchasesNeedingMealPlan.length > 1
                               ? "s"
                               : ""}{" "}
-                            with Remaining Days
+                            with Diet Days Available
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -5744,11 +5739,11 @@ export default function PlanningSection({
                                       </span>
                                       <span className="text-gray-500 ml-2">
                                         ({purchase.remainingDays}/
-                                        {purchase.durationDays} days remaining)
+                                        {purchase.durationDays} days available)
                                       </span>
                                       {isPartiallyUsed && (
                                         <span className="ml-2 text-orange-600 font-medium">
-                                          • {purchase.daysUsed} days used
+                                          • {purchase.daysUsed} days planned
                                         </span>
                                       )}
                                     </div>
@@ -6125,7 +6120,7 @@ export default function PlanningSection({
                               <span className="text-gray-500">Start Date:</span>
                               <p className="font-medium">
                                 {format(
-                                  new Date(plan.startDate),
+                                  parseLocalDate(plan.startDate),
                                   "MMM d, yyyy",
                                 )}
                               </p>
@@ -6133,7 +6128,7 @@ export default function PlanningSection({
                             <div>
                               <span className="text-gray-500">End Date:</span>
                               <p className="font-medium">
-                                {format(new Date(plan.endDate), "MMM d, yyyy")}
+                                {format(parseLocalDate(plan.endDate), "MMM d, yyyy")}
                               </p>
                             </div>
                             <div>

@@ -140,18 +140,9 @@ async function recoverStoredMedia(
       )
       .lean<StoredMediaRecord | null>();
 
-    // Legacy ImageKit URL (kept for backward compat during transition)
-    if (record?.imageKitUrl) {
-      const value: RecoveredMedia = {
-        kind: "remote",
-        url: record.imageKitUrl,
-        filename: record.originalName || record.filename || filename,
-      };
-      cache.set(filename, { value, expiresAt: Date.now() + 60 * 60_000 });
-      return value;
-    }
-
     // Migrated records may retain the legacy ID field as a Blob pathname.
+    // Resolve that pathname with Blob first: imageKitUrl can be a stale legacy
+    // URL while the migrated object is healthy under imageKitFileId.
     if (record?.imageKitFileId) {
       try {
         const blob = await head(record.imageKitFileId);
@@ -165,6 +156,17 @@ async function recoverStoredMedia(
       } catch {
         // Continue to the historical local-path fallback.
       }
+    }
+
+    // Legacy ImageKit URL (kept for backward compatibility during transition).
+    if (record?.imageKitUrl) {
+      const value: RecoveredMedia = {
+        kind: "remote",
+        url: record.imageKitUrl,
+        filename: record.originalName || record.filename || filename,
+      };
+      cache.set(filename, { value, expiresAt: Date.now() + 60 * 60_000 });
+      return value;
     }
 
     // Legacy local uploads — try to serve directly from stored URL.
@@ -203,15 +205,25 @@ async function proxyRemoteMedia(
   download: boolean,
   requestedFilename?: string,
 ): Promise<NextResponse> {
-  try {
-    const upstream = await fetch(mediaUrl, {
-      method: request.method === "HEAD" ? "HEAD" : "GET",
-      headers: request.headers.get("range")
-        ? { Range: request.headers.get("range")! }
-        : undefined,
-      redirect: "follow",
-      cache: "no-store",
-    });
+  let lastError: unknown;
+  const transientStatuses = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const upstream = await fetch(mediaUrl, {
+        method: request.method === "HEAD" ? "HEAD" : "GET",
+        headers: request.headers.get("range")
+          ? { Range: request.headers.get("range")! }
+          : undefined,
+        redirect: "follow",
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (transientStatuses.has(upstream.status) && attempt < 3) {
+        await upstream.body?.cancel().catch(() => undefined);
+        await new Promise((resolve) => setTimeout(resolve, attempt * 200));
+        continue;
+      }
     if (!upstream.ok) {
       return NextResponse.json(
         { error: "Media could not be loaded" },
@@ -239,13 +251,19 @@ async function proxyRemoteMedia(
       status: upstream.status,
       headers,
     });
-  } catch (error) {
-    console.error("[MediaResolver] Failed to fetch media", error);
-    return NextResponse.json(
-      { error: "Media could not be loaded" },
-      { status: 502 },
-    );
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 200));
+      }
+    }
   }
+
+  console.error("[MediaResolver] Failed to fetch media", lastError);
+  return NextResponse.json(
+    { error: "Media could not be loaded" },
+    { status: 502 },
+  );
 }
 
 function isAllowedRemoteMediaUrl(url: URL): boolean {
@@ -381,7 +399,7 @@ export async function handleMediaResolve(
     download,
     requestedFilename,
   );
-  if (remoteResponse.status !== 404) {
+  if (remoteResponse.status < 400) {
     return remoteResponse;
   }
 
@@ -393,6 +411,11 @@ export async function handleMediaResolve(
         { error: "Media source is not allowed" },
         { status: 403 },
       );
+    }
+    // Avoid repeating the same known-failing source. The response above has
+    // already exhausted transient retries for this exact URL.
+    if (recoveredUrl.toString() === mediaUrl.toString()) {
+      return remoteResponse;
     }
     return proxyRemoteMedia(
       request,

@@ -3,6 +3,11 @@ import { NextRequest } from "next/server";
 const mockLean = jest.fn();
 const mockSelect = jest.fn(() => ({ lean: mockLean }));
 const mockFindOne = jest.fn((_query?: unknown) => ({ select: mockSelect }));
+const mockHead = jest.fn();
+
+jest.mock("@vercel/blob", () => ({
+  head: (...args: unknown[]) => mockHead(...args),
+}));
 
 jest.mock("@/lib/db/connection", () => ({
   __esModule: true,
@@ -135,5 +140,65 @@ describe("media resolver legacy recovery", () => {
     );
     expect(privateResponse.status).toBe(403);
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries transient upstream failures before returning a valid image", async () => {
+    mockLean.mockResolvedValue(null);
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 502 }))
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { "content-type": "image/webp" },
+        }),
+      );
+
+    const publicUrl =
+      "https://dtps-media.public.blob.vercel-storage.com/progress/retry.webp";
+    const response = await handleMediaResolve(
+      new NextRequest(
+        `https://app.dtps.test/api/media/resolve?url=${encodeURIComponent(publicUrl)}`,
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/webp");
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("prefers the migrated Blob pathname over a stale legacy URL", async () => {
+    mockLean.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439018",
+      filename: "meal.jpg",
+      originalName: "Meal.jpg",
+      imageKitFileId: "progress/recovered.webp",
+      imageKitUrl: "https://ik.imagekit.io/dtps/deleted.webp",
+    });
+    mockHead.mockResolvedValue({
+      url: "https://dtps-media.public.blob.vercel-storage.com/progress/recovered.webp",
+    });
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(new Uint8Array([1]), {
+        status: 200,
+        headers: { "content-type": "image/webp" },
+      }),
+    );
+
+    const response = await handleMediaResolve(
+      new NextRequest(
+        "https://app.dtps.test/api/media/resolve?url=%2Fuploads%2Fmessages%2Fmeal.jpg",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockHead).toHaveBeenCalledWith("progress/recovered.webp");
+    expect(global.fetch).toHaveBeenCalledWith(
+      new URL(
+        "https://dtps-media.public.blob.vercel-storage.com/progress/recovered.webp",
+      ),
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 });

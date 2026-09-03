@@ -139,7 +139,14 @@ export function ClientHoldStatus({
             }
 
             const data = await response.json();
-            toast.success(`Client "${clientName}" has been activated. Hold duration: ${data.holdDuration}`);
+            const adjustedPurchases = Number(
+                data.endDateExtension?.extendedPurchasesCount || 0,
+            );
+            toast.success(
+                adjustedPurchases > 0
+                    ? `Client "${clientName}" has been activated. Active plan dates were adjusted for the applicable hold period.`
+                    : `Client "${clientName}" has been activated. No unstarted plan days were consumed.`,
+            );
             setReason('');
             setShowActivateDialog(false);
             onStatusChange?.();
@@ -418,6 +425,7 @@ function HoldConfirmDialog({
                                     <li>Meal plans will be hidden from the client</li>
                                     <li>No new meal plans can be published</li>
                                     <li>The client won't receive meal notifications</li>
+                                    <li>An unstarted purchase will not consume or gain diet days</li>
                                     <li>All data is preserved (nothing is deleted)</li>
                                 </ul>
                             </div>
@@ -494,6 +502,8 @@ function ActivateConfirmDialog({
                                     <li>Meal plans will become visible again</li>
                                     <li>New meal plans can be published</li>
                                     <li>Normal meal notifications will resume</li>
+                                    <li>Started plan dates are adjusted only for the applicable hold period</li>
+                                    <li>Unstarted plan dates are set when the first phase is scheduled</li>
                                     <li>All existing data is preserved</li>
                                 </ul>
                             </div>

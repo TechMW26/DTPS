@@ -12,6 +12,8 @@ import { useDataRefresh, DataEventTypes } from "@/lib/events/useDataRefresh";
 import ImageLightbox from "@/components/ui/image-lightbox";
 import { resolvePaymentStatus, type ResolvedPaymentStatus } from '@/lib/payments/payment-status';
 import { TableSkeleton } from '@/components/ui/skeleton';
+import { toISTDateKey } from '@/lib/utils/ist';
+import { resilientFetch } from '@/lib/api/resilient-fetch';
 
 // Service Plan interfaces
 interface PricingTier {
@@ -589,11 +591,12 @@ export default function PaymentsSection({
     if (!value || typeof value !== 'string') return value;
 
     const match = value.match(/^(\d{5})(-.+)$/);
-    if (!match) return value;
+    if (!match) return toISTDateKey(value) || value;
 
     const [, year, rest] = match;
     if (year.startsWith('20') && year[3] === '0') {
-      return `${year.slice(0, 3)}${year.slice(4)}${rest}`;
+      const repaired = `${year.slice(0, 3)}${year.slice(4)}${rest}`;
+      return toISTDateKey(repaired) || repaired;
     }
 
     return value;
@@ -808,6 +811,13 @@ export default function PaymentsSection({
   // The modal will NOT auto-open anymore.
 
   // Open expected dates modal
+  const isUnusedPurchase = (purchase: any) =>
+    Boolean(
+      purchase &&
+        !purchase.mealPlanCreated &&
+        Math.max(0, Number(purchase.daysUsed || 0)) === 0,
+    );
+
   const openExpectedDatesModal = (purchase: any) => {
     // Check if user has permission (admin and dietitian can edit expected dates)
     if (!isAdmin && !isDietitian) {
@@ -816,7 +826,7 @@ export default function PaymentsSection({
     }
 
     // Dietitian: Check if expected end date already exists and validate edit window
-    if (isDietitian && purchase.expectedEndDate) {
+    if (isDietitian && purchase.expectedEndDate && !isUnusedPurchase(purchase)) {
       const existingEndDate = new Date(purchase.expectedEndDate);
       existingEndDate.setHours(0, 0, 0, 0);
 
@@ -841,8 +851,8 @@ export default function PaymentsSection({
     }
 
     setSelectedPurchaseForDates(purchase);
-    setExpectedStartDateInput(purchase.expectedStartDate ? new Date(purchase.expectedStartDate).toISOString().split('T')[0] : '');
-    setExpectedEndDateInput(purchase.expectedEndDate ? new Date(purchase.expectedEndDate).toISOString().split('T')[0] : '');
+    setExpectedStartDateInput(purchase.expectedStartDate ? toISTDateKey(purchase.expectedStartDate) || '' : '');
+    setExpectedEndDateInput(purchase.expectedEndDate ? toISTDateKey(purchase.expectedEndDate) || '' : '');
     setExpectedDateError(null);
     setShowExpectedDatesModal(true);
   };
@@ -923,6 +933,10 @@ export default function PaymentsSection({
       return { allowed: true };
     }
 
+    if (isUnusedPurchase(purchase)) {
+      return { allowed: true };
+    }
+
     const existingEndDate = new Date(purchase.expectedEndDate);
     existingEndDate.setHours(0, 0, 0, 0);
 
@@ -965,7 +979,13 @@ export default function PaymentsSection({
     }
 
     // Frontend validation: Check edit window for existing expected end date (only for dietitians)
-    if (!isAdmin && isDietitian && selectedPurchaseForDates.expectedEndDate && expectedEndDateInput) {
+    if (
+      !isAdmin &&
+      isDietitian &&
+      selectedPurchaseForDates.expectedEndDate &&
+      expectedEndDateInput &&
+      !isUnusedPurchase(selectedPurchaseForDates)
+    ) {
       const existingEndDate = new Date(selectedPurchaseForDates.expectedEndDate);
       existingEndDate.setHours(0, 0, 0, 0);
 
@@ -991,7 +1011,10 @@ export default function PaymentsSection({
     setSavingExpectedDates(true);
     setExpectedDateError(null);
     try {
-      const response = await fetch('/api/client-purchases', {
+      const operationId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `expected-dates-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const response = await resilientFetch('/api/client-purchases', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -999,6 +1022,10 @@ export default function PaymentsSection({
           expectedStartDate: expectedStartDateInput,
           expectedEndDate: expectedEndDateInput || undefined, // Don't auto-calculate, require manual selection
         }),
+      }, {
+        attempts: 4,
+        timeoutMs: 30_000,
+        idempotencyKey: operationId,
       });
 
       const data = await response.json();
@@ -1008,6 +1035,7 @@ export default function PaymentsSection({
         resetExpectedDatesModal();
         fetchClientPurchases(); // Refresh the purchases list
       } else {
+        const apiError = data.error || 'Failed to save expected dates';
         // Handle specific error codes from backend
         if (data.code === 'ROLE_UNAUTHORIZED') {
           toast.error('Only admins and dietitians are permitted to modify expected dates');
@@ -1019,8 +1047,8 @@ export default function PaymentsSection({
           toast.error('Cannot modify: Too close to expected end date');
           setExpectedDateError('Changes only allowed up to one day before expected end date.');
         } else {
-          toast.error(data.error || 'Failed to save expected dates');
-          setExpectedDateError(data.error || 'Failed to save expected dates');
+          toast.error(apiError);
+          setExpectedDateError(apiError);
         }
       }
     } catch (error) {
@@ -2199,22 +2227,25 @@ export default function PaymentsSection({
             <div className="mb-4 p-3 bg-gray-50 rounded-lg">
               <p className="font-medium">{selectedPurchaseForDates.planName}</p>
               <p className="text-sm text-gray-500">Total Duration: {selectedPurchaseForDates.durationLabel || `${selectedPurchaseForDates.durationDays} Days`}</p>
-              <p className="text-sm text-gray-500">Remaining Days: {selectedPurchaseForDates.remainingDays}</p>
+              <p className="text-sm text-gray-500">Diet Days Available: {selectedPurchaseForDates.remainingDays}</p>
 
               {/* Show plan phases if divided */}
               {selectedPurchaseForDates.daysUsed > 0 && (
                 <div className="mt-2 pt-2 border-t border-gray-200">
-                  <p className="text-xs font-medium text-blue-600 mb-1">Plan Phases:</p>
+                  <p className="text-xs font-medium text-blue-600 mb-1">Diet Allocation:</p>
                   <div className="text-xs text-gray-600 space-y-1">
                     <div className="flex justify-between">
-                      <span>Phase 1 (Completed):</span>
+                      <span>Diet days planned:</span>
                       <span className="font-medium">{selectedPurchaseForDates.daysUsed} days</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Phase 2 (Remaining):</span>
+                      <span>Diet days still available:</span>
                       <span className="font-medium text-green-600">{selectedPurchaseForDates.remainingDays} days</span>
                     </div>
                   </div>
+                  <p className="mt-2 text-[11px] text-gray-500">
+                    Service dates show the overall program window. Planned days show how many diet-chart days have been assigned within it.
+                  </p>
                 </div>
               )}
 

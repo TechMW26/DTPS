@@ -309,6 +309,7 @@ export interface IMessage extends Document {
   reactions?: IMessageReaction[];
   isForwarded?: boolean;
   forwardedFrom?: string;
+  sourceOperationId?: string;
   createdAt: Date;
   updatedAt: Date;
 }

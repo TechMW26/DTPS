@@ -25,6 +25,26 @@ export function todayIST(): string {
     return formatInTimeZone(new Date(), IST_TIMEZONE, 'yyyy-MM-dd');
 }
 
+/**
+ * Convert a stored timestamp to the application's IST calendar-day key.
+ *
+ * Date-only values are already business dates and must remain unchanged.
+ * Timestamps, including MongoDB's UTC serialization of IST midnight, are
+ * resolved in Asia/Kolkata before extracting the date.
+ */
+export function toISTDateKey(
+    value: Date | string | number | null | undefined,
+): string | null {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value;
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return formatInTimeZone(date, IST_TIMEZONE, 'yyyy-MM-dd');
+}
+
 /** Get start of today in IST as a UTC Date (for DB queries like "all records from today") */
 export function startOfTodayIST(): Date {
     const istNow = toZonedTime(new Date(), IST_TIMEZONE);

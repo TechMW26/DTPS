@@ -33,7 +33,7 @@ export interface UploadedFileResult {
 }
 
 const SERVER_UPLOAD_LIMIT = 4 * 1024 * 1024;
-const UPLOAD_RETRY_DELAYS_MS = [250, 750];
+const UPLOAD_RETRY_DELAYS_MS = [400, 1_000, 2_500];
 
 const folders: Record<ClientUploadType, string> = {
   avatar: "profile",

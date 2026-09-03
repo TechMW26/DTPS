@@ -3,19 +3,21 @@ import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import { ClientPurchase } from '@/lib/db/models/ServicePlan';
 
 /**
- * Extend Expected End Date on all eligible client purchases when a hold period ends.
+ * Extend Expected End Date on eligible, already-started client purchases when
+ * a hold period ends.
  *
  * Behavior:
- * - For each UnifiedPayment of the client that is paid/active and whose ORIGINAL
- *   (or already-extended) expectedEndDate is on/after the hold START date,
- *   the expectedEndDate is extended by the exact hold duration.
+ * - A purchase with an explicit service start is extended only for the portion
+ *   of the hold on/after that start.
+ * - A purchase without an explicit start is extended only when meal-plan days
+ *   have already been allocated; an unused purchase is left unchanged.
  * - originalExpectedEndDate is preserved (set once, never overwritten).
  * - holdExtensionMs is incremented and a holdExtensionHistory entry is added
  *   for full audit traceability.
  *
  * Notes:
  * - Only active subscription-style purchases are extended. We intentionally
- *   skip purchases that have ended strictly before the hold started.
+ *   skip purchases that ended before the applicable hold period.
  */
 export interface ApplyHoldExtensionInput {
     clientId: string;
@@ -38,6 +40,64 @@ export interface ApplyHoldExtensionResult {
     }>;
 }
 
+type HoldEligiblePurchase = {
+    expectedStartDate?: Date | string | null;
+    startDate?: Date | string | null;
+    expectedEndDate?: Date | string | null;
+    endDate?: Date | string | null;
+    daysUsed?: number | null;
+    mealPlanCreated?: boolean | null;
+};
+
+/**
+ * Return only the part of a hold that applies to an already-started service
+ * window. A hold that ends before the expected start date must not inflate the
+ * entitlement: the client still receives the complete duration when their
+ * first phase is scheduled.
+ */
+export function getApplicableHoldExtensionMs(
+    purchase: HoldEligiblePurchase,
+    holdStart: Date,
+    holdEnd: Date,
+): number {
+    const start = new Date(holdStart);
+    const end = new Date(holdEnd);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+        return 0;
+    }
+
+    const explicitStart = purchase.expectedStartDate
+        ? new Date(purchase.expectedStartDate)
+        : null;
+    const hasStartedActivity =
+        Number(purchase.daysUsed || 0) > 0 || purchase.mealPlanCreated === true;
+    const fallbackStart = hasStartedActivity && purchase.startDate
+        ? new Date(purchase.startDate)
+        : null;
+    const serviceStart = explicitStart && Number.isFinite(explicitStart.getTime())
+        ? explicitStart
+        : fallbackStart && Number.isFinite(fallbackStart.getTime())
+            ? fallbackStart
+            : null;
+
+    // Without an explicit service start or any allocated meal-plan activity,
+    // this is an unused purchase. Holding the account must not consume or add
+    // entitlement days.
+    if (!serviceStart) return 0;
+
+    const currentExpected = purchase.expectedEndDate || purchase.endDate;
+    if (!currentExpected) return 0;
+    const serviceEnd = new Date(currentExpected);
+    if (!Number.isFinite(serviceEnd.getTime())) return 0;
+
+    const effectiveHoldStart = new Date(
+        Math.max(start.getTime(), serviceStart.getTime()),
+    );
+    if (end <= effectiveHoldStart || effectiveHoldStart > serviceEnd) return 0;
+
+    return end.getTime() - effectiveHoldStart.getTime();
+}
+
 export async function applyHoldExtensionToClientPurchases(
     input: ApplyHoldExtensionInput,
 ): Promise<ApplyHoldExtensionResult> {
@@ -55,8 +115,8 @@ export async function applyHoldExtensionToClientPurchases(
 
     const start = new Date(holdStart);
     const end = new Date(holdEnd);
-    const addedMs = end.getTime() - start.getTime();
-    if (!Number.isFinite(addedMs) || addedMs <= 0) return result;
+    const holdDurationMs = end.getTime() - start.getTime();
+    if (!Number.isFinite(holdDurationMs) || holdDurationMs <= 0) return result;
 
     // Find candidate UnifiedPayment purchases: paid/active and time-bounded.
     const purchases = await UnifiedPayment.find({
@@ -64,7 +124,7 @@ export async function applyHoldExtensionToClientPurchases(
         paymentStatus: 'paid',
         status: { $in: ['paid', 'completed', 'active'] },
     })
-        .select('_id expectedEndDate endDate originalExpectedEndDate holdExtensionMs')
+        .select('_id expectedStartDate startDate expectedEndDate endDate daysUsed mealPlanCreated originalExpectedEndDate holdExtensionMs')
         .lean();
 
     const appliedAt = new Date();
@@ -75,10 +135,8 @@ export async function applyHoldExtensionToClientPurchases(
             if (!currentExpected) continue;
 
             const currentExpectedDate = new Date(currentExpected);
-
-            // Only extend if the hold occurred during or before the purchase window.
-            // i.e., the purchase has NOT already ended before the hold started.
-            if (currentExpectedDate.getTime() < start.getTime()) continue;
+            const addedMs = getApplicableHoldExtensionMs(p as HoldEligiblePurchase, start, end);
+            if (addedMs <= 0) continue;
 
             const previousExpectedEndDate = currentExpectedDate;
             const newExpectedEndDate = new Date(currentExpectedDate.getTime() + addedMs);
@@ -129,7 +187,7 @@ export async function applyHoldExtensionToClientPurchases(
         paymentStatus: 'paid',
         status: { $in: ['active', 'pending'] },
     })
-        .select('_id expectedEndDate endDate')
+        .select('_id expectedStartDate startDate expectedEndDate endDate daysUsed mealPlanCreated')
         .lean();
 
     if (legacyPurchases && legacyPurchases.length > 0) {
@@ -138,7 +196,8 @@ export async function applyHoldExtensionToClientPurchases(
             if (!currentExpected) continue;
 
             const currentExpectedDate = new Date(currentExpected);
-            if (currentExpectedDate.getTime() < start.getTime()) continue;
+            const addedMs = getApplicableHoldExtensionMs(p as HoldEligiblePurchase, start, end);
+            if (addedMs <= 0) continue;
 
             const previousExpectedEndDate = currentExpectedDate;
             const newExpectedEndDate = new Date(currentExpectedDate.getTime() + addedMs);

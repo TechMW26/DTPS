@@ -70,11 +70,11 @@ import {
   Trash2,
   Loader2,
   CornerDownRight,
-  RotateCcw,
 } from "lucide-react";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import BulkMessageModal from "@/components/messages/BulkMessageModal";
 import { DocumentViewerModal } from "@/components/chat/DocumentViewerModal";
+import ReliableImage from "@/components/media/ReliableImage";
 import {
   getDocumentViewerUrl,
   getMediaProxyUrl,
@@ -203,14 +203,6 @@ function MessagesContent() {
   const [isVideoCall, setIsVideoCall] = useState(false);
   const [isAudioCall, setIsAudioCall] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
-
-  // Retry state for failed media attachments
-  const [failedAttachments, setFailedAttachments] = useState<Set<string>>(
-    new Set(),
-  );
-  const [attachmentRetryTick, setAttachmentRetryTick] = useState<
-    Record<string, number>
-  >({});
 
   // Bulk messaging state
   const [showBulkMessageModal, setShowBulkMessageModal] = useState(false);
@@ -2432,90 +2424,24 @@ function MessagesContent() {
                                 {message.type === "image" &&
                                   message.attachments?.[0] && (
                                     <div className="mb-2">
-                                      {failedAttachments.has(message._id) ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setFailedAttachments((prev) => {
-                                              const next = new Set(prev);
-                                              next.delete(message._id);
-                                              return next;
-                                            });
-                                            setAttachmentRetryTick((prev) => ({
-                                              ...prev,
-                                              [message._id]:
-                                                (prev[message._id] || 0) + 1,
-                                            }));
-                                          }}
-                                          className="w-40 h-32 rounded-lg flex flex-col items-center justify-center gap-2 text-xs bg-gray-200 text-gray-500 hover:bg-gray-300 transition-colors"
-                                        >
-                                          <RotateCcw className="w-5 h-5" />
-                                          <span>
-                                            Image unavailable · Tap to retry
-                                          </span>
-                                        </button>
-                                      ) : (
-                                        <img
-                                          src={((): string => {
-                                            const retryTick =
-                                              attachmentRetryTick[
-                                                message._id
-                                              ] || 0;
-                                            const rawUrl =
-                                              message.attachments[0].url;
-                                            const isImageKit =
-                                              /ik\.imagekit\.io/i.test(rawUrl);
-                                            if (isImageKit || retryTick > 0) {
-                                              const sep = rawUrl.includes("?")
-                                                ? "&"
-                                                : "?";
-                                              const bust =
-                                                retryTick > 0
-                                                  ? `retry=${retryTick}`
-                                                  : `ts=${Math.floor(Date.now() / 600000)}`;
-                                              return getMediaProxyUrl({
-                                                url: `${rawUrl}${sep}${bust}`,
-                                                filename:
-                                                  message.attachments[0]
-                                                    .filename,
-                                              });
-                                            }
-                                            return getMediaProxyUrl(
-                                              message.attachments[0],
-                                            );
-                                          })()}
+                                      <ReliableImage
+                                          reference={message.attachments[0]}
                                           alt="Shared image"
-                                          loading="lazy"
-                                          decoding="async"
                                           className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                                           style={{
                                             width: "250px",
                                             aspectRatio: "4 / 3",
                                             objectFit: "cover",
                                           }}
-                                          onClick={() =>
+                                          onOpen={() =>
                                             setPreviewImage(
                                               getMediaUrl(
                                                 message.attachments?.[0],
                                               ),
                                             )
                                           }
-                                          onError={() => {
-                                            console.error(
-                                              "[Messages] Image load error (desktop)",
-                                              {
-                                                messageId: message._id,
-                                                url: message.attachments?.[0]
-                                                  ?.url,
-                                              },
-                                            );
-                                            setFailedAttachments(
-                                              (prev) =>
-                                                new Set([...prev, message._id]),
-                                            );
-                                          }}
+                                          fallbackClassName="w-40 h-32 rounded-lg bg-gray-200 text-gray-500"
                                         />
-                                      )}
                                     </div>
                                   )}
 

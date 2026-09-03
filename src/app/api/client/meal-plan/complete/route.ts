@@ -22,6 +22,7 @@ import { logActivity } from "@/lib/utils/activityLogger";
 import { isPublicMediaUrl } from "@/lib/media";
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 import { calculateCompletedMealNutrition } from '@/lib/meal-nutrition';
+import { createHash } from 'node:crypto';
 
 // Map camelCase meal types to canonical UPPERCASE keys
 const CAMELCASE_TO_CANONICAL: Record<string, MealTypeKey> = {
@@ -81,6 +82,7 @@ type MealCompletionSideEffectArgs = {
   primaryDietitianId?: string | null;
   userName: string;
   userEmail: string;
+  operationId?: string;
 };
 
 function queueMealCompletionSideEffects(
@@ -102,6 +104,7 @@ function queueMealCompletionSideEffects(
           primaryDietitianId,
           userName,
           userEmail,
+          operationId,
         } = args;
 
         // Publish the durable completion immediately. Chat mirroring and
@@ -142,7 +145,14 @@ function queueMealCompletionSideEffects(
             ? `Meal Picture • ${mealLabel}\n${noteText}`
             : `Meal Picture • ${mealLabel}`;
 
+          const deterministicMessageId = operationId
+            ? createHash('sha256')
+                .update(`${clientId}:meal-completion:${operationId}`)
+                .digest('hex')
+                .slice(0, 24)
+            : undefined;
           const mealPictureMessage = new Message({
+            ...(deterministicMessageId ? { _id: deterministicMessageId } : {}),
             sender: clientId,
             receiver: resolvedDietitianId,
             content: chatContent,
@@ -157,9 +167,18 @@ function queueMealCompletionSideEffects(
             ],
             status: "sent",
             isRead: false,
+            sourceOperationId: operationId || undefined,
           });
 
-          await mealPictureMessage.save();
+          try {
+            await mealPictureMessage.save();
+          } catch (error) {
+            // A timed-out client request can be replayed while the first
+            // server invocation is still finishing. The deterministic ID and
+            // unique operation key make the chat mirror exactly-once.
+            if ((error as { code?: number })?.code === 11000) return;
+            throw error;
+          }
           clearCacheByTag("messages");
           await mealPictureMessage.populate(
             "sender",
@@ -264,6 +283,7 @@ export async function POST(request: NextRequest) {
     let imageFile: File | null = null;
     let imageUrl: string = "";
     let imagePathname: string = "";
+    let operationId: string = request.headers.get("x-idempotency-key") || "";
     let clientTimeZone: string = "Asia/Kolkata";
 
     if (contentType.includes("multipart/form-data")) {
@@ -274,6 +294,7 @@ export async function POST(request: NextRequest) {
       mealType = (formData.get("mealType") as string) || "";
       notes = (formData.get("notes") as string) || "";
       imageFile = formData.get("image") as File | null;
+      operationId = (formData.get("operationId") as string) || operationId;
       clientTimeZone = (formData.get("timeZone") as string) || "Asia/Kolkata";
     } else {
       // JSON request (without image - for backwards compatibility)
@@ -284,6 +305,7 @@ export async function POST(request: NextRequest) {
       notes = body.notes || "";
       imageUrl = body.imageUrl || "";
       imagePathname = body.imagePathname || "";
+      operationId = body.operationId || operationId;
       clientTimeZone = body.timeZone || "Asia/Kolkata";
     }
 
@@ -301,6 +323,8 @@ export async function POST(request: NextRequest) {
     } catch {
       clientTimeZone = "Asia/Kolkata";
     }
+
+    operationId = operationId.trim().slice(0, 120);
 
     // Compare calendar dates in the client's timezone. Comparing in the
     // server's IST timezone rejected valid evening completions abroad.
@@ -447,6 +471,12 @@ export async function POST(request: NextRequest) {
       return completionCanonicalKey === requestedCanonicalKey;
     });
 
+    const isRepeatedOperation = Boolean(
+      operationId &&
+        existingCompletionIndex >= 0 &&
+        mealCompletions[existingCompletionIndex]?.operationId === operationId,
+    );
+
     if (existingCompletionIndex >= 0) {
       // Update existing completion
       mealCompletions[existingCompletionIndex].completed = true;
@@ -458,6 +488,9 @@ export async function POST(request: NextRequest) {
         mealCompletions[existingCompletionIndex].imageKitFileId =
           imageKitFileId;
       }
+      if (operationId) {
+        mealCompletions[existingCompletionIndex].operationId = operationId;
+      }
     } else {
       // Add new completion
       mealCompletions.push({
@@ -468,6 +501,7 @@ export async function POST(request: NextRequest) {
         notes: notes || undefined,
         imagePath: imagePath || undefined,
         imageKitFileId: imageKitFileId || undefined,
+        operationId: operationId || undefined,
       });
     }
 
@@ -518,20 +552,23 @@ export async function POST(request: NextRequest) {
     clearCacheByTag("dietitian_panel");
     clearCacheByTag("client");
 
-    queueMealCompletionSideEffects({
-      clientId: session.user.id,
-      mealPlanId: mealPlan._id?.toString(),
-      mealPlanName: mealPlan.name,
-      mealType: determinedMealType,
-      mealTypeLabel: requestedMealTypeRaw || undefined,
-      requestedDate,
-      notes,
-      imagePath,
-      imageFile,
-      primaryDietitianId: null,
-      userName: session.user.name || session.user.email || "",
-      userEmail: session.user.email || "",
-    });
+    if (!isRepeatedOperation) {
+      queueMealCompletionSideEffects({
+        clientId: session.user.id,
+        mealPlanId: mealPlan._id?.toString(),
+        mealPlanName: mealPlan.name,
+        mealType: determinedMealType,
+        mealTypeLabel: requestedMealTypeRaw || undefined,
+        requestedDate,
+        notes,
+        imagePath,
+        imageFile,
+        primaryDietitianId: null,
+        userName: session.user.name || session.user.email || "",
+        userEmail: session.user.email || "",
+        operationId: operationId || undefined,
+      });
+    }
 
     return NextResponse.json({
       success: true,

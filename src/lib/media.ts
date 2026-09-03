@@ -136,6 +136,38 @@ export function getMediaProxyUrl(
   return `/api/media/resolve?${params.toString()}`;
 }
 
+/**
+ * Ordered image sources for resilient rendering. Public CDN media is loaded
+ * directly first (one network hop); application and legacy paths use the
+ * recovery proxy first. Every list also contains a cache-busted recovery
+ * attempt so a transient browser/CDN/proxy failure does not immediately turn
+ * into a broken-image placeholder.
+ */
+export function getReliableImageSources(
+  reference: MediaReference,
+  retryToken = 0,
+): string[] {
+  const normalized = normalizeMediaUrl(reference);
+  if (!normalized) return [];
+
+  const proxy = getMediaProxyUrl(normalized);
+  const directFirst = isPublicMediaUrl(normalized);
+  const candidates = directFirst
+    ? [normalized, proxy]
+    : [proxy, normalized];
+
+  if (!/^blob:/i.test(normalized)) {
+    const separator = normalized.includes("?") ? "&" : "?";
+    const recoveryUrl = `${normalized}${separator}dtpsMediaRetry=${retryToken || Math.floor(Date.now() / 600000)}`;
+    candidates.push(getMediaProxyUrl(recoveryUrl));
+  }
+
+  return candidates.filter(
+    (candidate, index, values): candidate is string =>
+      Boolean(candidate) && values.indexOf(candidate) === index,
+  );
+}
+
 export function getMediaMetadataUrl(reference: MediaReference): string {
   const url = normalizeMediaUrl(reference);
   if (!url || /^blob:/i.test(url)) return "";

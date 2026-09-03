@@ -478,10 +478,11 @@ export async function POST(
         }, { status: 400 });
       }
 
-      // Freeze only complete future days. Same-day meals may already be consumed.
-      if (freezeDate <= today) {
+      // A same-day pause is a deliberate staff action and must be permitted;
+      // only completed calendar days are immutable.
+      if (freezeDate < today) {
         return NextResponse.json({
-          error: `Cannot freeze today or a past date: ${formattedDate}`
+          error: `Cannot freeze a past date: ${formattedDate}`
         }, { status: 400 });
       }
 

@@ -9,6 +9,31 @@ export interface DashboardPurchaseLike {
   createdAt?: DateLike;
 }
 
+export type ClientEntitlementStatus = 'loading' | 'active' | 'none' | 'unknown';
+
+export type ClientMealPlanEmptyState =
+  | 'upcoming'
+  | 'pending-phase'
+  | 'available-for-purchase'
+  | 'entitlement-unavailable';
+
+/**
+ * Chooses the client meal-plan empty state without ever advertising another
+ * purchase before the client's existing entitlement has been checked.
+ */
+export function resolveClientMealPlanEmptyState({
+  hasUpcomingPlan,
+  entitlementStatus,
+}: {
+  hasUpcomingPlan: boolean;
+  entitlementStatus: ClientEntitlementStatus;
+}): ClientMealPlanEmptyState {
+  if (hasUpcomingPlan) return 'upcoming';
+  if (entitlementStatus === 'active') return 'pending-phase';
+  if (entitlementStatus === 'none') return 'available-for-purchase';
+  return 'entitlement-unavailable';
+}
+
 function toId(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const normalized = String(value);

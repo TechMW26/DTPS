@@ -15,6 +15,25 @@ describe("meal plan phase continuity", () => {
     );
   });
 
+  it("treats MongoDB's UTC serialization of IST midnight as the shifted recovery day", () => {
+    const requiredStart = getRequiredNextPhaseStart(
+      "2026-08-28T18:30:00.000Z",
+    );
+
+    expect(requiredStart?.toISOString().slice(0, 10)).toBe("2026-08-30");
+    expect(
+      checkPhaseContinuity(
+        "2026-08-30",
+        "2026-08-28T18:30:00.000Z",
+      ),
+    ).toMatchObject({
+      isContinuous: true,
+      expectedStartDateKey: "2026-08-30",
+      actualStartDateKey: "2026-08-30",
+      gapDays: 0,
+    });
+  });
+
   it("detects Mohit C-7476's ten-day phase gap", () => {
     const result = checkPhaseContinuity("2026-09-01", "2026-08-21");
 

@@ -2,6 +2,7 @@ import {
   getDocumentViewerUrl,
   getMediaKind,
   getMediaProxyUrl,
+  getReliableImageSources,
   getMediaUrl,
   isPublicMediaUrl,
   isViewableDocument,
@@ -34,6 +35,23 @@ describe("media resolver", () => {
       isPublicMediaUrl("https://store.public.blob.vercel-storage.com/report.docx"),
     ).toBe(true);
     expect(isPublicMediaUrl("https://store.blob.vercel-storage.com/private.docx")).toBe(false);
+  });
+
+  it("loads public Blob images directly before falling back to recovery proxy", () => {
+    const blobUrl =
+      "https://store.public.blob.vercel-storage.com/progress/meal.webp";
+    const sources = getReliableImageSources(blobUrl, 123);
+
+    expect(sources[0]).toBe(blobUrl);
+    expect(sources[1]).toContain("/api/media/resolve?");
+    expect(sources.at(-1)).toContain("dtpsMediaRetry%3D123");
+  });
+
+  it("uses recovery proxy first for legacy application media paths", () => {
+    const sources = getReliableImageSources("/uploads/messages/meal.jpg", 456);
+
+    expect(sources[0]).toContain("/api/media/resolve?");
+    expect(sources).toContain("/uploads/messages/meal.jpg");
   });
 
   it("keeps canonical DTPS media URLs intact for desktop recovery", () => {

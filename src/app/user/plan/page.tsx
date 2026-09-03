@@ -22,6 +22,7 @@ import {
   ImageIcon,
   Loader2,
   CalendarDays,
+  CalendarClock,
   Sunrise,
   EggFried,
   Apple,
@@ -51,7 +52,12 @@ import MealCompletionCelebration from '@/components/engagement/MealCompletionCel
 import { toast } from 'sonner';
 import { MEAL_TYPES, type MealTypeKey } from '@/lib/mealConfig';
 import { compressImage, validateImageFile } from '@/lib/imageCompression';
-import { uploadFileReliably } from '@/lib/client-upload';
+import { uploadFileReliably, type UploadedFileResult } from '@/lib/client-upload';
+import { readApiError, resilientFetch } from '@/lib/api/resilient-fetch';
+import {
+  resolveClientMealPlanEmptyState,
+  type ClientEntitlementStatus,
+} from '@/lib/client-plan-visibility';
 
 interface MealItem {
   id: string;
@@ -250,6 +256,7 @@ export default function UserPlanPage() {
   const [weekDates, setWeekDates] = useState<Date[]>([]);
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null);
   const [planDateWindow, setPlanDateWindow] = useState<PlanDateWindow | null>(null);
+  const [entitlementStatus, setEntitlementStatus] = useState<ClientEntitlementStatus>('loading');
   const [loading, setLoading] = useState(true);
   const [isChangingDate, setIsChangingDate] = useState(false); // For skeleton loader on date change
   const [completingMeal, setCompletingMeal] = useState<string | null>(null);
@@ -274,6 +281,10 @@ export default function UserPlanPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const completionUploadRef = useRef<{
+    file: File;
+    result: UploadedFileResult;
+  } | null>(null);
   const deepLinkHandledRef = useRef(false);
   const [deepLinkRequest, setDeepLinkRequest] = useState<MealDeepLinkRequest | null>(null);
   const [celebration, setCelebration] = useState({ open: false, mealLabel: '' });
@@ -364,13 +375,20 @@ export default function UserPlanPage() {
     const fetchPlanDateWindow = async () => {
       try {
         const res = await fetch('/api/client/service-plans', { cache: 'no-store' });
-        if (!res.ok) return;
+        if (!res.ok) {
+          setEntitlementStatus('unknown');
+          return;
+        }
 
         const data = await res.json();
+        const activePurchases = Array.isArray(data?.activePurchases)
+          ? data.activePurchases
+          : [];
+        setEntitlementStatus(data?.hasActivePlan ? 'active' : 'none');
 
         // Prefer explicit upcoming/ongoing meal-plan dates from purchase payload when available.
-        const firstPurchaseWithMealPlan = Array.isArray(data?.activePurchases)
-          ? data.activePurchases.find((purchase: any) =>
+        const firstPurchaseWithMealPlan = activePurchases.length > 0
+          ? activePurchases.find((purchase: any) =>
             purchase?.mealPlanCreated &&
             purchase?.ongoingMealPlanStartDate &&
             purchase?.ongoingMealPlanEndDate
@@ -385,8 +403,8 @@ export default function UserPlanPage() {
           return;
         }
 
-        const firstPurchaseExpectedWindow = Array.isArray(data?.activePurchases)
-          ? data.activePurchases.find((purchase: any) =>
+        const firstPurchaseExpectedWindow = activePurchases.length > 0
+          ? activePurchases.find((purchase: any) =>
             purchase?.expectedStartDate && purchase?.expectedEndDate
           )
           : null;
@@ -408,7 +426,7 @@ export default function UserPlanPage() {
           return;
         }
 
-        const firstActive = Array.isArray(data?.activePurchases) ? data.activePurchases[0] : null;
+        const firstActive = activePurchases[0] || null;
         if (firstActive?.startDate && firstActive?.endDate) {
           setPlanDateWindow({
             startDate: firstActive.startDate,
@@ -416,7 +434,8 @@ export default function UserPlanPage() {
           });
         }
       } catch {
-        // Silent fail; empty state still renders without the helper line.
+        // Do not advertise another purchase when entitlement verification fails.
+        setEntitlementStatus('unknown');
       }
     };
 
@@ -724,6 +743,7 @@ export default function UserPlanPage() {
     setCompletionNotes('');
     setCompletionImage(null);
     setCompletionImagePreview(null);
+    completionUploadRef.current = null;
   };
 
   // Close completion modal
@@ -733,6 +753,7 @@ export default function UserPlanPage() {
     setCompletionImage(null);
     setCompletionImagePreview(null);
     setIsProcessingImage(false);
+    completionUploadRef.current = null;
   };
 
   // Optimistically update completion state for instant UI feedback
@@ -765,6 +786,7 @@ export default function UserPlanPage() {
     }
 
     setIsProcessingImage(true);
+    completionUploadRef.current = null;
     try {
       // Client-side compression to reduce upload payload and submission time
       const { blob } = await compressImage(file, {
@@ -813,29 +835,44 @@ export default function UserPlanPage() {
     const dateKey = format(selectedDate, 'yyyy-MM-dd');
     const previousIsCompleted = dayPlan?.meals.find((m) => m.id === mealId)?.isCompleted ?? false;
 
-    // Use flushSync to force immediate DOM update - ensures "Done" mark appears instantly
+    const imageToUpload = completionImage;
+    const notesToSave = completionNotes;
+    const operationId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `meal-completion-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    // Use flushSync to make the optimistic completion visible immediately.
+    // Keep the modal and selected photo mounted until both upload and database
+    // persistence succeed, so a recoverable save failure never discards work.
     flushSync(() => {
       setIsSubmitting(true);
-      // Optimistic UI update for real-time feedback - update BEFORE modal closes for instant visibility
       updateMealCompletionLocally(mealId, true);
-      closeCompletionModal();
     });
 
     try {
-      const uploadedImage = await uploadFileReliably(completionImage, 'progress');
+      const cachedUpload = completionUploadRef.current;
+      const uploadedImage = cachedUpload?.file === imageToUpload
+        ? cachedUpload.result
+        : await uploadFileReliably(imageToUpload, 'progress');
+      completionUploadRef.current = { file: imageToUpload, result: uploadedImage };
 
-      const response = await fetch('/api/client/meal-plan/complete', {
+      const response = await resilientFetch('/api/client/meal-plan/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mealId,
           date: format(selectedDate, 'yyyy-MM-dd'),
           mealType,
-          notes: completionNotes,
+          notes: notesToSave,
           imageUrl: uploadedImage.url,
           imagePathname: uploadedImage.pathname,
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          operationId,
         }),
+      }, {
+        attempts: 4,
+        timeoutMs: 45_000,
+        idempotencyKey: operationId,
       });
 
       if (response.ok) {
@@ -853,18 +890,18 @@ export default function UserPlanPage() {
           open: true,
           mealLabel: getMealLabel(mealType),
         });
+        closeCompletionModal();
         toast.success('Meal completed — fantastic work!');
       } else {
-        const data = await response.json();
         // Revert optimistic update on failure
         updateMealCompletionLocally(mealId, previousIsCompleted);
-        toast.error(data.error || 'Failed to mark meal as complete');
+        toast.error(await readApiError(response, 'Failed to save the meal photo. Please try again.'));
       }
     } catch (error) {
       // Revert optimistic update on failure
       updateMealCompletionLocally(mealId, previousIsCompleted);
       console.error('Error completing meal:', error);
-      toast.error('Error completing meal');
+      toast.error(error instanceof Error ? error.message : 'The meal photo could not be saved. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -1101,6 +1138,10 @@ export default function UserPlanPage() {
 
     return selectedDay < start ? { start, end } : null;
   })();
+  const emptyState = resolveClientMealPlanEmptyState({
+    hasUpcomingPlan: Boolean(upcomingPlanWindow),
+    entitlementStatus,
+  });
 
   const jumpToAssignedStartDate = () => {
     if (!upcomingPlanWindow) return;
@@ -1382,13 +1423,17 @@ export default function UserPlanPage() {
               <Utensils aria-hidden="true" className="h-9 w-9 text-[#E06A26]" />
             </div>
             <h3 className={`mb-2 text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
-              {upcomingPlanWindow ? 'Your Meal Plan Starts Soon' : 'No Meal Plan Available'}
+              {emptyState === 'upcoming'
+                ? 'Your Meal Plan Starts Soon'
+                : emptyState === 'pending-phase'
+                  ? 'Your Next Meal Plan Is Pending'
+                  : 'No Meal Plan Available'}
             </h3>
             <p className={`mb-2 text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-600'}`}>
               {format(selectedDate, 'EEEE, MMMM d, yyyy')}
             </p>
             <div className="flex flex-col gap-3">
-              {upcomingPlanWindow ? (
+              {emptyState === 'upcoming' && upcomingPlanWindow ? (
                 <>
                   <div className={`rounded-xl border p-4 ${isDarkMode ? 'bg-[#3AB1A0]/10 border-[#3AB1A0]/30' : 'bg-[#3AB1A0]/5 border-[#3AB1A0]/20'}`}>
                     <p className={`text-sm font-semibold ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#1f8b7d]'}`}>
@@ -1408,6 +1453,26 @@ export default function UserPlanPage() {
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </>
+              ) : emptyState === 'pending-phase' ? (
+                <div className={`rounded-xl border p-4 text-left ${isDarkMode ? 'bg-[#3AB1A0]/10 border-[#3AB1A0]/30' : 'bg-[#3AB1A0]/5 border-[#3AB1A0]/20'}`}>
+                  <div className="flex items-start gap-3">
+                    <CalendarClock className={`mt-0.5 h-5 w-5 shrink-0 ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#238f81]'}`} />
+                    <div>
+                      <p className={`text-sm font-semibold ${isDarkMode ? 'text-[#8cdad0]' : 'text-[#1f756a]'}`}>
+                        Your paid program is still active
+                      </p>
+                      <p className={`mt-1 text-sm leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                        Your dietitian has not published a meal plan for this date yet. You do not need to purchase another plan.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : emptyState === 'entitlement-unavailable' ? (
+                <div className={`rounded-xl border p-4 ${isDarkMode ? 'bg-amber-500/10 border-amber-400/30 text-amber-100' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                  <p className="text-sm leading-relaxed">
+                    We could not verify your program status right now. Refresh the page or contact your dietitian for assistance.
+                  </p>
+                </div>
               ) : (
                 <>
                   <p className={`mb-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>

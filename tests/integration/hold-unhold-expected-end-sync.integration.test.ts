@@ -14,6 +14,7 @@ import {
     ensureDatabaseConnection,
 } from '../utils/database';
 import { createRouteTestServer } from '../utils/supertest-route';
+import { getApplicableHoldExtensionMs } from '@/lib/status/holdExtension';
 
 jest.mock('@/lib/utils/activityLogger', () => ({
     logActivity: jest.fn().mockResolvedValue(undefined),
@@ -159,5 +160,104 @@ describe('unhold extends expected end dates across payment models (supertest)', 
         } finally {
             server.close();
         }
+    });
+
+    it('does not extend a purchase when the hold ends before its service starts', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: `admin-prestart-hold-${Date.now()}@example.com`,
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+
+        const now = new Date();
+        const expectedStart = new Date(now.getTime() + 10 * MS_PER_DAY);
+        const expectedEnd = new Date(expectedStart.getTime() + 30 * MS_PER_DAY);
+        const holdStart = new Date(now.getTime() - 5 * MS_PER_DAY);
+
+        const unified = await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Unstarted Unified Plan',
+            planCategory: 'general-wellness',
+            durationDays: 30,
+            baseAmount: 4000,
+            finalAmount: 4000,
+            amount: 4000,
+            status: 'active',
+            paymentStatus: 'paid',
+            paymentType: 'subscription',
+            expectedStartDate: expectedStart,
+            expectedEndDate: expectedEnd,
+            endDate: expectedEnd,
+            daysUsed: 0,
+            remainingDays: 30,
+            mealPlanCreated: false,
+        });
+
+        const legacy = await ClientPurchase.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Unstarted Legacy Plan',
+            durationDays: 30,
+            durationLabel: '30 Days',
+            status: 'active',
+            paymentStatus: 'paid',
+            expectedStartDate: expectedStart,
+            expectedEndDate: expectedEnd,
+            endDate: expectedEnd,
+            finalAmount: 4000,
+            baseAmount: 4000,
+            daysUsed: 0,
+            remainingDays: 30,
+            mealPlanCreated: false,
+        });
+
+        await User.findByIdAndUpdate(client._id, {
+            $set: {
+                'holdStatus.isOnHold': true,
+                'holdStatus.holdDate': holdStart,
+                'holdStatus.holdTime': '12:00:00',
+                'holdStatus.heldBy': new mongoose.Types.ObjectId(entityId(admin)),
+                clientStatus: 'hold',
+            },
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+        const route = await import('@/app/api/admin/clients/[clientId]/hold/route');
+        const server = createRouteTestServer((req) => route.DELETE(req, {
+            params: Promise.resolve({ clientId: entityId(client) }),
+        }));
+
+        try {
+            const response = await request(server)
+                .delete(`/api/admin/clients/${entityId(client)}/hold`)
+                .send({ reason: 'activate before first phase' });
+
+            expect(response.status).toBe(200);
+            expect(response.body.endDateExtension.extendedPurchasesCount).toBe(0);
+
+            const refreshedUnified: any = await UnifiedPayment.findById(unified._id).lean();
+            const refreshedLegacy: any = await ClientPurchase.findById(legacy._id).lean();
+            expect(new Date(refreshedUnified.expectedEndDate).getTime()).toBe(expectedEnd.getTime());
+            expect(new Date(refreshedUnified.endDate).getTime()).toBe(expectedEnd.getTime());
+            expect(refreshedUnified.holdExtensionMs || 0).toBe(0);
+            expect(new Date(refreshedLegacy.expectedEndDate).getTime()).toBe(expectedEnd.getTime());
+            expect(new Date(refreshedLegacy.endDate).getTime()).toBe(expectedEnd.getTime());
+        } finally {
+            server.close();
+        }
+    });
+
+    it('counts only the hold period after a future service start', () => {
+        const holdStart = new Date('2026-08-20T00:00:00.000Z');
+        const serviceStart = new Date('2026-08-22T00:00:00.000Z');
+        const holdEnd = new Date('2026-08-25T00:00:00.000Z');
+
+        expect(getApplicableHoldExtensionMs({
+            expectedStartDate: serviceStart,
+            expectedEndDate: new Date('2026-09-20T00:00:00.000Z'),
+            daysUsed: 0,
+            mealPlanCreated: false,
+        }, holdStart, holdEnd)).toBe(3 * MS_PER_DAY);
     });
 });

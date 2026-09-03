@@ -633,4 +633,53 @@ describe('payment flow integrations (supertest + jest)', () => {
             server.close();
         }
     });
+
+    it('lets a dietitian reschedule a paid purchase that has never been used', async () => {
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+        const purchase = await UnifiedPayment.create({
+            client: client._id,
+            dietitian: dietitian._id,
+            planName: 'Unused Trial Plan',
+            planCategory: 'weight-loss',
+            durationDays: 10,
+            durationLabel: '10 Days',
+            baseAmount: 999,
+            finalAmount: 299,
+            amount: 999,
+            status: 'paid',
+            paymentStatus: 'paid',
+            expectedStartDate: new Date('2026-01-01T00:00:00.000Z'),
+            expectedEndDate: new Date('2026-01-10T00:00:00.000Z'),
+            mealPlanCreated: false,
+            daysUsed: 0,
+            remainingDays: 10,
+            paidAt: new Date('2026-01-01T00:00:00.000Z'),
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({
+            user: toSessionUser(dietitian),
+        });
+        const route = await import('@/app/api/client-purchases/route');
+        const server = createRouteTestServer(route.PUT);
+
+        try {
+            const response = await request(server)
+                .put('/api/client-purchases')
+                .send({
+                    purchaseId: entityId(purchase),
+                    expectedStartDate: '2026-09-05',
+                    expectedEndDate: '2026-09-14',
+                });
+
+            expect(response.status).toBe(200);
+            expect(response.body.success).toBe(true);
+            const refreshed: any = await UnifiedPayment.findById(purchase._id).lean();
+            expect(refreshed.expectedStartDate.toISOString().slice(0, 10)).toBe('2026-09-05');
+            expect(refreshed.expectedEndDate.toISOString().slice(0, 10)).toBe('2026-09-14');
+            expect(refreshed.daysUsed).toBe(0);
+            expect(refreshed.mealPlanCreated).toBe(false);
+        } finally {
+            server.close();
+        }
+    });
 });

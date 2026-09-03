@@ -9,6 +9,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useRealtime } from "@/hooks/useRealtime";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { DocumentViewerModal } from "@/components/chat/DocumentViewerModal";
+import ReliableImage from "@/components/media/ReliableImage";
 
 // Import the desktop version for non-clients
 const DesktopMessagesPage = dynamic(() => import("./page-old-desktop"), {
@@ -46,7 +47,6 @@ import {
   Image as ImageIcon,
   Play,
   Eye,
-  RotateCcw,
 } from "lucide-react";
 import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 import {
@@ -150,14 +150,6 @@ function ClientMessagesUI() {
     filename: string;
     mimeType: string;
   } | null>(null);
-
-  // Retry state for failed media attachments (mirrors client messages page)
-  const [failedAttachments, setFailedAttachments] = useState<Set<string>>(
-    new Set(),
-  );
-  const [attachmentRetryTick, setAttachmentRetryTick] = useState<
-    Record<string, number>
-  >({});
 
   // Call state management
   const [incomingCall, setIncomingCall] = useState<any>(null);
@@ -1154,50 +1146,6 @@ function ClientMessagesUI() {
     }
   };
 
-  // Cache-bust ImageKit URLs to avoid serving stale CDN-cached error
-  // responses (e.g. from billing suspension periods).
-  // Cache-bust params go on the RAW ImageKit URL BEFORE it's wrapped in the
-  // media proxy, so the proxy fetches the cache-busted URL from ImageKit.
-  const getCacheBustedProxyUrl = (
-    messageId: string,
-    attachment: { url: string; filename?: string },
-  ) => {
-    const retryTick = attachmentRetryTick[messageId] || 0;
-    const rawUrl = attachment.url;
-    const isImageKit = /ik\.imagekit\.io/i.test(rawUrl);
-
-    if (isImageKit || retryTick > 0) {
-      const separator = rawUrl.includes("?") ? "&" : "?";
-      const bustParam =
-        retryTick > 0
-          ? `retry=${retryTick}`
-          : `ts=${Math.floor(Date.now() / 600000)}`; // ~10 min rotation
-      const cacheBustedUrl = `${rawUrl}${separator}${bustParam}`;
-      return getMediaProxyUrl({
-        url: cacheBustedUrl,
-        filename: attachment.filename,
-      });
-    }
-    return getMediaProxyUrl(attachment);
-  };
-
-  const markAttachmentFailed = (messageId: string) => {
-    console.warn("[Messages] Media load failed for message:", messageId);
-    setFailedAttachments((prev) => new Set([...prev, messageId]));
-  };
-
-  const retryAttachment = (messageId: string) => {
-    setFailedAttachments((prev) => {
-      const next = new Set(prev);
-      next.delete(messageId);
-      return next;
-    });
-    setAttachmentRetryTick((prev) => ({
-      ...prev,
-      [messageId]: (prev[messageId] || 0) + 1,
-    }));
-  };
-
   const formatLastMessageTime = (date: string) => {
     try {
       if (!date) return "";
@@ -1359,21 +1307,8 @@ function ClientMessagesUI() {
                         {message.type === "image" &&
                           message.attachments?.[0] && (
                             <div className="mb-2">
-                              {failedAttachments.has(message._id) ? (
-                                <button
-                                  type="button"
-                                  onClick={() => retryAttachment(message._id)}
-                                  className="w-40 h-32 rounded-lg flex flex-col items-center justify-center gap-2 text-xs bg-gray-200 text-gray-500 hover:bg-gray-300 transition-colors"
-                                >
-                                  <RotateCcw className="w-5 h-5" />
-                                  <span>Image unavailable · Tap to retry</span>
-                                </button>
-                              ) : (
-                                <img
-                                  src={getCacheBustedProxyUrl(
-                                    message._id,
-                                    message.attachments[0],
-                                  )}
+                              <ReliableImage
+                                  reference={message.attachments[0]}
                                   alt="Shared image"
                                   className="rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                                   style={{
@@ -1382,24 +1317,13 @@ function ClientMessagesUI() {
                                     objectFit: "cover",
                                     maxHeight: "256px",
                                   }}
-                                  onClick={() =>
+                                  onOpen={() =>
                                     setPreviewImage(
                                       getMediaUrl(message.attachments?.[0]) ||
                                         null,
                                     )
                                   }
-                                  onError={(e) => {
-                                    console.error(
-                                      "[Messages] Image load error",
-                                      {
-                                        messageId: message._id,
-                                        url: message.attachments?.[0]?.url,
-                                      },
-                                    );
-                                    markAttachmentFailed(message._id);
-                                  }}
                                 />
-                              )}
                             </div>
                           )}
 

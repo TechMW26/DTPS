@@ -49,6 +49,7 @@ interface IMealCompletion {
   notes?: string;
   imagePath?: string;
   imageKitFileId?: string;
+  operationId?: string;
   nutrition?: {
     calories: number;
     protein: number;
@@ -231,6 +232,7 @@ const MealCompletionSchema = new Schema(
     notes: { type: String, maxlength: 300 },
     imagePath: { type: String, maxlength: 1000 },
     imageKitFileId: { type: String },
+    operationId: { type: String, maxlength: 120 },
     nutrition: {
       calories: { type: Number, min: 0 },
       protein: { type: Number, min: 0 },

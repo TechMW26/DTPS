@@ -1,3 +1,5 @@
+import { toISTDateKey } from "@/lib/utils/ist";
+
 export interface PhaseContinuityResult {
   isContinuous: boolean;
   expectedStartDate: Date;
@@ -13,13 +15,13 @@ export interface PhaseStartPolicyResult extends PhaseContinuityResult {
 }
 
 function toDay(value: unknown): Date | null {
-  if (!value) return null;
-  const date =
-    value instanceof Date ? new Date(value) : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return null;
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  const key = toISTDateKey(
+    value as Date | string | number | null | undefined,
   );
+  if (!key) return null;
+
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function addUtcDays(date: Date, days: number): Date {

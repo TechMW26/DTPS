@@ -14,6 +14,8 @@ import {
     ensureDatabaseConnection,
 } from '../utils/database';
 import { createRouteTestServer } from '../utils/supertest-route';
+import { getRequiredNextPhaseStart } from '@/lib/meal-plan-phase-continuity';
+import { toISTDateKey } from '@/lib/utils/ist';
 
 function toSessionUser(user: any) {
     return {
@@ -205,6 +207,10 @@ describe('meal plan freeze/unfreeze integrations (supertest + jest)', () => {
                 Math.abs(utcDayDiff(new Date(freezeResponse.body.data.newEndDate), new Date(refreshedPhase2AfterFreeze.endDate)))
             ).toBeLessThanOrEqual(1);
             expect(toYMD(new Date(refreshedPhase2AfterFreeze.endDate))).not.toBe(toYMD(phase2End));
+            const nextPhaseStart = getRequiredNextPhaseStart(refreshedPhase2AfterFreeze.endDate);
+            expect(nextPhaseStart?.toISOString().slice(0, 10)).toBe(
+                toYMD(addDays(new Date(`${freezeResponse.body.data.newEndDate}T00:00:00.000Z`), 1)),
+            );
             expect(
                 localCalendarDayDiff(new Date(purchaseBeforeFreeze.expectedEndDate), new Date(refreshedPurchaseAfterFreeze.expectedEndDate))
             ).toBe(2);
@@ -304,6 +310,51 @@ describe('meal plan freeze/unfreeze integrations (supertest + jest)', () => {
                 toYMD(addDays(pauseStart, 8)),
                 toYMD(addDays(pauseStart, 9)),
             ]);
+        } finally {
+            server.close();
+        }
+    });
+
+    it('allows staff to freeze the current calendar day', async () => {
+        const admin = await createUser({
+            role: UserRole.ADMIN,
+            email: `admin-same-day-freeze-${Date.now()}@example.com`,
+        });
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+        const today = new Date();
+        today.setHours(12, 0, 0, 0);
+        const tomorrow = addDays(today, 1);
+        const todayKey = toYMD(today);
+
+        const plan = await ClientMealPlan.create({
+            clientId: client._id,
+            dietitianId: dietitian._id,
+            name: 'Same-day pause plan',
+            meals: buildDailyMeals(today, 2),
+            startDate: today,
+            endDate: tomorrow,
+            duration: 2,
+            status: 'active',
+            goals: { primaryGoal: 'weight-loss' },
+        });
+
+        (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+        const route = await import('@/app/api/client-meal-plans/[id]/freeze/route');
+        const planId = entityId(plan);
+        const server = createRouteTestServer((nextRequest) =>
+            route.POST(nextRequest, { params: Promise.resolve({ id: planId }) })
+        );
+
+        try {
+            const response = await request(server)
+                .post(`/api/client-meal-plans/${planId}/freeze`)
+                .send({ freezeDates: [todayKey], reason: 'Same-day client request' });
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.frozenDates).toEqual([todayKey]);
+            const refreshed: any = await ClientMealPlan.findById(plan._id).lean();
+            expect(refreshed.freezedDays).toHaveLength(1);
+            expect(toISTDateKey(refreshed.freezedDays[0].date)).toBe(todayKey);
         } finally {
             server.close();
         }

@@ -1,4 +1,7 @@
-import { prioritizeClientDashboardPurchases } from '@/lib/client-plan-visibility';
+import {
+  prioritizeClientDashboardPurchases,
+  resolveClientMealPlanEmptyState,
+} from '@/lib/client-plan-visibility';
 
 describe('client dashboard meal-plan visibility', () => {
   const now = new Date('2026-08-22T12:00:00.000Z');
@@ -75,5 +78,43 @@ describe('client dashboard meal-plan visibility', () => {
     );
 
     expect(result.map((purchase) => purchase._id)).toEqual(['sooner', 'later']);
+  });
+});
+
+describe('client meal-plan empty-state messaging', () => {
+  it('does not offer another purchase while a paid entitlement is active', () => {
+    expect(
+      resolveClientMealPlanEmptyState({
+        hasUpcomingPlan: false,
+        entitlementStatus: 'active',
+      }),
+    ).toBe('pending-phase');
+  });
+
+  it('only offers a purchase after confirming there is no active entitlement', () => {
+    expect(
+      resolveClientMealPlanEmptyState({
+        hasUpcomingPlan: false,
+        entitlementStatus: 'none',
+      }),
+    ).toBe('available-for-purchase');
+  });
+
+  it('keeps the purchase action hidden if entitlement verification fails', () => {
+    expect(
+      resolveClientMealPlanEmptyState({
+        hasUpcomingPlan: false,
+        entitlementStatus: 'unknown',
+      }),
+    ).toBe('entitlement-unavailable');
+  });
+
+  it('prioritizes an assigned future plan over entitlement messaging', () => {
+    expect(
+      resolveClientMealPlanEmptyState({
+        hasUpcomingPlan: true,
+        entitlementStatus: 'active',
+      }),
+    ).toBe('upcoming');
   });
 });
