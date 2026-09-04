@@ -15,6 +15,7 @@ import {
     getFirebaseErrorCode,
     getPhoneAuthErrorMessage,
     getWhatsappFallbackReason,
+    shouldUseWhatsappFallbackForRuntime,
     shouldFallbackToWhatsapp,
 } from '@/lib/firebase/phoneAuthClient';
 import { validatePhoneNumber } from '@/lib/validations/contact';
@@ -138,13 +139,34 @@ describe('Firebase SMS phone authentication with WhatsApp fallback', () => {
         expect(shouldFallbackToWhatsapp({ code: 'auth/too-many-requests' })).toBe(false);
         expect(shouldFallbackToWhatsapp({ code: 'auth/network-request-failed' })).toBe(true);
         expect(shouldFallbackToWhatsapp({ code: 'auth/invalid-app-credential' })).toBe(true);
+        expect(shouldFallbackToWhatsapp({ code: 'auth/captcha-check-failed' })).toBe(true);
         expect(shouldFallbackToWhatsapp({ code: 'auth/new-service-outage-code' })).toBe(true);
         expect(getWhatsappFallbackReason({ code: 'auth/new-service-outage-code' }))
             .toBe('firebase-service-unavailable');
-        expect(getWhatsappFallbackReason({ code: 'auth/captcha-check-failed' })).toBeNull();
+        expect(getWhatsappFallbackReason({ code: 'auth/captcha-check-failed' }))
+            .toBe('auth/captcha-check-failed');
         expect(getFirebaseErrorCode(new Error('offline'))).toBe('firebase-service-unavailable');
         expect(getPhoneAuthErrorMessage({ code: 'auth/invalid-verification-code' }))
             .toContain('incorrect');
+    });
+
+    it('avoids browser reCAPTCHA handoffs inside native and installed app runtimes', () => {
+        expect(shouldUseWhatsappFallbackForRuntime({
+            userAgent: 'Mozilla/5.0 Android; wv) AppleWebKit/537.36 DTPSApp/Android',
+        })).toBe(true);
+        expect(shouldUseWhatsappFallbackForRuntime({
+            userAgent: 'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Mobile/15E148 DTPSApp/iOS',
+        })).toBe(true);
+        expect(shouldUseWhatsappFallbackForRuntime({
+            userAgent: 'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Mobile/15E148',
+        })).toBe(true);
+        expect(shouldUseWhatsappFallbackForRuntime({
+            userAgent: 'Mozilla/5.0 Chrome/140.0 Safari/537.36',
+            displayModeStandalone: true,
+        })).toBe(true);
+        expect(shouldUseWhatsappFallbackForRuntime({
+            userAgent: 'Mozilla/5.0 Chrome/140.0 Safari/537.36',
+        })).toBe(false);
     });
 
     it('uses WhatsApp only for a signed Firebase service-failure fallback', async () => {
@@ -167,6 +189,17 @@ describe('Firebase SMS phone authentication with WhatsApp fallback', () => {
         }));
         expect(denied.status).toBe(400);
 
+        const nativeFallback = await sendOtp(request('http://localhost/api/auth/otp/send', {
+            channel: 'whatsapp-fallback',
+            authIntent,
+            fallbackReason: 'firebase-client-incompatible',
+        }));
+        expect(nativeFallback.status).toBe(200);
+        await expect(nativeFallback.json()).resolves.toMatchObject({
+            provider: 'whatsapp',
+            message: expect.stringContaining('stay inside the DTPS app'),
+        });
+
         const response = await sendOtp(request('http://localhost/api/auth/otp/send', {
             channel: 'whatsapp-fallback',
             authIntent,
@@ -176,7 +209,7 @@ describe('Firebase SMS phone authentication with WhatsApp fallback', () => {
 
         expect(response.status).toBe(200);
         expect(data).toMatchObject({ provider: 'whatsapp', codeLength: 4 });
-        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
         expect(await OTPRecord.countDocuments({ phone: '+919876543210' })).toBe(1);
     });
 

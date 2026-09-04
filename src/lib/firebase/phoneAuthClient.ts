@@ -11,6 +11,62 @@ export interface FirebasePhoneAuthError extends Error {
     code?: string;
 }
 
+export interface PhoneAuthRuntimeSignals {
+    userAgent?: string;
+    displayModeStandalone?: boolean;
+    iosStandalone?: boolean;
+    nativeBridge?: boolean;
+    nativeFlag?: boolean;
+}
+
+/**
+ * Firebase Web Phone Auth must complete a browser reCAPTCHA challenge. Native
+ * DTPS WebViews and installed PWAs can move that challenge to an external
+ * browser and lose the result when returning to the app. In those runtimes we
+ * use the signed, rate-limited WhatsApp fallback without starting reCAPTCHA.
+ */
+export function shouldUseWhatsappFallbackForRuntime(
+    signals: PhoneAuthRuntimeSignals,
+): boolean {
+    const userAgent = signals.userAgent || '';
+    const isAndroidWebView = /;\s*wv\)/i.test(userAgent) || /\bDTPSApp\/Android\b/i.test(userAgent);
+    const isIOSWebView = /\bDTPSApp\/iOS\b/i.test(userAgent)
+        || (/\b(iPhone|iPad|iPod)\b/i.test(userAgent)
+            && /AppleWebKit/i.test(userAgent)
+            && !/Safari/i.test(userAgent));
+
+    return Boolean(
+        signals.nativeBridge
+        || signals.nativeFlag
+        || signals.displayModeStandalone
+        || signals.iosStandalone
+        || isAndroidWebView
+        || isIOSWebView,
+    );
+}
+
+export function shouldUseWhatsappFallbackForCurrentRuntime(): boolean {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+
+    const runtimeWindow = window as Window & {
+        NativeApp?: unknown;
+        isNativeApp?: boolean;
+        webkit?: { messageHandlers?: { nativeInterface?: unknown } };
+    };
+    const iosNavigator = navigator as Navigator & { standalone?: boolean };
+
+    return shouldUseWhatsappFallbackForRuntime({
+        userAgent: navigator.userAgent,
+        displayModeStandalone: window.matchMedia?.('(display-mode: standalone)').matches ?? false,
+        iosStandalone: iosNavigator.standalone === true,
+        nativeBridge: Boolean(
+            runtimeWindow.NativeApp
+            || runtimeWindow.webkit?.messageHandlers?.nativeInterface,
+        ),
+        nativeFlag: runtimeWindow.isNativeApp === true,
+    });
+}
+
 export function getFirebaseErrorCode(error: unknown): string {
     if (error && typeof error === 'object' && 'code' in error) {
         return String((error as { code?: unknown }).code || 'firebase-service-unavailable');
@@ -33,8 +89,6 @@ export function getWhatsappFallbackReason(error: unknown): string | null {
     const nonFallbackReasons = new Set([
         'auth/invalid-phone-number',
         'auth/too-many-requests',
-        'auth/captcha-check-failed',
-        'auth/missing-recaptcha-token',
         'auth/invalid-verification-code',
         'auth/code-expired',
         'auth/session-expired',
@@ -44,14 +98,17 @@ export function getWhatsappFallbackReason(error: unknown): string | null {
 
     const explicitReasons = new Set([
         'auth/billing-not-enabled',
+        'auth/captcha-check-failed',
         'auth/configuration-not-found',
         'auth/internal-error',
         'auth/invalid-api-key',
         'auth/invalid-app-credential',
+        'auth/missing-recaptcha-token',
         'auth/network-request-failed',
         'auth/operation-not-allowed',
         'auth/quota-exceeded',
         'auth/unauthorized-domain',
+        'firebase-client-incompatible',
         'firebase-config-unavailable',
         'firebase-service-unavailable',
     ]);

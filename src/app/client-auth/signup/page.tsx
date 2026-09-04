@@ -24,6 +24,7 @@ import {
     getPhoneAuthErrorMessage,
     getWhatsappFallbackReason,
     requestFirebasePhoneOtp,
+    shouldUseWhatsappFallbackForCurrentRuntime,
     type PhoneOtpProvider,
 } from '@/lib/firebase/phoneAuthClient';
 
@@ -180,18 +181,22 @@ export default function ClientSignUpPage() {
             setAuthIntent(data.authIntent);
             firebaseIdTokenRef.current = '';
             try {
-                if (!data.firebaseAvailable) {
-                    throw Object.assign(new Error('Firebase is unavailable'), {
-                        code: 'firebase-config-unavailable',
-                    });
+                if (shouldUseWhatsappFallbackForCurrentRuntime()) {
+                    await requestWhatsappFallback(data.authIntent, 'firebase-client-incompatible');
+                } else {
+                    if (!data.firebaseAvailable) {
+                        throw Object.assign(new Error('Firebase is unavailable'), {
+                            code: 'firebase-config-unavailable',
+                        });
+                    }
+                    confirmationResultRef.current = await requestFirebasePhoneOtp(
+                        phoneValidation.normalized!,
+                        'signup-firebase-recaptcha',
+                    );
+                    setOtpProvider('firebase');
+                    setOtp(Array(data.codeLength || 6).fill(''));
+                    setSuccess('We sent a 6-digit verification code by SMS. Standard messaging rates may apply.');
                 }
-                confirmationResultRef.current = await requestFirebasePhoneOtp(
-                    phoneValidation.normalized!,
-                    'signup-firebase-recaptcha',
-                );
-                setOtpProvider('firebase');
-                setOtp(Array(data.codeLength || 6).fill(''));
-                setSuccess('We sent a 6-digit verification code by SMS. Standard messaging rates may apply.');
             } catch (firebaseError) {
                 const fallbackReason = getWhatsappFallbackReason(firebaseError);
                 if (!fallbackReason) {
@@ -422,7 +427,7 @@ export default function ClientSignUpPage() {
                                     />
                                 </div>
                                 <p className="text-xs leading-5 text-gray-500">
-                                    By continuing, you agree to receive a one-time verification code by SMS. Standard messaging rates may apply.
+                                    By continuing, you agree to receive a one-time verification code by SMS or, when needed, WhatsApp. Standard messaging rates may apply.
                                 </p>
 
                                 {/* Email Input (Optional) */}

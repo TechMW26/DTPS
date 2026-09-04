@@ -12,14 +12,17 @@ import {
 
 const FIREBASE_FALLBACK_REASONS = new Set([
     'auth/billing-not-enabled',
+    'auth/captcha-check-failed',
     'auth/configuration-not-found',
     'auth/internal-error',
     'auth/invalid-api-key',
     'auth/invalid-app-credential',
+    'auth/missing-recaptcha-token',
     'auth/network-request-failed',
     'auth/operation-not-allowed',
     'auth/quota-exceeded',
     'auth/unauthorized-domain',
+    'firebase-client-incompatible',
     'firebase-config-unavailable',
     'firebase-service-unavailable',
 ]);
@@ -116,6 +119,10 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
         );
     }
 
+    const message = fallbackReason === 'firebase-client-incompatible'
+        ? 'We sent your verification code on WhatsApp so you can stay inside the DTPS app.'
+        : 'SMS delivery was unavailable, so we sent your verification code on WhatsApp.';
+
     return NextResponse.json({
         success: true,
         provider: 'whatsapp',
@@ -124,7 +131,7 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
         authIntent,
         phone: maskPhone(intent.phone),
         expiresIn: Math.floor(OTP_CONFIG.EXPIRY_MS / 1000),
-        message: 'SMS delivery was unavailable, so we sent your verification code on WhatsApp.',
+        message,
     });
 }
 
