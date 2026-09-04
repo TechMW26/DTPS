@@ -14,6 +14,7 @@ import {
 import {
     getFirebaseErrorCode,
     getPhoneAuthErrorMessage,
+    getWhatsappFallbackReason,
     shouldFallbackToWhatsapp,
 } from '@/lib/firebase/phoneAuthClient';
 import { validatePhoneNumber } from '@/lib/validations/contact';
@@ -136,6 +137,11 @@ describe('Firebase SMS phone authentication with WhatsApp fallback', () => {
         expect(shouldFallbackToWhatsapp({ code: 'auth/invalid-phone-number' })).toBe(false);
         expect(shouldFallbackToWhatsapp({ code: 'auth/too-many-requests' })).toBe(false);
         expect(shouldFallbackToWhatsapp({ code: 'auth/network-request-failed' })).toBe(true);
+        expect(shouldFallbackToWhatsapp({ code: 'auth/invalid-app-credential' })).toBe(true);
+        expect(shouldFallbackToWhatsapp({ code: 'auth/new-service-outage-code' })).toBe(true);
+        expect(getWhatsappFallbackReason({ code: 'auth/new-service-outage-code' }))
+            .toBe('firebase-service-unavailable');
+        expect(getWhatsappFallbackReason({ code: 'auth/captcha-check-failed' })).toBeNull();
         expect(getFirebaseErrorCode(new Error('offline'))).toBe('firebase-service-unavailable');
         expect(getPhoneAuthErrorMessage({ code: 'auth/invalid-verification-code' }))
             .toContain('incorrect');

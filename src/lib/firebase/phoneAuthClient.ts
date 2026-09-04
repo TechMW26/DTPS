@@ -19,17 +19,44 @@ export function getFirebaseErrorCode(error: unknown): string {
 }
 
 export function shouldFallbackToWhatsapp(error: unknown): boolean {
-    return new Set([
+    return getWhatsappFallbackReason(error) !== null;
+}
+
+/**
+ * Firebase adds client error codes over time. WhatsApp fallback must not stop
+ * working merely because a service/configuration failure has a code this build
+ * has not seen before. Only errors that need user correction or an abuse-limit
+ * cooldown stay on the Firebase path.
+ */
+export function getWhatsappFallbackReason(error: unknown): string | null {
+    const code = getFirebaseErrorCode(error);
+    const nonFallbackReasons = new Set([
+        'auth/invalid-phone-number',
+        'auth/too-many-requests',
+        'auth/captcha-check-failed',
+        'auth/missing-recaptcha-token',
+        'auth/invalid-verification-code',
+        'auth/code-expired',
+        'auth/session-expired',
+    ]);
+
+    if (nonFallbackReasons.has(code)) return null;
+
+    const explicitReasons = new Set([
         'auth/billing-not-enabled',
         'auth/configuration-not-found',
         'auth/internal-error',
+        'auth/invalid-api-key',
+        'auth/invalid-app-credential',
         'auth/network-request-failed',
         'auth/operation-not-allowed',
         'auth/quota-exceeded',
         'auth/unauthorized-domain',
         'firebase-config-unavailable',
         'firebase-service-unavailable',
-    ]).has(getFirebaseErrorCode(error));
+    ]);
+
+    return explicitReasons.has(code) ? code : 'firebase-service-unavailable';
 }
 
 export function getPhoneAuthErrorMessage(error: unknown): string {

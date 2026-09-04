@@ -20,10 +20,9 @@ import type { ConfirmationResult } from 'firebase/auth';
 import {
   clearFirebaseRecaptcha,
   confirmFirebasePhoneOtp,
-  getFirebaseErrorCode,
   getPhoneAuthErrorMessage,
+  getWhatsappFallbackReason,
   requestFirebasePhoneOtp,
-  shouldFallbackToWhatsapp,
   type PhoneOtpProvider,
 } from '@/lib/firebase/phoneAuthClient';
 
@@ -199,11 +198,12 @@ export default function ClientSignInPage() {
         setOtp(Array(data.codeLength || 6).fill(''));
         setDeliveryNotice('We sent a 6-digit verification code by SMS. Standard messaging rates may apply.');
       } catch (firebaseError) {
-        if (!shouldFallbackToWhatsapp(firebaseError)) {
+        const fallbackReason = getWhatsappFallbackReason(firebaseError);
+        if (!fallbackReason) {
           setError(getPhoneAuthErrorMessage(firebaseError));
           return;
         }
-        await requestWhatsappFallback(data.authIntent, getFirebaseErrorCode(firebaseError));
+        await requestWhatsappFallback(data.authIntent, fallbackReason);
       }
 
       setOtpSent(true);
@@ -211,7 +211,9 @@ export default function ClientSignInPage() {
       setResendTimer(60);
     } catch (err) {
       console.error('Send OTP error:', err);
-      setError('Failed to send OTP. Please check your connection and try again.');
+      setError(err instanceof Error
+        ? err.message
+        : 'Failed to send OTP. Please check your connection and try again.');
     } finally {
       setIsLoading(false);
     }

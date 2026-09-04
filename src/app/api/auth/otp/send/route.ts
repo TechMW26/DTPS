@@ -14,6 +14,8 @@ const FIREBASE_FALLBACK_REASONS = new Set([
     'auth/billing-not-enabled',
     'auth/configuration-not-found',
     'auth/internal-error',
+    'auth/invalid-api-key',
+    'auth/invalid-app-credential',
     'auth/network-request-failed',
     'auth/operation-not-allowed',
     'auth/quota-exceeded',
