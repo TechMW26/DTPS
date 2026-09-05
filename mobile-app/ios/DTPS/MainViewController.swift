@@ -27,8 +27,9 @@ class MainViewController: UIViewController {
         "ik.imagekit.io",
         // Embedded document previews
         "docs.google.com",
-        // Firebase Phone Auth managed reCAPTCHA challenge
-        "google.com", "gstatic.com", "recaptcha.net",
+        // Firebase Phone Auth and its managed reCAPTCHA challenge
+        "google.com", "googleapis.com", "googleusercontent.com", "gstatic.com",
+        "firebaseapp.com", "web.app", "recaptcha.net",
     ]
 
     private var progressObservation: NSKeyValueObservation?
@@ -39,6 +40,13 @@ class MainViewController: UIViewController {
     private var loadTimeoutTimer: Timer?
     /// Maximum time (seconds) to wait for the initial page load before showing error UI
     private let loadTimeoutSeconds: TimeInterval = 30
+
+    private func isAllowedWebHost(_ host: String) -> Bool {
+        let normalizedHost = host.lowercased()
+        return allowedHosts.contains {
+            normalizedHost == $0 || normalizedHost.hasSuffix(".\($0)")
+        }
+    }
 
     // MARK: - Lifecycle
 
@@ -385,7 +393,7 @@ extension MainViewController: WKNavigationDelegate {
         // redirect them to the client signin page instead.
         if let currentURL = webView.url,
            let host = currentURL.host?.lowercased(),
-           allowedHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }),
+           isAllowedWebHost(host),
            currentURL.path.hasPrefix("/auth/signin") {
             if let clientSignIn = URL(string: "\(appOrigin)/client-auth/signin") {
                 webView.load(URLRequest(url: clientSignIn))
@@ -592,8 +600,17 @@ extension MainViewController: WKNavigationDelegate {
 
         let host = url.host?.lowercased() ?? ""
 
+        // Embedded provider frames (Firebase reCAPTCHA, Razorpay Checkout, bank
+        // challenges) must remain inside WKWebView. Opening a subframe in Safari
+        // abandons the JavaScript callback that completes the in-app flow.
+        if navigationAction.targetFrame?.isMainFrame == false,
+           url.scheme == "https" || url.scheme == "http" {
+            decisionHandler(.allow)
+            return
+        }
+
         // Allow internal + payment gateway navigation
-        if allowedHosts.contains(where: { host.contains($0) }) { decisionHandler(.allow); return }
+        if isAllowedWebHost(host) { decisionHandler(.allow); return }
 
         // Allow blob / data
         if url.scheme == "blob" || url.scheme == "data" { decisionHandler(.allow); return }

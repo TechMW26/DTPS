@@ -11,8 +11,17 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private let appURL = URL(string: "https://dtps.tech/user")!
     private let allowedHosts = [
         "dtps.tech", "www.dtps.tech",
-        "google.com", "gstatic.com", "recaptcha.net",
+        "razorpay.com",
+        "google.com", "googleapis.com", "googleusercontent.com", "gstatic.com",
+        "firebaseapp.com", "web.app", "recaptcha.net",
     ]
+
+    private func isAllowedWebHost(_ host: String) -> Bool {
+        let normalizedHost = host.lowercased()
+        return allowedHosts.contains {
+            normalizedHost == $0 || normalizedHost.hasSuffix(".\($0)")
+        }
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -167,25 +176,36 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = navigationAction.request.url, let host = url.host else {
+        guard let url = navigationAction.request.url else {
             decisionHandler(.allow)
             return
         }
+
+        // Provider-owned iframes must stay embedded. Sending a Firebase
+        // reCAPTCHA subframe to Safari loses the in-page OTP callback.
+        if navigationAction.targetFrame?.isMainFrame == false,
+           url.scheme == "https" || url.scheme == "http" {
+            decisionHandler(.allow)
+            return
+        }
+
+        if url.scheme == "about" || url.scheme == "blob" || url.scheme == "data" {
+            decisionHandler(.allow)
+            return
+        }
+
+        let host = url.host?.lowercased() ?? ""
         
         // Allow navigation within allowed hosts
-        if allowedHosts.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) {
+        if isAllowedWebHost(host) {
             decisionHandler(.allow)
             return
         }
-        
-        // Allow payment and auth providers
-        if host.contains("razorpay.com") || host.contains("googleapis.com") || host.contains("firebaseapp.com") {
-            decisionHandler(.allow)
-            return
-        }
-        
+
         // Open external links in Safari
-        UIApplication.shared.open(url)
+        if url.scheme == "http" || url.scheme == "https" || UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        }
         decisionHandler(.cancel)
     }
     
@@ -194,6 +214,18 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     }
     
     // MARK: - WKUIDelegate
+
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
+            webView.load(URLRequest(url: url))
+        }
+        return nil
+    }
     
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
