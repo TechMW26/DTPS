@@ -18,6 +18,7 @@ import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 import Image from 'next/image';
 import type { ConfirmationResult } from 'firebase/auth';
 import {
+  buildSignupPhonePrefillUrl,
   clearFirebaseRecaptcha,
   confirmFirebasePhoneOtp,
   getPhoneAuthErrorMessage,
@@ -52,6 +53,7 @@ export default function ClientSignInPage() {
   const [authIntent, setAuthIntent] = useState('');
   const [deliveryNotice, setDeliveryNotice] = useState('');
   const [nativeIosApp, setNativeIosApp] = useState(false);
+  const [registrationPrompt, setRegistrationPrompt] = useState<{ message: string; href: string } | null>(null);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const confirmationResultRef = useRef<ConfirmationResult | null>(null);
   const firebaseIdTokenRef = useRef('');
@@ -170,6 +172,7 @@ export default function ClientSignInPage() {
 
     setIsLoading(true);
     setError('');
+    setRegistrationPrompt(null);
 
     try {
       const response = await fetch('/api/auth/otp/send', {
@@ -181,6 +184,13 @@ export default function ClientSignInPage() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
+        if (response.status === 404 && data.code === 'client-not-found') {
+          setRegistrationPrompt({
+            message: data.error,
+            href: buildSignupPhonePrefillUrl(countryCode, localDigits),
+          });
+          return;
+        }
         setError(data.error || 'Failed to send OTP. Please try again.');
         return;
       }
@@ -321,6 +331,7 @@ export default function ClientSignInPage() {
     setOtpSent(false);
     setOtp(Array(6).fill(''));
     setDeliveryNotice('');
+    setRegistrationPrompt(null);
     clearFirebaseRecaptcha();
   };
 
@@ -415,20 +426,18 @@ export default function ClientSignInPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white md:bg-gray-50">
+    <div className="flex min-h-[100dvh] flex-col bg-white md:bg-gray-50">
       {/* Header - Hidden on larger screens */}
-      <div className="flex items-center justify-center p-4 md:hidden">
-
-        <h1 className="text-[#E06A26] text-center  font-semibold text-lg">Log In</h1>
-
+      <div className="flex min-h-14 items-center justify-center border-b border-gray-100 px-5 md:hidden">
+        <h1 className="text-center text-lg font-semibold text-[#E06A26]">Log In</h1>
       </div>
 
       {/* Main Content */}
-      <div className="flex flex-col items-center justify-center flex-1 px-4 py-4 overflow-y-auto sm:px-6 md:px-8">
+      <main className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-5 pb-8 pt-5 sm:px-6 md:justify-center md:px-8 md:py-10">
         {/* Card wrapper for larger screens */}
-        <div className="w-full max-w-md md:bg-white md:rounded-2xl md:shadow-lg md:p-8 lg:p-10">
+        <div className="w-full max-w-md md:rounded-2xl md:bg-white md:p-8 md:shadow-lg lg:p-10">
           {/* Logo */}
-          <div className="flex items-center justify-center overflow-hidden w-24 h-24 mx-auto rounded-xl sm:w-28 sm:h-28 md:w-32 md:h-32">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl sm:h-24 sm:w-24 md:h-28 md:w-28">
             <img
               src="/images/dtps-logo.png"
               alt="DTPS"
@@ -437,8 +446,8 @@ export default function ClientSignInPage() {
           </div>
 
           {/* App Name */}
-          <Link href="/user" className="block text-2xl font-bold text-center text-[#E06A26] mt-4 mb-2 hover:text-[#d15a1a] transition-colors sm:text-3xl">DTPS</Link>
-          <p className="mb-6 text-center text-gray-600 text-sm sm:text-base sm:mb-8">
+          <Link href="/user" className="mb-1 mt-3 block text-center text-2xl font-bold text-[#E06A26] transition-colors hover:text-[#d15a1a] sm:text-3xl">DTPS</Link>
+          <p className="mb-6 text-center text-sm text-gray-600 sm:text-base">
             Welcome back! Please enter your details.
           </p>
 
@@ -448,9 +457,23 @@ export default function ClientSignInPage() {
             </Alert>
           )}
 
+          {registrationPrompt && (
+            <Alert className="mb-4 border-[#3AB1A0]/30 bg-[#3AB1A0]/5 text-gray-700">
+              <AlertDescription className="space-y-3">
+                <p>{registrationPrompt.message}</p>
+                <Link
+                  href={registrationPrompt.href}
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[#61a035] px-4 py-2.5 font-semibold text-white transition-colors hover:bg-[#60953a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#61a035] focus-visible:ring-offset-2"
+                >
+                  Create Account
+                </Link>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* OTP Login (Default) */}
           {loginMode === 'otp' && (
-            <div className="w-full space-y-4">
+            <div className="w-full space-y-5">
               <div id="signin-firebase-recaptcha" className="h-0 overflow-hidden" />
               {otpStep === 'phone' && (
                 <>
@@ -481,7 +504,10 @@ export default function ClientSignInPage() {
                         type="tel"
                         placeholder="Enter phone number"
                         value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                        onChange={(e) => {
+                          setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 15));
+                          setRegistrationPrompt(null);
+                        }}
                         className="flex-1 h-full border-0 outline-none bg-transparent text-black placeholder:text-gray-400 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none shadow-none"
                         maxLength={15}
                       />
@@ -508,62 +534,44 @@ export default function ClientSignInPage() {
 
               {otpStep === 'verify' && (
                 <>
-                  {/* Back to phone input */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOtpStep('phone');
-                      setError('');
-                    }}
-                    className="flex  justify-centeritems-center gap-1 text-gray-500 hover:text-gray-700 text-sm mb-2"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    Change number
-                  </button>
-
-                  <p className="text-center text-gray-600 text-sm mb-4">
-                    Enter the {otp.length}-digit code sent by {otpProvider === 'firebase' ? 'SMS' : 'WhatsApp'} to
-                    <br />
-                    <span className="font-semibold text-gray-800">{countryCode} {phoneNumber}</span>
-                  </p>
+                  <div className="space-y-2 text-center">
+                    <p className="text-sm text-gray-600">
+                      Enter the {otp.length}-digit code sent by {otpProvider === 'firebase' ? 'SMS' : 'WhatsApp'} to
+                      <br />
+                      <span className="font-semibold text-gray-800">{countryCode} {phoneNumber}</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpStep('phone');
+                        setError('');
+                        setDeliveryNotice('');
+                        clearFirebaseRecaptcha();
+                      }}
+                      className="mx-auto inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3AB1A0]"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Change number
+                    </button>
+                  </div>
 
                   {/* OTP Input */}
-                  <div className="flex justify-center gap-2 sm:gap-3 mb-4">
+                  <div className="flex justify-center gap-2 sm:gap-3">
                     {otp.map((digit, index) => (
                       <Input
                         key={index}
                         ref={(el) => { otpInputRefs.current[index] = el; }}
                         type="text"
                         inputMode="numeric"
-                        maxLength={otp.length}
+                        autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                        aria-label={`Verification code digit ${index + 1}`}
+                        maxLength={index === 0 ? otp.length : 1}
                         value={digit}
                         onChange={(e) => handleOtpChange(index, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
                         className="w-11 h-12 sm:w-14 sm:h-14 text-center text-xl font-bold bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
                       />
                     ))}
-                  </div>
-
-                  {deliveryNotice && (
-                    <p className="text-center text-xs leading-5 text-gray-500">{deliveryNotice}</p>
-                  )}
-
-                  {/* Resend OTP */}
-                  <div className="text-center mb-4">
-                    {resendTimer > 0 ? (
-                      <p className="text-sm text-gray-500">
-                        Resend OTP in <span className="font-semibold">{resendTimer}s</span>
-                      </p>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleResendOtp}
-                        disabled={isLoading}
-                        className="text-[#E06A26] text-sm font-semibold hover:underline"
-                      >
-                        Resend OTP
-                      </button>
-                    )}
                   </div>
 
                   {/* Verify OTP Button */}
@@ -575,6 +583,28 @@ export default function ClientSignInPage() {
                   >
                     {isLoading ? 'Verifying...' : 'Verify & Login'}
                   </Button>
+
+                  {deliveryNotice && (
+                    <p className="text-center text-xs leading-5 text-gray-500">{deliveryNotice}</p>
+                  )}
+
+                  {/* Resend OTP */}
+                  <div className="text-center">
+                    {resendTimer > 0 ? (
+                      <p className="text-sm text-gray-500">
+                        Resend OTP in <span className="font-semibold">{resendTimer}s</span>
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResendOtp}
+                        disabled={isLoading}
+                        className="min-h-11 rounded-lg px-3 text-sm font-semibold text-[#E06A26] hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E06A26]"
+                      >
+                        Resend OTP
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
 
@@ -701,7 +731,7 @@ export default function ClientSignInPage() {
             </Link>
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

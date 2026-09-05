@@ -2,6 +2,7 @@
 
 import type { ConfirmationResult, RecaptchaVerifier } from 'firebase/auth';
 import { initializeFirebaseApp } from '@/lib/firebase/fcmHelper';
+import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 
 export type PhoneOtpProvider = 'firebase' | 'whatsapp';
 
@@ -25,6 +26,23 @@ export function isNativeIosApp(): boolean {
     const nativeWindow = window as NativeAppWindow;
     return /DTPSApp\/iOS/i.test(navigator.userAgent)
         || (nativeWindow.isNativeApp === true && nativeWindow.deviceType === 'ios');
+}
+
+export function buildSignupPhonePrefillUrl(countryCode: string, phone: string): string {
+    const params = new URLSearchParams({
+        countryCode,
+        phone: phone.replace(/\D/g, '').slice(0, 15),
+    });
+    return `/client-auth/signup?${params.toString()}`;
+}
+
+export function readSignupPhonePrefill(search: string): { countryCode: string; phone: string } | null {
+    const params = new URLSearchParams(search);
+    const countryCode = params.get('countryCode') || '';
+    const phone = (params.get('phone') || '').replace(/\D/g, '').slice(0, 15);
+    const supportedCountryCode = COUNTRY_CODE_OPTIONS.some((country) => country.code === countryCode);
+
+    return supportedCountryCode && phone ? { countryCode, phone } : null;
 }
 
 export interface FirebasePhoneAuthError extends Error {

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { signIn, useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import {
     Mail,
     Phone,
     Flag,
+    ArrowLeft,
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
@@ -25,17 +26,22 @@ import {
     getWhatsappFallbackReason,
     isNativeIosApp,
     NATIVE_IOS_WHATSAPP_REASON,
+    readSignupPhonePrefill,
     requestFirebasePhoneOtp,
     type PhoneOtpProvider,
 } from '@/lib/firebase/phoneAuthClient';
 
-export default function ClientSignUpPage() {
+function ClientSignUpForm() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const phonePrefillSearch = searchParams.toString();
+    const phonePrefill = readSignupPhonePrefill(phonePrefillSearch);
     const { data: session, status } = useSession();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [countryCode, setCountryCode] = useState('+91');
+    const [countryCodeEdited, setCountryCodeEdited] = useState(false);
     const [mounted, setMounted] = useState(false);
     const [nativeIosApp, setNativeIosApp] = useState(false);
 
@@ -44,6 +50,9 @@ export default function ClientSignUpPage() {
     const [lastName, setLastName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
+    const [phoneEdited, setPhoneEdited] = useState(false);
+    const activeCountryCode = countryCodeEdited ? countryCode : (phonePrefill?.countryCode || countryCode);
+    const activePhone = phoneEdited ? phone : (phonePrefill?.phone || phone);
     const [agreeToTerms, setAgreeToTerms] = useState(false);
 
     // OTP step
@@ -139,9 +148,9 @@ export default function ClientSignUpPage() {
             return;
         }
         // Strip non-digits and leading zeros (e.g. UK local 07911... → 7911...)
-        const rawPhone = phone.replace(/\D/g, '').replace(/^0+/, '');
-        const fullPhone = `${countryCode}${rawPhone}`;
-        const phoneValidation = validatePhoneNumber(fullPhone, countryCode);
+        const rawPhone = activePhone.replace(/\D/g, '').replace(/^0+/, '');
+        const fullPhone = `${activeCountryCode}${rawPhone}`;
+        const phoneValidation = validatePhoneNumber(fullPhone, activeCountryCode);
         if (!phoneValidation.isValid) {
             setError(phoneValidation.error || 'Please enter a valid phone number.');
             return;
@@ -228,7 +237,7 @@ export default function ClientSignUpPage() {
             return;
         }
 
-        const phoneValidation = validatePhoneNumber(`${countryCode}${phone.replace(/\D/g, '').replace(/^0+/, '')}`, countryCode);
+        const phoneValidation = validatePhoneNumber(`${activeCountryCode}${activePhone.replace(/\D/g, '').replace(/^0+/, '')}`, activeCountryCode);
         if (!phoneValidation.isValid) {
             setError(phoneValidation.error || 'Please enter a valid phone number.');
             return;
@@ -316,18 +325,18 @@ export default function ClientSignUpPage() {
     if (status === 'authenticated') return null;
 
     return (
-        <div className="flex flex-col min-h-screen bg-white md:bg-gray-50">
+        <div className="flex min-h-[100dvh] flex-col bg-white md:bg-gray-50">
             {/* Header - Hidden on larger screens */}
-            <div className="flex items-center justify-center p-4 md:hidden">
-                <h1 className="text-[#E06A26] font-semibold text-center text-lg">Sign Up</h1>
+            <div className="flex min-h-14 items-center justify-center border-b border-gray-100 px-5 md:hidden">
+                <h1 className="text-center text-lg font-semibold text-[#E06A26]">Sign Up</h1>
             </div>
 
             {/* Main Content */}
-            <div className="flex flex-col items-center justify-center flex-1 px-4 py-6 overflow-y-auto sm:px-6 md:px-8">
+            <main className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-5 pb-8 pt-5 sm:px-6 md:justify-center md:px-8 md:py-10">
                 {/* Card wrapper for larger screens */}
-                <div className="w-full max-w-md md:bg-white md:rounded-2xl md:shadow-lg md:p-8 lg:p-10">
+                <div className="w-full max-w-md md:rounded-2xl md:bg-white md:p-8 md:shadow-lg lg:p-10">
                     {/* Logo */}
-                    <div className="flex items-center justify-center overflow-hidden w-20 h-20 mx-auto rounded-xl sm:w-24 sm:h-24 md:w-28 md:h-28">
+                    <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl sm:h-24 sm:w-24 md:h-28 md:w-28">
                         <img
                             src="/images/dtps-logo.png"
                             alt="DTPS"
@@ -336,7 +345,7 @@ export default function ClientSignUpPage() {
                     </div>
 
                     {/* Title */}
-                    <div className="w-full mb-4 text-center sm:mb-6">
+                    <div className="mb-6 mt-3 w-full text-center">
                         <h2 className="text-xl font-bold text-[#E06A26] sm:text-2xl">Create Account</h2>
                         <p className="mt-1 text-sm text-gray-600 sm:text-base">
                             Track your macros, crush your goals, and join a community of achievers.
@@ -344,7 +353,7 @@ export default function ClientSignUpPage() {
                     </div>
 
                     {/* Form */}
-                    <div className="w-full space-y-3 sm:space-y-4">
+                    <div className="w-full space-y-4">
                         <div id="signup-firebase-recaptcha" className="h-0 overflow-hidden" />
                         {error && (
                             <Alert variant="destructive" className="text-red-700 border-red-200 bg-red-50">
@@ -370,6 +379,8 @@ export default function ClientSignUpPage() {
                                         placeholder="First Name *"
                                         value={firstName}
                                         onChange={(e) => setFirstName(e.target.value)}
+                                        autoComplete="given-name"
+                                        aria-label="First Name"
                                         className="h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
                                     />
                                 </div>
@@ -384,6 +395,8 @@ export default function ClientSignUpPage() {
                                         placeholder="Last Name *"
                                         value={lastName}
                                         onChange={(e) => setLastName(e.target.value)}
+                                        autoComplete="family-name"
+                                        aria-label="Last Name"
                                         className="h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
                                     />
                                 </div>
@@ -392,7 +405,13 @@ export default function ClientSignUpPage() {
                                 <div className="flex items-center h-12 sm:h-14 bg-[#3AB1A0]/5 border border-[#3AB1A0]/20  rounded-xl overflow-hidden px-2 focus-within:border-[#3AB1A0] focus-within:ring-1 focus-within:ring-[#3AB1A0]">
 
                                     {/* Country Select */}
-                                    <Select value={countryCode} onValueChange={setCountryCode}>
+                                    <Select
+                                        value={activeCountryCode}
+                                        onValueChange={(value) => {
+                                            setCountryCodeEdited(true);
+                                            setCountryCode(value);
+                                        }}
+                                    >
                                         <SelectTrigger
                                             className="flex items-center gap-1 w-22.5 h-full border-0 bg-transparent px-2 focus:ring-0 focus:outline-none"
                                         >
@@ -424,8 +443,13 @@ export default function ClientSignUpPage() {
                                     <Input
                                         type="tel"
                                         placeholder="Phone Number *"
-                                        value={phone}
-                                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                                        value={activePhone}
+                                        onChange={(e) => {
+                                            setPhoneEdited(true);
+                                            setPhone(e.target.value.replace(/\D/g, '').slice(0, 15));
+                                        }}
+                                        autoComplete="tel-national"
+                                        aria-label="Phone Number"
                                         className="flex-1 h-full border-0 outline-none bg-transparent text-black placeholder:text-gray-400 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none shadow-none"
                                     />
                                 </div>
@@ -445,6 +469,8 @@ export default function ClientSignUpPage() {
                                         placeholder="Email Address (Optional)"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
+                                        autoComplete="email"
+                                        aria-label="Email Address"
                                         className="h-12 sm:h-14 pl-12 bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black placeholder:text-gray-400 rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
                                     />
                                 </div>
@@ -483,13 +509,27 @@ export default function ClientSignUpPage() {
                         ) : (
                             <>
                                 {/* OTP Step */}
-                                <div className="text-center mb-4">
+                                <div className="space-y-2 text-center">
                                     <p className="text-sm text-gray-600">
                                         Enter the {otp.length}-digit code sent by {otpProvider === 'firebase' ? 'SMS' : 'WhatsApp'}
                                     </p>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        {countryCode}{phone}
+                                    <p className="text-sm font-semibold text-gray-800">
+                                        {activeCountryCode}{activePhone}
                                     </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setStep('details');
+                                            setOtp(Array(6).fill(''));
+                                            setError('');
+                                            setSuccess('');
+                                            clearFirebaseRecaptcha();
+                                        }}
+                                        className="mx-auto inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3AB1A0]"
+                                    >
+                                        <ArrowLeft className="h-4 w-4" />
+                                        Back to edit details
+                                    </button>
                                 </div>
 
                                 {/* OTP Input Boxes */}
@@ -502,7 +542,9 @@ export default function ClientSignUpPage() {
                                             }}
                                             type="text"
                                             inputMode="numeric"
-                                            maxLength={otp.length}
+                                            autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                                            aria-label={`Verification code digit ${index + 1}`}
+                                            maxLength={index === 0 ? otp.length : 1}
                                             value={digit}
                                             onChange={(e) => handleOtpChange(index, e.target.value)}
                                             onKeyDown={(e) => handleOtpKeyDown(index, e)}
@@ -539,20 +581,6 @@ export default function ClientSignUpPage() {
                                     )}
                                 </div>
 
-                                {/* Back to details */}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setStep('details');
-                                        setOtp(Array(6).fill(''));
-                                        setError('');
-                                        setSuccess('');
-                                        clearFirebaseRecaptcha();
-                                    }}
-                                    className="w-full text-sm text-gray-500 hover:text-gray-700"
-                                >
-                                    ← Back to edit details
-                                </button>
                             </>
                         )}
                     </div>
@@ -565,7 +593,15 @@ export default function ClientSignUpPage() {
                         </Link>
                     </p>
                 </div>
-            </div>
+            </main>
         </div>
+    );
+}
+
+export default function ClientSignUpPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-white" aria-hidden="true" />}>
+            <ClientSignUpForm />
+        </Suspense>
     );
 }

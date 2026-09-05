@@ -12,10 +12,12 @@ import {
     verifyPhoneAuthIntentToken,
 } from '@/lib/auth/phoneAuthServer';
 import {
+    buildSignupPhonePrefillUrl,
     getFirebaseErrorCode,
     getPhoneAuthErrorMessage,
     getWhatsappFallbackReason,
     isNativeIosApp,
+    readSignupPhonePrefill,
     shouldFallbackToWhatsapp,
 } from '@/lib/firebase/phoneAuthClient';
 import { validatePhoneNumber } from '@/lib/validations/contact';
@@ -118,7 +120,21 @@ describe('Firebase SMS phone authentication with WhatsApp fallback', () => {
         const data = await response.json();
 
         expect(response.status).toBe(404);
-        expect(data.error).toContain('No client account');
+        expect(data).toMatchObject({
+            code: 'client-not-found',
+            error: expect.stringContaining('No client account'),
+        });
+    });
+
+    it('carries a rejected login number safely into the registration flow', () => {
+        const url = buildSignupPhonePrefillUrl('+91', '73035 40883');
+        expect(url).toBe('/client-auth/signup?countryCode=%2B91&phone=7303540883');
+        expect(readSignupPhonePrefill(new URL(url, 'https://dtps.tech').search)).toEqual({
+            countryCode: '+91',
+            phone: '7303540883',
+        });
+        expect(readSignupPhonePrefill('?countryCode=%2B999&phone=7303540883')).toBeNull();
+        expect(readSignupPhonePrefill('?countryCode=%2B91&phone=not-a-phone')).toBeNull();
     });
 
     it('stops inactive clients before any SMS is requested', async () => {

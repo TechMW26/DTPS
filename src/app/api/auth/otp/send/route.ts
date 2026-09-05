@@ -174,7 +174,10 @@ export async function POST(request: NextRequest) {
         });
     } catch (error) {
         if (error instanceof PhoneAuthError) {
-            return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+            return NextResponse.json(
+                { success: false, error: error.message, code: error.code },
+                { status: error.status },
+            );
         }
         console.error('Phone verification preparation failed:', error);
         return NextResponse.json(

@@ -57,6 +57,7 @@ export async function preparePhoneAuth(input: {
             throw new PhoneAuthError(
                 'No client account was found for this phone number. Please sign up first.',
                 404,
+                'client-not-found',
             );
         }
         if (user.status !== 'active') {
@@ -237,7 +238,11 @@ export function maskPhone(phone: string): string {
 }
 
 export class PhoneAuthError extends Error {
-    constructor(message: string, public readonly status: number) {
+    constructor(
+        message: string,
+        public readonly status: number,
+        public readonly code = 'phone-auth-error',
+    ) {
         super(message);
         this.name = 'PhoneAuthError';
     }
