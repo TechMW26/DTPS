@@ -23,6 +23,8 @@ import {
     confirmFirebasePhoneOtp,
     getPhoneAuthErrorMessage,
     getWhatsappFallbackReason,
+    isNativeIosApp,
+    NATIVE_IOS_WHATSAPP_REASON,
     requestFirebasePhoneOtp,
     type PhoneOtpProvider,
 } from '@/lib/firebase/phoneAuthClient';
@@ -35,6 +37,7 @@ export default function ClientSignUpPage() {
     const [success, setSuccess] = useState('');
     const [countryCode, setCountryCode] = useState('+91');
     const [mounted, setMounted] = useState(false);
+    const [nativeIosApp, setNativeIosApp] = useState(false);
 
     // Form fields
     const [firstName, setFirstName] = useState('');
@@ -54,6 +57,7 @@ export default function ClientSignUpPage() {
     const firebaseIdTokenRef = useRef('');
 
     useEffect(() => {
+        setNativeIosApp(isNativeIosApp());
         setMounted(true);
         return () => clearFirebaseRecaptcha();
     }, []);
@@ -179,26 +183,30 @@ export default function ClientSignUpPage() {
 
             setAuthIntent(data.authIntent);
             firebaseIdTokenRef.current = '';
-            try {
-                if (!data.firebaseAvailable) {
-                    throw Object.assign(new Error('Firebase is unavailable'), {
-                        code: 'firebase-config-unavailable',
-                    });
+            if (nativeIosApp) {
+                await requestWhatsappFallback(data.authIntent, NATIVE_IOS_WHATSAPP_REASON);
+            } else {
+                try {
+                    if (!data.firebaseAvailable) {
+                        throw Object.assign(new Error('Firebase is unavailable'), {
+                            code: 'firebase-config-unavailable',
+                        });
+                    }
+                    confirmationResultRef.current = await requestFirebasePhoneOtp(
+                        phoneValidation.normalized!,
+                        'signup-firebase-recaptcha',
+                    );
+                    setOtpProvider('firebase');
+                    setOtp(Array(data.codeLength || 6).fill(''));
+                    setSuccess('We sent a 6-digit verification code by SMS. Standard messaging rates may apply.');
+                } catch (firebaseError) {
+                    const fallbackReason = getWhatsappFallbackReason(firebaseError);
+                    if (!fallbackReason) {
+                        setError(getPhoneAuthErrorMessage(firebaseError));
+                        return;
+                    }
+                    await requestWhatsappFallback(data.authIntent, fallbackReason);
                 }
-                confirmationResultRef.current = await requestFirebasePhoneOtp(
-                    phoneValidation.normalized!,
-                    'signup-firebase-recaptcha',
-                );
-                setOtpProvider('firebase');
-                setOtp(Array(data.codeLength || 6).fill(''));
-                setSuccess('We sent a 6-digit verification code by SMS. Standard messaging rates may apply.');
-            } catch (firebaseError) {
-                const fallbackReason = getWhatsappFallbackReason(firebaseError);
-                if (!fallbackReason) {
-                    setError(getPhoneAuthErrorMessage(firebaseError));
-                    return;
-                }
-                await requestWhatsappFallback(data.authIntent, fallbackReason);
             }
 
             setStep('otp');
@@ -422,7 +430,9 @@ export default function ClientSignUpPage() {
                                     />
                                 </div>
                                 <p className="text-xs leading-5 text-gray-500">
-                                    Your verification code is sent by Firebase SMS. If SMS is temporarily unavailable, we may send it on WhatsApp instead. Standard messaging rates may apply.
+                                    {nativeIosApp
+                                        ? 'We will send your verification code on WhatsApp.'
+                                        : 'Your verification code is sent by Firebase SMS. If SMS is temporarily unavailable, we may send it on WhatsApp instead. Standard messaging rates may apply.'}
                                 </p>
 
                                 {/* Email Input (Optional) */}

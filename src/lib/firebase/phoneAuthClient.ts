@@ -5,7 +5,27 @@ import { initializeFirebaseApp } from '@/lib/firebase/fcmHelper';
 
 export type PhoneOtpProvider = 'firebase' | 'whatsapp';
 
+export const NATIVE_IOS_WHATSAPP_REASON = 'ios-native-app';
+
 let recaptchaVerifier: RecaptchaVerifier | null = null;
+
+interface NativeAppWindow extends Window {
+    deviceType?: string;
+    isNativeApp?: boolean;
+}
+
+/**
+ * The native iOS wrapper cannot complete Firebase Web reCAPTCHA without
+ * leaving older App Store builds. Keep Safari/PWA users on Firebase; only the
+ * DTPS native iOS shell uses WhatsApp as its primary OTP channel.
+ */
+export function isNativeIosApp(): boolean {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+
+    const nativeWindow = window as NativeAppWindow;
+    return /DTPSApp\/iOS/i.test(navigator.userAgent)
+        || (nativeWindow.isNativeApp === true && nativeWindow.deviceType === 'ios');
+}
 
 export interface FirebasePhoneAuthError extends Error {
     code?: string;

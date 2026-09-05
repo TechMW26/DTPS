@@ -22,6 +22,8 @@ import {
   confirmFirebasePhoneOtp,
   getPhoneAuthErrorMessage,
   getWhatsappFallbackReason,
+  isNativeIosApp,
+  NATIVE_IOS_WHATSAPP_REASON,
   requestFirebasePhoneOtp,
   type PhoneOtpProvider,
 } from '@/lib/firebase/phoneAuthClient';
@@ -49,11 +51,13 @@ export default function ClientSignInPage() {
   const [otpProvider, setOtpProvider] = useState<PhoneOtpProvider>('firebase');
   const [authIntent, setAuthIntent] = useState('');
   const [deliveryNotice, setDeliveryNotice] = useState('');
+  const [nativeIosApp, setNativeIosApp] = useState(false);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const confirmationResultRef = useRef<ConfirmationResult | null>(null);
   const firebaseIdTokenRef = useRef('');
 
   useEffect(() => {
+    setNativeIosApp(isNativeIosApp());
     setMounted(true);
     return () => clearFirebaseRecaptcha();
   }, []);
@@ -183,27 +187,31 @@ export default function ClientSignInPage() {
 
       setAuthIntent(data.authIntent);
       firebaseIdTokenRef.current = '';
-      try {
-        if (!data.firebaseAvailable) {
-          const configError = Object.assign(new Error('Firebase is unavailable'), {
-            code: 'firebase-config-unavailable',
-          });
-          throw configError;
+      if (nativeIosApp) {
+        await requestWhatsappFallback(data.authIntent, NATIVE_IOS_WHATSAPP_REASON);
+      } else {
+        try {
+          if (!data.firebaseAvailable) {
+            const configError = Object.assign(new Error('Firebase is unavailable'), {
+              code: 'firebase-config-unavailable',
+            });
+            throw configError;
+          }
+          confirmationResultRef.current = await requestFirebasePhoneOtp(
+            phoneValidation.normalized!,
+            'signin-firebase-recaptcha',
+          );
+          setOtpProvider('firebase');
+          setOtp(Array(data.codeLength || 6).fill(''));
+          setDeliveryNotice('We sent a 6-digit verification code by SMS. Standard messaging rates may apply.');
+        } catch (firebaseError) {
+          const fallbackReason = getWhatsappFallbackReason(firebaseError);
+          if (!fallbackReason) {
+            setError(getPhoneAuthErrorMessage(firebaseError));
+            return;
+          }
+          await requestWhatsappFallback(data.authIntent, fallbackReason);
         }
-        confirmationResultRef.current = await requestFirebasePhoneOtp(
-          phoneValidation.normalized!,
-          'signin-firebase-recaptcha',
-        );
-        setOtpProvider('firebase');
-        setOtp(Array(data.codeLength || 6).fill(''));
-        setDeliveryNotice('We sent a 6-digit verification code by SMS. Standard messaging rates may apply.');
-      } catch (firebaseError) {
-        const fallbackReason = getWhatsappFallbackReason(firebaseError);
-        if (!fallbackReason) {
-          setError(getPhoneAuthErrorMessage(firebaseError));
-          return;
-        }
-        await requestWhatsappFallback(data.authIntent, fallbackReason);
       }
 
       setOtpSent(true);
@@ -480,7 +488,9 @@ export default function ClientSignInPage() {
                     </div>
                     <p className="text-xs text-gray-500 flex items-center gap-1">
                       <MessageSquare className="w-3 h-3" />
-                      Firebase will send a secure verification code by SMS
+                      {nativeIosApp
+                        ? 'We will send your verification code on WhatsApp'
+                        : 'Firebase will send a secure verification code by SMS'}
                     </p>
                   </div>
 

@@ -15,6 +15,7 @@ import {
     getFirebaseErrorCode,
     getPhoneAuthErrorMessage,
     getWhatsappFallbackReason,
+    isNativeIosApp,
     shouldFallbackToWhatsapp,
 } from '@/lib/firebase/phoneAuthClient';
 import { validatePhoneNumber } from '@/lib/validations/contact';
@@ -149,7 +150,74 @@ describe('Firebase SMS phone authentication with WhatsApp fallback', () => {
             .toContain('incorrect');
     });
 
-    it('uses WhatsApp only for a signed Firebase service-failure fallback', async () => {
+    it('selects WhatsApp only for the native iOS shell, not Android or iOS Safari', () => {
+        const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+        const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+        const setBrowser = (userAgent: string, nativeState?: { isNativeApp: boolean; deviceType: string }) => {
+            Object.defineProperty(globalThis, 'navigator', {
+                configurable: true,
+                value: { userAgent },
+            });
+            Object.defineProperty(globalThis, 'window', {
+                configurable: true,
+                value: nativeState || {},
+            });
+        };
+
+        try {
+            setBrowser('Mozilla/5.0 DTPSApp/iOS');
+            expect(isNativeIosApp()).toBe(true);
+
+            setBrowser('Mozilla/5.0 (Linux; Android 15; wv) DTPSApp/Android');
+            expect(isNativeIosApp()).toBe(false);
+
+            setBrowser('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0) AppleWebKit/605.1.15');
+            expect(isNativeIosApp()).toBe(false);
+
+            setBrowser('Mozilla/5.0', { isNativeApp: true, deviceType: 'ios' });
+            expect(isNativeIosApp()).toBe(true);
+        } finally {
+            if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+            else delete (globalThis as { window?: unknown }).window;
+            if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+            else delete (globalThis as { navigator?: unknown }).navigator;
+        }
+    });
+
+    it('sends native iOS verification directly through WhatsApp with neutral wording', async () => {
+        const client = await createClient('+919822223333');
+        const authIntent = createPhoneAuthIntentToken({
+            purpose: 'phone-auth-intent',
+            phone: '+919822223333',
+            mode: 'login',
+            userId: client._id.toString(),
+            userName: 'iOS Client',
+        });
+        const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+            new Response(JSON.stringify({ success: true }), { status: 200 }),
+        );
+
+        const response = await sendOtp(request('http://localhost/api/auth/otp/send', {
+            channel: 'whatsapp-fallback',
+            authIntent,
+            fallbackReason: 'ios-native-app',
+        }));
+        const data = await response.json();
+        const providerPayload = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body));
+
+        expect(response.status).toBe(200);
+        expect(data).toMatchObject({
+            provider: 'whatsapp',
+            deliveryChannel: 'WhatsApp',
+            codeLength: 4,
+            message: 'We sent a 4-digit verification code on WhatsApp.',
+        });
+        expect(providerPayload.source).toBe('ios_native_app');
+        expect(await OTPRecord.countDocuments({ phone: '+919822223333' })).toBe(1);
+    });
+
+    it('uses WhatsApp fallback only for a signed Firebase service failure', async () => {
         const client = await createClient('+919876543210');
         const authIntent = createPhoneAuthIntentToken({
             purpose: 'phone-auth-intent',
@@ -177,7 +245,7 @@ describe('Firebase SMS phone authentication with WhatsApp fallback', () => {
         expect(nativeFallback.status).toBe(200);
         await expect(nativeFallback.json()).resolves.toMatchObject({
             provider: 'whatsapp',
-            message: expect.stringContaining('Firebase SMS is temporarily unavailable'),
+            message: expect.stringContaining('SMS verification is temporarily unavailable'),
         });
 
         const response = await sendOtp(request('http://localhost/api/auth/otp/send', {

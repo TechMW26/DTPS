@@ -25,6 +25,7 @@ const FIREBASE_FALLBACK_REASONS = new Set([
     'firebase-client-incompatible',
     'firebase-config-unavailable',
     'firebase-service-unavailable',
+    'ios-native-app',
 ]);
 
 function firebaseClientConfigAvailable(): boolean {
@@ -56,11 +57,15 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
         );
     }
 
+    const isNativeIosPrimary = fallbackReason === 'ios-native-app';
+    const unavailableMessage = isNativeIosPrimary
+        ? 'WhatsApp verification is temporarily unavailable. Please try again later.'
+        : 'Both SMS and WhatsApp verification are temporarily unavailable. Please try again later.';
     const apiKey = process.env.AISENSY_API_KEY;
     const apiUrl = process.env.AISENSY_API_URL || 'https://backend.aisensy.com/campaign/t1/api/v2';
     if (!apiKey) {
         return NextResponse.json(
-            { success: false, error: 'Both SMS and WhatsApp verification are temporarily unavailable. Please try again later.' },
+            { success: false, error: unavailableMessage },
             { status: 503 },
         );
     }
@@ -91,7 +96,7 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
                 campaignName: 'OTP',
                 destination: intent.phone.replace(/^\+/, ''),
                 userName: intent.userName,
-                source: 'firebase_sms_fallback',
+                source: isNativeIosPrimary ? 'ios_native_app' : 'firebase_sms_fallback',
                 templateParams: [otp],
                 buttons: [{
                     type: 'button',
@@ -106,7 +111,7 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
             console.error('AISensy fallback error:', responseData);
             await OTPRecord.deleteOne({ _id: record._id });
             return NextResponse.json(
-                { success: false, error: 'Both SMS and WhatsApp verification are temporarily unavailable. Please try again later.' },
+                { success: false, error: unavailableMessage },
                 { status: 503 },
             );
         }
@@ -114,7 +119,7 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
         console.error('AISensy fallback request failed:', error);
         await OTPRecord.deleteOne({ _id: record._id });
         return NextResponse.json(
-            { success: false, error: 'Both SMS and WhatsApp verification are temporarily unavailable. Please try again later.' },
+            { success: false, error: unavailableMessage },
             { status: 503 },
         );
     }
@@ -127,7 +132,9 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
         authIntent,
         phone: maskPhone(intent.phone),
         expiresIn: Math.floor(OTP_CONFIG.EXPIRY_MS / 1000),
-        message: 'Firebase SMS is temporarily unavailable. We sent your verification code on WhatsApp instead.',
+        message: isNativeIosPrimary
+            ? 'We sent a 4-digit verification code on WhatsApp.'
+            : 'SMS verification is temporarily unavailable. We sent your verification code on WhatsApp instead.',
     });
 }
 
