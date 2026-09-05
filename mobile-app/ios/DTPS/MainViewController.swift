@@ -27,6 +27,8 @@ class MainViewController: UIViewController {
         "ik.imagekit.io",
         // Embedded document previews
         "docs.google.com",
+        // Firebase Phone Auth managed reCAPTCHA challenge
+        "google.com", "gstatic.com", "recaptcha.net",
     ]
 
     private var progressObservation: NSKeyValueObservation?

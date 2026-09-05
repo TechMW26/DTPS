@@ -109,7 +109,14 @@ class MainActivity : AppCompatActivity() {
         private const val APP_URL = "$APP_ORIGIN/user"
         private const val SPLASH_URL = "file:///android_asset/splash.html"
         private val APP_HOSTS = listOf("dtps.tech", "www.dtps.tech")
-        private val ALLOWED_HOSTS = APP_HOSTS + listOf("ik.imagekit.io", "docs.google.com")
+        private val ALLOWED_HOSTS = APP_HOSTS + listOf(
+            "ik.imagekit.io",
+            "docs.google.com",
+            // Firebase Phone Auth may display its managed reCAPTCHA challenge.
+            "google.com",
+            "gstatic.com",
+            "recaptcha.net",
+        )
     }
 
     // File picker launcher for gallery

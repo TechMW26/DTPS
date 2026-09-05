@@ -119,10 +119,6 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
         );
     }
 
-    const message = fallbackReason === 'firebase-client-incompatible'
-        ? 'We sent your verification code on WhatsApp so you can stay inside the DTPS app.'
-        : 'SMS delivery was unavailable, so we sent your verification code on WhatsApp.';
-
     return NextResponse.json({
         success: true,
         provider: 'whatsapp',
@@ -131,7 +127,7 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
         authIntent,
         phone: maskPhone(intent.phone),
         expiresIn: Math.floor(OTP_CONFIG.EXPIRY_MS / 1000),
-        message,
+        message: 'Firebase SMS is temporarily unavailable. We sent your verification code on WhatsApp instead.',
     });
 }
 

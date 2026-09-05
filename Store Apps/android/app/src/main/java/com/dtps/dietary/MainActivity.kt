@@ -33,7 +33,13 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val APP_URL = "https://dtps.tech/user"
-        private val ALLOWED_HOSTS = listOf("dtps.tech")
+        private val ALLOWED_HOSTS = listOf(
+            "dtps.tech",
+            "www.dtps.tech",
+            "google.com",
+            "gstatic.com",
+            "recaptcha.net",
+        )
     }
 
     private val filePickerLauncher = registerForActivityResult(

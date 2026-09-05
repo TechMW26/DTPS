@@ -314,6 +314,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - any file with an extension (static assets from /public like /icons/*.png)
      */
-    '/((?!api/auth|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.json|sw.js|firebase-messaging-sw.js|socket\\.io|.*\\..*).*)',
+    '/((?!api/auth|__/auth|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.json|sw.js|firebase-messaging-sw.js|socket\\.io|.*\\..*).*)',
   ],
 };

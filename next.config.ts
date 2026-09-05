@@ -75,6 +75,21 @@ const nextConfig: NextConfig = {
   // Mark firebase-admin as external for server components (prevents Turbopack bundling issues)
   serverExternalPackages: ['firebase-admin'],
 
+  // Keep Firebase's auth helper on the DTPS origin. Safari, installed PWAs,
+  // and native WebViews can block the cross-origin helper storage used by the
+  // default firebaseapp.com authDomain.
+  rewrites: async () => {
+    const firebaseProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+    if (!firebaseProjectId) return [];
+
+    return [
+      {
+        source: '/__/auth/:path*',
+        destination: `https://${firebaseProjectId}.firebaseapp.com/__/auth/:path*`,
+      },
+    ];
+  },
+
   // Webpack optimizations for better build performance (fallback for --webpack flag)
   webpack: (config, { dev, isServer }) => {
     // Optimize for production builds

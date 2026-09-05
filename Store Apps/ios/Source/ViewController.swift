@@ -9,7 +9,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private var offlineView: UIView!
     
     private let appURL = URL(string: "https://dtps.tech/user")!
-    private let allowedHosts = ["dtps.tech"]
+    private let allowedHosts = [
+        "dtps.tech", "www.dtps.tech",
+        "google.com", "gstatic.com", "recaptcha.net",
+    ]
     
     override func viewDidLoad() {
         super.viewDidLoad()
