@@ -3,9 +3,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/db/connection';
 import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
+import ServicePlan from '@/lib/db/models/ServicePlan';
 import User from '@/lib/db/models/User';
 import Razorpay from 'razorpay';
-import { getPaymentCallbackUrl } from '@/lib/config';
+import mongoose from 'mongoose';
 
 // Helper function to sanitize phone number for Razorpay (must be 8-14 chars)
 function sanitizePhoneForRazorpay(phone: string | undefined | null): string | undefined {
@@ -52,7 +53,31 @@ const getRazorpay = () => {
   });
 };
 
-// POST /api/client/service-plans/purchase - Purchase a service plan
+interface CheckoutTier {
+  _id?: { toString(): string };
+  durationDays: number;
+  durationLabel: string;
+  amount: number;
+  isActive: boolean;
+}
+
+function selectPricingTier(tiers: CheckoutTier[], tierId: unknown): CheckoutTier | null {
+  const requestedTier = typeof tierId === 'string' || typeof tierId === 'number'
+    ? String(tierId)
+    : '';
+  const tierById = tiers.find((tier) => tier.isActive && tier._id?.toString() === requestedTier);
+  if (tierById) return tierById;
+
+  // Older service-detail builds sent the array index instead of the subdocument ID.
+  if (/^\d+$/.test(requestedTier)) {
+    const tierByIndex = tiers[Number(requestedTier)];
+    if (tierByIndex?.isActive) return tierByIndex;
+  }
+
+  return null;
+}
+
+// POST /api/client/service-plans/purchase - Create an in-app Razorpay Checkout order
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -62,14 +87,33 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
     const data = await request.json();
-    const { planId, tierId, amount, durationDays, durationLabel, planName, planCategory } = data;
+    const { planId, tierId } = data;
 
-    if (!planId || !amount) {
+    if (!planId || tierId === undefined || !mongoose.isValidObjectId(planId)) {
       return NextResponse.json(
-        { error: 'Plan ID and amount are required' },
+        { error: 'A valid plan and pricing tier are required' },
         { status: 400 }
       );
     }
+
+    const plan = await ServicePlan.findOne({
+      _id: planId,
+      isActive: true,
+      showToClients: true,
+    });
+    if (!plan) {
+      return NextResponse.json({ error: 'This plan is not available' }, { status: 404 });
+    }
+
+    const tier = selectPricingTier(plan.pricingTiers as unknown as CheckoutTier[], tierId);
+    if (!tier || !Number.isFinite(tier.amount) || tier.amount <= 0) {
+      return NextResponse.json({ error: 'This pricing option is not available' }, { status: 400 });
+    }
+
+    // Pricing and plan details are always resolved from the database. Never trust
+    // the browser-supplied amount for a payment order.
+    const amount = tier.amount;
+    const amountInPaise = Math.round(amount * 100);
 
     // Get client info
     const client = await User.findById(session.user.id)
@@ -83,12 +127,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Get dietitian if assigned (optional now)
-    let dietitianId = client.assignedDietitian || null;
+    const dietitianId = client.assignedDietitian || null;
 
     // Create payment record using UnifiedPayment (dietitian is optional)
     const payment = new UnifiedPayment({
       client: session.user.id,
       ...(dietitianId && { dietitian: dietitianId }),
+      servicePlan: plan._id,
       paymentType: 'service_plan',
       baseAmount: amount,
       finalAmount: amount,
@@ -96,12 +141,17 @@ export async function POST(request: NextRequest) {
       status: 'pending',
       paymentStatus: 'pending',
       paymentMethod: 'razorpay',
-      planName: planName || 'Service Plan',
-      planCategory: planCategory || 'general-wellness',
-      durationDays: durationDays || 30,
-      durationLabel: durationLabel || '1 Month',
+      planName: plan.name,
+      planCategory: plan.category,
+      durationDays: tier.durationDays,
+      durationLabel: tier.durationLabel,
       payerEmail: client.email,
-      payerPhone: client.phone
+      payerPhone: client.phone,
+      payerName: `${client.firstName || ''} ${client.lastName || ''}`.trim(),
+      metadata: {
+        servicePlanId: plan._id.toString(),
+        pricingTierId: tier._id?.toString() || String(tierId),
+      },
     });
 
     await payment.save();
@@ -109,77 +159,49 @@ export async function POST(request: NextRequest) {
     const razorpay = getRazorpay();
 
     try {
-      // Create Razorpay payment link
-      const paymentLink = await razorpay.paymentLink.create({
-        amount: amount * 100, // Razorpay expects amount in paise
+      // Orders open Razorpay Checkout inside DTPS. Payment Links intentionally
+      // send/redirect customers to a separate link-based flow.
+      const order = await razorpay.orders.create({
+        amount: amountInPaise,
         currency: 'INR',
-        accept_partial: false,
-        description: `${planName} - ${durationLabel}`,
-        customer: {
-          name: `${client.firstName} ${client.lastName}`.trim(),
-          email: client.email,
-          contact: sanitizePhoneForRazorpay(client.phone)
-        },
-        notify: {
-          sms: !!sanitizePhoneForRazorpay(client.phone),
-          email: true
-        },
-        reminder_enable: true,
+        receipt: `sp_${payment._id.toString()}`,
         notes: {
           payment_id: payment._id.toString(),
-          plan_id: planId,
-          tier_id: tierId || '',
-          client_id: session.user.id
+          plan_id: plan._id.toString(),
+          tier_id: tier._id?.toString() || String(tierId),
+          client_id: session.user.id,
         },
-        callback_url: getPaymentCallbackUrl('/user?payment_success=true'),
-        callback_method: 'get'
-      }) as any;
+      });
 
-      // Update payment with Razorpay details
-      payment.razorpayPaymentLinkId = paymentLink.id;
-      payment.razorpayPaymentLinkUrl = paymentLink.long_url;
-      (payment as any).razorpayPaymentLinkShortUrl = paymentLink.short_url;
+      payment.razorpayOrderId = order.id;
       await payment.save();
 
       return NextResponse.json({
         success: true,
-        paymentLink: paymentLink.short_url,
-        paymentId: payment._id.toString()
+        provider: 'razorpay_checkout',
+        keyId: process.env.RAZORPAY_KEY_ID,
+        orderId: order.id,
+        paymentId: payment._id.toString(),
+        amount: amountInPaise,
+        currency: 'INR',
+        name: 'DTPS',
+        description: `${plan.name} - ${tier.durationLabel}`,
+        prefill: {
+          name: `${client.firstName || ''} ${client.lastName || ''}`.trim(),
+          email: client.email || '',
+          contact: sanitizePhoneForRazorpay(client.phone) || '',
+        },
       });
 
-    } catch (razorpayError: any) {
+    } catch (razorpayError: unknown) {
       console.error('Razorpay error:', razorpayError);
-
-      // Try to create Razorpay order instead for checkout modal
-      try {
-        const order = await razorpay.orders.create({
-          amount: amount * 100,
-          currency: 'INR',
-          receipt: payment._id.toString(),
-          notes: {
-            payment_id: payment._id.toString(),
-            plan_id: planId
-          }
-        });
-
-        payment.razorpayOrderId = order.id;
-        await payment.save();
-
-        return NextResponse.json({
-          success: true,
-          orderId: order.id,
-          paymentId: payment._id.toString()
-        });
-      } catch (orderError) {
-        console.error('Order creation error:', orderError);
-
-        // If both fail, return payment ID for manual processing
-        return NextResponse.json({
-          success: true,
-          paymentId: payment._id.toString(),
-          message: 'Order created. You will be contacted for payment.'
-        });
-      }
+      payment.status = 'failed';
+      payment.paymentStatus = 'failed';
+      await payment.save().catch(() => undefined);
+      return NextResponse.json(
+        { error: 'Razorpay Checkout is temporarily unavailable. Please try again.' },
+        { status: 502 }
+      );
     }
 
   } catch (error) {

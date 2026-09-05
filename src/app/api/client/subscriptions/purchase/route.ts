@@ -6,7 +6,6 @@ import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
 import SubscriptionPlan from '@/lib/db/models/SubscriptionPlan';
 import User from '@/lib/db/models/User';
 import Razorpay from 'razorpay';
-import { getPaymentCallbackUrl } from '@/lib/config';
 
 // Helper function to sanitize phone number for Razorpay (must be 8-14 chars)
 function sanitizePhoneForRazorpay(phone: string | undefined | null): string | undefined {
@@ -53,7 +52,7 @@ const getRazorpay = () => {
   });
 };
 
-// POST /api/client/subscriptions/purchase - Purchase a subscription plan
+// POST /api/client/subscriptions/purchase - Create an in-app Razorpay Checkout order
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -63,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
     const data = await request.json();
-    const { planId, amount, currency = 'INR' } = data;
+    const { planId } = data;
 
     if (!planId) {
       return NextResponse.json(
@@ -116,7 +115,8 @@ export async function POST(request: NextRequest) {
       durationDays,
       durationLabel: `${plan.duration} ${plan.durationType}`,
       payerEmail: client.email,
-      payerPhone: client.phone
+      payerPhone: client.phone,
+      payerName: `${client.firstName || ''} ${client.lastName || ''}`.trim(),
     });
 
     await payment.save();
@@ -124,51 +124,48 @@ export async function POST(request: NextRequest) {
     const razorpay = getRazorpay();
 
     try {
-      // Create Razorpay payment link
-      const paymentLink = await razorpay.paymentLink.create({
-        amount: plan.price * 100, // Razorpay expects amount in paise
+      const amountInPaise = Math.round(plan.price * 100);
+      const currency = plan.currency || 'INR';
+      const order = await razorpay.orders.create({
+        amount: amountInPaise,
         currency: plan.currency || 'INR',
-        accept_partial: false,
-        description: `${plan.name} - ${plan.duration} ${plan.durationType}`,
-        customer: {
-          name: `${client.firstName} ${client.lastName}`,
-          email: client.email,
-          contact: sanitizePhoneForRazorpay(client.phone)
-        },
-        notify: {
-          sms: !!sanitizePhoneForRazorpay(client.phone),
-          email: true
-        },
-        reminder_enable: true,
+        receipt: `sub_${payment._id.toString()}`,
         notes: {
           payment_id: payment._id.toString(),
           plan_id: plan._id.toString(),
-          client_id: session.user.id
+          client_id: session.user.id,
         },
-        callback_url: getPaymentCallbackUrl('/user/subscriptions?payment_success=true'),
-        callback_method: 'get'
-      }) as any;
+      });
 
-      // Update payment with Razorpay details
-      payment.razorpayPaymentLinkId = paymentLink.id;
-      payment.razorpayPaymentLinkUrl = (paymentLink as any).short_url || (paymentLink as any).long_url;
+      payment.razorpayOrderId = order.id;
       await payment.save();
 
       return NextResponse.json({
         success: true,
-        paymentLink: paymentLink.short_url,
-        paymentId: payment._id.toString()
-      });
-
-    } catch (razorpayError: any) {
-      console.error('Razorpay error:', razorpayError);
-
-      // If Razorpay fails, still create the order for manual processing
-      return NextResponse.json({
-        success: true,
+        provider: 'razorpay_checkout',
+        keyId: process.env.RAZORPAY_KEY_ID,
+        orderId: order.id,
         paymentId: payment._id.toString(),
-        message: 'Order created. You will be contacted for payment.'
+        amount: amountInPaise,
+        currency,
+        name: 'DTPS',
+        description: `${plan.name} - ${plan.duration} ${plan.durationType}`,
+        prefill: {
+          name: `${client.firstName || ''} ${client.lastName || ''}`.trim(),
+          email: client.email || '',
+          contact: sanitizePhoneForRazorpay(client.phone) || '',
+        },
       });
+
+    } catch (razorpayError: unknown) {
+      console.error('Razorpay error:', razorpayError);
+      payment.status = 'failed';
+      payment.paymentStatus = 'failed';
+      await payment.save().catch(() => undefined);
+      return NextResponse.json(
+        { error: 'Razorpay Checkout is temporarily unavailable. Please try again.' },
+        { status: 502 }
+      );
     }
 
   } catch (error) {

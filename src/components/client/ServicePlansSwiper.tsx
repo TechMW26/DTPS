@@ -5,12 +5,11 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Clock, Star, Check, ArrowRight, X, CreditCard, Shield, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-
-declare global {
-    interface Window {
-        Razorpay: any;
-    }
-}
+import {
+    assertRazorpayCheckoutPayload,
+    loadRazorpayCheckout,
+    type RazorpayCheckoutResponse,
+} from '@/lib/payments/razorpay-checkout';
 
 interface PricingTier {
     _id: string;
@@ -77,18 +76,8 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
 
     useEffect(() => {
         fetchPlans();
-        loadRazorpayScript();
+        void loadRazorpayCheckout().catch(() => undefined);
     }, []);
-
-    const loadRazorpayScript = () => {
-        
-        if (document.getElementById('razorpay-script')) return;
-        const script = document.createElement('script');
-        script.id = 'razorpay-script';
-        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-        script.async = true;
-        document.body.appendChild(script);
-    };
 
     const fetchPlans = async () => {
         try {
@@ -175,19 +164,17 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
             }
 
             const data = await response.json();
-
-            if (data.paymentLink) {
-                window.location.href = data.paymentLink;
-            } else if (data.orderId && window.Razorpay) {
-                const options = {
-                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                    amount: tier.amount * 100,
-                    currency: 'INR',
-                    name: 'DTPS',
-                    description: `${selectedPlan.name} - ${tier.durationLabel}`,
+            assertRazorpayCheckoutPayload(data);
+            const RazorpayCheckout = await loadRazorpayCheckout();
+            const options = {
+                    key: data.keyId,
+                    amount: data.amount,
+                    currency: data.currency,
+                    name: data.name,
+                    description: data.description,
                     image: '/images/dtps-logo.png',
                     order_id: data.orderId,
-                    handler: async function (response: any) {
+                    handler: async function (response: RazorpayCheckoutResponse) {
                         try {
                             const verifyResponse = await fetch('/api/client/service-plans/verify', {
                                 method: 'POST',
@@ -213,11 +200,7 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                             toast.error('Payment verification failed');
                         }
                     },
-                    prefill: {
-                        name: '',
-                        email: '',
-                        contact: ''
-                    },
+                    prefill: data.prefill,
                     theme: {
                         color: '#E06A26'
                     },
@@ -226,14 +209,10 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                             setPurchasing(false);
                         }
                     }
-                };
+            };
 
-                const razorpay = new window.Razorpay(options);
-                razorpay.open();
-            } else {
-                toast.success('Order created! You will be contacted for payment details.');
-                setShowPurchaseModal(false);
-            }
+            const checkout = new RazorpayCheckout(options);
+            checkout.open();
         } catch (error: any) {
             console.error('Purchase error:', error);
             toast.error(error.message || 'Failed to process purchase');

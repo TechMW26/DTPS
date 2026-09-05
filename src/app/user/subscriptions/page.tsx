@@ -33,6 +33,11 @@ import { toast } from 'sonner';
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
 import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { useBodyScrollLock } from '@/hooks';
+import {
+  assertRazorpayCheckoutPayload,
+  loadRazorpayCheckout,
+  type RazorpayCheckoutResponse,
+} from '@/lib/payments/razorpay-checkout';
 
 interface ReceiptData {
   planName: string;
@@ -44,12 +49,6 @@ interface ReceiptData {
   status: string;
   userName: string;
   userEmail: string;
-}
-
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
 }
 
 interface Subscription {
@@ -121,15 +120,9 @@ export default function UserSubscriptionsPage() {
     }
   }, [session]);
 
-  // Load Razorpay script
+  // Warm the Checkout script so tapping Purchase opens without a loading race.
   useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      document.body.removeChild(script);
-    };
+    void loadRazorpayCheckout().catch(() => undefined);
   }, []);
 
   const fetchSubscriptions = async () => {
@@ -190,20 +183,16 @@ export default function UserSubscriptionsPage() {
 
       if (response.ok) {
         const data = await response.json();
-
-        if (data.paymentLink) {
-          // Redirect to Razorpay payment link
-          window.location.href = data.paymentLink;
-        } else if (data.orderId && window.Razorpay) {
-          // Use Razorpay checkout
-          const options = {
-            key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-            amount: plan.price * 100,
-            currency: plan.currency || 'INR',
-            name: 'DTPS',
-            description: plan.name,
+        assertRazorpayCheckoutPayload(data);
+        const RazorpayCheckout = await loadRazorpayCheckout();
+        const options = {
+            key: data.keyId,
+            amount: data.amount,
+            currency: data.currency,
+            name: data.name,
+            description: data.description,
             order_id: data.orderId,
-            handler: async function (response: any) {
+            handler: async function (response: RazorpayCheckoutResponse) {
               // Verify payment
               const verifyResponse = await fetch('/api/client/subscriptions/verify', {
                 method: 'POST',
@@ -223,21 +212,14 @@ export default function UserSubscriptionsPage() {
                 toast.error('Payment verification failed');
               }
             },
-            prefill: {
-              name: `${session?.user?.firstName || ''} ${session?.user?.lastName || ''}`.trim(),
-              email: session?.user?.email || ''
-            },
+            prefill: data.prefill,
             theme: {
               color: '#E06A26'
             }
-          };
+        };
 
-          const razorpay = new window.Razorpay(options);
-          razorpay.open();
-        } else {
-          toast.success('Order created! You will be contacted for payment.');
-          fetchSubscriptions();
-        }
+        const checkout = new RazorpayCheckout(options);
+        checkout.open();
       } else {
         const errorData = await response.json();
         toast.error(errorData.error || 'Failed to initiate purchase');

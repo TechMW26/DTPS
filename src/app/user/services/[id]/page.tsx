@@ -5,14 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Star, Check, Loader2, ShoppingCart } from 'lucide-react';
 import { ClientPageSkeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import Script from 'next/script';
 import { useTheme } from '@/contexts/ThemeContext';
-
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
+import {
+  assertRazorpayCheckoutPayload,
+  loadRazorpayCheckout,
+  type RazorpayCheckoutResponse,
+} from '@/lib/payments/razorpay-checkout';
 
 interface ServicePlan {
   _id: string;
@@ -37,7 +35,6 @@ export default function ServiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [selectedTier, setSelectedTier] = useState<number | null>(null);
   const [isPurchasing, setIsPurchasing] = useState(false);
-  const [razorpayLoaded, setRazorpayLoaded] = useState(false);
 
   useEffect(() => {
     fetchServiceDetail();
@@ -93,22 +90,16 @@ export default function ServiceDetailPage() {
         throw new Error(data.error || 'Failed to create order');
       }
 
-      // If we get a payment link, redirect to it
-      if (data.paymentLink) {
-        window.location.href = data.paymentLink;
-        return;
-      }
-
-      // If we get an order ID, open Razorpay checkout
-      if (data.orderId && razorpayLoaded && window.Razorpay) {
-        const options = {
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_5iryw2HyZ6RWRW',
-          amount: tier.amount * 100,
-          currency: 'INR',
-          name: 'DTPS',
-          description: `${service.name} - ${tier.durationLabel}`,
+      assertRazorpayCheckoutPayload(data);
+      const RazorpayCheckout = await loadRazorpayCheckout();
+      const options = {
+          key: data.keyId,
+          amount: data.amount,
+          currency: data.currency,
+          name: data.name,
+          description: data.description,
           order_id: data.orderId,
-          handler: async function (response: any) {
+          handler: async function (response: RazorpayCheckoutResponse) {
             try {
               // Verify payment
               const verifyRes = await fetch('/api/client/service-plans/verify', {
@@ -135,11 +126,7 @@ export default function ServiceDetailPage() {
               toast.error('Payment verification failed. Please contact support.');
             }
           },
-          prefill: {
-            name: '',
-            email: '',
-            contact: ''
-          },
+          prefill: data.prefill,
           theme: {
             color: '#3AB1A0'
           },
@@ -149,16 +136,10 @@ export default function ServiceDetailPage() {
               toast.info('Payment cancelled');
             }
           }
-        };
+      };
 
-        const rzp = new window.Razorpay(options);
-        rzp.open();
-        return;
-      }
-
-      // Fallback - show success message
-      toast.success(data.message || 'Order created successfully!');
-      router.push('/user');
+      const checkout = new RazorpayCheckout(options);
+      checkout.open();
 
     } catch (error: any) {
       console.error('Purchase error:', error);
@@ -190,12 +171,6 @@ export default function ServiceDetailPage() {
 
   return (
     <div className={`min-h-screen pb-32 ${isDarkMode ? 'bg-gray-900' : 'bg-linear-to-b from-white to-gray-50'}`}>
-      {/* Razorpay Script */}
-      <Script
-        src="https://checkout.razorpay.com/v1/checkout.js"
-        onLoad={() => setRazorpayLoaded(true)}
-      />
-
       {/* Header */}
       <div className={`sticky top-0 z-40 backdrop-blur-sm border-b ${isDarkMode ? 'bg-gray-900/80 border-gray-800' : 'bg-white/95 border-gray-100'}`}>
         <div className="flex items-center gap-3 px-4 py-4 max-w-5xl mx-auto w-full">
