@@ -8,6 +8,7 @@ import ServicePlan, { ClientPurchase } from '@/lib/db/models/ServicePlan';
 import { addDays, format, differenceInDays, startOfDay, parseISO } from 'date-fns';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
+import { toISTDateKey } from '@/lib/utils/ist';
 
 // Helper function to calculate allowed freeze days based on plan duration in months (fallback)
 function calculateAllowedFreezeDaysFallback(durationDays: number): number {
@@ -29,7 +30,7 @@ async function getFreezeDaysFromPurchase(purchaseId: string | null, durationDays
   try {
     // First, try ClientPurchase model
     const clientPurchase: any = await ClientPurchase.findById(purchaseId).lean();
-    if (clientPurchase?.selectedTier?.freezeDays && clientPurchase.selectedTier.freezeDays > 0) {
+    if (typeof clientPurchase?.selectedTier?.freezeDays === 'number' && clientPurchase.selectedTier.freezeDays >= 0) {
       return clientPurchase.selectedTier.freezeDays;
     }
 
@@ -45,7 +46,7 @@ async function getFreezeDaysFromPurchase(purchaseId: string | null, durationDays
         (tier: any) => tier.durationDays === (unifiedPayment.durationDays || durationDays) && tier.isActive
       );
 
-      if (matchingTier?.freezeDays && matchingTier.freezeDays > 0) {
+      if (typeof matchingTier?.freezeDays === 'number' && matchingTier.freezeDays >= 0) {
         return matchingTier.freezeDays;
       }
     }
@@ -57,7 +58,7 @@ async function getFreezeDaysFromPurchase(purchaseId: string | null, durationDays
         const matchingTier = servicePlan.pricingTiers.find(
           (tier: any) => tier.durationDays === durationDays && tier.isActive
         );
-        if (matchingTier?.freezeDays && matchingTier.freezeDays > 0) {
+        if (typeof matchingTier?.freezeDays === 'number' && matchingTier.freezeDays >= 0) {
           return matchingTier.freezeDays;
         }
       }
@@ -82,7 +83,7 @@ async function getSharedFreezeInfo(purchaseId: string | null, currentPlanId: str
   }
 
   // Find all meal plans linked to the same purchase
-  const linkedPlans: any[] = await ClientMealPlan.find({ purchaseId }).lean();
+  const linkedPlans: any[] = await ClientMealPlan.find({ purchaseId, isDeleted: { $ne: true } }).lean();
 
   let totalFreezeCount = 0;
   let allFreezedDays: any[] = [];
@@ -849,15 +850,16 @@ export async function DELETE(
       ? startOfDay(parseISO(lastUpdatedMeal.date))
       : addDays(startDate, (originalPhaseDuration || 0) - 1);
 
-    // NOTE: totalFreezeCount does NOT change on unfreeze
-    // The freeze days are still "used" even after unfreezing
-    // This means remaining freeze days won't increase when you unfreeze
-    // Only the freezedDays array is updated to remove the unfrozen dates
+    // Only unused dates are credited back. Removing an elapsed freeze date
+    // must not replenish the allowance already consumed by that pause.
+    const todayKey = toISTDateKey(new Date())!;
+    const creditedFreezeDays = datesToUnfreeze.filter(date => date >= todayKey).length;
+    const thisPlanFreezeCount = Math.max(0, currentFreezeCount - creditedFreezeDays);
 
-    // Update the meal plan - keep totalFreezeCount unchanged
+    // Persist the balance together with the removed dates.
     mealPlan.meals = updatedMeals;
     mealPlan.freezedDays = updatedFreezedDays;
-    // mealPlan.totalFreezeCount stays the same - freeze days are still "used"
+    mealPlan.totalFreezeCount = thisPlanFreezeCount;
     mealPlan.endDate = newEndDate;
     mealPlan.duration = originalPhaseDuration; // Keep assigned phase duration immutable
 
@@ -934,19 +936,26 @@ export async function DELETE(
       }
     }
 
-    // Recalculate allowed freeze days based on original duration
-    const allowedFreezeDays = calculateAllowedFreezeDaysFallback(mealPlan.duration || differenceInDays(newEndDate, startDate) + 1);
+    const allowedFreezeDays = await getFreezeDaysFromPurchase(
+      purchaseId, mealPlan.duration || differenceInDays(newEndDate, startDate) + 1,
+    );
+    const sharedTotalFreezeCount = purchaseId
+      ? (await getSharedFreezeInfo(purchaseId, id)).totalFreezeCount
+      : thisPlanFreezeCount;
 
     return NextResponse.json({
       success: true,
-      message: `Successfully unfroze ${datesToUnfreeze.length} days. End date remains ${format(newEndDate, 'yyyy-MM-dd')} to preserve freeze-adjusted duration.`,
+      message: `Successfully unfroze ${datesToUnfreeze.length} days and restored ${creditedFreezeDays} unused freeze days. End date updated to ${format(newEndDate, 'yyyy-MM-dd')}.`,
       data: {
         planId: mealPlan._id,
         previousEndDate: format(currentEndDate, 'yyyy-MM-dd'),
         newEndDate: format(newEndDate, 'yyyy-MM-dd'),
-        totalFreezeCount: currentFreezeCount, // Unchanged - freeze days still "used"
+        totalFreezeCount: sharedTotalFreezeCount,
+        thisPlanFreezeCount,
+        creditedFreezeDays,
+        isSharedFreeze: !!purchaseId,
         allowedFreezeDays,
-        remainingFreezeDays: allowedFreezeDays - currentFreezeCount, // Remains same
+        remainingFreezeDays: Math.max(0, allowedFreezeDays - sharedTotalFreezeCount),
         unfrozenDates: datesToUnfreeze,
         removedMealDates: addedDatesToRemove
       }

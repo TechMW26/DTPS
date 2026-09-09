@@ -1,3 +1,4 @@
+import { getUserDirectorySummary } from '@/lib/services/user-directory-summary';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
@@ -75,11 +76,9 @@ async function recomputeClientStatuses(clients: any[]): Promise<any[]> {
 
     const newStatus = computeClientStatusFromDocs(clientPurchases, isOnHold);
 
-    // Update in background if status changed (don't await)
-    if (user.clientStatus !== newStatus) {
-      User.findByIdAndUpdate(user._id, { clientStatus: newStatus }).catch(() => { });
-    }
-
+    // Directory reads must not fan out into one write per client. Persisted
+    // status changes belong to the payment/hold lifecycle service; this read
+    // still returns the current status calculated from authoritative purchases.
     return { ...user, clientStatus: newStatus };
   });
 
@@ -106,8 +105,13 @@ export async function GET(request: NextRequest) {
     const dateTo = searchParams.get('dateTo'); // ISO date string
     const dietitianId = searchParams.get('dietitianId'); // primary dietitian filter
     const healthCounselorId = searchParams.get('healthCounselorId'); // primary HC filter
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const page = parseInt(searchParams.get('page') || '1');
+    const requestedLimit = Number(searchParams.get('limit') || '50');
+    const page = Number(searchParams.get('page') || '1');
+    if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1 ||
+        !Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger((page - 1) * requestedLimit)) {
+      return NextResponse.json({ error: 'page and limit must be positive integers' }, { status: 400 });
+    }
+    const limit = Math.min(requestedLimit, 500);
     const viewAll = searchParams.get('viewAll') === 'true';
     const noCache = searchParams.get('noCache') === 'true';
 
@@ -296,19 +300,34 @@ export async function GET(request: NextRequest) {
 
     // For admin users, include password field; for others, exclude it
     // Always include clientStatus for proper client engagement tracking
-    const selectFields = session.user.role === UserRole.ADMIN ? '+clientStatus' : '-password +clientStatus';
+    const selectFields = session.user.role === UserRole.ADMIN ? '' : '-password';
 
     const loadUsersData = async () => {
-      const usersQuery = User.find(query)
-        .select(selectFields)
-        .sort({ createdAt: -1 });
+      let pageQuery = query;
+      let matchingStatuses: Map<string, string> | null = null;
+      let matchingTotal: number | null = null;
 
-      const rawUsers = shouldFilterByComputedClientStatus
-        ? await usersQuery.lean()
-        : await usersQuery
-          .limit(limit)
-          .skip((page - 1) * limit)
+      if (shouldFilterByComputedClientStatus) {
+        // Compute eligibility from tiny records first. Fetch full profiles and
+        // assignment names only for the requested page, not the whole directory.
+        const candidates = await User.find(query)
+          .select('role holdStatus.isOnHold')
+          .sort({ createdAt: -1 })
           .lean();
+        const current = await recomputeClientStatuses(candidates);
+        const matching = current.filter(user => user.role === UserRole.CLIENT && user.clientStatus === statusFilter);
+        matchingTotal = matching.length;
+        const pageUsers = matching.slice((page - 1) * limit, page * limit);
+        matchingStatuses = new Map(pageUsers.map(user => [String(user._id), user.clientStatus]));
+        pageQuery = { _id: { $in: pageUsers.map(user => user._id) } };
+      }
+
+      const [rawUsers, total, summary] = await Promise.all([
+        User.find(pageQuery).select(selectFields).sort({ createdAt: -1 })
+          .limit(limit).skip(shouldFilterByComputedClientStatus ? 0 : (page - 1) * limit).lean(),
+        matchingTotal === null ? User.countDocuments(query) : Promise.resolve(matchingTotal),
+        getUserDirectorySummary(),
+      ]);
 
       const relatedUserIds = new Set<string>();
 
@@ -364,6 +383,7 @@ export async function GET(request: NextRequest) {
 
         return {
           ...user,
+          clientStatus: matchingStatuses?.get(String(user._id)) ?? user.clientStatus,
           assignedDietitian: assignedDietitianId ? relatedUsersMap.get(assignedDietitianId) || null : null,
           assignedDietitians,
           assignedHealthCounselor: assignedHealthCounselorId ? relatedUsersMap.get(assignedHealthCounselorId) || null : null,
@@ -371,31 +391,11 @@ export async function GET(request: NextRequest) {
         };
       });
 
-      const total = await User.countDocuments(query);
-
-      const [adminsCount, dietitiansCount, healthCounselorsCount, clientsCount, latestClientIdAgg] = await Promise.all([
-        User.countDocuments({ role: UserRole.ADMIN }),
-        User.countDocuments({ role: UserRole.DIETITIAN }),
-        User.countDocuments({ role: UserRole.HEALTH_COUNSELOR }),
-        User.countDocuments({ role: UserRole.CLIENT }),
-        User.aggregate([
-          { $match: { role: UserRole.CLIENT, clientId: { $exists: true, $ne: null, $regex: /^C-\d+$/ } } },
-          { $project: { clientIdNum: { $toInt: { $substr: ['$clientId', 2, -1] } } } },
-          { $sort: { clientIdNum: -1 } },
-          { $limit: 1 }
-        ])
-      ]);
-
-      const latestClientIdNumber =
-        latestClientIdAgg.length > 0 && latestClientIdAgg[0]?.clientIdNum
-          ? latestClientIdAgg[0].clientIdNum
-          : 0;
-
-      return { users, total, adminsCount, dietitiansCount, healthCounselorsCount, clientsCount, latestClientIdNumber };
+      return { users, total, ...summary };
     };
 
     // Generate cache key based on role and query params
-    const cacheKey = `users:v3:${session.user.role}:${role || 'all'}:${search || ''}:${statusFilter || ''}:${dateFrom || ''}:${dateTo || ''}:${dietitianId || ''}:${healthCounselorId || ''}:${page}:${limit}`;
+    const cacheKey = `users:v4:${session.user.id}:${session.user.role}:${role || 'all'}:${search || ''}:${statusFilter || ''}:${dateFrom || ''}:${dateTo || ''}:${dietitianId || ''}:${healthCounselorId || ''}:${page}:${limit}`;
 
     const { users, total, adminsCount, dietitiansCount, healthCounselorsCount, clientsCount, latestClientIdNumber } = noCache
       ? await loadUsersData()
@@ -419,23 +419,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Recompute client statuses to ensure accuracy (for clients in the list)
-    const usersWithFreshStatus = await recomputeClientStatuses(serializedUsers);
+    const usersWithFreshStatus = shouldFilterByComputedClientStatus
+      ? serializedUsers
+      : await recomputeClientStatuses(serializedUsers);
 
-    let responseUsers = usersWithFreshStatus;
-    let responseTotal = total;
-
-    // For client status filters, apply filter AFTER recompute so stale persisted
-    // values don't cause missing rows; then paginate in-memory.
-    if (shouldFilterByComputedClientStatus && statusFilter) {
-      const filteredUsers = usersWithFreshStatus.filter((user: any) => {
-        const userRoleValue = String(user?.role || '');
-        return userRoleValue === UserRole.CLIENT && String(user?.clientStatus || '').toLowerCase() === statusFilter;
-      });
-
-      responseTotal = filteredUsers.length;
-      const start = (page - 1) * limit;
-      responseUsers = filteredUsers.slice(start, start + limit);
-    }
+    const responseUsers = usersWithFreshStatus;
+    const responseTotal = total;
 
     return NextResponse.json({
       users: responseUsers,

@@ -16,6 +16,7 @@ import {
 import { createRouteTestServer } from '../utils/supertest-route';
 import { getRequiredNextPhaseStart } from '@/lib/meal-plan-phase-continuity';
 import { toISTDateKey } from '@/lib/utils/ist';
+import { invokeRouteWithParams } from '../utils/routes';
 
 function toSessionUser(user: any) {
     return {
@@ -243,13 +244,85 @@ describe('meal plan freeze/unfreeze integrations (supertest + jest)', () => {
 
                 // Original assigned duration remains intact and never changes.
                 expect(refreshedPhase2AfterUnfreeze.duration).toBe(10);
-                expect(refreshedPhase2AfterUnfreeze.totalFreezeCount).toBe(2);
+                expect(refreshedPhase2AfterUnfreeze.totalFreezeCount).toBe(0);
+                expect(unfreezeResponse.body.data.totalFreezeCount).toBe(0);
+                expect(unfreezeResponse.body.data.remainingFreezeDays).toBe(10);
             } finally {
                 unfreezeServer.close();
             }
         } finally {
             freezeServer.close();
         }
+    });
+
+
+    it('credits the seven unused days of a fifteen-day pause and allows them to be used again', async () => {
+        const { client, dietitian } = await createAssignedDietitianClientPair();
+        const service = await ServicePlan.create({
+            name: 'Early return allowance', category: 'general-wellness',
+            description: 'Freeze allowance', createdBy: dietitian._id,
+            pricingTiers: [{ durationDays: 90, durationLabel: '90 Days', amount: 1000,
+                freezeDays: 15, isActive: true }],
+        });
+        const purchase = await UnifiedPayment.create({
+            client: client._id, dietitian: dietitian._id, servicePlan: service._id,
+            planName: 'Early return allowance', durationDays: 90, durationLabel: '90 Days',
+            status: 'paid', paymentStatus: 'paid',
+        });
+        const today = new Date(`${toISTDateKey(new Date())}T12:00:00Z`);
+        const start = addDays(today, -8);
+        const frozenDates = Array.from({ length: 15 }, (_, index) => toYMD(addDays(start, index)));
+        const plan = await ClientMealPlan.create({
+            clientId: client._id, dietitianId: dietitian._id, purchaseId: purchase._id,
+            name: 'Early return', startDate: start, endDate: addDays(start, 44), duration: 30,
+            meals: buildDailyMeals(start, 45), status: 'active', goals: { primaryGoal: 'weight-loss' },
+            totalFreezeCount: 15,
+            freezedDays: frozenDates.map((date, index) => ({ date, addedDate: toYMD(addDays(start, 30 + index)) })),
+        });
+        const route = await import('@/app/api/client-meal-plans/[id]/freeze/route');
+        const options = { url: `http://localhost/api/client-meal-plans/${entityId(plan)}/freeze`,
+            user: dietitian, params: { id: entityId(plan) } };
+        const unfreezeDates = frozenDates.slice(8);
+        const result = await invokeRouteWithParams(route.DELETE, { ...options, method: 'DELETE', body: { unfreezeDates } });
+        expect(result.status).toBe(200);
+        expect(result.json.data).toMatchObject({ creditedFreezeDays: 7, totalFreezeCount: 8,
+            allowedFreezeDays: 15, remainingFreezeDays: 7 });
+        const persisted: any = await ClientMealPlan.findById(plan._id).lean();
+        expect(persisted.totalFreezeCount).toBe(8);
+        expect(persisted.freezedDays).toHaveLength(8);
+        const info = await invokeRouteWithParams(route.GET, { ...options, method: 'GET' });
+        expect(info.json.data.remainingFreezeDays).toBe(7);
+        // A replay must not credit the same dates twice.
+        const replay = await invokeRouteWithParams(route.DELETE, { ...options, method: 'DELETE', body: { unfreezeDates } });
+        expect(replay.status).toBe(400);
+        // Removing a historical date does not refund consumed allowance.
+        const past = await invokeRouteWithParams(route.DELETE, { ...options, method: 'DELETE', body: { unfreezeDates: [frozenDates[0]] } });
+        expect(past.json.data).toMatchObject({ creditedFreezeDays: 0, totalFreezeCount: 8, remainingFreezeDays: 7 });
+        const reuse = await invokeRouteWithParams(route.POST, { ...options, method: 'POST', body: { freezeDates: unfreezeDates } });
+        expect(reuse.status).toBe(200);
+        expect(reuse.json.data).toMatchObject({ totalFreezeCount: 15, remainingFreezeDays: 0 });
+        // Shared purchase balances include the other phases after the refund.
+        await invokeRouteWithParams(route.DELETE, { ...options, method: 'DELETE',
+            body: { unfreezeDates: unfreezeDates.slice(0, 2) } });
+        await ClientMealPlan.create({
+            clientId: client._id, dietitianId: dietitian._id, purchaseId: purchase._id,
+            name: 'Another phase', startDate: addDays(today, 60), endDate: addDays(today, 68),
+            duration: 7, status: 'active', goals: { primaryGoal: 'weight-loss' },
+            meals: buildDailyMeals(addDays(today, 60), 9), totalFreezeCount: 2,
+            freezedDays: [{ date: addDays(today, 60) }, { date: addDays(today, 61) }],
+        });
+        const shared = await invokeRouteWithParams(route.DELETE, { ...options, method: 'DELETE',
+            body: { unfreezeDates: unfreezeDates.slice(2, 4) } });
+        expect(shared.status).toBe(200);
+        expect(shared.json.data).toMatchObject({ totalFreezeCount: 13, thisPlanFreezeCount: 11,
+            allowedFreezeDays: 15, remainingFreezeDays: 2 });
+        const sharedInfo = await invokeRouteWithParams(route.GET, { ...options, method: 'GET' });
+        expect(sharedInfo.json.data.remainingFreezeDays).toBe(2);
+
+        // An explicit zero allowance is authoritative, not a missing value.
+        await ServicePlan.updateOne({ _id: service._id }, { $set: { 'pricingTiers.0.freezeDays': 0 } });
+        const zeroAllowance = await invokeRouteWithParams(route.GET, { ...options, method: 'GET' });
+        expect(zeroAllowance.json.data).toMatchObject({ allowedFreezeDays: 0, remainingFreezeDays: 0, canFreeze: false });
     });
 
     it('supports a continuous pause that extends beyond the currently prepared diet', async () => {

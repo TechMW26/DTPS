@@ -1,3 +1,4 @@
+import DietTemplate from '@/lib/db/models/DietTemplate';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
@@ -133,7 +134,6 @@ export async function GET(request: NextRequest) {
         })
           .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
           .select('clientId status startDate endDate meals mealTypes templateId mealCompletions freezedDays customizations goals name')
-          .populate('templateId')
           .lean() as any;
 
         if (!mealPlan) {
@@ -206,9 +206,14 @@ export async function GET(request: NextRequest) {
 
         // 3. Fallback to template if available
         if (dayMeals.length === 0 && mealPlan.templateId) {
-          const template = mealPlan.templateId as any;
+          // Most plans already own their published meals. Load the template
+          // only for the legacy fallback, instead of fetching every template
+          // day on every current-day read and background prefetch.
+          const template = await DietTemplate.findById(mealPlan.templateId)
+            .select('meals')
+            .lean();
 
-          if (template?.meals?.length > 0) {
+          if (template && template.meals && template.meals.length > 0) {
             const templateDay = template.meals[dayIndex % template.meals.length];
             if (templateDay) {
               mealsSource = 'template';

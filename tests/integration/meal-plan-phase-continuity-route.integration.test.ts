@@ -118,6 +118,10 @@ describe("POST /api/client-meal-plans phase continuity", () => {
   });
 
   it("accepts a deliberate later phase when it remains inside the purchase window", async () => {
+    const today = new Date();
+    today.setUTCHours(12, 0, 0, 0);
+    const relativeDate = (days: number) => new Date(today.getTime() + days * 86_400_000);
+    const dateKey = (days: number) => relativeDate(days).toISOString().slice(0, 10);
     const { client, dietitian } = await createAssignedDietitianClientPair();
     const purchase = await UnifiedPayment.create({
       client: client._id,
@@ -128,8 +132,8 @@ describe("POST /api/client-meal-plans phase continuity", () => {
       durationLabel: "180 Days",
       status: "paid",
       paymentStatus: "paid",
-      expectedStartDate: new Date("2026-07-20T00:00:00.000Z"),
-      expectedEndDate: new Date("2027-01-16T00:00:00.000Z"),
+      expectedStartDate: relativeDate(-60),
+      expectedEndDate: relativeDate(120),
       remainingDays: 137,
       mealPlanCreated: true,
     });
@@ -141,11 +145,11 @@ describe("POST /api/client-meal-plans phase continuity", () => {
       phaseNumber: 2,
       phaseTag: "PHASE-2",
       name: "Phase 2",
-      startDate: new Date("2026-08-08T00:00:00.000Z"),
-      endDate: new Date("2026-08-21T00:00:00.000Z"),
+      startDate: relativeDate(-27),
+      endDate: relativeDate(-14),
       duration: 14,
       status: "active",
-      meals: publishableMeals,
+      meals: [{ ...publishableMeals[0], date: dateKey(1) }],
       goals: { primaryGoal: "weight-loss" },
     });
 
@@ -157,11 +161,11 @@ describe("POST /api/client-meal-plans phase continuity", () => {
         clientId: String(client._id),
         purchaseId: String(purchase._id),
         name: "Phase 3",
-        startDate: "2026-09-01",
-        endDate: "2026-09-15",
+        startDate: dateKey(1),
+        endDate: dateKey(15),
         duration: 15,
         status: "active",
-        meals: publishableMeals,
+        meals: [{ ...publishableMeals[0], date: dateKey(1) }],
       },
     });
 

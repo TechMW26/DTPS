@@ -8,6 +8,9 @@ const uri = process.env.MONGODB_URI;
 if (!uri) throw new Error('MONGODB_URI is required');
 
 const specifications = [
+  ['users', { role: 1, clientId: 1 }],
+  ['clientmealplans', { purchaseId: 1 }],
+  ['unifiedpayments', { paymentLink: 1, client: 1 }],
   ['users', { role: 1, assignedDietitians: 1 }],
   ['users', { role: 1, assignedHealthCounselor: 1 }],
   ['users', { role: 1, assignedHealthCounselors: 1 }],

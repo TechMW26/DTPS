@@ -111,6 +111,7 @@ export async function GET(request: NextRequest) {
     const pendingPlans: any[] = [];
 
     for (const client of clients) {
+      const previousPendingCount = pendingPlans.length;
       const clientId = (client as any)._id.toString();
       const clientMealPlans = mealPlansByClient[clientId] || [];
       const clientPurchases = canonicalizePurchaseRecords(
@@ -359,28 +360,14 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // If all meal plans are completed and the last plan ended more than 30 days ago,
-      // the client's program is truly finished — don't show as pending regardless of purchase counters.
-      const allPlansCompleted =
-        sortedMealPlans.length > 0 &&
-        sortedMealPlans.every((p: any) => p.status === "completed");
-      const lastPlanEndedLongAgo =
-        lastPlan && differenceInDays(today, new Date(lastPlan.endDate)) > 30;
-      const purchaseExpectedEndPassed =
-        latestPurchase.expectedEndDate &&
-        differenceInDays(today, new Date(latestPurchase.expectedEndDate)) > 30;
-      const programTrulyFinished =
-        allPlansCompleted &&
-        (lastPlanEndedLongAgo || purchaseExpectedEndPassed);
-
-      // CASE 4: Has pending days to create (general case - show all clients with pending days)
-      // This covers: upcoming plans, no current plan, any situation where more meal plans need to be created
-      // Skip clients whose program is truly finished (all plans completed + ended > 30 days ago)
-      if (pendingDaysToCreate > 0 && !programTrulyFinished) {
+      // Eligible purchases were already checked against their entitlement end.
+      // An old completed phase does not finish a still-valid paid program.
+      // Keep outstanding days visible until they are allocated or expire.
+      if (pendingDaysToCreate > 0) {
         // Check if already added in previous cases
-        const alreadyAdded = pendingPlans.some(
-          (p) => p.clientId.toString() === clientId,
-        );
+        // Only this client's cases can append during the current iteration.
+        // Avoid rescanning every previously collected client for each row.
+        const alreadyAdded = pendingPlans.length > previousPendingCount;
 
         if (!alreadyAdded) {
           // Determine the "current" plan to show - either running plan or the upcoming one
@@ -480,7 +467,7 @@ export async function GET(request: NextRequest) {
         medium: 2,
       };
       const urgencyDiff =
-        (urgencyOrder[a.urgency] || 3) - (urgencyOrder[b.urgency] || 3);
+        (urgencyOrder[a.urgency] ?? 3) - (urgencyOrder[b.urgency] ?? 3);
       if (urgencyDiff !== 0) return urgencyDiff;
       return (b.pendingDaysToCreate || 0) - (a.pendingDaysToCreate || 0); // Higher pending days first
     });

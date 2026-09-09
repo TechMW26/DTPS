@@ -551,6 +551,7 @@ unifiedPaymentSchema.virtual('statusLabel').get(function (this: IUnifiedPayment)
 unifiedPaymentSchema.index({ client: 1, status: 1 });
 unifiedPaymentSchema.index({ client: 1, status: 1, createdAt: -1 });
 unifiedPaymentSchema.index({ client: 1, expectedEndDate: -1 });
+unifiedPaymentSchema.index({ paymentLink: 1, client: 1 });
 unifiedPaymentSchema.index({ client: 1, paymentStatus: 1 });
 unifiedPaymentSchema.index({ client: 1, endDate: -1 });
 unifiedPaymentSchema.index({ dietitian: 1, status: 1 });
