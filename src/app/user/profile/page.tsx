@@ -39,7 +39,7 @@ import {
   UserCheck
 } from "lucide-react";
 import Link from "next/link";
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { getDocumentViewerUrl } from '@/lib/media';
 
 interface ProfileData {
@@ -213,7 +213,7 @@ export default function ProfilePage() {
   );
 
   if (loading) {
-    return <ClientPageSkeleton variant="form" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   const tabs = [

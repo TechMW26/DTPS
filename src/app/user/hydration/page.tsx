@@ -1,5 +1,7 @@
 'use client';
 
+import { useAnimatedProgress } from '@/hooks/useAnimatedProgress';
+
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -18,7 +20,7 @@ import {
   GlassWater
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { useBodyScrollLock } from '@/hooks';
 
 interface WaterEntry {
@@ -81,37 +83,7 @@ export default function HydrationPage() {
   }, [status, router]);
 
   // Animate water fill smoothly using requestAnimationFrame
-  const animateWaterFill = useCallback((from: number, to: number, goal: number) => {
-    setIsAnimating(true);
-    isAnimatingRef.current = true;
-    const startPercent = Math.min((from / goal) * 100, 100);
-    const endPercent = Math.min((to / goal) * 100, 100);
-    const duration = 1000; // 1 second for smoother animation
-    const startTime = performance.now();
-
-    setAnimatedFill(startPercent);
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-
-      // Ease-out cubic for smooth deceleration
-      const easeOut = 1 - Math.pow(1 - progress, 3);
-      const currentPercent = startPercent + (endPercent - startPercent) * easeOut;
-
-      setAnimatedFill(currentPercent);
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        setAnimatedFill(endPercent);
-        setIsAnimating(false);
-        isAnimatingRef.current = false;
-      }
-    };
-
-    requestAnimationFrame(animate);
-  }, []);
+  const animateWaterFill = useAnimatedProgress(setAnimatedFill, setIsAnimating, isAnimatingRef);
 
   // Apply a fresh hydration payload to state + refs. Optionally animate the
   // water fill from the previous total to the new total.
@@ -282,7 +254,7 @@ export default function HydrationPage() {
   const completionPercent = Math.round(fillPercent);
 
   if (loading) {
-    return <ClientPageSkeleton variant="home" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -615,7 +587,7 @@ export default function HydrationPage() {
                       <p className="font-semibold text-gray-900">{entry.amount} ml</p>
                       <p className="text-xs text-gray-400">{entry.time}</p>
                     </div>
-                    <button
+                    <button aria-label="Delete entry"
                       onClick={() => handleDeleteEntry(entry._id)}
                       className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                     >
@@ -638,7 +610,7 @@ export default function HydrationPage() {
 
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-gray-900">Add Water</h3>
-              <button onClick={() => setShowAddModal(false)} className="p-2">
+              <button aria-label="Close" onClick={() => setShowAddModal(false)} className="p-2">
                 <X className="w-6 h-6 text-gray-500" />
               </button>
             </div>
@@ -647,7 +619,7 @@ export default function HydrationPage() {
 
             {/* Amount Selector */}
             <div className="flex items-center justify-center gap-6 mb-6">
-              <button
+              <button aria-label="Decrease water by 50 ml"
                 onClick={() => setCustomAmount(Math.max(0, customAmount - 50))}
                 className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
               >
@@ -664,7 +636,7 @@ export default function HydrationPage() {
                 <p className="text-gray-500">ml</p>
               </div>
 
-              <button
+              <button aria-label="Increase water by 50 ml"
                 onClick={() => setCustomAmount(customAmount + 50)}
                 className="w-14 h-14 rounded-2xl border-2 border-[#3AB1A0] flex items-center justify-center hover:bg-[#3AB1A0]/10 transition-colors"
               >

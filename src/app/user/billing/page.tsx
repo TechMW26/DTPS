@@ -24,7 +24,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { useRealtime } from '@/hooks/useRealtime';
 
 interface Invoice {
@@ -172,7 +172,7 @@ export default function UserBillingPage() {
   };
 
   if (status === 'loading' || loading) {
-    return <ClientPageSkeleton variant="list" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   // Show error state if there's an error
@@ -186,7 +186,7 @@ export default function UserBillingPage() {
               <ArrowLeft className={`w-5 h-5 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`} />
             </Link>
             <h1 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-black'}`}>Billing</h1>
-            <button
+            <button aria-label="Refresh billing"
               onClick={fetchBillingData}
               className="absolute right-4 flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#ff9500]/10 transition-colors"
             >
@@ -257,7 +257,7 @@ export default function UserBillingPage() {
             <ArrowLeft className={`w-5 h-5 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`} />
           </Link>
           <h1 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-black'}`}>Billing</h1>
-          <button
+          <button aria-label="Refresh billing"
             onClick={fetchBillingData}
             className="absolute right-4 flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#ff9500]/10 transition-colors"
           >

@@ -35,7 +35,8 @@ import {
   PersonStanding,
   CookingPot
 } from 'lucide-react';
-import { CardGridSkeleton, ClientPageSkeleton } from '@/components/ui/skeleton';
+import { CardGridSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import SmoothComponent from '@/components/animations/SmoothComponent';
 import StaggerList from '@/components/animations/StaggerList';
 import { socketClient } from '@/lib/realtime/socket-client';
@@ -640,13 +641,13 @@ export default function UserHomePage() {
   const displayAvatar = userAvatar || session?.user?.avatar;
 
   // Show loading while mounting, session is loading, checking onboarding, or verifying payment
-  if (!mounted || status === 'loading' || checkingOnboarding || paymentVerifying) {
-    return <ClientPageSkeleton variant="home" showHeader={false} />;
+  if (!mounted || status === 'loading' || checkingOnboarding) {
+    return <ClientScreenSkeleton />;
   }
 
   // Redirect to login if not authenticated
   if (status === 'unauthenticated') {
-    return <ClientPageSkeleton variant="home" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -683,6 +684,7 @@ export default function UserHomePage() {
 
       {/* Main Content */}
       <div className="mx-auto w-full max-w-7xl space-y-4 px-4 py-4 sm:px-6">
+        {paymentVerifying && <div role="status" className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-100">Confirming your payment. Your plan will update here once it is verified.</div>}
         {/* Calories Card */}
         <div
           className={`rounded-3xl p-5 shadow-sm border ${isDarkMode

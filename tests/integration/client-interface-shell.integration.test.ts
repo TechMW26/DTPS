@@ -189,9 +189,10 @@ describe("client interface shell", () => {
     expect(globalStyles).toContain(".client-bottom-sheet-panel");
     expect(globalStyles).toContain("@media (prefers-reduced-motion: reduce)");
     expect(userLayout).not.toContain("key={pathname}");
-    expect(userLayout).toContain("routeContentRef");
-    expect(userLayout).toContain("content.animate(");
-    expect(userLayout).toContain("prefers-reduced-motion: reduce");
+    expect(userLayout).toContain("ClientRouteSurface");
+    const motion = fs.readFileSync(path.join(projectRoot, "src/components/client/ClientMotion.tsx"), "utf8");
+    expect(motion).toContain("element.animate(");
+    expect(motion).toContain("prefers-reduced-motion: reduce");
     expect(userLayout).toContain("client-route-transition");
     expect(bottomNavigation).toContain("useLinkStatus");
     expect(bottomNavigation).toContain("NavigationPendingHint");
@@ -213,8 +214,7 @@ describe("client interface shell", () => {
 
     expect(nextConfig).toContain("staleTimes:");
     expect(nextConfig).toContain("dynamic: 30");
-    expect(userLoading).toContain('showHeader={false}');
-    expect(userLoading).toContain("embedded");
+    expect(userLoading).toContain("ClientScreenSkeleton");
     expect(skeletons).toContain("--client-bottom-nav-clearance");
   });
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ArrowLeft, Clock, Users, Flame, Search, X, Loader2 } from 'lucide-react';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 
@@ -30,6 +30,7 @@ export default function RecipesPage() {
   const { isDarkMode } = useTheme();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
@@ -53,22 +54,6 @@ export default function RecipesPage() {
     }
   }, [searchTerm, debouncedSearchTerm]);
 
-  // Fetch recipes when debounced search or category changes
-  useEffect(() => {
-    setRecipes([]);
-    setPage(1);
-    fetchRecipes(1);
-  }, [debouncedSearchTerm]);
-
-  // Cleanup abort controller on unmount
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
-
   const fetchRecipes = useCallback(async (pageNum: number) => {
     // Cancel any in-flight request
     if (abortControllerRef.current) {
@@ -76,10 +61,12 @@ export default function RecipesPage() {
     }
 
     // Create new abort controller for this request
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       setLoading(true);
+      setError('');
 
       const params = new URLSearchParams();
       params.append('page', pageNum.toString());
@@ -95,11 +82,13 @@ export default function RecipesPage() {
       }
 
       const response = await fetch(`/api/recipes?${params.toString()}`, {
-        signal: abortControllerRef.current.signal
+        signal: controller.signal
       });
 
+      if (!response.ok) throw new Error('Recipes could not be loaded.');
       if (response.ok) {
         const data = await response.json();
+        if (controller.signal.aborted || abortControllerRef.current !== controller) return;
         const newRecipes = data.recipes || [];
 
         setRecipes(newRecipes);
@@ -110,20 +99,26 @@ export default function RecipesPage() {
         setTotalPages(Math.max(1, pages));
         setPage(pageNum);
       }
-    } catch (error: any) {
+    } catch {
       // Ignore abort errors - they're expected when cancelling requests
-      if (error.name === 'AbortError') {
+      if (controller.signal.aborted || abortControllerRef.current !== controller) {
         return;
       }
-      console.error('Error fetching recipes:', error);
+      setError('Could not load recipes. Check your connection and try again.');
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) setLoading(false);
     }
   }, [debouncedSearchTerm]);
 
+  // Keep the previous results and search field mounted while a new query loads.
+  useEffect(() => {
+    void fetchRecipes(1);
+    return () => abortControllerRef.current?.abort();
+  }, [fetchRecipes]);
+
   // Show full-page loading only on initial load, not during searches
   if (loading && recipes.length === 0 && !searchTerm) {
-    return <ClientPageSkeleton variant="grid" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   const effectiveTotalRecipes = totalRecipes > 0 ? totalRecipes : recipes.length;
@@ -144,18 +139,18 @@ export default function RecipesPage() {
         <div className="flex items-center justify-center gap-3">
           <button
             onClick={() => fetchRecipes(Math.max(1, page - 1))}
-            disabled={page <= 1}
-            className={paginationButtonClass(page <= 1)}
+            disabled={loading || page <= 1}
+            className={paginationButtonClass(loading || page <= 1)}
           >
-            Prev
+            Previous
           </button>
           <div className={`text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
             Page {page} of {totalPages}
           </div>
           <button
             onClick={() => fetchRecipes(Math.min(totalPages, page + 1))}
-            disabled={page >= totalPages}
-            className={paginationButtonClass(page >= totalPages)}
+            disabled={loading || page >= totalPages}
+            className={paginationButtonClass(loading || page >= totalPages)}
           >
             Next
           </button>
@@ -171,7 +166,8 @@ export default function RecipesPage() {
         <div className={`sticky top-0 z-40 transition-colors duration-300 border-b ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
           <div className="relative flex items-center justify-center px-4 py-4">
             <button
-              onClick={() => router.back()}
+              onClick={() => router.push('/user')}
+              aria-label="Back to home"
               className="absolute left-4 flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#3AB1A0]/10 transition-colors"
             >
               <ArrowLeft className={`w-5 h-5 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`} />
@@ -185,7 +181,9 @@ export default function RecipesPage() {
           <div className="mb-6 relative">
             <Search className={`absolute left-4 top-3.5 w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`} />
             <input
-              type="text"
+              type="search"
+              aria-label="Search recipes"
+              aria-describedby="recipe-search-status"
               placeholder="Search recipes..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -194,29 +192,34 @@ export default function RecipesPage() {
                 : 'bg-white border border-gray-200 text-gray-900'
                 }`}
             />
-            {isSearching && (
+            {(isSearching || loading) && (
               <Loader2 className={`absolute right-4 top-3.5 w-5 h-5 animate-spin ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`} />
             )}
-            {searchTerm && !isSearching && (
+            {searchTerm && !isSearching && !loading && (
               <button
                 onClick={() => setSearchTerm('')}
-                className={`absolute right-4 top-3.5 ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
+                aria-label="Clear recipe search"
+                className={`absolute right-1 top-0.5 flex h-11 w-11 items-center justify-center rounded-lg ${isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
               >
                 <X className="w-5 h-5" />
               </button>
             )}
           </div>
 
+          <p id="recipe-search-status" role="status" className={`mb-4 min-h-5 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            {loading || isSearching ? 'Updating recipes…' : error ? '' : `${effectiveTotalRecipes} recipes${searchTerm ? ` matching “${searchTerm}”` : ' to explore'}`}
+          </p>
+          {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"><p>{error}</p><button onClick={() => void fetchRecipes(page)} className="mt-2 rounded-lg border border-current px-4 font-semibold">Try again</button></div>}
           {/* Top Pagination */}
           {renderPagination('mb-6')}
 
           {/* Recipes Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div aria-busy={loading} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {recipes.map((recipe) => (
               <Link
                 key={recipe._id}
                 href={`/user/recipes/${recipe._id}`}
-                className={`rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all hover:scale-105 border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'
+                className={`rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'
                   }`}
               >
                 {/* Recipe Image with Lazy Loading & Skeleton */}
@@ -286,10 +289,11 @@ export default function RecipesPage() {
             ))}
           </div>
 
-          {recipes.length === 0 && !loading && (
+          {recipes.length === 0 && !loading && !error && (
             <div className="py-20 text-center">
               <Flame className={`w-12 h-12 mx-auto mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
               <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'} font-medium`}>No recipes found</p>
+              {searchTerm && <button onClick={() => setSearchTerm('')} className="mt-3 rounded-xl border border-current px-4 text-sm font-semibold">Clear search</button>}
             </div>
           )}
 

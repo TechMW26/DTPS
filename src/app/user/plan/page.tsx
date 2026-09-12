@@ -47,7 +47,7 @@ import {
 } from 'lucide-react';
 import { format, addDays, startOfWeek, isToday, isSameDay } from 'date-fns';
 
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import MealCompletionCelebration from '@/components/engagement/MealCompletionCelebration';
 import { toast } from 'sonner';
 import { MEAL_TYPES, type MealTypeKey } from '@/lib/mealConfig';
@@ -1207,7 +1207,7 @@ export default function UserPlanPage() {
   }, [allMealSlots, dayPlan, deepLinkRequest, isChangingDate, selectedDate]);
 
   if (status === 'loading' || loading) {
-    return <ClientPageSkeleton variant="plan" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -1240,7 +1240,7 @@ export default function UserPlanPage() {
             >
               <CalendarDays className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-700'}`} />
             </button>
-            <button
+            <button aria-label="Refresh"
               onClick={handleRefresh}
               className="p-2"
               disabled={refreshing}
@@ -1330,7 +1330,8 @@ export default function UserPlanPage() {
       <div className="px-4 py-6 space-y-4">
         {/* Skeleton Loader when changing dates */}
         {isChangingDate ? (
-          <div className="space-y-4 animate-pulse">
+          <div role="status" aria-label="Loading meals for selected date" className="space-y-4 animate-pulse motion-reduce:animate-none">
+            <span className="sr-only">Loading meals for selected date</span>
             {/* Summary skeleton */}
             <div className={`p-5 shadow-sm rounded-2xl ${isDarkMode ? 'bg-gray-900 ring-1 ring-white/10' : 'bg-white'}`}>
               <div className="flex items-center justify-between mb-4">
@@ -1823,7 +1824,7 @@ export default function UserPlanPage() {
                   </p>
                 )}
               </div>
-              <button
+              <button aria-label="Close"
                 onClick={closeRecipeModal}
                 className="p-2 rounded-full hover:bg-white/20 transition-colors"
               >
@@ -2103,7 +2104,7 @@ export default function UserPlanPage() {
           <div className={`client-bottom-sheet-panel w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[80vh] overflow-hidden ${isDarkMode ? 'bg-gray-900 text-white ring-1 ring-white/10' : 'bg-white'}`}>
             <div className={`sticky top-0 flex items-center justify-between p-4 border-b ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
               <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Alternative Foods</h3>
-              <button
+              <button aria-label="Close"
                 onClick={() => setAlternativesModal({ item: {} as MealItem, isOpen: false })}
                 className={`p-2 rounded-full ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100'}`}
               >
@@ -2147,7 +2148,7 @@ export default function UserPlanPage() {
                 <h3 className="text-lg font-bold text-white">{foodSelectorModal.meal ? getMealLabel(foodSelectorModal.meal.type) : ''}</h3>
                 <p className="text-sm text-white/80">Select a food to view recipe</p>
               </div>
-              <button
+              <button aria-label="Close"
                 onClick={() => setFoodSelectorModal({ meal: null, isOpen: false })}
                 className="p-2 rounded-full hover:bg-white/20 transition-colors"
               >
@@ -2269,7 +2270,7 @@ export default function UserPlanPage() {
                   {completionModal.meal ? getMealLabel(completionModal.meal.type) : ''} • {completionModal.meal?.time}
                 </p>
               </div>
-              <button
+              <button aria-label="Close"
                 onClick={closeCompletionModal}
                 className={`p-2 rounded-full ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100'}`}
               >
@@ -2356,7 +2357,7 @@ export default function UserPlanPage() {
                         className="object-cover"
                       />
                     </div>
-                    <button
+                    <button aria-label="Remove meal photo"
                       onClick={() => {
                         setCompletionImage(null);
                         setCompletionImagePreview(null);
@@ -2437,7 +2438,7 @@ export default function UserPlanPage() {
             {/* Modal Header */}
             <div className="flex items-center justify-between p-5 bg-linear-to-r from-[#3AB1A0] to-[#2A9A8B]">
               <h3 className="flex items-center gap-2 text-lg font-bold text-white"><CalendarDays aria-hidden="true" className="h-5 w-5" /> Select date</h3>
-              <button
+              <button aria-label="Close"
                 onClick={() => setShowDatePicker(false)}
                 className="p-2 rounded-full hover:bg-white/20 transition-colors"
               >

@@ -7,7 +7,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import BottomNavBar from '@/components/client/BottomNavBar';
 import UserSidebar from '@/components/client/UserSidebar';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
+import { ClientExperience, ClientRouteSurface } from '@/components/client/ClientMotion';
+import './client-experience.css';
 import { Menu, Bell } from 'lucide-react';
 import { UnreadCountProvider, useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -67,12 +69,12 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
 
   // Show loading state only on initial mount, not on route changes
   if (!mounted || status === 'loading') {
-    return <ClientPageSkeleton variant="home" />;
+    return <ClientScreenSkeleton standalone />;
   }
 
   // Redirect if not authenticated - use replace to avoid back button issues
   if (status === 'unauthenticated') {
-    return <ClientPageSkeleton variant="home" />;
+    return <ClientScreenSkeleton standalone />;
   }
 
   // If navigation should be hidden (e.g., onboarding), still wrap in ThemeProvider
@@ -80,7 +82,9 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
     return (
       <ThemeProvider>
         <UnreadCountProvider>
-          {children}
+          <ClientExperience>
+            <ClientRouteSurface>{children}</ClientRouteSurface>
+          </ClientExperience>
         </UnreadCountProvider>
       </ThemeProvider>
     );
@@ -89,12 +93,14 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
   return (
     <ThemeProvider>
       <UnreadCountProvider>
-        <UserLayoutContent
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-        >
-          {children}
-        </UserLayoutContent>
+        <ClientExperience>
+          <UserLayoutContent
+            sidebarOpen={sidebarOpen}
+            setSidebarOpen={setSidebarOpen}
+          >
+            {children}
+          </UserLayoutContent>
+        </ClientExperience>
       </UnreadCountProvider>
     </ThemeProvider>
   );
@@ -113,26 +119,7 @@ function UserLayoutContent({
   const { counts } = useUnreadCountsSafe();
   const { isDarkMode } = useTheme();
   const pathname = usePathname();
-  const routeContentRef = useRef<HTMLDivElement>(null);
-
   const showAppHeader = pathname === '/user';
-
-  // Animate the persistent content surface without keying/remounting it. A
-  // transform here would create a containing block for fixed dialogs and can
-  // make them jump on long pages, so this is intentionally opacity-only.
-  useEffect(() => {
-    const content = routeContentRef.current;
-    if (!content || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      return;
-    }
-
-    const animation = content.animate(
-      [{ opacity: 0.92 }, { opacity: 1 }],
-      { duration: 160, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
-    );
-
-    return () => animation.cancel();
-  }, [pathname]);
 
   return (
     <div className={`relative flex min-h-screen w-full flex-col overflow-x-clip transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
@@ -145,7 +132,8 @@ function UserLayoutContent({
       />
 
       {/* Main Content Area - this is what reloads on route change */}
-      <main className="client-content-safe-bottom min-w-0 flex-1">
+      <a href="#client-main" className="client-skip-link">Skip to content</a>
+      <main id="client-main" tabIndex={-1} className="client-content-safe-bottom min-w-0 flex-1">
         {/* Mobile Header */}
         {showAppHeader && <div className={`client-header-safe-top sticky top-0 z-40 flex min-h-14 items-center justify-between border-b px-4 py-2 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900/95 border-gray-800' : 'bg-white/95 border-gray-100'} shadow-sm backdrop-blur`}>
           <button
@@ -181,12 +169,9 @@ function UserLayoutContent({
         </div>}
 
         {/* Page Content */}
-        <div
-          ref={routeContentRef}
-          className="client-route-transition mx-auto min-h-[calc(100dvh-8rem)] w-full max-w-7xl"
-        >
+        <ClientRouteSurface className="client-route-transition mx-auto min-h-[calc(100dvh-8rem)] w-full max-w-7xl">
           {children}
-        </div>
+        </ClientRouteSurface>
       </main>
 
       {/* Bottom Navigation - always visible on mobile, persists across route changes */}

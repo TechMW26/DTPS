@@ -27,7 +27,7 @@ import {
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { 
   useWatchConnection, 
   WatchDashboard, 
@@ -187,7 +187,7 @@ export default function WatchPage() {
   };
 
   if (status === 'loading' || watchLoading) {
-    return <ClientPageSkeleton variant="home" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -203,7 +203,7 @@ export default function WatchPage() {
             <p className="text-xs text-gray-500">Track your health metrics</p>
           </div>
           <div className="flex items-center gap-2">
-            <button 
+            <button aria-label="Sync watch"
               onClick={handleWatchSync}
               disabled={watchSyncing || !watchConnection?.watchIsConnected}
               className="p-2 disabled:opacity-50"

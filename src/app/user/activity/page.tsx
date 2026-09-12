@@ -1,5 +1,7 @@
 'use client';
 
+import { useAnimatedProgress } from '@/hooks/useAnimatedProgress';
+
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -19,7 +21,7 @@ import {
     Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { useBodyScrollLock } from '@/hooks';
 
 interface ActivityEntry {
@@ -88,37 +90,7 @@ export default function ActivityPage() {
         }
     }, [status, router]);
 
-    const animateActivityFill = useCallback((from: number, to: number, goal: number) => {
-        setIsAnimating(true);
-        isAnimatingRef.current = true;
-        const startPercent = Math.min((from / goal) * 100, 100);
-        const endPercent = Math.min((to / goal) * 100, 100);
-        const duration = 1000; // 1 second for smoother animation
-        const startTime = performance.now();
-
-        setAnimatedFill(startPercent);
-
-        const animate = (currentTime: number) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-
-            // Ease-out cubic for smooth deceleration
-            const easeOut = 1 - Math.pow(1 - progress, 3);
-            const currentPercent = startPercent + (endPercent - startPercent) * easeOut;
-
-            setAnimatedFill(currentPercent);
-
-            if (progress < 1) {
-                requestAnimationFrame(animate);
-            } else {
-                setAnimatedFill(endPercent);
-                setIsAnimating(false);
-                isAnimatingRef.current = false;
-            }
-        };
-
-        requestAnimationFrame(animate);
-    }, []);
+    const animateActivityFill = useAnimatedProgress(setAnimatedFill, setIsAnimating, isAnimatingRef);
 
     // Apply a fresh activity payload to state + refs, optionally animating the fill.
     const applyData = useCallback((data: ActivityData, animate = false) => {
@@ -326,7 +298,7 @@ export default function ActivityPage() {
     const completionPercent = Math.round(fillPercent);
 
     if (loading) {
-        return <ClientPageSkeleton variant="home" showHeader={false} />;
+        return <ClientScreenSkeleton />;
     }
 
     return (
@@ -703,7 +675,7 @@ export default function ActivityPage() {
                                                 <p className="font-semibold text-gray-900">{entry.duration} min</p>
                                                 <p className="text-xs text-gray-400">{entry.time}</p>
                                             </div>
-                                            <button
+                                            <button aria-label="Delete entry"
                                                 onClick={() => handleDeleteEntry(entry._id)}
                                                 className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                                             >
@@ -726,7 +698,7 @@ export default function ActivityPage() {
 
                             <div className="flex items-center justify-between mb-6">
                                 <h3 className="text-xl font-bold text-gray-900">Add Activity</h3>
-                                <button onClick={() => setShowAddModal(false)} className="p-2">
+                                <button aria-label="Close" onClick={() => setShowAddModal(false)} className="p-2">
                                     <X className="w-6 h-6 text-gray-500" />
                                 </button>
                             </div>
@@ -747,7 +719,7 @@ export default function ActivityPage() {
                             <div className="mb-6">
                                 <p className="text-sm font-semibold text-gray-700 mb-3">Duration (minutes)</p>
                                 <div className="flex items-center justify-center gap-6">
-                                    <button
+                                    <button aria-label="Decrease activity by 5 minutes"
                                         onClick={() => setCustomDuration(Math.max(5, customDuration - 5))}
                                         className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
                                     >
@@ -764,7 +736,7 @@ export default function ActivityPage() {
                                         <p className="text-gray-500">minutes</p>
                                     </div>
 
-                                    <button
+                                    <button aria-label="Increase activity by 5 minutes"
                                         onClick={() => setCustomDuration(customDuration + 5)}
                                         className="w-14 h-14 rounded-2xl border-2 border-[#E06A26] flex items-center justify-center hover:bg-[#E06A26]/10 transition-colors"
                                     >

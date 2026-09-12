@@ -6,7 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import PageTransition from '@/components/animations/PageTransition';
 import { ArrowLeft, Clock, Bookmark, Share2, Heart, User, Calendar, Tag, Eye, ChevronRight, ImageOff } from 'lucide-react';
 import UserNavBar from '@/components/client/UserNavBar';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 
 interface Blog {
   _id: string;
@@ -148,7 +148,7 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   if (loading) {
-    return <ClientPageSkeleton variant="grid" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   if (error || !blog) {
@@ -195,14 +195,14 @@ export default function BlogDetailPage({ params }: { params: Promise<{ id: strin
               <ArrowLeft className="h-5 w-5 text-gray-700" />
             </Link>
             <div className="flex gap-2">
-              <button
+              <button aria-label="Toggle bookmark" aria-pressed={bookmarked}
                 onClick={() => setBookmarked(!bookmarked)}
                 className={`h-10 w-10 rounded-full flex items-center justify-center shadow-lg backdrop-blur-sm transition-colors ${bookmarked ? 'bg-[#E06A26] text-white' : 'bg-white/90 text-gray-700'
                   }`}
               >
                 <Bookmark className={`h-5 w-5 ${bookmarked ? 'fill-current' : ''}`} />
               </button>
-              <button
+              <button aria-label="Share article"
                 onClick={handleShare}
                 className="h-10 w-10 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg"
               >

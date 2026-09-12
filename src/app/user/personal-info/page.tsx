@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { uploadFileReliably } from '@/lib/client-upload';
 
 interface PersonalData {
@@ -260,7 +260,7 @@ export default function PersonalInfoPage() {
   };
 
   if (loading) {
-    return <ClientPageSkeleton variant="form" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   const heightDisplay = cmToFeetInches(data.heightCm);

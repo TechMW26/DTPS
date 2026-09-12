@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { getMediaProxyUrl } from '@/lib/media';
 import { uploadFileReliably } from '@/lib/client-upload';
 
@@ -337,7 +337,7 @@ export default function MedicalInfoPage() {
   };
 
   if (loading) {
-    return <ClientPageSkeleton variant="form" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -413,7 +413,7 @@ export default function MedicalInfoPage() {
                   : "flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500"}
                 onKeyDown={(e) => e.key === 'Enter' && addCustomCondition()}
               />
-              <button
+              <button aria-label="Add medical condition"
                 onClick={addCustomCondition}
                 className="px-4 py-2.5 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors"
               >
@@ -453,7 +453,7 @@ export default function MedicalInfoPage() {
                   : "flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500"}
                 onKeyDown={(e) => e.key === 'Enter' && addCustomAllergy()}
               />
-              <button
+              <button aria-label="Add allergy"
                 onClick={addCustomAllergy}
                 className="px-4 py-2.5 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors"
               >
@@ -493,7 +493,7 @@ export default function MedicalInfoPage() {
                   : "flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500"}
                 onKeyDown={(e) => e.key === 'Enter' && addCustomDietaryRestriction()}
               />
-              <button
+              <button aria-label="Add dietary restriction"
                 onClick={addCustomDietaryRestriction}
                 className="px-4 py-2.5 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors"
               >
@@ -779,19 +779,19 @@ export default function MedicalInfoPage() {
         >
           {/* Controls */}
           <div className="absolute top-4 right-4 flex gap-2 z-10">
-            <button
+            <button aria-label="Zoom out"
               onClick={(e) => { e.stopPropagation(); setLightboxZoom(z => Math.max(0.5, z - 0.25)); }}
               className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
             >
               <ZoomOut className="w-5 h-5" />
             </button>
-            <button
+            <button aria-label="Zoom in"
               onClick={(e) => { e.stopPropagation(); setLightboxZoom(z => Math.min(3, z + 0.25)); }}
               className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
             >
               <ZoomIn className="w-5 h-5" />
             </button>
-            <button
+            <button aria-label="Close"
               onClick={closeLightbox}
               className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
             >

@@ -8,7 +8,7 @@ import { useUnreadCountsSafe } from '@/contexts/UnreadCountContext';
 
 const NAV_ITEMS: Array<{ href: string; icon: LucideIcon; label: string }> = [
   { href: '/user', icon: Home, label: 'Home' },
-  { href: '/user/plan', icon: UtensilsCrossed, label: 'Meal' },
+  { href: '/user/plan', icon: UtensilsCrossed, label: 'Meals' },
   { href: '/user/messages', icon: MessageCircle, label: 'Messages' },
   { href: '/user/tasks', icon: ListTodo, label: 'Tasks' },
   { href: '/user/progress', icon: BarChart3, label: 'Progress' },
@@ -20,7 +20,8 @@ function NavigationPendingHint() {
   return (
     <span
       aria-hidden="true"
-      className={`absolute inset-x-3 top-0 h-0.5 rounded-full bg-[#E06A26] transition-opacity duration-150 ${pending ? 'animate-pulse opacity-100' : 'opacity-0'}`}
+      data-pending={pending}
+      className={`client-nav-pending absolute inset-x-3 top-0 h-0.5 rounded-full bg-[#E06A26] transition-opacity duration-150 `}
     />
   );
 }
@@ -55,13 +56,13 @@ export default function BottomNavBar() {
               <NavigationPendingHint />
               <item.icon
                 aria-hidden="true"
-                className={`h-5 w-5 shrink-0 transition-colors duration-200 ${isActive(item.href) ? 'text-[#E06A26]' : (isDarkMode ? 'text-gray-400' : 'text-gray-500')}`}
+                className={`client-nav-icon h-5 w-5 shrink-0 transition-colors duration-200 ${isActive(item.href) ? 'text-[#E06A26]' : (isDarkMode ? 'text-gray-400' : 'text-gray-500')}`}
               />
-              <span className={`max-w-full truncate text-[10px] font-medium leading-none ${isActive(item.href) ? 'text-[#E06A26]' : (isDarkMode ? 'text-gray-400' : 'text-gray-600')}`}>
+              <span className={`max-w-full truncate text-[11px] font-medium leading-none ${isActive(item.href) ? 'text-[#E06A26]' : (isDarkMode ? 'text-gray-400' : 'text-gray-600')}`}>
                 {item.label}
               </span>
               {item.href === '/user/messages' && counts.messages > 0 && (
-                <span className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 text-center font-semibold">
+                <span className="absolute top-0 right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 text-center font-semibold">
                   {counts.messages > 99 ? '99+' : counts.messages}
                 </span>
               )}

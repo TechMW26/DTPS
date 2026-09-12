@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { format, subDays, subMonths, subYears } from 'date-fns';
 import { toast } from 'sonner';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { compressImage } from '@/lib/imageCompression';
 import { socketClient } from '@/lib/realtime/socket-client';
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
@@ -770,7 +770,7 @@ export default function UserProgressPage() {
     : '--';
 
   if (status === 'loading' || loading) {
-    return <ClientPageSkeleton variant="home" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
   return (
     <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
@@ -845,7 +845,7 @@ export default function UserProgressPage() {
                     </div>
                   )}
                 </div>
-                <button
+                <button aria-label="Log weight"
                   onClick={() => setShowWeightModal(true)}
                   className="p-3 transition-colors bg-white/20 hover:bg-white/30 rounded-xl"
                 >
@@ -1689,13 +1689,13 @@ export default function UserProgressPage() {
               )}
             </div>
             <div className="flex items-center gap-3">
-              <button
+              <button aria-label="Delete progress photo"
                 onClick={() => handleDeletePhoto(selectedPhoto._id)}
                 className="p-2 text-red-400 transition-colors hover:text-red-300"
               >
                 <Trash2 className="w-5 h-5" />
               </button>
-              <button
+              <button aria-label="Close photo"
                 onClick={() => {
                   setShowPhotoViewer(false);
                   setSelectedPhoto(null);

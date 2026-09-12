@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Clock, Users, Flame, ChefHat, Bookmark, Lightbulb } from 'lucide-react';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { useTheme } from '@/contexts/ThemeContext';
 
 interface Recipe {
@@ -78,7 +78,7 @@ export default function RecipeDetailPage() {
   };
 
   if (loading) {
-    return <ClientPageSkeleton variant="grid" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   if (!recipe) {
@@ -102,14 +102,14 @@ export default function RecipeDetailPage() {
       {/* Header */}
       <div className={`sticky top-0 z-40 backdrop-blur-sm border-b ${isDarkMode ? 'bg-gray-900/80 border-gray-800' : 'bg-white/95 border-gray-100'}`}>
         <div className="flex items-center justify-between px-4 py-4 max-w-4xl mx-auto w-full">
-          <button
+          <button aria-label="Go back"
             onClick={() => router.back()}
             className={`flex items-center justify-center w-10 h-10 rounded-full transition-colors ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-[#3AB1A0]/10'}`}
           >
             <ArrowLeft className="w-5 h-5 text-[#3AB1A0]" />
           </button>
           <h1 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Recipe Details</h1>
-          <button
+          <button aria-label="Toggle bookmark" aria-pressed={isSaved}
             onClick={() => setIsSaved(!isSaved)}
             className={`flex items-center justify-center w-10 h-10 rounded-full transition-colors ${isSaved ? 'bg-[#E06A26]/10' : isDarkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100'
               }`}

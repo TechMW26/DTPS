@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 
 interface AssignedWater {
     amount: number;
@@ -232,7 +232,7 @@ export default function TasksPage() {
     const stats = getTaskStats();
 
     if (loading) {
-        return <ClientPageSkeleton variant="list" showHeader={false} />;
+        return <ClientScreenSkeleton />;
     }
 
     // Always show water card if assigned, even if not completed
@@ -252,7 +252,7 @@ export default function TasksPage() {
                     
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
+                        <button aria-label="Refresh"
                             onClick={handleRefresh}
                             disabled={refreshing}
                             className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'bg-gray-900 hover:bg-gray-700' : 'bg-gray-50 hover:bg-gray-100'}`}
@@ -342,6 +342,8 @@ export default function TasksPage() {
                             <div className={`rounded-2xl shadow-sm overflow-hidden border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                                 <button
                                     onClick={() => toggleCard('water')}
+                                    aria-expanded={expandedCards.water}
+                                    aria-controls="task-water-details"
                                     className="w-full p-4 flex items-center justify-between"
                                 >
                                     <div className="flex items-center gap-3">
@@ -372,7 +374,7 @@ export default function TasksPage() {
                                 </button>
 
                                 {expandedCards.water && (
-                                    <div className={`px-4 pb-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                                    <div id="task-water-details" className={`client-disclosure px-4 pb-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                                         <div className="pt-4 space-y-3">
                                             <div className="flex items-center justify-between text-sm">
                                                 <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Target Amount</span>
@@ -452,6 +454,8 @@ export default function TasksPage() {
                             <div className={`rounded-2xl shadow-sm overflow-hidden border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                                 <button
                                     onClick={() => toggleCard('steps')}
+                                    aria-expanded={expandedCards.steps}
+                                    aria-controls="task-steps-details"
                                     className="w-full p-4 flex items-center justify-between"
                                 >
                                     <div className="flex items-center gap-3">
@@ -482,7 +486,7 @@ export default function TasksPage() {
                                 </button>
 
                                 {expandedCards.steps && (
-                                    <div className={`px-4 pb-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                                    <div id="task-steps-details" className={`client-disclosure px-4 pb-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                                         <div className="pt-4 space-y-3">
                                             <div className="flex items-center justify-between text-sm">
                                                 <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Target Steps</span>
@@ -550,6 +554,8 @@ export default function TasksPage() {
                             <div className={`rounded-2xl shadow-sm overflow-hidden border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                                 <button
                                     onClick={() => toggleCard('sleep')}
+                                    aria-expanded={expandedCards.sleep}
+                                    aria-controls="task-sleep-details"
                                     className="w-full p-4 flex items-center justify-between"
                                 >
                                     <div className="flex items-center gap-3">
@@ -580,7 +586,7 @@ export default function TasksPage() {
                                 </button>
 
                                 {expandedCards.sleep && (
-                                    <div className={`px-4 pb-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                                    <div id="task-sleep-details" className={`client-disclosure px-4 pb-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                                         <div className="pt-4 space-y-3">
                                             <div className="flex items-center justify-between text-sm">
                                                 <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>Target Sleep</span>
@@ -659,6 +665,8 @@ export default function TasksPage() {
                             <div className={`rounded-2xl shadow-sm overflow-hidden border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                                 <button
                                     onClick={() => toggleCard('activities')}
+                                    aria-expanded={expandedCards.activities}
+                                    aria-controls="task-activities-details"
                                     className="w-full p-4 flex items-center justify-between"
                                 >
                                     <div className="flex items-center gap-3">
@@ -689,7 +697,7 @@ export default function TasksPage() {
                                 </button>
 
                                 {expandedCards.activities && (
-                                    <div className={`px-4 pb-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                                    <div id="task-activities-details" className={`client-disclosure px-4 pb-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                                         <div className="pt-4 space-y-3">
                                             {tasksData.activities.map((activity, index) => (
                                                 <div

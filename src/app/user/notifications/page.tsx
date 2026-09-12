@@ -9,7 +9,8 @@ import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Bell, Check, CheckCheck, Trash2, Calendar, MessageSquare, Utensils, TrendingUp, Clock, CreditCard, Settings, RefreshCw, ArrowLeft } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { ClientPageSkeleton, ListSkeleton } from '@/components/ui/skeleton';
+import { ListSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 
 interface Notification {
   _id: string;
@@ -207,7 +208,7 @@ export default function NotificationsPage() {
   ];
 
   if (status === 'loading') {
-    return <ClientPageSkeleton variant="list" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -217,7 +218,7 @@ export default function NotificationsPage() {
       {/* Header with centered title */}
       <div className={`sticky top-0 z-40 transition-colors duration-300 ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'} border-b`}>
         <div className="relative flex items-center justify-center px-4 py-4">
-          <button
+          <button aria-label="Go back"
             onClick={() => router.back()}
             className="absolute left-4 flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#3AB1A0]/10 transition-colors"
           >
@@ -237,7 +238,7 @@ export default function NotificationsPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <button aria-label="Refresh"
               onClick={() => fetchNotifications(true)}
               disabled={refreshing}
               className={`p-2 hover:text-[#3AB1A0] hover:bg-[#3AB1A0]/10 rounded-full transition-colors ${

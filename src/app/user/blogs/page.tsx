@@ -6,7 +6,7 @@ import PageTransition from '@/components/animations/PageTransition';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ArrowLeft, Clock, Bookmark, Search, BookOpen, TrendingUp, Heart, Sparkles, User, ImageOff, Salad, Dumbbell, PersonStanding, CookingPot, Leaf } from 'lucide-react';
 import UserNavBar from '@/components/client/UserNavBar';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 
 interface Blog {
   _id: string;
@@ -144,7 +144,7 @@ export default function BlogsPage() {
   const regularBlogs = filteredBlogs.filter(blog => !blog.isFeatured);
 
   if (loading) {
-    return <ClientPageSkeleton variant="grid" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   if (error) {
@@ -263,7 +263,7 @@ export default function BlogsPage() {
                       <CategoryIcon category={blog.category} className="mr-1 inline h-3.5 w-3.5" />
                       {blog.category.charAt(0).toUpperCase() + blog.category.slice(1)}
                     </span>
-                    <button
+                    <button aria-label="Toggle bookmark" aria-pressed={bookmarkedBlogs.has(blog._id)}
                       className={`absolute top-3 right-3 h-8 w-8 rounded-full flex items-center justify-center transition-all ${bookmarkedBlogs.has(blog._id)
                           ? 'bg-[#E06A26] text-white'
                           : 'bg-white/90 text-gray-600 hover:bg-white'
@@ -344,7 +344,7 @@ export default function BlogsPage() {
                     </div>
                   </div>
                 </div>
-                <button
+                <button aria-label="Toggle bookmark" aria-pressed={bookmarkedBlogs.has(blog._id)}
                   className={`self-start p-2 rounded-full transition-all ${bookmarkedBlogs.has(blog._id)
                       ? 'text-[#E06A26]'
                       : isDarkMode ? 'text-gray-600 hover:text-gray-400' : 'text-gray-300 hover:text-gray-500'

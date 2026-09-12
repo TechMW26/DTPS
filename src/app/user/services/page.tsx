@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ArrowLeft, Star, Check, Sparkles, Clock, Users, ChevronRight, Zap, Award, TrendingUp, Tag, PersonStanding, Dumbbell, Leaf, Stethoscope, Salad } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 
 interface ServicePlan {
   _id: string;
@@ -114,7 +114,7 @@ export default function ServicesPage() {
     : services.filter(s => s.category === selectedCategory);
 
   if (loading) {
-    return <ClientPageSkeleton variant="grid" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -122,7 +122,7 @@ export default function ServicesPage() {
         {/* Header */}
         <div className={`sticky top-0 z-40 transition-colors duration-300 border-b ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
         <div className="relative flex items-center justify-center px-4 py-4">
-          <button
+          <button aria-label="Go back"
             onClick={() => router.back()}
             className="absolute left-4 flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#3AB1A0]/10 transition-colors"
           >

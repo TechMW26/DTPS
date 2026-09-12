@@ -27,7 +27,7 @@ import {
 import Link from 'next/link';
 import UserNavBar from '@/components/client/UserNavBar';
 import { SpoonLoader } from '@/components/ui/SpoonLoader';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
 import PageTransition from '@/components/animations/PageTransition';
@@ -345,7 +345,7 @@ export default function UserSettingsPage() {
   ];
 
   if (loading) {
-    return <ClientPageSkeleton variant="list" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (

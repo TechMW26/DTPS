@@ -1,30 +1,25 @@
-'use client';
+"use client";
 
-import { ReactNode, useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { useRef, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import {
+  useRouteFade,
+  useRouteMotionOwner,
+} from "@/components/client/ClientMotion";
 
-interface PageTransitionProps {
+export default function PageTransition({
+  children,
+  className = "",
+}: {
   children: ReactNode;
   className?: string;
-}
-
-export default function PageTransition({ children, className = '' }: PageTransitionProps) {
+}) {
   const pathname = usePathname();
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    setIsVisible(false);
-    const timer = setTimeout(() => setIsVisible(true), 10);
-    return () => clearTimeout(timer);
-  }, [pathname]);
-
+  const ref = useRef<HTMLDivElement>(null);
+  const hasRouteSurface = useRouteMotionOwner();
+  useRouteFade(ref, pathname, !hasRouteSurface);
   return (
-    <div
-      className={`${isVisible ? 'animate-page-enter' : 'opacity-0'} ${className}`}
-      style={{
-        animation: isVisible ? 'page-enter 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards' : 'none',
-      }}
-    >
+    <div ref={ref} className={className}>
       {children}
     </div>
   );

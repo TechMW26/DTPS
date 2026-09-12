@@ -1,0 +1,215 @@
+/* Client-only interaction vocabulary. No layout animation or artificial waits. */
+.client-experience,
+body[data-client-app="true"] {
+  --client-motion-fast: 140ms;
+  --client-motion-enter: 220ms;
+  --client-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+body[data-client-app="true"]
+  :where(
+    button,
+    a[href],
+    [role="button"],
+    [role="tab"],
+    select,
+    input,
+    textarea
+  ) {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition-property:
+    color, background-color, border-color, box-shadow, opacity, scale;
+  transition-duration: var(--client-motion-fast);
+  transition-timing-function: var(--client-motion-ease);
+}
+body[data-client-app="true"]
+  :where(button, [role="button"], [role="tab"], select) {
+  min-height: 44px;
+}
+body[data-client-app="true"] :where(button, [role="button"]) {
+  min-width: 44px;
+}
+body[data-client-app="true"]
+  :where(button, a[href], [role="button"]):not(:disabled):not(
+    [aria-disabled="true"]
+  ):active {
+  scale: 0.975;
+}
+body[data-client-app="true"]
+  :where(button, a[href], input, select, textarea, [role="tab"]):focus-visible {
+  outline: 2px solid #c45117;
+  outline-offset: 3px;
+}
+body[data-client-app="true"] :where(button:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed;
+}
+body[data-client-app="true"] :where([aria-busy="true"]) {
+  cursor: progress;
+}
+body[data-client-app="true"] :where(input, textarea, select) {
+  scroll-margin-block: 6rem;
+}
+body[data-client-app="true"] .client-route-transition {
+  scroll-margin-top: 4rem;
+}
+.client-skip-link {
+  position: fixed;
+  left: 1rem;
+  top: -5rem;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  color: white;
+  background: #9a3e12;
+  border-radius: 0.75rem;
+}
+.client-skip-link:focus {
+  top: max(1rem, env(safe-area-inset-top));
+}
+.client-nav-icon {
+  transition:
+    scale 180ms var(--client-motion-ease),
+    color 140ms;
+}
+[aria-current="page"] .client-nav-icon {
+  scale: 1.1;
+}
+.client-nav-pending {
+  opacity: 0;
+}
+.client-nav-pending[data-pending="true"] {
+  animation: client-pending 1s ease-in-out 150ms infinite;
+}
+.client-screen-skeleton {
+  animation: client-content-reveal 180ms ease-out;
+}
+.client-disclosure {
+  animation: client-content-reveal 180ms ease-out;
+}
+.client-step {
+  animation: client-content-reveal 220ms ease-out;
+}
+.client-action-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.client-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(15 23 42 / 0.45);
+}
+.client-drawer-overlay[data-state="open"] {
+  animation: client-content-reveal 180ms ease-out;
+}
+.client-drawer-overlay[data-state="closed"] {
+  animation: client-content-hide 160ms ease-in;
+}
+.client-drawer {
+  position: fixed;
+  inset-block: 0;
+  left: 0;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  width: min(20rem, calc(100vw - 2rem));
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 8px 0 40px rgb(15 23 42 / 0.16);
+}
+.client-drawer[data-state="open"] {
+  animation: client-drawer-enter 240ms var(--client-motion-ease);
+}
+.client-drawer[data-state="closed"] {
+  animation: client-drawer-exit 180ms ease-in;
+}
+/* Radix portals inherit the client scope through the body attribute. */
+body[data-client-app="true"] [data-slot="dialog-overlay"][data-state="open"] {
+  animation: client-content-reveal 180ms ease-out;
+}
+body[data-client-app="true"] [data-slot="dialog-overlay"][data-state="closed"] {
+  animation: client-content-hide 160ms ease-in;
+}
+body[data-client-app="true"] [data-slot="dialog-content"][data-state="open"] {
+  animation: client-dialog-enter 220ms var(--client-motion-ease);
+}
+body[data-client-app="true"] [data-slot="dialog-content"][data-state="closed"] {
+  animation: client-content-hide 160ms ease-in;
+}
+body[data-client-app="true"] [role="tabpanel"][data-state="active"] {
+  animation: client-content-reveal 180ms ease-out;
+}
+@keyframes client-content-reveal {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes client-content-hide {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes client-pending {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes client-drawer-enter {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes client-drawer-exit {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes client-dialog-enter {
+  from {
+    opacity: 0.3;
+    scale: 0.98;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@media (max-width: 640px) {
+  body[data-client-app="true"] :where(input, select, textarea) {
+    font-size: max(1rem, 1em);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body[data-client-app="true"] *,
+  body[data-client-app="true"] *::before,
+  body[data-client-app="true"] *::after,
+  .client-screen-skeleton,
+  .client-screen-skeleton * {
+    animation: none !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  /* Legacy stagger classes start transparent; disabling motion must not hide content. */
+  body[data-client-app="true"] [class*="animate-stagger-"] {
+    opacity: 1 !important;
+  }
+  body[data-client-app="true"] :where(button, a[href], [role="button"]):active,
+  [aria-current="page"] .client-nav-icon {
+    scale: 1;
+  }
+  .client-nav-pending[data-pending="true"] {
+    opacity: 1;
+  }
+}

@@ -29,7 +29,7 @@ import {
 import { format, isToday, isTomorrow, isPast, addDays } from 'date-fns';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 
 interface LifecycleEvent {
   action: string;
@@ -302,7 +302,7 @@ export default function UserAppointmentsPage() {
   };
 
   if (status === 'loading' || loading) {
-    return <ClientPageSkeleton variant="list" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (

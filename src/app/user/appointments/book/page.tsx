@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { format, addDays, isBefore, isAfter } from 'date-fns';
 import { toast } from 'sonner';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton, TimeSlotsSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { getDietitianId } from '@/lib/utils';
 
 // Helper to parse 12-hour time format to hours and minutes
@@ -290,7 +290,7 @@ export default function BookAppointmentPage() {
   };
 
   if (status === 'loading' || loading) {
-    return <ClientPageSkeleton variant="form" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   if (!dietitian) {
@@ -429,6 +429,8 @@ export default function BookAppointmentPage() {
                     )}
                     <button
                       onClick={() => generateTimeSlots()}
+                      aria-label="Refresh available times"
+                      aria-busy={refreshing}
                       disabled={refreshing}
                       className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
                     >
@@ -439,9 +441,7 @@ export default function BookAppointmentPage() {
               </CardHeader>
               <CardContent className="p-4 pt-2">
                 {refreshing ? (
-                  <div className="flex items-center justify-center py-8">
-                    <RefreshCw className="h-8 w-8 text-[#E06A26] animate-spin" />
-                  </div>
+                  <TimeSlotsSkeleton />
                 ) : availableSlots.length > 0 ? (
                   <>
                     {/* Legend */}

@@ -31,7 +31,7 @@ import {
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import SpoonGifLoader from '@/components/ui/SpoonGifLoader';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { useBodyScrollLock } from '@/hooks';
 import {
   assertRazorpayCheckoutPayload,
@@ -400,7 +400,7 @@ export default function UserSubscriptionsPage() {
   };
 
   if (status === 'loading' || loading) {
-    return <ClientPageSkeleton variant="grid" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -672,7 +672,7 @@ export default function UserSubscriptionsPage() {
                 <h2 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                   {selectedSubscription.paymentStatus === 'paid' ? 'Payment Receipt' : 'Subscription Details'}
                 </h2>
-                <button
+                <button aria-label="Close"
                   onClick={closeModal}
                   className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100'
                     }`}

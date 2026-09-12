@@ -378,7 +378,7 @@ export default function ReportProblemPage() {
                           alt={`Screenshot ${index + 1}`}
                           className="w-full h-full object-cover"
                         />
-                        <button
+                        <button aria-label="Remove screenshot"
                           type="button"
                           onClick={() => removeScreenshot(index)}
                           className="absolute top-1 right-1 h-6 w-6 bg-red-500 rounded-full flex items-center justify-center"

@@ -57,7 +57,7 @@ import {
 } from "lucide-react";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { toast } from "sonner";
-import { ClientPageSkeleton } from "@/components/ui/skeleton";
+import { ClientScreenSkeleton, ConversationSkeleton } from "@/components/client/ClientScreenSkeleton";
 import {
   getMediaKind,
   getMediaProxyUrl,
@@ -1776,7 +1776,7 @@ export default function UserMessagesPage() {
   };
 
   if (loading) {
-    return <ClientPageSkeleton variant="list" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -1937,7 +1937,7 @@ export default function UserMessagesPage() {
                   style={{ flexShrink: 0 }}
                 >
                   <div className="flex items-center gap-3">
-                    <button
+                    <button aria-label="Back to conversations"
                       className="p-2 -ml-2 md:hidden hover:bg-white/10 rounded-full"
                       onClick={() => {
                         userPressedBackRef.current = true;
@@ -1991,9 +1991,7 @@ export default function UserMessagesPage() {
                   }}
                 >
                   {loadingMessages ? (
-                    <div className="flex items-center justify-center h-full">
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    </div>
+                    <ConversationSkeleton />
                   ) : messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full py-12">
                       <div
@@ -2789,7 +2787,7 @@ export default function UserMessagesPage() {
                     )}
 
                     <div className="flex items-end gap-2">
-                      <button
+                      <button aria-label="Attach a file"
                         type="button"
                         className="h-10 w-10 shrink-0 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"
                         onClick={() => setShowAttachMenu((prev) => !prev)}
@@ -2930,7 +2928,7 @@ export default function UserMessagesPage() {
             className="relative w-[92vw] max-w-md max-h-[85vh] rounded-2xl bg-white overflow-hidden"
             onClick={(event) => event.stopPropagation()}
           >
-            <button
+            <button aria-label="Close"
               type="button"
               className="absolute top-3 right-3 z-10 h-8 w-8 rounded-full bg-black/60 text-white flex items-center justify-center"
               onClick={clearMediaPreview}

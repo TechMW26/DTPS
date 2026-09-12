@@ -30,9 +30,10 @@ import {
   Bone,
   Moon,
   Footprints,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 
 // Step components
 interface StepProps {
@@ -41,6 +42,7 @@ interface StepProps {
   data: OnboardingData;
   updateData: (data: Partial<OnboardingData>) => void;
   isDarkMode: boolean;
+  saving?: boolean;
 }
 
 interface OnboardingData {
@@ -166,6 +168,7 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
           {(['male', 'female', 'other'] as const).map((gender) => (
             <button
               key={gender}
+              aria-pressed={data.gender === gender}
               onClick={() => updateData({ gender })}
               className={`flex-1 py-2.5 rounded-full text-sm font-medium transition-all ${data.gender === gender
                 ? 'bg-[#3AB1A0] text-white'
@@ -186,6 +189,7 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
         </label>
         <input
           type="date"
+          aria-label="Date of birth"
           value={data.dateOfBirth}
           onChange={(e) => updateData({ dateOfBirth: e.target.value })}
           max={maxDateStr}
@@ -210,6 +214,7 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
           <div className="relative">
             <input
               type="number"
+              aria-label="Height in centimeters"
               value={data.heightCm}
               onChange={(e) => handleHeightCmChange(e.target.value)}
               placeholder="Height in CM"
@@ -242,6 +247,7 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
         <div className="relative">
           <input
             type="number"
+            aria-label="Weight in kilograms"
             value={data.weightKg}
             onChange={(e) => updateData({ weightKg: e.target.value })}
             placeholder="Weight in KG"
@@ -270,6 +276,7 @@ function Step1BasicInfo({ onNext, data, updateData, isDarkMode }: StepProps) {
             return (
               <button
                 key={level.value}
+                aria-pressed={data.activityLevel === level.value}
                 onClick={() => updateData({ activityLevel: level.value as OnboardingData['activityLevel'] })}
                 className={`w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all ${data.activityLevel === level.value
                   ? 'border-[#3AB1A0] bg-[#3AB1A0]/10'
@@ -348,16 +355,9 @@ function Step2Goals({ onNext, onBack, data, updateData, isDarkMode }: StepProps)
     <div className={`min-h-screen px-4 py-8 pb-32 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="p-2 -ml-2">
+        <button aria-label="Previous step" onClick={onBack} className="p-2 -ml-2">
           <ChevronLeft className={`h-6 w-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`} />
         </button>
-        <div className="flex gap-1.5">
-          <div className={`h-2 w-2 rounded-full ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
-          <div className="h-2 w-6 rounded-full bg-[#E06A26]" />
-          <div className={`h-2 w-2 rounded-full ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
-          <div className={`h-2 w-2 rounded-full ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
-          <div className={`h-2 w-2 rounded-full ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
-        </div>
         <div className="w-10" />
       </div>
 
@@ -371,6 +371,7 @@ function Step2Goals({ onNext, onBack, data, updateData, isDarkMode }: StepProps)
           return (
             <button
               key={goal.value}
+              aria-pressed={data.primaryGoal === goal.value}
               onClick={() => updateData({ primaryGoal: goal.value as OnboardingData['primaryGoal'] })}
               className={`w-full p-5 rounded-2xl border-2 flex items-center gap-4 transition-all ${data.primaryGoal === goal.value
                 ? 'border-[#3AB1A0] bg-[#3AB1A0]/10'
@@ -476,16 +477,9 @@ function Step3DailyGoals({ onNext, onBack, data, updateData, isDarkMode }: StepP
     <div className={`min-h-screen px-4 py-8 pb-32 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className={`h-10 w-10 rounded-full border flex items-center justify-center ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <button aria-label="Previous step" onClick={onBack} className={`h-10 w-10 rounded-full border flex items-center justify-center ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <ChevronLeft className={`h-5 w-5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`} />
         </button>
-        <div className="flex gap-1.5">
-          <div className={`h-2 w-2 rounded-full ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
-          <div className={`h-2 w-2 rounded-full ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
-          <div className="h-2 w-6 rounded-full bg-[#E06A26]" />
-          <div className={`h-2 w-2 rounded-full ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
-          <div className={`h-2 w-2 rounded-full ${isDarkMode ? 'bg-gray-600' : 'bg-gray-300'}`} />
-        </div>
         <div className="w-10" />
       </div>
 
@@ -511,6 +505,8 @@ function Step3DailyGoals({ onNext, onBack, data, updateData, isDarkMode }: StepP
             <div className="relative">
               <input
                 type="range"
+                aria-label={goal.label}
+                aria-valuetext={`${goal.value} ${goal.unit}`}
                 min={goal.min}
                 max={goal.max}
                 step={goal.step || 100}
@@ -563,7 +559,7 @@ function Step4DietaryPreferences({ onNext, onBack, data, updateData, isDarkMode 
     <div className={`min-h-screen px-4 py-8 pb-32 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       {/* Header */}
       <div className={`flex items-center border-b pb-4 mb-6 ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-        <button onClick={onBack} className="p-2 -ml-2">
+        <button aria-label="Previous step" onClick={onBack} className="p-2 -ml-2">
           <ChevronLeft className={`h-6 w-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`} />
         </button>
         <h1 className={`flex-1 text-center font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Dietary Preferences</h1>
@@ -578,6 +574,7 @@ function Step4DietaryPreferences({ onNext, onBack, data, updateData, isDarkMode 
         {dietTypes.map((diet) => (
           <button
             key={diet.value}
+            aria-pressed={data.dietType === diet.value}
             onClick={() => updateData({ dietType: diet.value })}
             className={`p-4 rounded-2xl border-2 flex flex-col items-center text-center transition-all ${data.dietType === diet.value
               ? 'border-[#3AB1A0] bg-[#3AB1A0]/10'
@@ -620,7 +617,7 @@ function Step4DietaryPreferences({ onNext, onBack, data, updateData, isDarkMode 
 }
 
 // Step 5: Summary
-function Step5Summary({ onNext, onBack, data, isDarkMode }: StepProps) {
+function Step5Summary({ onNext, onBack, data, isDarkMode, saving }: StepProps) {
   // Calculate macros based on calories
   const protein = Math.round((data.dailyGoals.calories * 0.3) / 4); // 30% protein
   const carbs = Math.round((data.dailyGoals.calories * 0.4) / 4); // 40% carbs
@@ -642,7 +639,7 @@ function Step5Summary({ onNext, onBack, data, isDarkMode }: StepProps) {
     <div className={`min-h-screen px-4 py-8 pb-32 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       {/* Header */}
       <div className={`flex items-center border-b pb-4 mb-6 ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-        <button onClick={onBack} className="p-2 -ml-2">
+        <button disabled={saving} aria-label="Back to dietary preferences" onClick={onBack} className="p-2 -ml-2">
           <ChevronLeft className={`h-6 w-6 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`} />
         </button>
         <h1 className={`flex-1 text-center font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Your Profile Summary</h1>
@@ -755,10 +752,12 @@ function Step5Summary({ onNext, onBack, data, isDarkMode }: StepProps) {
       <div className={`fixed bottom-0 left-0 right-0 p-6 border-t ${isDarkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
         <button
           onClick={onNext}
+          disabled={saving}
+          aria-busy={saving}
           className="w-full py-4 rounded-full bg-[#E06A26] text-white font-semibold text-lg hover:bg-[#c55a1f] transition-all flex items-center justify-center gap-2"
         >
-          Confirm & Start
-          <Check className="h-5 w-5" />
+          {saving ? 'Saving your profile…' : 'Confirm & start'}
+          {saving ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <Check className="h-5 w-5" aria-hidden />}
         </button>
       </div>
     </div>
@@ -773,6 +772,14 @@ export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [data, setData] = useState<OnboardingData>(defaultData);
   const [saving, setSaving] = useState(false);
+  const stepRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const heading = stepRef.current?.querySelector('h1');
+    if (!heading) return;
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [currentStep]);
   const [checkingStatus, setCheckingStatus] = useState(false); // Start as false - show onboarding immediately
   const dietPlanRedirectRef = useRef(false);
 
@@ -827,6 +834,7 @@ export default function OnboardingPage() {
   };
 
   const handleNext = () => {
+    if (saving) return;
     if (currentStep < 5) {
       setCurrentStep(prev => prev + 1);
     } else {
@@ -835,6 +843,7 @@ export default function OnboardingPage() {
   };
 
   const handleBack = () => {
+    if (saving) return;
     if (currentStep > 1) {
       setCurrentStep(prev => prev - 1);
     }
@@ -914,11 +923,12 @@ export default function OnboardingPage() {
     }
   };
 
-  if (status === 'loading' || saving || checkingStatus) {
-    return <ClientPageSkeleton variant="form" />;
+  if (status === 'loading' || checkingStatus) {
+    return <ClientScreenSkeleton />;
   }
 
   const stepProps: StepProps = {
+    saving,
     onNext: handleNext,
     onBack: handleBack,
     data,
@@ -926,18 +936,16 @@ export default function OnboardingPage() {
     isDarkMode,
   };
 
-  switch (currentStep) {
-    case 1:
-      return <Step1BasicInfo {...stepProps} />;
-    case 2:
-      return <Step2Goals {...stepProps} />;
-    case 3:
-      return <Step3DailyGoals {...stepProps} />;
-    case 4:
-      return <Step4DietaryPreferences {...stepProps} />;
-    case 5:
-      return <Step5Summary {...stepProps} />;
-    default:
-      return <Step1BasicInfo {...stepProps} />;
-  }
+  const steps = [Step1BasicInfo, Step2Goals, Step3DailyGoals, Step4DietaryPreferences, Step5Summary];
+  const Step = steps[currentStep - 1] || Step1BasicInfo;
+  return (
+    <div className="mx-auto max-w-2xl">
+      <div className="px-4 pt-4" aria-label={`Profile setup, step ${currentStep} of 5`}>
+        <p className="mb-2 text-sm font-medium text-gray-600 dark:text-gray-300" role="status">Step {currentStep} of 5 · {['About you', 'Your goals', 'Daily routine', 'Food preferences', 'Review'][currentStep - 1]}</p>
+        <div className="flex gap-1.5" aria-hidden="true">{steps.map((_, index) => <div key={index} className={`h-1.5 flex-1 rounded-full transition-colors ${index < currentStep ? 'bg-[#3AB1A0]' : 'bg-gray-200 dark:bg-gray-800'}`} />)}</div>
+      </div>
+      <div ref={stepRef} key={currentStep} className="client-step"><Step {...stepProps} /></div>
+      {saving && <p role="status" className="sr-only">Saving your profile. Please wait.</p>}
+    </div>
+  );
 }

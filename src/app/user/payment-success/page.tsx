@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { CheckCircle, Download, Mail, ArrowRight, Receipt, Calendar, CreditCard, User, Package, Loader2 } from 'lucide-react';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { toast } from 'sonner';
 
 interface PaymentDetails {
@@ -182,7 +182,7 @@ export default function PaymentSuccessPage() {
   };
 
   if (loading) {
-    return <ClientPageSkeleton variant="list" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   if (!payment) {

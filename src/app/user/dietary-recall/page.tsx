@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 
 interface MealEntry {
   mealType: string;
@@ -283,7 +283,7 @@ export default function DietaryRecallPage() {
   };
 
   if (loading) {
-    return <ClientPageSkeleton variant="form" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   return (
@@ -354,7 +354,7 @@ export default function DietaryRecallPage() {
                   </div>
                 </div>
                 {!mealTypes.find(t => t.value === meal.mealType) && (
-                  <button
+                  <button aria-label="Remove meal"
                     onClick={() => removeMeal(index)}
                     className={`p-2 rounded-xl transition-colors ${isDarkMode ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}
                   >

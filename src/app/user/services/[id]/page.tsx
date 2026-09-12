@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Star, Check, Loader2, ShoppingCart } from 'lucide-react';
-import { ClientPageSkeleton } from '@/components/ui/skeleton';
+import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
@@ -150,7 +150,7 @@ export default function ServiceDetailPage() {
   };
 
   if (loading) {
-    return <ClientPageSkeleton variant="grid" showHeader={false} />;
+    return <ClientScreenSkeleton />;
   }
 
   if (!service) {
@@ -174,7 +174,7 @@ export default function ServiceDetailPage() {
       {/* Header */}
       <div className={`sticky top-0 z-40 backdrop-blur-sm border-b ${isDarkMode ? 'bg-gray-900/80 border-gray-800' : 'bg-white/95 border-gray-100'}`}>
         <div className="flex items-center gap-3 px-4 py-4 max-w-5xl mx-auto w-full">
-          <button
+          <button aria-label="Go back"
             onClick={() => router.back()}
             className={`flex items-center justify-center w-10 h-10 rounded-full transition-colors ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-[#3AB1A0]/10'}`}
           >

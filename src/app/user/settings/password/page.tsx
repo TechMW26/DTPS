@@ -85,7 +85,7 @@ export default function ChangePasswordPage() {
         <div className="bg-white px-4 pt-6 pb-4 border-b border-gray-100">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <button
+              <button aria-label="Go back"
                 onClick={() => router.back()}
                 className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
               >
@@ -134,7 +134,7 @@ export default function ChangePasswordPage() {
       <div className="bg-white px-4 pt-6 pb-4 border-b border-gray-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button
+            <button aria-label="Go back"
               onClick={() => router.back()}
               className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
             >
