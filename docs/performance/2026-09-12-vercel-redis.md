@@ -114,3 +114,24 @@ appointments and diagnostics authorization. Production compilation and TypeScrip
 checks passed. Targeted ESLint reported no errors (85 existing/style warnings).
 `git diff --check` passed. `npm run db:indexes` confirmed all 21 indexes existed;
 no index or customer-record changes were needed for this release.
+
+## Follow-up from live timing verification
+
+The first release exposed ~729 ms of server work for the admin recipe list.
+The numeric-UUID sorting branch was loading all matching recipes, sorting in
+Node.js, and slicing only afterward. It now sorts projected IDs inside MongoDB,
+applies skip/limit, and joins full documents only for that page. Stable `_id`
+ties and legacy leading-decimal UUID behavior are preserved.
+
+A paired read-only database check on the production catalog measured:
+
+| Numeric recipe listing | Before | After |
+| --- | ---: | ---: |
+| Full documents returned to application | 4,656 | 25 |
+| BSON bytes returned | 9,328,333 | 43,321 |
+| Local query + transfer + decode wall time | 1,861 ms | 107 ms |
+
+These measurements are a single paired database read, not an end-user latency
+percentile or a guaranteed speedup. Three focused suites (11 tests) passed for
+numeric sorting, ascending/descending pages, tie handling, visibility filters,
+recipe integrity and cache invalidation. The existing API response shape is kept.

@@ -1,3 +1,4 @@
+import { numericRecipePagePipeline } from '@/lib/services/recipe-pagination';
 import { measureApi } from '@/lib/api/performance';
 import { withJsonCache } from "@/lib/cache/json-cache";
 import { NextRequest, NextResponse } from "next/server";
@@ -754,7 +755,12 @@ async function getHandler(request: NextRequest) {
             recipesQuery = recipesQuery.limit(limit).skip((page - 1) * limit);
           }
 
-          const recipesRaw = await recipesQuery.lean(); // Use lean() for better performance
+          const numericPageInDatabase = isNumericUuidSort && limit > 0;
+          const recipesRaw = numericPageInDatabase
+            ? await Recipe.aggregate(numericRecipePagePipeline(
+                query, sortBy === 'uuid' ? 1 : -1, page, limit, Recipe.collection.name,
+              ))
+            : await recipesQuery.lean();
 
           // Collect valid createdBy ObjectIds for population
           const validCreatorIds = recipesRaw
@@ -794,7 +800,7 @@ async function getHandler(request: NextRequest) {
 
           // Post-process sorting for UUID (numeric sort for string numbers)
           // This handles all records before pagination
-          if (isNumericUuidSort) {
+          if (isNumericUuidSort && !numericPageInDatabase) {
             recipesData.sort((a: any, b: any) => {
               const aUuid = parseInt(a.uuid || "0") || 0;
               const bUuid = parseInt(b.uuid || "0") || 0;
@@ -938,7 +944,7 @@ async function getHandler(request: NextRequest) {
             tags: tagsList,
           };
         },
-        { ttl: 300000, tags: ["recipes"] }, // 5 minutes TTL
+        { ttl: 30_000, tags: ["recipes"] }, // Versioned cache, bounded to 30 seconds
       );
 
       recipes = cachedResult.recipes || [];
