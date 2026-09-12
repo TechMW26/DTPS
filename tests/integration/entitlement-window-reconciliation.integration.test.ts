@@ -153,4 +153,39 @@ describe("remaining-day entitlement window reconciliation", () => {
       server.close();
     }
   });
+  it.each(["admin", "dietitian"])("retains a shorter corrected date after %s saves and both purchase reads", async (role) => {
+    const { client, dietitian, purchase, mealPlan } = await createPurchaseAndPlan({
+      durationDays: 90, daysUsed: 90, remainingDays: 0,
+    });
+    await UnifiedPayment.collection.updateOne({ _id: purchase._id }, { $set: {
+      expectedStartDate: new Date("2030-06-27T00:00:00Z"),
+      expectedEndDate: new Date("2030-09-27T00:00:00Z"), durationLabel: "3 Months",
+    } });
+    await ClientMealPlan.collection.updateOne({ _id: mealPlan._id }, { $set: {
+      startDate: new Date("2030-06-27T00:00:00Z"), endDate: new Date("2030-09-24T00:00:00Z"),
+    } });
+    const user = role === "admin" ? await createUser({ role: UserRole.ADMIN }) : dietitian;
+    const { invokeRoute } = await import("../utils/routes");
+    const route = await import("@/app/api/client-purchases/route");
+    const saved = await invokeRoute(route.PUT, { method: "PUT", user,
+      url: "http://localhost/api/client-purchases", body: {
+        purchaseId: entityId(purchase), expectedStartDate: "2030-06-27", expectedEndDate: "2030-09-24",
+      },
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.json.purchase.expectedEndDate.slice(0, 10)).toBe("2030-09-24");
+    const listed = await invokeRoute(route.GET, { method: "GET", user,
+      url: `http://localhost/api/client-purchases?clientId=${entityId(client)}`,
+    });
+    expect(listed.status).toBe(200);
+    expect(listed.json.purchases.find((p: any) => p._id === entityId(purchase)).expectedEndDate.slice(0, 10)).toBe("2030-09-24");
+    const check = await import("@/app/api/client-purchases/check/route");
+    const checked = await invokeRoute(check.GET, { method: "GET", user,
+      url: `http://localhost/api/client-purchases/check?clientId=${entityId(client)}`,
+    });
+    expect(checked.status).toBe(200);
+    const refreshed: any = await UnifiedPayment.findById(purchase._id).lean();
+    expect(refreshed.expectedEndDate.toISOString().slice(0, 10)).toBe("2030-09-24");
+  });
+
 });

@@ -726,6 +726,7 @@ export async function POST(request: NextRequest) {
           expectedEndDate: purchase.expectedEndDate,
           endDate: purchase.endDate,
           durationLabel: purchase.durationLabel,
+          durationDays: purchase.durationDays,
         }),
       );
 

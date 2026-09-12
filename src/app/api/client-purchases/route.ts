@@ -395,6 +395,7 @@ export async function GET(request: NextRequest) {
           expectedEndDate: purchaseObj.expectedEndDate,
           endDate: purchaseObj.endDate,
           durationLabel: purchaseObj.durationLabel,
+          durationDays: purchaseObj.durationDays,
           linkedMealPlanEndDate,
           remainingDays,
         });
@@ -729,6 +730,7 @@ export async function PUT(request: NextRequest) {
             expectedEndDate: currentPurchase.expectedEndDate,
             endDate: currentPurchase.endDate,
             durationLabel: currentPurchase.durationLabel,
+            durationDays: currentPurchase.durationDays,
             linkedMealPlanEndDate: latestLinkedMealPlanEndDate,
             remainingDays,
           });

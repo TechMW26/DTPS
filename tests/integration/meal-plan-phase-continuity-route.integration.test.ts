@@ -182,7 +182,8 @@ describe("POST /api/client-meal-plans phase continuity", () => {
     ).resolves.toBe(2);
   });
 
-  it("accepts the calendar-month end date even when the legacy stored end is one day short", async () => {
+  it.each([true, false])("honors the stored end when creating a phase (inside window: %s)", async (insideWindow) => {
+    const phaseDate = insideWindow ? "2030-09-25" : "2030-09-26";
     const { client, dietitian } = await createAssignedDietitianClientPair();
     const purchase = await UnifiedPayment.create({
       client: client._id,
@@ -193,8 +194,8 @@ describe("POST /api/client-meal-plans phase continuity", () => {
       durationLabel: "3 Months",
       status: "paid",
       paymentStatus: "paid",
-      expectedStartDate: new Date("2026-06-26T00:00:00.000Z"),
-      expectedEndDate: new Date("2026-09-25T00:00:00.000Z"),
+      expectedStartDate: new Date("2030-06-26T00:00:00.000Z"),
+      expectedEndDate: new Date("2030-09-25T00:00:00.000Z"),
       remainingDays: 1,
       mealPlanCreated: false,
     });
@@ -207,13 +208,13 @@ describe("POST /api/client-meal-plans phase continuity", () => {
         clientId: String(client._id),
         purchaseId: String(purchase._id),
         name: "Final Phase",
-        startDate: "2026-09-26",
-        endDate: "2026-09-26",
+        startDate: phaseDate,
+        endDate: phaseDate,
         duration: 1,
         status: "active",
         meals: [
           {
-            date: "2026-09-26",
+            date: phaseDate,
             day: "Day 1",
             meals: {
               BREAKFAST: { foodOptions: [{ food: "Oats with milk" }] },
@@ -223,6 +224,12 @@ describe("POST /api/client-meal-plans phase continuity", () => {
       },
     });
 
+    if (!insideWindow) {
+      expect(result.status).toBe(400);
+      expect(result.json.error).toBe("Start date outside purchase window");
+      expect(await ClientMealPlan.countDocuments({ purchaseId: purchase._id })).toBe(0);
+      return;
+    }
     expect(result.status).toBe(201);
     expect(result.json.mealPlan).toEqual(
       expect.objectContaining({
@@ -232,7 +239,8 @@ describe("POST /api/client-meal-plans phase continuity", () => {
     );
   });
 
-  it("publishes an autosaved draft on the resolved calendar-month end date", async () => {
+  it.each([true, false])("honors the stored end when publishing a draft (inside window: %s)", async (insideWindow) => {
+    const phaseDate = insideWindow ? "2030-09-25" : "2030-09-26";
     const { client, dietitian } = await createAssignedDietitianClientPair();
     const purchase = await UnifiedPayment.create({
       client: client._id,
@@ -243,8 +251,8 @@ describe("POST /api/client-meal-plans phase continuity", () => {
       durationLabel: "3 Months",
       status: "paid",
       paymentStatus: "paid",
-      expectedStartDate: new Date("2026-06-26T00:00:00.000Z"),
-      expectedEndDate: new Date("2026-09-25T00:00:00.000Z"),
+      expectedStartDate: new Date("2030-06-26T00:00:00.000Z"),
+      expectedEndDate: new Date("2030-09-25T00:00:00.000Z"),
       remainingDays: 1,
       mealPlanCreated: false,
     });
@@ -253,13 +261,13 @@ describe("POST /api/client-meal-plans phase continuity", () => {
       dietitianId: dietitian._id,
       purchaseId: purchase._id,
       name: "Final Draft Phase",
-      startDate: new Date("2026-09-26T00:00:00.000Z"),
-      endDate: new Date("2026-09-26T00:00:00.000Z"),
+      startDate: new Date(`${phaseDate}T00:00:00.000Z`),
+      endDate: new Date(`${phaseDate}T00:00:00.000Z`),
       duration: 1,
       status: "draft",
       meals: [
         {
-          date: "2026-09-26",
+          date: phaseDate,
           day: "Day 1",
           meals: {
             BREAKFAST: { foodOptions: [{ food: "Oats with milk" }] },
@@ -276,13 +284,19 @@ describe("POST /api/client-meal-plans phase continuity", () => {
       params: { id: String(draft._id) },
       body: {
         status: "active",
-        startDate: "2026-09-26",
-        endDate: "2026-09-26",
+        startDate: phaseDate,
+        endDate: phaseDate,
         duration: 1,
         meals: draft.meals,
       },
     });
 
+    if (!insideWindow) {
+      expect(result.status).toBe(400);
+      expect(result.json.error).toBe("Meal plan dates must remain within the linked purchase expected window");
+      expect((await ClientMealPlan.findById(draft._id))?.status).toBe("draft");
+      return;
+    }
     expect(result.status).toBe(200);
     expect(result.json.mealPlan).toEqual(
       expect.objectContaining({

@@ -882,6 +882,7 @@ export async function PUT(
             expectedEndDate: purchase.expectedEndDate,
             endDate: purchase.endDate,
             durationLabel: purchase.durationLabel,
+            durationDays: purchase.durationDays,
           }) ||
             purchase.expectedEndDate ||
             purchase.endDate,

@@ -3,6 +3,7 @@ type EntitlementDateInput = {
   expectedEndDate?: unknown;
   endDate?: unknown;
   durationLabel?: unknown;
+  durationDays?: unknown;
   linkedMealPlanEndDate?: unknown;
 };
 
@@ -64,10 +65,16 @@ export function getCalendarEntitlementEndDate(
 export function resolveEntitlementEndDate(
   input: EntitlementDateInput,
 ): Date | null {
+  // Saved dates include staff corrections and hold/freeze extensions. A display
+  // label such as "3 Months" must never impose a later minimum on that date.
+  const start = toUtcDay(input.expectedStartDate);
+  const days = Number(input.durationDays);
+  const inferredEnd = start && Number.isInteger(days) && days > 0
+    ? addUtcCalendarDays(start, days - 1)
+    : getCalendarEntitlementEndDate(input.expectedStartDate, input.durationLabel);
   const candidates = [
-    toUtcDay(input.expectedEndDate || input.endDate),
+    toUtcDay(input.expectedEndDate) || toUtcDay(input.endDate) || inferredEnd,
     toUtcDay(input.linkedMealPlanEndDate),
-    getCalendarEntitlementEndDate(input.expectedStartDate, input.durationLabel),
   ].filter((date): date is Date => Boolean(date));
 
   if (candidates.length === 0) return null;

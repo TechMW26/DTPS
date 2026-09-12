@@ -40,7 +40,7 @@ describe("calendar entitlement dates", () => {
     ).toBe("2026-08-18");
   });
 
-  it("repairs a shorter stored end while preserving later extensions", () => {
+  it("respects a stored end instead of imposing calendar months", () => {
     expect(
       resolveEntitlementEndDate({
         expectedStartDate: "2026-06-26",
@@ -49,7 +49,7 @@ describe("calendar entitlement dates", () => {
       })
         ?.toISOString()
         .slice(0, 10),
-    ).toBe("2026-09-26");
+    ).toBe("2026-09-25");
 
     expect(
       resolveEntitlementEndDate({
@@ -62,3 +62,16 @@ describe("calendar entitlement dates", () => {
     ).toBe("2026-10-02");
   });
 });
+
+ it("preserves a corrected 90-day window on refresh", () => {
+    expect(resolveEntitlementEndDateCoveringRemainingDays({
+      expectedStartDate: "2026-06-27", expectedEndDate: "2026-09-24",
+      durationLabel: "3 Months", linkedMealPlanEndDate: "2026-09-24", remainingDays: 0,
+    })?.toISOString().slice(0, 10)).toBe("2026-09-24");
+  });
+
+  it("uses inclusive purchased days when stored dates are missing", () => {
+    expect(resolveEntitlementEndDate({ expectedStartDate: "2026-06-27",
+      durationDays: 90, durationLabel: "3 Months",
+    })?.toISOString().slice(0, 10)).toBe("2026-09-24");
+  });
