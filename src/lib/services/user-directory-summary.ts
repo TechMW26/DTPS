@@ -1,12 +1,12 @@
 import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
-import { coalesceRead } from '@/lib/api/coalesce-read';
+import { withJsonCache } from '@/lib/cache/json-cache';
 
 export async function getUserDirectorySummary() {
   // Global counts contain no user records. Caller must authorize the request.
   // The role/clientId index covers this one pass, replacing four counts and a
   // separate client-ID scan/sort on every directory page request.
-  return coalesceRead('user-directory-summary', async () => {
+  return withJsonCache('user-directory-summary', async () => {
     const rows = await User.aggregate<{ _id: string; count: number; latestClientIdNumber: number }>([
       { $match: { role: { $in: Object.values(UserRole) } } },
       { $group: {
@@ -27,5 +27,5 @@ export async function getUserDirectorySummary() {
       clientsCount: byRole.get(UserRole.CLIENT)?.count || 0,
       latestClientIdNumber: byRole.get(UserRole.CLIENT)?.latestClientIdNumber || 0,
     };
-  });
+  }, { ttl: 15_000, tags: ['user-directory'] });
 }

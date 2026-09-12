@@ -1,3 +1,4 @@
+import { measureApi } from '@/lib/api/performance';
 import DietTemplate from '@/lib/db/models/DietTemplate';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
@@ -70,7 +71,7 @@ function resolveRequestedDate(dateParam: string | null): Date | null {
 }
 
 // GET /api/client/meal-plan - Get client's meal plan for a specific date
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     // Run auth + DB connection in PARALLEL
     const [session] = await Promise.all([
@@ -670,3 +671,5 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
     return meals; // Return original meals if error
   }
 }
+
+export const GET = measureApi('/api/client/meal-plan', getHandler);

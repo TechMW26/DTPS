@@ -1,3 +1,4 @@
+import { invalidateCatalogAfterWrites } from '@/lib/cache/catalog-invalidation';
 import mongoose, { Schema, Document } from 'mongoose';
 import Counter from './Counter';
 import { getRecipePublicationIssues } from '@/lib/recipe-quality';
@@ -503,6 +504,8 @@ recipeSchema.statics.getTrendingRecipes = function (limit = 10) {
 if (mongoose.models.Recipe) {
   delete mongoose.models.Recipe;
 }
+
+invalidateCatalogAfterWrites(recipeSchema, ['recipes']);
 
 const Recipe = mongoose.model<IRecipe>('Recipe', recipeSchema);
 

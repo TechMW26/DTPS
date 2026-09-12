@@ -1,3 +1,4 @@
+import { measureApi } from '@/lib/api/performance';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
@@ -11,7 +12,7 @@ import { prioritizeClientDashboardPurchases } from '@/lib/client-plan-visibility
 import { canonicalizePurchaseRecords } from '@/lib/payments/canonicalize-purchases';
 
 // GET - Fetch service plans visible to clients (for user dashboard)
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
 
@@ -22,15 +23,13 @@ export async function GET(request: NextRequest) {
         await dbConnect();
 
         // Fetch the client's primary dietitian from User model (not from payment)
-        const clientUser = await User.findById(session.user.id)
+        const clientUserPromise = User.findById(session.user.id)
             .select('assignedDietitian')
             .populate('assignedDietitian', 'firstName lastName email phone avatar role')
-            .lean() as any;
-
-        const primaryDietitian = clientUser?.assignedDietitian;
+            .lean();
 
         // Check if client has any purchases in UnifiedPayment collection (paid status)
-        const allPurchases = await withCache(
+        const allPurchasesPromise = withCache(
             `client:service-plans:${JSON.stringify({
                 client: session.user.id,
                 status: { $in: ['paid', 'completed', 'active'] },
@@ -51,7 +50,7 @@ export async function GET(request: NextRequest) {
         const endOfToday = new Date(now);
         endOfToday.setHours(23, 59, 59, 999);
 
-        const activeClientMealPlan = await ClientMealPlan.findOne({
+        const activeClientMealPlanPromise = ClientMealPlan.findOne({
             clientId: session.user.id,
             status: 'active',
             isDeleted: { $ne: true },
@@ -59,7 +58,13 @@ export async function GET(request: NextRequest) {
             endDate: { $gte: startOfToday }
         })
             .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
-            .lean() as any;
+            .select('name planName startDate endDate duration goal purchaseId')
+            .lean();
+
+        const [clientUser, allPurchases, activeClientMealPlan]: [any, any[], any] = await Promise.all([
+            clientUserPromise, allPurchasesPromise, activeClientMealPlanPromise,
+        ]);
+        const primaryDietitian = clientUser?.assignedDietitian;
 
         const hasActiveMealPlan = !!activeClientMealPlan;
 
@@ -244,3 +249,5 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to fetch service plans' }, { status: 500 });
     }
 }
+
+export const GET = measureApi('/api/client/service-plans', getHandler);

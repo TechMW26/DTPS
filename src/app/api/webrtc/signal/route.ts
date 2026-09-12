@@ -1,11 +1,10 @@
+import { measureApi } from '@/lib/api/performance';
 import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import connectDB from '@/lib/db/connection';
 import RealtimeSignal from '@/lib/db/models/RealtimeSignal';
-import { sendNotificationToUser } from '@/lib/firebase/firebaseNotification';
-import { socketManager } from '@/lib/realtime/socket-manager';
 
 const SIGNAL_TTL_MS = 2 * 60 * 1000;
 
@@ -137,9 +136,7 @@ export async function POST(request: NextRequest) {
     }
 
     await connectDB();
-    // Production disables automatic index creation, so prune stale signals here as
-    // well as declaring the TTL index on the model.
-    await RealtimeSignal.deleteMany({ expiresAt: { $lte: new Date(now) } });
+    // Expiry is enforced by the deployed TTL index and the GET filter.
     await RealtimeSignal.create({
       senderId: session.user.id,
       recipientId: delivery.recipientId,
@@ -149,6 +146,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (delivery.event === 'incoming_call') {
+      const { sendNotificationToUser } = await import('@/lib/firebase/firebaseNotification');
       const callerName = String(delivery.payload.callerName || 'Your care team');
       const callType = String(delivery.payload.type || 'audio');
       const clickAction = `/messages?userId=${encodeURIComponent(session.user.id)}`;
@@ -169,6 +167,7 @@ export async function POST(request: NextRequest) {
 
     // Fast path when a colocated/dedicated socket broadcaster is available.
     // The Mongo queue above remains the delivery fallback across serverless hosts.
+    const { socketManager } = await import('@/lib/realtime/socket-manager');
     socketManager.sendToUser(delivery.recipientId, delivery.event, delivery.payload);
 
     return NextResponse.json({ success: true });
@@ -178,7 +177,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+async function getHandler() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -217,3 +216,5 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to poll signals' }, { status: 500 });
   }
 }
+
+export const GET = measureApi('/api/webrtc/signal', getHandler);

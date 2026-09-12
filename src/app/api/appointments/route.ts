@@ -1,3 +1,4 @@
+import { measureApi } from '@/lib/api/performance';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
@@ -26,7 +27,7 @@ interface LeanClientDoc {
 }
 
 // GET /api/appointments - Get appointments for current user
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -167,7 +168,8 @@ export async function GET(request: NextRequest) {
     const { appointments, total } = await withCache(
       cacheKey,
       async () => {
-        const appointments = await Appointment.find(query)
+        const [appointments, total] = await Promise.all([
+          Appointment.find(query)
           .populate('dietitian', 'firstName lastName email avatar')
           .populate('client', 'firstName lastName email avatar')
           .populate('createdBy', 'firstName lastName role')
@@ -177,9 +179,9 @@ export async function GET(request: NextRequest) {
           .sort({ scheduledAt: 1 })
           .limit(limit)
           .skip((page - 1) * limit)
-          .lean();
-
-        const total = await Appointment.countDocuments(query);
+          .lean(),
+          Appointment.countDocuments(query),
+        ]);
         return { appointments, total };
       },
       { ttl: 60000, tags: ['appointments'] } // 1 minute TTL
@@ -731,3 +733,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = measureApi('/api/appointments', getHandler);

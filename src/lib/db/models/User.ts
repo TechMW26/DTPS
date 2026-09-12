@@ -1,3 +1,4 @@
+import { invalidateCatalogAfterWrites } from '@/lib/cache/catalog-invalidation';
 import mongoose, { Schema } from 'mongoose';
 import { IUser, UserRole, UserStatus, ClientStatus } from '@/types';
 
@@ -671,6 +672,8 @@ userSchema.set('toJSON', {
     return ret;
   }
 });
+
+invalidateCatalogAfterWrites(userSchema, ['user-directory', 'recipes']);
 
 const User = mongoose.models.User || mongoose.model<IUser>('User', userSchema);
 

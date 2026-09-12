@@ -1,3 +1,4 @@
+import { measureApi } from '@/lib/api/performance';
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
@@ -11,7 +12,7 @@ import { canonicalizePurchaseRecords } from "@/lib/payments/canonicalize-purchas
 import { resolveEntitlementEndDate } from "@/lib/payments/entitlement-dates";
 
 // GET /api/dashboard/pending-plans - Get clients with pending meal plans
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -490,3 +491,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = measureApi('/api/dashboard/pending-plans', getHandler);

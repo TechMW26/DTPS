@@ -1,3 +1,4 @@
+import { measureApi } from '@/lib/api/performance';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
@@ -12,7 +13,7 @@ import mongoose from 'mongoose';
 import { withCache } from '@/lib/api/utils';
 
 // GET /api/dashboard/dietitian-stats - Get real dashboard statistics
-export async function GET() {
+async function getHandler() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -556,3 +557,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = measureApi('/api/dashboard/dietitian-stats', getHandler);

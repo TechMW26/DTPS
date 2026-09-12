@@ -2,7 +2,7 @@
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "devCommand": "next dev --port 3000",
-  "installCommand": "npm install --legacy-peer-deps",
+  "installCommand": "npm ci --legacy-peer-deps",
   "framework": "nextjs",
   "regions": ["bom1"],
   "functions": {

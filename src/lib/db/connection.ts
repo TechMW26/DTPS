@@ -1,5 +1,6 @@
 import { Resolver } from "dns";
 import mongoose from "mongoose";
+import { attachDatabasePool } from "@vercel/functions";
 // Global plugin — MUST be imported BEFORE any model files so the plugin
 // is registered before schemas are compiled.
 import "./plugins/istDatePlugin";
@@ -110,7 +111,7 @@ const connectionOptions: mongoose.ConnectOptions = {
   // Connection pool — optimized for throughput
   maxPoolSize: process.env.VERCEL ? 10 : 20,
   minPoolSize: process.env.VERCEL ? 0 : 2,
-  maxIdleTimeMS: 60000, // Close idle connections after 60s (was 30s)
+  maxIdleTimeMS: 10_000, // Release idle sockets before Fluid instances suspend
   waitQueueTimeoutMS: 10000, // Max wait for pool connection (10s)
 
   // Retry settings (MongoDB driver handles these)
@@ -259,7 +260,11 @@ async function connectDB(): Promise<typeof mongoose> {
 
   // Resolve SRV URI once (outside retry loop)
   if (!resolvedMongoUri) {
-    resolvedMongoUri = await resolveSrvToStandardUri(MONGODB_URI);
+    // Vercel supports native SRV discovery, including Atlas TXT/replica options.
+    // Keep the development DNS workaround off the production cold-start path.
+    resolvedMongoUri = process.env.VERCEL
+      ? MONGODB_URI
+      : await resolveSrvToStandardUri(MONGODB_URI);
   }
 
   // Create new connection with retry logic
@@ -303,6 +308,7 @@ async function connectDB(): Promise<typeof mongoose> {
         );
 
         console.log("[MongoDB] Connected successfully!");
+        if (process.env.VERCEL) attachDatabasePool(conn.connection.getClient());
         cached.conn = conn;
         cached.lastError = null;
         cached.retryCount = 0;

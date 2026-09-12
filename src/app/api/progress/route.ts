@@ -1,3 +1,4 @@
+import { measureApi } from '@/lib/api/performance';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
@@ -23,7 +24,7 @@ interface ClientAssignment {
 }
 
 // GET /api/progress - Get progress entries
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const sessionPromise = getServerSession(authOptions);
     const dbPromise = connectDB();
@@ -222,3 +223,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = measureApi('/api/progress', getHandler);

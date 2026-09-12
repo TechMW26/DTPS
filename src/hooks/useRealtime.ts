@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { notifyMissedCall } from '@/lib/notifications/notification-manager';
 import { NotificationService } from '@/lib/notifications/notification-service';
+import { subscribeRealtimePolling, claimCallNotification } from '@/lib/realtime/shared-polling';
 import { socketClient } from '@/lib/realtime/socket-client';
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 
@@ -38,7 +39,6 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const unsubsRef = useRef<Array<() => void>>([]);
-  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const deliveredCallKeysRef = useRef<Set<string>>(new Set());
 
   // Store latest callbacks in refs to avoid stale closures.
@@ -63,6 +63,8 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
     }
 
     onMessageRef.current?.({ type: eventType, data, timestamp: Date.now() });
+
+    if (!claimCallNotification(eventKey)) return;
 
     if (eventType === 'incoming_call') {
       try {
@@ -200,27 +202,11 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
     setIsConnected(socketClient.connected);
     setConnectionError(null);
 
-    // Heartbeat to keep server-side presence updated
-    if (!heartbeatRef.current) {
-      heartbeatRef.current = setInterval(async () => {
-        try {
-          await fetch('/api/realtime/status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'heartbeat' }),
-          });
-        } catch (_) { }
-      }, 30000);
-    }
   }, [session?.user?.id, deliverCallEvent]);
 
   const disconnect = useCallback(() => {
     unsubsRef.current.forEach((u) => u());
     unsubsRef.current = [];
-    if (heartbeatRef.current) {
-      clearInterval(heartbeatRef.current as any);
-      heartbeatRef.current = null;
-    }
     setIsConnected(false);
   }, []);
 
@@ -234,67 +220,12 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
     return () => disconnect();
   }, [session?.user?.id, connect, disconnect]);
 
-  // Mongo-backed signaling keeps calls functional when the web app and the
-  // persistent Socket.io server are hosted on different platforms.
+  // Shared across all consumers on this screen, including the global call manager.
   useEffect(() => {
     if (!session?.user?.id) return;
-
-    let disposed = false;
-    let polling = false;
-    let pollTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const scheduleNextPoll = (delay = 1_250) => {
-      if (!disposed) pollTimer = setTimeout(pollSignals, delay);
-    };
-
-    const pollSignals = async () => {
-      if (disposed || polling) return;
-      if (document.visibilityState === 'hidden') {
-        scheduleNextPoll(3_000);
-        return;
-      }
-
-      polling = true;
-      try {
-        const response = await fetch('/api/webrtc/signal', {
-          credentials: 'same-origin',
-          cache: 'no-store',
-        });
-        if (response.ok) {
-          const result = await response.json();
-          for (const signal of Array.isArray(result?.signals) ? result.signals : []) {
-            if (signal?.type && signal?.data) {
-              deliverCallEvent(signal.type, signal.data);
-            }
-          }
-        }
-      } catch {
-        // Socket delivery may still be active; retry polling quietly.
-      } finally {
-        polling = false;
-        scheduleNextPoll();
-      }
-    };
-
-    const pollNow = () => {
-      if (document.visibilityState === 'hidden') return;
-      if (pollTimer) clearTimeout(pollTimer);
-      pollTimer = null;
-      void pollSignals();
-    };
-
-    void pollSignals();
-    window.addEventListener('online', pollNow);
-    window.addEventListener('focus', pollNow);
-    document.addEventListener('visibilitychange', pollNow);
-
-    return () => {
-      disposed = true;
-      if (pollTimer) clearTimeout(pollTimer);
-      window.removeEventListener('online', pollNow);
-      window.removeEventListener('focus', pollNow);
-      document.removeEventListener('visibilitychange', pollNow);
-    };
+    return subscribeRealtimePolling(session.user.id, signal => {
+      deliverCallEvent(signal.type, signal.data);
+    });
   }, [session?.user?.id, deliverCallEvent]);
 
   // Send typing indicator via socket (with REST fallback)

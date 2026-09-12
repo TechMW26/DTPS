@@ -11,6 +11,7 @@
     "export": "next build && next export",
     "test": "jest",
     "db:indexes": "node tools/ensure-performance-indexes.mjs",
+    "cache:check": "node tools/verify-redis.mjs",
     "test:socket": "jest tests/integration/socket --coverage",
     "test:socket:ci": "jest tests/integration/socket --coverage --ci"
   },
@@ -34,6 +35,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@vercel/blob": "^2.6.1",
+    "@vercel/functions": "^3.9.7",
     "@zoom/meetingsdk": "^4.0.5",
     "axios": "^1.12.2",
     "bcrypt": "^6.0.0",
@@ -50,6 +52,7 @@
     "firebase-admin": "^13.10.0",
     "googleapis": "^168.0.0",
     "html2canvas": "^1.4.1",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.0.0",
     "lucide-react": "^0.541.0",
@@ -85,6 +88,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.3",

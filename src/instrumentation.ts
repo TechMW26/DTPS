@@ -19,7 +19,7 @@ export async function register() {
     // Eagerly initialize SocketManager so auth middleware and connection
     // handlers are attached BEFORE the server starts accepting connections.
     // globalThis.__socketIO is set by server.js BEFORE app.prepare() runs.
-    try {
+    if (!process.env.VERCEL) try {
       const { socketManager } = await import("@/lib/realtime/socket-manager");
       const io = socketManager.getIO();
       if (io) {

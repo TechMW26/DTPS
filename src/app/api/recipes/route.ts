@@ -1,3 +1,5 @@
+import { measureApi } from '@/lib/api/performance';
+import { withJsonCache } from "@/lib/cache/json-cache";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
@@ -87,7 +89,7 @@ const recipeSchema = z.object({
 });
 
 // GET /api/recipes - Get recipes
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     // Run auth + DB connection in PARALLEL
     const [session] = await Promise.all([
@@ -510,9 +512,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Generate cache key based on query params
-    const cacheKey = `recipes:${view}:${searchMode}:${normalizedSearchLower}:${category || ""}:${cuisine || ""}:${difficulty || ""}:${dietaryRestrictions || ""}:${excludeDietaryRestrictions || ""}:${excludeAllergens || ""}:${excludeMedicalConditions || ""}:${sortBy}:${page}:${limit}:${includeTotal}`;
     const foodTotalCacheKey = `recipes:food-total:${searchMode}:${normalizedSearchLower}:${category || ""}:${cuisine || ""}:${difficulty || ""}:${dietaryRestrictions || ""}:${excludeDietaryRestrictions || ""}:${excludeAllergens || ""}:${excludeMedicalConditions || ""}`;
 
+    const cacheKey = JSON.stringify(["recipes", requestRole, session.user.id, query, sortBy, page, limit, [...searchParams.entries()].sort()]);
     let recipes: any[] = [];
     let total = 0;
     let cuisines: string[] = [];
@@ -520,7 +522,7 @@ export async function GET(request: NextRequest) {
     let hasNext = false;
 
     try {
-      const cachedResult = await withCache(
+      const cachedResult = await withJsonCache(
         cacheKey,
         async () => {
           if (isFoodDatabaseView) {
@@ -925,11 +927,9 @@ export async function GET(request: NextRequest) {
             }
           }
 
-          const totalCount = await Recipe.countDocuments(query);
-
-          // Get unique values for filtering
-          const cuisinesList = await Recipe.distinct("cuisine");
-          const tagsList = await Recipe.distinct("tags");
+          const [totalCount, cuisinesList, tagsList] = await Promise.all([
+            Recipe.countDocuments(query), Recipe.distinct("cuisine"), Recipe.distinct("tags"),
+          ]);
 
           return {
             recipes: recipesData,
@@ -1440,3 +1440,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = measureApi('/api/recipes', getHandler);

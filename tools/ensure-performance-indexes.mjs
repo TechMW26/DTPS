@@ -8,6 +8,8 @@ const uri = process.env.MONGODB_URI;
 if (!uri) throw new Error('MONGODB_URI is required');
 
 const specifications = [
+  ['realtimesignals', { recipientId: 1, deliveredAt: 1, createdAt: 1 }],
+  ['realtimesignals', { expiresAt: 1 }, { expireAfterSeconds: 0 }],
   ['users', { role: 1, clientId: 1 }],
   ['clientmealplans', { purchaseId: 1 }],
   ['unifiedpayments', { paymentLink: 1, client: 1 }],
@@ -50,7 +52,7 @@ try {
   let created = 0;
   let existing = 0;
 
-  for (const [collectionName, key] of specifications) {
+  for (const [collectionName, key, options = {}] of specifications) {
     if (!collections.has(collectionName)) {
       console.log(`skip ${collectionName}: collection does not exist`);
       continue;
@@ -64,7 +66,7 @@ try {
       continue;
     }
 
-    const name = await collection.createIndex(key);
+    const name = await collection.createIndex(key, options);
     created += 1;
     console.log(`created ${collectionName}.${name}`);
   }

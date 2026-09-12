@@ -1,3 +1,4 @@
+import { measureApi } from '@/lib/api/performance';
 import { getUserDirectorySummary } from '@/lib/services/user-directory-summary';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
@@ -86,7 +87,7 @@ async function recomputeClientStatuses(clients: any[]): Promise<any[]> {
 }
 
 // GET /api/users - Get users (for dietitians to see clients, admins to see all)
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     // Run auth + DB connection in PARALLEL
     const [session] = await Promise.all([
@@ -772,3 +773,5 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+export const GET = measureApi('/api/users', getHandler);
