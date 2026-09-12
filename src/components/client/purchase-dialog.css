@@ -1,0 +1,32 @@
+.purchase-dialog-overlay { position: fixed; inset: 0; z-index: 60; background: #12251d99; backdrop-filter: blur(4px); }
+.purchase-dialog {
+  position: fixed; z-index: 61;
+  top: 50%; left: 50%; translate: -50% -50%;
+  width: min(448px, calc(100vw - 32px));
+  max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid #ffffff40; border-radius: 24px;
+  background: #fff; color: #17251f; box-shadow: 0 24px 80px #12251d40;
+}
+.purchase-dialog-header { flex-shrink: 0; background: linear-gradient(120deg, #bd4d1b, #a95d35); }
+.purchase-dialog-header > div { gap: 12px; }
+.purchase-dialog-header button { flex-shrink: 0; min-width: 44px; min-height: 44px; }
+.purchase-dialog-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.purchase-dialog-footer { flex-shrink: 0; border-top: 1px solid #e6ebe8; background: #fff; }
+.purchase-dialog button:focus-visible { outline: 2px solid #267d6d; outline-offset: -4px; }
+.purchase-dialog button { min-height: 44px; }
+.purchase-dialog .purchase-tier { min-height: 70px; }
+.purchase-dialog[data-state=open] { animation: purchase-enter 200ms ease-out; }
+.purchase-dialog-overlay[data-state=open] { animation: purchase-overlay-enter 160ms ease-out; }
+.dark .purchase-dialog, .dark .purchase-dialog-footer { background: #17251f; color: #eff5f0; border-color: #3a4c42; }
+.dark .purchase-dialog :is(.text-gray-900, .text-gray-600) { color: #eff5f0; }
+.dark .purchase-dialog .text-gray-500 { color: #a9bbb1; }
+.dark .purchase-dialog .border-gray-200 { border-color: #3a4c42; }
+@keyframes purchase-enter { from { opacity: .4; scale: .98; } to { opacity: 1; scale: 1; } }
+@keyframes purchase-overlay-enter { from { opacity: 0; } to { opacity: 1; } }
+@media (max-height: 560px) {
+  .purchase-dialog-header { padding: 12px 16px; }
+  .purchase-dialog-header img, .purchase-dialog-header .h-14 { display: none; }
+  .purchase-dialog-footer { padding: 12px 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .purchase-dialog, .purchase-dialog-overlay { animation: none !important; transition: none !important; } }

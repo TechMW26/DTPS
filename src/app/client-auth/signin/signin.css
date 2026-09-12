@@ -1,0 +1,50 @@
+.client-signin {
+  min-height: 100dvh;
+  color: #263b3a;
+  background: radial-gradient(ellipse at 12% 15%, #dff2eb 0, transparent 48%), radial-gradient(ellipse at 90% 85%, #ffe9d9 0, transparent 50%), #fbfaf6;
+}
+.signin-stage {
+  min-height: 100dvh;
+  display: flex;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.signin-card {
+  width: 100%;
+  max-width: 440px;
+  margin: auto;
+  padding: clamp(24px, 6vw, 36px);
+  background: #fff;
+  border: 1px solid #e7ece6;
+  border-radius: 28px;
+  box-shadow: 0 20px 70px -35px #36594c40;
+  animation: signin-enter 240ms ease-out;
+}
+.signin-brand { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 22px; font-weight: 750; color: #c4521c; }
+.signin-brand img { width: 56px; height: 56px; }
+.signin-brand-caption { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; letter-spacing: .02em; color: #64736e; }
+.signin-intro { text-align: center; margin: 28px 0; }
+.signin-eyebrow { color: #407768; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.signin-intro h1 { margin: 6px 0; font-size: clamp(28px, 7vw, 34px); line-height: 1.2; font-weight: 750; letter-spacing: -.04em; }
+.signin-intro h1 span { color: #d96024; }
+.signin-intro p { color: #687771; font-size: 14px; line-height: 1.5; }
+.signin-trust { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 24px; color: #687771; font-size: 11px; }
+.client-signin .signin-primary { background: #c4521c; box-shadow: 0 5px 14px #c4521c20; }
+.client-signin .signin-primary:hover { background: #ab4517; }
+.client-signin .signin-primary:disabled { background: #edf0eb; color: #727b72; opacity: 1; box-shadow: none; }
+.client-signin input { min-width: 0; font-size: 16px; }
+.client-signin button, .client-signin a { transition: background-color 150ms, color 150ms, box-shadow 150ms, scale 150ms; }
+.client-signin button { min-height: 44px; }
+.client-signin button:not(:disabled):active { scale: .98; }
+/* Each control has one focus treatment; the compound phone field owns its perimeter. */
+.client-signin :is(button, a):focus-visible { outline: 2px solid #267d6d; outline-offset: 3px; box-shadow: none; }
+.client-signin input:focus-visible { outline: none; border-color: #267d6d; box-shadow: 0 0 0 1px #267d6d; }
+.client-signin .signin-phone-field:focus-within { border-color: #267d6d; box-shadow: 0 0 0 1px #267d6d; }
+.client-signin .signin-phone-field :is(input, [data-slot="select-trigger"]) { border: 0; outline: none; box-shadow: none; }
+.client-signin .signin-phone-field [data-slot="select-trigger"]:focus-visible { background-color: #e0efe9; }
+.signin-form { animation: signin-enter 180ms ease-out; }
+@keyframes signin-enter { from { opacity: .4; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
+@media (max-width: 360px) { .signin-card { padding: 22px 18px; } }
+@media (prefers-reduced-motion: reduce) {
+  .client-signin *, .client-signin *::before, .client-signin *::after { animation: none !important; transition: none !important; }
+  .client-signin button:not(:disabled):active { scale: none; }
+}

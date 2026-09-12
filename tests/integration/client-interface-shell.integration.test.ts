@@ -118,7 +118,6 @@ describe("client interface shell", () => {
       "src/app/user/steps/page.tsx",
       "src/app/user/subscriptions/page.tsx",
       "src/components/chat/MessageReactions.tsx",
-      "src/components/client/ServicePlansSwiper.tsx",
       "src/watchconnectivity/frontend/components/WatchManualEntryModal.tsx",
     ];
 
@@ -146,7 +145,15 @@ describe("client interface shell", () => {
       path.join(projectRoot, "src/app/user/services/[id]/page.tsx"),
       "utf8",
     );
-    expect(servicePlans).toContain('role="dialog"');
+    // Purchase options now use a focus-trapped portal above the whole app shell.
+    // Interactive coverage lives in notifications-auth-purchase.test.tsx.
+    expect(servicePlans).toContain('<Dialog.Portal>');
+    const purchaseStyles = fs.readFileSync(
+      path.join(projectRoot, 'src/components/client/purchase-dialog.css'), 'utf8',
+    );
+    expect(purchaseStyles).toContain('z-index: 61');
+    expect(purchaseStyles).toContain('max-height: calc(100dvh');
+    expect(purchaseStyles).toContain('overflow-y: auto');
     expect(servicePlans).toContain("w-[calc(100vw-3rem)] max-w-sm");
     expect(serviceDetails).toContain("client-sticky-action-above-nav");
     expect(serviceDetails).not.toContain("sticky bottom-8");

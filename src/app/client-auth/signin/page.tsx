@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Eye, EyeOff, Mail, Lock, ArrowLeft, Leaf, Phone, MessageSquare, Flag } from 'lucide-react';
+import './signin.css';
+import { Eye, EyeOff, Mail, Lock, ArrowLeft, ShieldCheck, Phone, MessageSquare, Flag } from 'lucide-react';
 import { signInSchema, SignInInput } from '@/lib/validations/auth';
 import { validatePhoneNumber } from '@/lib/validations/contact';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
@@ -426,30 +426,18 @@ export default function ClientSignInPage() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-white md:bg-gray-50">
-      {/* Header - Hidden on larger screens */}
-      <div className="flex min-h-14 items-center justify-center border-b border-gray-100 px-5 md:hidden">
-        <h1 className="text-center text-lg font-semibold text-[#E06A26]">Log In</h1>
-      </div>
-
-      {/* Main Content */}
-      <main className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-5 pb-8 pt-5 sm:px-6 md:justify-center md:px-8 md:py-10">
-        {/* Card wrapper for larger screens */}
-        <div className="w-full max-w-md md:rounded-2xl md:bg-white md:p-8 md:shadow-lg lg:p-10">
-          {/* Logo */}
-          <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl sm:h-24 sm:w-24 md:h-28 md:w-28">
-            <img
-              src="/images/dtps-logo.png"
-              alt="DTPS"
-              className="object-cover w-full h-full"
-            />
+    <div className="client-signin">
+      <main className="signin-stage">
+        <section className="signin-card" aria-labelledby="signin-title">
+          <div className="signin-brand">
+            <Image src="/images/dtps-logo.png" alt="DTPS" width={64} height={64} priority className="rounded-2xl" />
+            <span>DTPS <span className="signin-brand-caption">Your wellness companion</span></span>
           </div>
-
-          {/* App Name */}
-          <Link href="/user" className="mb-1 mt-3 block text-center text-2xl font-bold text-[#E06A26] transition-colors hover:text-[#d15a1a] sm:text-3xl">DTPS</Link>
-          <p className="mb-6 text-center text-sm text-gray-600 sm:text-base">
-            Welcome back! Please enter your details.
-          </p>
+          <div className="signin-intro">
+            <span className="signin-eyebrow">A little care, every day</span>
+            <h1 id="signin-title">Welcome back<span>.</span></h1>
+            <p>Your next healthy step starts here.</p>
+          </div>
 
           {error && (
             <Alert variant="destructive" className="mb-4 text-red-700 border-red-200 bg-red-50">
@@ -473,16 +461,16 @@ export default function ClientSignInPage() {
 
           {/* OTP Login (Default) */}
           {loginMode === 'otp' && (
-            <div className="w-full space-y-5">
+            <div className="signin-form w-full space-y-5" key="phone">
               <div id="signin-firebase-recaptcha" className="h-0 overflow-hidden" />
               {otpStep === 'phone' && (
                 <>
                   {/* Phone Input */}
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Phone Number</label>
-                    <div className="flex items-center h-12 sm:h-14 bg-[#3AB1A0]/5 border border-[#3AB1A0]/20 rounded-xl overflow-hidden px-2 focus-within:border-[#3AB1A0] focus-within:ring-1 focus-within:ring-[#3AB1A0]">
+                    <label htmlFor="signin-phone" className="text-sm font-medium text-gray-700">Phone number</label>
+                    <div className="signin-phone-field flex items-center h-12 sm:h-14 bg-[#3AB1A0]/5 border border-[#3AB1A0]/20 rounded-xl overflow-hidden px-2">
                       <Select value={countryCode} onValueChange={setCountryCode}>
-                        <SelectTrigger className="w-24 h-full border-0 bg-transparent px-2 focus:ring-0 focus:outline-none text-sm">
+                        <SelectTrigger aria-label="Country calling code" className="w-24 h-full border-0 bg-transparent px-2 focus:ring-0 focus:outline-none text-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="max-h-60">
@@ -501,8 +489,12 @@ export default function ClientSignInPage() {
                       <Phone className="w-5 h-5 text-gray-500 mr-2 shrink-0" />
 
                       <Input
+                        id="signin-phone"
                         type="tel"
-                        placeholder="Enter phone number"
+                        autoComplete="tel-national"
+                        inputMode="tel"
+                        aria-describedby="signin-phone-help"
+                        placeholder="Phone number"
                         value={phoneNumber}
                         onChange={(e) => {
                           setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 15));
@@ -512,11 +504,11 @@ export default function ClientSignInPage() {
                         maxLength={15}
                       />
                     </div>
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                      <MessageSquare className="w-3 h-3" />
+                    <p id="signin-phone-help" className="text-xs text-gray-500 flex items-start gap-1.5 leading-5">
+                      <MessageSquare aria-hidden="true" className="mt-1 h-3 w-3 shrink-0" />
                       {nativeIosApp
                         ? 'We will send your verification code on WhatsApp'
-                        : 'Firebase will send a secure verification code by SMS'}
+                        : 'We’ll send a secure verification code by SMS.'}
                     </p>
                   </div>
 
@@ -524,7 +516,8 @@ export default function ClientSignInPage() {
                   <Button
                     type="button"
                     onClick={handleSendOtp}
-                    className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
+                    aria-busy={isLoading}
+                    className="signin-primary w-full h-12 text-white font-semibold text-base rounded-xl"
                     disabled={isLoading || phoneNumber.replace(/\D/g, '').length < 6}
                   >
                     {isLoading ? 'Sending OTP...' : 'Send OTP'}
@@ -569,7 +562,7 @@ export default function ClientSignInPage() {
                         value={digit}
                         onChange={(e) => handleOtpChange(index, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                        className="w-11 h-12 sm:w-14 sm:h-14 text-center text-xl font-bold bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
+                        className="min-w-0 w-full max-w-12 h-12 text-center text-xl font-bold bg-[#3AB1A0]/5 border-[#3AB1A0]/20 text-black rounded-xl focus:border-[#3AB1A0] focus:ring-[#3AB1A0] focus:bg-white"
                       />
                     ))}
                   </div>
@@ -578,7 +571,8 @@ export default function ClientSignInPage() {
                   <Button
                     type="button"
                     onClick={handleVerifyOtp}
-                    className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
+                    aria-busy={isLoading}
+                    className="signin-primary w-full h-12 text-white font-semibold text-base rounded-xl"
                     disabled={isLoading || otp.join('').length !== otp.length}
                   >
                     {isLoading ? 'Verifying...' : 'Verify & Login'}
@@ -621,6 +615,7 @@ export default function ClientSignInPage() {
               {/* Switch to Email Login */}
               <button
                 type="button"
+                disabled={isLoading}
                 onClick={switchToEmailLogin}
                 className="w-full h-12 sm:h-14 border-2 border-gray-200 text-gray-700 font-semibold text-base rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
               >
@@ -632,15 +627,19 @@ export default function ClientSignInPage() {
 
           {/* Email Login (Alternative) */}
           {loginMode === 'email' && (
-            <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="signin-form w-full space-y-4" key="email" aria-busy={isLoading}>
               {/* Email Input */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Email</label>
+                <label htmlFor="signin-email" className="text-sm font-medium text-gray-700">Email</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
                     <Mail className="w-5 h-5 text-gray-500" />
                   </div>
                   <Input
+                    id="signin-email"
+                    autoComplete="email"
+                    aria-invalid={!!errors.email}
+                    aria-describedby={errors.email ? "signin-email-error" : undefined}
                     type="email"
                     placeholder="Enter your email"
                     {...register('email')}
@@ -648,18 +647,22 @@ export default function ClientSignInPage() {
                   />
                 </div>
                 {errors.email && (
-                  <p className="text-sm text-red-400">{errors.email.message}</p>
+                  <p id="signin-email-error" role="alert" className="text-sm text-red-700">{errors.email.message}</p>
                 )}
               </div>
 
               {/* Password Input */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Password</label>
+                <label htmlFor="signin-password" className="text-sm font-medium text-gray-700">Password</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
                     <Lock className="w-5 h-5 text-gray-500" />
                   </div>
                   <Input
+                    id="signin-password"
+                    autoComplete="current-password"
+                    aria-invalid={!!errors.password}
+                    aria-describedby={errors.password ? 'signin-password-error' : undefined}
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     {...register('password')}
@@ -667,7 +670,9 @@ export default function ClientSignInPage() {
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 flex items-center pr-4"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
+                    className="absolute inset-y-0 right-0 flex min-w-11 items-center justify-center"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
@@ -678,7 +683,7 @@ export default function ClientSignInPage() {
                   </button>
                 </div>
                 {errors.password && (
-                  <p className="text-sm text-red-400">{errors.password.message}</p>
+                  <p id="signin-password-error" role="alert" className="text-sm text-red-700">{errors.password.message}</p>
                 )}
               </div>
 
@@ -695,7 +700,8 @@ export default function ClientSignInPage() {
               {/* Login Button */}
               <Button
                 type="submit"
-                className="w-full h-12 sm:h-14 bg-[#61a035] hover:bg-[#60953a] text-white font-semibold text-base sm:text-lg rounded-xl shadow-lg"
+                aria-busy={isLoading}
+                    className="signin-primary w-full h-12 text-white font-semibold text-base rounded-xl"
                 disabled={isLoading}
               >
                 {isLoading ? 'Logging in...' : 'Log In'}
@@ -714,6 +720,7 @@ export default function ClientSignInPage() {
               {/* Switch to OTP Login */}
               <button
                 type="button"
+                disabled={isLoading}
                 onClick={switchToOtpLogin}
                 className="w-full h-12 sm:h-14 border-2 border-gray-200 text-gray-700 font-semibold text-base rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
               >
@@ -724,13 +731,14 @@ export default function ClientSignInPage() {
           )}
 
           {/* Sign Up Link */}
-          <p className="mt-6 text-center text-gray-500 text-sm sm:text-base sm:mt-8">
+          <p className="mt-6 text-center text-gray-500 text-sm">
             Don't have an account?{' '}
             <Link href="/client-auth/signup" className="text-[#E06A26] font-semibold hover:underline">
               Sign up for free
             </Link>
           </p>
-        </div>
+          <p className="signin-trust"><ShieldCheck aria-hidden="true" size={15} /> Secure sign in. Personal care.</p>
+        </section>
       </main>
     </div>
   );

@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import * as Dialog from '@radix-ui/react-dialog';
+import './purchase-dialog.css';
 import { ChevronLeft, ChevronRight, Clock, Star, Check, ArrowRight, X, CreditCard, Shield, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -72,7 +74,9 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
     const [showPurchaseModal, setShowPurchaseModal] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<ServicePlan | null>(null);
     const [purchasing, setPurchasing] = useState(false);
+    const [checkoutActive, setCheckoutActive] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const purchaseOpenerRef = useRef<HTMLElement | null>(null);
 
     useEffect(() => {
         fetchPlans();
@@ -127,11 +131,12 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
 
     const handleGetStarted = (plan: ServicePlan) => {
         setSelectedPlan(plan);
+        purchaseOpenerRef.current = document.activeElement as HTMLElement;
         setShowPurchaseModal(true);
     };
 
     const handlePurchase = async () => {
-        if (!selectedPlan) return;
+        if (!selectedPlan || purchasing) return;
 
         const selectedTierId = selectedTiers[selectedPlan._id];
         const tier = selectedPlan.pricingTiers.find(t => t._id === selectedTierId);
@@ -198,6 +203,9 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                             }
                         } catch (error) {
                             toast.error('Payment verification failed');
+                        } finally {
+                            setPurchasing(false);
+                            setCheckoutActive(false);
                         }
                     },
                     prefill: data.prefill,
@@ -206,17 +214,19 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                     },
                     modal: {
                         ondismiss: function() {
+                            setCheckoutActive(false);
                             setPurchasing(false);
                         }
                     }
             };
 
             const checkout = new RazorpayCheckout(options);
+            setCheckoutActive(true);
             checkout.open();
         } catch (error: any) {
             console.error('Purchase error:', error);
             toast.error(error.message || 'Failed to process purchase');
-        } finally {
+            setCheckoutActive(false);
             setPurchasing(false);
         }
     };
@@ -397,20 +407,16 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                 )}
             </div>
 
-            {/* Purchase Modal */}
-            {showPurchaseModal && selectedPlan && (
-                <div
-                    className="client-popup-above-nav fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="service-purchase-title"
-                    onClick={() => setShowPurchaseModal(false)}
-                >
-                    <div
-                        className="client-bottom-sheet-panel max-h-full w-full max-w-md overflow-y-auto rounded-t-3xl bg-white sm:rounded-3xl"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="sticky top-0 bg-linear-to-r from-[#E06A26] to-[#DB9C6E] p-5 text-white">
+            {/* Portal owns focus and scroll locking; checkout opens above it. */}
+            <Dialog.Root modal={!checkoutActive} open={showPurchaseModal} onOpenChange={(open) => { if (!purchasing) setShowPurchaseModal(open); }}>
+              {selectedPlan && (
+                <Dialog.Portal>
+                  <Dialog.Overlay className="purchase-dialog-overlay" />
+                  <Dialog.Content
+                    className="purchase-dialog"
+                    onCloseAutoFocus={(event) => { event.preventDefault(); purchaseOpenerRef.current?.focus(); }}
+                  >
+                        <div className="purchase-dialog-header p-5 text-white">
                             <div className="flex items-start justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className="h-14 w-14 rounded-xl overflow-hidden bg-white/20 flex items-center justify-center">
@@ -423,12 +429,13 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                                         />
                                     </div>
                                     <div>
-                                        <h3 id="service-purchase-title" className="text-xl font-bold">{selectedPlan.name}</h3>
-                                        <p className="text-white/80 text-sm">{getCategoryLabel(selectedPlan.category)}</p>
+                                        <Dialog.Title className="text-xl font-bold">{selectedPlan.name}</Dialog.Title>
+                                        <Dialog.Description className="text-white/90 text-sm">{getCategoryLabel(selectedPlan.category)}</Dialog.Description>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => setShowPurchaseModal(false)}
+                                    disabled={purchasing}
                                     aria-label="Close purchase options"
                                     className="p-2 hover:bg-white/20 rounded-full transition-colors"
                                 >
@@ -437,7 +444,7 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                             </div>
                         </div>
 
-                        <div className="p-5 space-y-5">
+                        <div className="purchase-dialog-scroll p-4 sm:p-5 space-y-4">
                             <div>
                                 <h4 className="text-sm font-semibold text-gray-900 mb-3">Select Duration</h4>
                                 <div className="space-y-2">
@@ -447,14 +454,16 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                                             <button
                                                 key={tier._id}
                                                 onClick={() => setSelectedTiers({ ...selectedTiers, [selectedPlan._id]: tier._id })}
-                                                className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
+                                                aria-pressed={isSelected}
+                                                disabled={purchasing}
+                                                className={`purchase-tier w-full flex items-center justify-between gap-2 p-3 rounded-2xl border-2 transition-colors ${
                                                     isSelected 
                                                         ? 'border-[#E06A26] bg-[#E06A26]/5' 
                                                         : 'border-gray-200 hover:border-gray-300'
                                                 }`}
                                             >
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <div className={`hidden sm:flex shrink-0 h-10 w-10 rounded-xl flex items-center justify-center ${
                                                         isSelected ? 'bg-[#E06A26]' : 'bg-gray-100'
                                                     }`}>
                                                         <Clock className={`h-5 w-5 ${isSelected ? 'text-white' : 'text-gray-500'}`} />
@@ -466,8 +475,8 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                                                         <p className="text-xs text-gray-500">{tier.durationDays} days plan</p>
                                                     </div>
                                                 </div>
-                                                <div className="text-right flex items-center gap-2">
-                                                    <p className={`text-lg font-bold ${isSelected ? 'text-[#E06A26]' : 'text-gray-900'}`}>
+                                                <div className="text-right shrink-0 flex items-center gap-1">
+                                                    <p className={`text-base sm:text-lg font-bold ${isSelected ? 'text-[#E06A26]' : 'text-gray-900'}`}>
                                                         ₹{tier.amount.toLocaleString()}
                                                     </p>
                                                     {isSelected && (
@@ -488,7 +497,9 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                                 </div>
                             </div>
 
-                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                            </div>
+                        <div className="purchase-dialog-footer p-4 sm:p-5 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
                                 <span className="text-gray-600">Total Amount</span>
                                 <span className="text-2xl font-bold text-[#E06A26]">
                                     ₹{(selectedPlan.pricingTiers.find(t => t._id === selectedTiers[selectedPlan._id])?.amount || 0).toLocaleString()}
@@ -497,8 +508,9 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
 
                             <button
                                 onClick={handlePurchase}
-                                disabled={purchasing}
-                                className="w-full py-4 rounded-2xl bg-linear-to-r from-[#E06A26] to-[#DB9C6E] text-white font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-70 active:scale-[0.98]"
+                                disabled={purchasing || !selectedTiers[selectedPlan._id]}
+                                aria-busy={purchasing}
+                                className="w-full py-4 rounded-2xl bg-linear-to-r from-[#c4521c] to-[#b6491a] text-white font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-70 active:scale-[0.98]"
                             >
                                 {purchasing ? (
                                     <>
@@ -513,9 +525,10 @@ export default function ServicePlansSwiper({ onPlanSelect }: ServicePlansSwiperP
                                 )}
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
+                  </Dialog.Content>
+                </Dialog.Portal>
+              )}
+            </Dialog.Root>
         </>
     );
 }

@@ -300,31 +300,11 @@ export function PushNotificationProvider({
         const detailLine = buildDetailLine(payload);
         const targetPath = resolveTargetPath(payload);
 
-        toast.custom(() => (
-            <button
-                type="button"
-                className="web-push-banner-card"
-                onClick={() => {
-                    toast.dismiss();
-                    openNotificationTarget(targetPath);
-                }}
-                title="Open related work"
-            >
-                <div className="web-push-banner-header">
-                    <span className="web-push-banner-title">
-                        <NotificationIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
-                        <span>{title}</span>
-                    </span>
-                    <span className="web-push-banner-open">Open &gt;</span>
-                </div>
-                {body ? <p className="web-push-banner-body">{body}</p> : null}
-                {detailLine ? <p className="web-push-banner-detail">{detailLine}</p> : null}
-            </button>
-        ), {
+        toast(title, {
+            description: [body, detailLine].filter(Boolean).join(' · '),
+            icon: <NotificationIcon aria-hidden="true" className="h-5 w-5" />,
+            action: { label: 'Open', onClick: () => openNotificationTarget(targetPath) },
             duration: 6000,
-            closeButton: true,
-            position: 'bottom-left',
-            className: 'web-push-toast',
         });
     }, [buildDetailLine, extractNotificationMeta, getNotificationIcon, openNotificationTarget, resolveTargetPath]);
 
