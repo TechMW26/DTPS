@@ -1960,32 +1960,35 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
             </span>
           </div>
           <div className='flex gap-1'>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToPreviousPage}
-              disabled={currentPage === 0}
-              className="h-9 w-9 p-0 rounded-full bg-white shadow-md border-gray-300 hover:bg-slate-100 disabled:opacity-50"
-              title="Previous page"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToNextPage}
-              disabled={currentPage >= totalPages - 1}
-              className="h-9 w-9 p-0 rounded-full bg-white shadow-md border-gray-300 hover:bg-slate-100 disabled:opacity-50"
-              title="Next page"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1 mr-2" role="group" aria-label="Meal plan pages">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPreviousPage}
+                  disabled={currentPage === 0}
+                  className="h-9 px-3 rounded-full bg-white border-gray-300 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  Previous page
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextPage}
+                  disabled={currentPage >= totalPages - 1}
+                  className="h-9 px-3 rounded-full bg-white border-gray-300 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  Next page
+                </Button>
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
               onClick={scrollLeft}
               className="h-9 w-9 p-0 rounded-full bg-white shadow-md border-gray-300 hover:bg-slate-100"
-              title="Scroll left"
+              title="Scroll meals left"
+              aria-label="Scroll meals left"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
@@ -1994,7 +1997,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
               size="sm"
               onClick={scrollRight}
               className="h-9 w-9 p-0 rounded-full bg-white shadow-md border-gray-300 hover:bg-slate-100"
-              title="Scroll right"
+              title="Scroll meals right"
+              aria-label="Scroll meals right"
             >
               <ChevronRight className="w-4 h-4" />
             </Button>

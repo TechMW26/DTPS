@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { formatDateIST, formatDateTimeIST } from '@/lib/utils/formatDateIST';
@@ -14,11 +14,14 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { UserRole, UserStatus } from "@/types";
-import { Copy, Eye, AlertCircle, CheckCircle, Clock, User, Briefcase, Settings, Key, Mail, RefreshCw } from "lucide-react";
+import { Copy, Eye, AlertCircle, CheckCircle, Clock, User, Briefcase, Settings, Key, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { formatUserId } from "@/lib/utils";
 import { COUNTRY_CODE_OPTIONS } from "@/lib/constants/countries";
 import { validateOptionalEmail, validatePhoneNumber } from "@/lib/validations/contact";
+
+import { UserFilters, EMPTY_USER_FILTERS, type UserFilterValues } from '@/components/admin/UserFilters';
+import { useDebounce } from '@/hooks/useDebounce';
 
 const SORTED_COUNTRY_CODE_OPTIONS = [...COUNTRY_CODE_OPTIONS].sort((a, b) => b.code.length - a.code.length);
 
@@ -130,13 +133,10 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [dietitianFilter, setDietitianFilter] = useState<string>("all");
-  const [healthCounselorFilter, setHealthCounselorFilter] = useState<string>("all");
+  const [filters, setFilters] = useState<UserFilterValues>({ ...EMPTY_USER_FILTERS });
+  const { search, role: roleFilter, status: statusFilter, dateFrom, dateTo, dietitian: dietitianFilter, healthCounselor: healthCounselorFilter } = filters;
+  const debouncedSearch = useDebounce(search, 300);
+  const userRequest = useRef<AbortController | null>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [saving, setSaving] = useState(false);
@@ -194,7 +194,19 @@ export default function AdminUsersPage() {
 
   const filtered = users;
 
-  async function fetchUsers(showLoader: boolean = true) {
+  const fetchUsers = useCallback(async (showLoader: boolean = true) => {
+    userRequest.current?.abort();
+    userRequest.current = null;
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setLoading(false);
+      return;
+    }
+    if (search !== debouncedSearch) {
+      setLoading(true);
+      return;
+    }
+    const controller = new AbortController();
+    userRequest.current = controller;
     try {
       if (showLoader) {
         setLoading(true);
@@ -204,16 +216,17 @@ export default function AdminUsersPage() {
       params.set('limit', '50');
       params.set('page', String(page));
       params.set('noCache', 'true');
-      if (search.trim()) params.set('search', search.trim());
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
       if (roleFilter !== 'all') params.set('role', roleFilter);
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
       if (dietitianFilter !== 'all') params.set('dietitianId', dietitianFilter);
       if (healthCounselorFilter !== 'all') params.set('healthCounselorId', healthCounselorFilter);
-      const res = await fetch(`/api/users?${params.toString()}`);
+      const res = await fetch(`/api/users?${params.toString()}`, { signal: controller.signal });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
+      if (controller.signal.aborted) return;
       setUsers(data.users || []);
       setPages(data.pagination?.pages || 1);
       setTotal(data.pagination?.total || 0);
@@ -225,32 +238,32 @@ export default function AdminUsersPage() {
         clients: data.clientStats?.latestClientIdNumber || data.roleCounts?.client || 0,
       });
     } catch (e: any) {
-      setError(e?.message || "Failed to load users");
+      if (!controller.signal.aborted) setError(e?.message || "Failed to load users");
     } finally {
-      if (showLoader) {
-        setLoading(false);
-      }
+      if (!controller.signal.aborted) setLoading(false);
+      if (userRequest.current === controller) userRequest.current = null;
     }
-  }
+  }, [page, search, debouncedSearch, roleFilter, statusFilter, dateFrom, dateTo, dietitianFilter, healthCounselorFilter]);
 
   useEffect(() => {
     fetchUsers();
-  }, [page, search, roleFilter, statusFilter, dateFrom, dateTo, dietitianFilter, healthCounselorFilter]);
+    return () => { userRequest.current?.abort(); };
+  }, [fetchUsers]);
 
-  // Keep counts/list fresh when records are added/deleted from elsewhere (import pages, other admins, etc.)
+  // Refresh visible, idle lists without interrupting a filter request.
   useEffect(() => {
-    const onFocus = () => fetchUsers(false);
-    const interval = setInterval(() => fetchUsers(false), 15000);
-
+    const onFocus = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false && !userRequest.current) fetchUsers(false);
+    };
+    const interval = setInterval(onFocus, 15000);
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
-
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
     };
-  }, [page, search, roleFilter, statusFilter, dateFrom, dateTo, dietitianFilter, healthCounselorFilter]);
+  }, [fetchUsers]);
 
   // Fetch dietitians and health counselors for filter dropdowns
   useEffect(() => {
@@ -589,106 +602,15 @@ export default function AdminUsersPage() {
           <Button onClick={openCreate}>New User</Button>
         </div>
 
-        {/* Filters */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* Search */}
-              <Input placeholder="Search users..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
-
-              {/* Role Filter */}
-              <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setPage(1); }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="admin">Admins</SelectItem>
-                  <SelectItem value="dietitian">Dietitians</SelectItem>
-                  <SelectItem value="health_counselor">Health Counselors</SelectItem>
-                  <SelectItem value="client">Clients</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Status Filter */}
-              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="lead">Lead</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="hold">On Hold</SelectItem>
-                  <SelectItem value="suspended">Suspended</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Primary Dietitian Filter */}
-              <Select value={dietitianFilter} onValueChange={(v) => { setDietitianFilter(v); setPage(1); }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Primary Dietitian" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Dietitians</SelectItem>
-                  {dietitiansList.map((d) => (
-                    <SelectItem key={d._id} value={d._id}>
-                      {d.firstName} {d.lastName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Primary Health Counselor Filter */}
-              <Select value={healthCounselorFilter} onValueChange={(v) => { setHealthCounselorFilter(v); setPage(1); }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Primary Health Counselor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Health Counselors</SelectItem>
-                  {healthCounselorsList.map((hc) => (
-                    <SelectItem key={hc._id} value={hc._id}>
-                      {hc.firstName} {hc.lastName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Date From */}
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Created From</label>
-                <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
-              </div>
-
-              {/* Date To */}
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Created To</label>
-                <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
-              </div>
-
-              {/* Clear Filters */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="self-end"
-                onClick={() => {
-                  setSearch("");
-                  setRoleFilter("all");
-                  setStatusFilter("all");
-                  setDateFrom("");
-                  setDateTo("");
-                  setDietitianFilter("all");
-                  setHealthCounselorFilter("all");
-                  setPage(1);
-                }}
-              >
-                <RefreshCw className="h-4 w-4 mr-1" />
-                Clear Filters
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <UserFilters
+          value={filters}
+          onChange={next => { setFilters(next); setPage(1); }}
+          dietitians={dietitiansList}
+          healthCounselors={healthCounselorsList}
+          loading={loading || search !== debouncedSearch}
+          failed={!!error}
+          total={total}
+        />
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
@@ -700,23 +622,18 @@ export default function AdminUsersPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <Card>
-            <CardHeader className="py-3"><CardTitle className="text-sm">Dietitians</CardTitle></CardHeader>
-            <CardContent className="pt-0"><div className="text-2xl font-semibold">{counts.dietitians}</div></CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="py-3"><CardTitle className="text-sm">Health Counselors</CardTitle></CardHeader>
-            <CardContent className="pt-0"><div className="text-2xl font-semibold">{counts.healthCounselors}</div></CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="py-3"><CardTitle className="text-sm">Clients</CardTitle></CardHeader>
-            <CardContent className="pt-0"><div className="text-2xl font-semibold">{counts.clients}</div></CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="py-3"><CardTitle className="text-sm">Admins</CardTitle></CardHeader>
-            <CardContent className="pt-0"><div className="text-2xl font-semibold">{counts.admins}</div></CardContent>
-          </Card>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label="Directory overview">
+          {[
+            ['Dietitians', counts.dietitians], ['Health counselors', counts.healthCounselors],
+            ['Clients', counts.clients], ['Admins', counts.admins],
+          ].map(([label, count]) => (
+            <Card key={label} className="gap-0 py-0">
+              <CardContent className="flex flex-wrap items-center justify-between gap-2 p-4">
+                <span className="text-sm text-muted-foreground">{label}</span>
+                <span className="text-xl font-semibold tabular-nums">{count.toLocaleString('en-IN')}</span>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         <div className="text-sm text-gray-600">Page {page} of {pages} · {total} users total</div>
@@ -748,6 +665,7 @@ export default function AdminUsersPage() {
                     </tr>
                   </thead>
                   <tbody>
+                    {!filtered.length && <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">No users match these filters. Try a broader search or clear your filters.</td></tr>}
                     {filtered.map(u => {
                       const statusDisplay = getStatusDisplay(u.status, u.clientStatus, u.role as UserRole);
                       const roleNames: Record<string, string> = {
