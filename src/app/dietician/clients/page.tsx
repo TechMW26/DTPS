@@ -34,7 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ExternalLink, RefreshCw, Search, Users, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, UserPlus, Filter, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { ExternalLink, RefreshCw, Search, Users, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, UserPlus, X } from 'lucide-react';
 import { validateEmail } from '@/lib/validations/auth';
 import { validatePhoneNumber } from '@/lib/validations/contact';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
@@ -43,6 +43,8 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { getClientId } from '@/lib/utils';
 import { usePermissions } from '@/hooks/usePermissions';
+import { ClientFilters } from '@/components/clients/ClientFilters';
+import { EMPTY_CLIENT_FILTERS as emptyFilters, type ClientFilterValues as Filters } from '@/components/clients/client-filter-values';
 
 interface Dietitian {
   _id: string;
@@ -67,46 +69,6 @@ interface TagOption {
   name: string;
   color?: string;
 }
-
-interface Filters {
-  primaryDietitian: string;
-  secondaryDietitian: string;
-  tagId: string;
-  dtAssignedFrom: string;
-  dtAssignedTo: string;
-  hcAssignedFrom: string;
-  hcAssignedTo: string;
-  planName: string;
-  planDuration: string; // '' | 'ongoing' | 'dateRange'
-  planDurationFrom: string;
-  planDurationTo: string;
-  planStatus: string;
-  planShared: string; // '' | 'yes' | 'no'
-  lastActivityHCFrom: string;
-  lastActivityHCTo: string;
-  lastActivityDTFrom: string;
-  lastActivityDTTo: string;
-}
-
-const emptyFilters: Filters = {
-  primaryDietitian: '',
-  secondaryDietitian: '',
-  tagId: '',
-  dtAssignedFrom: '',
-  dtAssignedTo: '',
-  hcAssignedFrom: '',
-  hcAssignedTo: '',
-  planName: '',
-  planDuration: '',
-  planDurationFrom: '',
-  planDurationTo: '',
-  planStatus: '',
-  planShared: '',
-  lastActivityHCFrom: '',
-  lastActivityHCTo: '',
-  lastActivityDTFrom: '',
-  lastActivityDTTo: '',
-};
 
 interface Client {
   _id: string;
@@ -189,14 +151,13 @@ export default function DieticianClientsPage() {
   const viewAs = urlSearchParams.get('viewAs') || '';
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const clientRequest = useRef<AbortController | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [filterFreeze, setFilterFreeze] = useState('all');
-  const [filterType, setFilterType] = useState('all');
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
 
   // Filter state
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(emptyFilters);
   const [filterDietitians, setFilterDietitians] = useState<Dietitian[]>([]);
@@ -288,27 +249,27 @@ export default function DieticianClientsPage() {
     fetchFilterOptions();
   }, []);
 
-  // Count active filters
-  const activeFilterCount = Object.entries(appliedFilters).filter(
-    ([, value]) => value !== ''
-  ).length;
-
-  // Apply filters
   const applyFilters = () => {
     setAppliedFilters({ ...filters });
     setCurrentPage(1);
+    setSelectedClients([]);
   };
 
-  // Clear all filters
   const clearFilters = () => {
-    setFilters(emptyFilters);
-    setAppliedFilters(emptyFilters);
+    setFilters({ ...emptyFilters });
+    setAppliedFilters({ ...emptyFilters });
+    setSearchTerm('');
+    setDebouncedSearch('');
     setCurrentPage(1);
+    setSelectedClients([]);
   };
 
-  // Update a single filter
-  const updateFilter = (key: keyof Filters, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+  const removeFilters = (keys: (keyof Filters)[]) => {
+    const cleared = Object.fromEntries(keys.map(key => [key, '']));
+    setFilters(previous => ({ ...previous, ...cleared }));
+    setAppliedFilters(previous => ({ ...previous, ...cleared }));
+    setCurrentPage(1);
+    setSelectedClients([]);
   };
 
   // Open assignment dialog
@@ -399,12 +360,16 @@ export default function DieticianClientsPage() {
     } else if (status === 'unauthenticated') {
       setLoading(false);
     }
-    // While loading session, keep loading state true
+    return () => { clientRequest.current?.abort(); };
   }, [status, session?.user?.id, currentPage, pageSize, debouncedSearch, viewAs, appliedFilters]);
 
   const fetchMyClients = async (page = 1, limit = 50, search = '') => {
+    clientRequest.current?.abort();
+    const controller = new AbortController();
+    clientRequest.current = controller;
     try {
       setLoading(true);
+      setLoadError(false);
       // Fetch clients with pagination and server-side search
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search.trim()) params.set('search', search.trim());
@@ -415,17 +380,22 @@ export default function DieticianClientsPage() {
         if (value) params.set(key, value);
       });
 
-      const response = await fetch(`/api/users/clients?${params.toString()}`);
-      if (response.ok) {
+      const response = await fetch(`/api/users/clients?${params.toString()}`, { signal: controller.signal });
+      if (!response.ok) throw new Error('Failed to load clients');
+      {
         const data = await response.json();
+        if (controller.signal.aborted) return;
         setClients(data.clients || []);
         setTotalClients(data.pagination?.total || 0);
         setTotalPages(data.pagination?.pages || 1);
       }
     } catch (error) {
-      console.error('Error fetching clients:', error);
+      if (!controller.signal.aborted) {
+        setLoadError(true);
+        console.error('Error fetching clients:', error);
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 
@@ -495,13 +465,8 @@ export default function DieticianClientsPage() {
     }
   };
 
-  // Search is handled server-side; only apply local status filter
-  const filteredClients = clients.filter(client => {
-    const matchesStatus = filterType === 'all' ||
-      (client.clientStatus || 'lead') === filterType;
-
-    return matchesStatus;
-  });
+  // All filters, including status, apply before server pagination.
+  const filteredClients = clients;
 
   const toggleClientSelection = (clientId: string) => {
     setSelectedClients(prev =>
@@ -573,217 +538,21 @@ export default function DieticianClientsPage() {
           </div>
         </div>
 
-        {/* Search + Filter Toggle */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="dietitian-clients-search-row flex items-center gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search clients by name or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Button
-                size="sm"
-                variant={filtersOpen ? 'default' : 'outline'}
-                onClick={() => setFiltersOpen(!filtersOpen)}
-                className="gap-1.5"
-              >
-                <Filter className="h-4 w-4" />
-                Filters
-                {activeFilterCount > 0 && (
-                  <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs rounded-full">
-                    {activeFilterCount}
-                  </Badge>
-                )}
-                {filtersOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              </Button>
-              {activeFilterCount > 0 && (
-                <Button size="sm" variant="ghost" onClick={clearFilters} className="text-red-600 hover:text-red-700 gap-1">
-                  <X className="h-3.5 w-3.5" /> Clear
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Advanced Filters Panel */}
-        {filtersOpen && (
-          <Card>
-            <CardContent className="p-4 space-y-4">
-              {/* Row 1: Primary DT / Secondary DT / Tag */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Primary Dietitian</label>
-                  <Select value={filters.primaryDietitian} onValueChange={(v) => updateFilter('primaryDietitian', v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All Dietitians" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all">All Dietitians</SelectItem>
-                      {filterDietitians.map(dt => (
-                        <SelectItem key={dt._id} value={dt._id}>
-                          {dt.firstName} {dt.lastName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Secondary Dietitian</label>
-                  <Select value={filters.secondaryDietitian} onValueChange={(v) => updateFilter('secondaryDietitian', v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All Dietitians" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all">All Dietitians</SelectItem>
-                      {filterDietitians.map(dt => (
-                        <SelectItem key={dt._id} value={dt._id}>
-                          {dt.firstName} {dt.lastName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Tag</label>
-                  <Select value={filters.tagId} onValueChange={(v) => updateFilter('tagId', v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Any Tag" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all">Any Tag</SelectItem>
-                      {filterTags.map(tag => (
-                        <SelectItem key={tag._id} value={tag._id}>
-                          {tag.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Row 2: DT Assigned Date / HC Assigned Date */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">DT Assigned From</label>
-                  <Input type="date" className="h-9" value={filters.dtAssignedFrom} onChange={(e) => updateFilter('dtAssignedFrom', e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">DT Assigned To</label>
-                  <Input type="date" className="h-9" value={filters.dtAssignedTo} onChange={(e) => updateFilter('dtAssignedTo', e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">HC Assigned From</label>
-                  <Input type="date" className="h-9" value={filters.hcAssignedFrom} onChange={(e) => updateFilter('hcAssignedFrom', e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">HC Assigned To</label>
-                  <Input type="date" className="h-9" value={filters.hcAssignedTo} onChange={(e) => updateFilter('hcAssignedTo', e.target.value)} />
-                </div>
-              </div>
-
-              {/* Row 3: Plan Name / Plan Duration / Plan Status / Plan Shared */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Plan Name</label>
-                  <Input className="h-9" placeholder="Search plan name..." value={filters.planName} onChange={(e) => updateFilter('planName', e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Plan Duration</label>
-                  <Select value={filters.planDuration} onValueChange={(v) => updateFilter('planDuration', v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Any" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all">Any</SelectItem>
-                      <SelectItem value="ongoing">Ongoing Plans</SelectItem>
-                      <SelectItem value="freeze">Freeze</SelectItem>
-                      <SelectItem value="dateRange">Date Range</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Plan Status</label>
-                  <Select value={filters.planStatus} onValueChange={(v) => updateFilter('planStatus', v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Any Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all">Any Status</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="paused">Paused</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Plan Shared</label>
-                  <Select value={filters.planShared} onValueChange={(v) => updateFilter('planShared', v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Any" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all">Any</SelectItem>
-                      <SelectItem value="yes">Shared</SelectItem>
-                      <SelectItem value="no">Not Shared</SelectItem>
-                      <SelectItem value="general">General</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Row 4: Plan Duration Date Range (conditional) */}
-              {filters.planDuration === 'dateRange' && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">Plan Start From</label>
-                    <Input type="date" className="h-9" value={filters.planDurationFrom} onChange={(e) => updateFilter('planDurationFrom', e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">Plan End To</label>
-                    <Input type="date" className="h-9" value={filters.planDurationTo} onChange={(e) => updateFilter('planDurationTo', e.target.value)} />
-                  </div>
-                </div>
-              )}
-
-              {/* Row 5: Last Activity by HC / Last Activity by DT */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Last HC Activity From</label>
-                  <Input type="date" className="h-9" value={filters.lastActivityHCFrom} onChange={(e) => updateFilter('lastActivityHCFrom', e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Last HC Activity To</label>
-                  <Input type="date" className="h-9" value={filters.lastActivityHCTo} onChange={(e) => updateFilter('lastActivityHCTo', e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Last DT Activity From</label>
-                  <Input type="date" className="h-9" value={filters.lastActivityDTFrom} onChange={(e) => updateFilter('lastActivityDTFrom', e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Last DT Activity To</label>
-                  <Input type="date" className="h-9" value={filters.lastActivityDTTo} onChange={(e) => updateFilter('lastActivityDTTo', e.target.value)} />
-                </div>
-              </div>
-
-              {/* Apply / Reset */}
-              <div className="flex items-center gap-3 pt-2 border-t">
-                <Button size="sm" onClick={applyFilters} className="bg-blue-600 hover:bg-blue-700">
-                  Apply Filters
-                </Button>
-                <Button size="sm" variant="outline" onClick={clearFilters}>
-                  Reset All
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <ClientFilters
+          draft={filters}
+          applied={appliedFilters}
+          onChange={setFilters}
+          onApply={applyFilters}
+          onClear={clearFilters}
+          onRemove={removeFilters}
+          search={searchTerm}
+          onSearch={setSearchTerm}
+          dietitians={filterDietitians}
+          tags={filterTags}
+          total={totalClients}
+          loading={loading || searchTerm !== debouncedSearch}
+          failed={loadError}
+        />
 
         {/* Header with Actions */}
         <div className="dietitian-clients-actions-row flex items-center justify-between gap-3">
@@ -791,31 +560,9 @@ export default function DieticianClientsPage() {
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
               Bulk Action
             </Button>
-            <Select value={filterFreeze} onValueChange={setFilterFreeze}>
-              <SelectTrigger className="dietitian-clients-mobile-select-trigger w-45 h-9">
-                <SelectValue placeholder="Filter Freeze" />
-              </SelectTrigger>
-              <SelectContent className="dietitian-clients-mobile-select-content">
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="freeze">Freeze</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="dietitian-clients-mobile-select-trigger w-45 h-9">
-                <SelectValue placeholder="Client Status" />
-              </SelectTrigger>
-              <SelectContent className="dietitian-clients-mobile-select-content">
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="lead">Lead</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="hold">On Hold</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
-          <Button size="sm" variant="ghost" onClick={() => fetchMyClients(currentPage, pageSize, debouncedSearch)}>
+          <Button size="sm" variant="ghost" aria-label="Refresh clients" title="Refresh clients" onClick={() => fetchMyClients(currentPage, pageSize, debouncedSearch)}>
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
@@ -860,7 +607,7 @@ export default function DieticianClientsPage() {
                       {filteredClients.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={canAssign ? 15 : 14} className="text-center py-12 text-gray-500">
-                            No clients found
+                            {loadError ? 'Unable to load clients. Please refresh to try again.' : 'No clients match these filters. Try a broader search or clear your filters.'}
                           </TableCell>
                         </TableRow>
                       ) : (

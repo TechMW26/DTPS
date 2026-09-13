@@ -47,6 +47,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { getClientId } from '@/lib/utils';
 import { ProfessionalSection } from '@/components/admin/ProfessionalGrid';
+import { AllClientFilters, EMPTY_ALL_CLIENT_FILTERS, type AllClientFilterValues } from '@/components/admin/AllClientFilters';
 
 interface Client {
   _id: string;
@@ -143,14 +144,10 @@ export default function AdminAllClientsPage() {
   const [dietitians, setDietitians] = useState<Dietitian[]>([]);
   const [healthCounselors, setHealthCounselors] = useState<HealthCounselor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterAssigned, setFilterAssigned] = useState('all');
-  const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterDateTo, setFilterDateTo] = useState('');
-  const [filterDietitianId, setFilterDietitianId] = useState('all');
-  const [filterHealthCounselorId, setFilterHealthCounselorId] = useState('all');
-  const [filterOnboarding, setFilterOnboarding] = useState('all');
+  const [filters, setFilters] = useState<AllClientFilterValues>({ ...EMPTY_ALL_CLIENT_FILTERS });
+  const { search: searchTerm, status: filterStatus, assignment: filterAssigned, dateFrom: filterDateFrom, dateTo: filterDateTo, dietitian: filterDietitianId, healthCounselor: filterHealthCounselorId, onboarding: filterOnboarding } = filters;
+  const [loadError, setLoadError] = useState(false);
+  const clientRequest = useRef<AbortController | null>(null);
   const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0 });
   const [isSSEConnected, setIsSSEConnected] = useState(false);
 
@@ -196,8 +193,20 @@ export default function AdminAllClientsPage() {
 
   // Fetch clients with server-side pagination
   const fetchClients = useCallback(async (resetPage = false) => {
+    clientRequest.current?.abort();
+    if (filterDateFrom && filterDateTo && filterDateFrom > filterDateTo) {
+      setLoading(false);
+      return;
+    }
+    if (searchTerm !== debouncedSearchTerm) {
+      setLoading(true);
+      return;
+    }
+    const controller = new AbortController();
+    clientRequest.current = controller;
     try {
       setLoading(true);
+      setLoadError(false);
       const params = new URLSearchParams();
 
       // Use server-side search, filtering, and pagination
@@ -212,10 +221,11 @@ export default function AdminAllClientsPage() {
       params.append('page', resetPage ? '1' : String(currentPage));
       params.append('limit', String(pageSize));
 
-      const response = await fetch(`/api/admin/clients?${params.toString()}`);
+      const response = await fetch(`/api/admin/clients?${params.toString()}`, { signal: controller.signal });
 
       if (response.ok) {
         const data = await response.json();
+        if (controller.signal.aborted) return;
         setClients(data.clients || []);
         setStats(data.stats || { total: 0, assigned: 0, unassigned: 0 });
         setTotalResults(data.pagination?.total || 0);
@@ -225,18 +235,21 @@ export default function AdminAllClientsPage() {
           setCurrentPage(1);
         }
         setIsSSEConnected(true);
-      } else {
+      } else if (!controller.signal.aborted) {
+        setLoadError(true);
         toast.error('Failed to fetch clients');
         setIsSSEConnected(false);
       }
     } catch (error) {
+      if (controller.signal.aborted) return;
+      setLoadError(true);
       console.error('Error fetching clients:', error);
       toast.error('Failed to fetch clients');
       setIsSSEConnected(false);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [debouncedSearchTerm, filterStatus, filterAssigned, filterDateFrom, filterDateTo, filterDietitianId, filterHealthCounselorId, filterOnboarding, currentPage, pageSize]);
+  }, [searchTerm, debouncedSearchTerm, filterStatus, filterAssigned, filterDateFrom, filterDateTo, filterDietitianId, filterHealthCounselorId, filterOnboarding, currentPage, pageSize]);
 
   // Initial load
   useEffect(() => {
@@ -251,6 +264,7 @@ export default function AdminAllClientsPage() {
     if (status === 'authenticated') {
       fetchClients();
     }
+    return () => { clientRequest.current?.abort(); };
   }, [status, fetchClients]);
 
   // Debounce search term - only update every 300ms for faster response
@@ -270,13 +284,6 @@ export default function AdminAllClientsPage() {
       }
     };
   }, [searchTerm]);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    if (status === 'authenticated') {
-      setCurrentPage(1);
-    }
-  }, [filterStatus, filterAssigned, filterDateFrom, filterDateTo, filterDietitianId, filterHealthCounselorId, filterOnboarding, status]);
 
   const fetchDietitians = async () => {
     try {
@@ -684,201 +691,53 @@ export default function AdminAllClientsPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-          <Card>
-            <CardHeader className="pb-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Card className="gap-2 py-4">
+            <CardHeader className="pb-0">
               <CardTitle className="text-sm font-medium text-gray-600">Total Clients</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center space-x-2">
-                <Users className="h-6 sm:h-8 w-6 sm:w-8 text-blue-600" />
-                <span className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</span>
+                <Users className="h-5 w-5 text-blue-600" />
+                <span className="text-2xl font-semibold tabular-nums text-gray-900">{stats.total}</span>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
+          <Card className="gap-2 py-4">
+            <CardHeader className="pb-0">
               <CardTitle className="text-sm font-medium text-gray-600">Assigned</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center space-x-2">
-                <CheckCircle className="h-6 sm:h-8 w-6 sm:w-8 text-green-600" />
-                <span className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.assigned}</span>
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <span className="text-2xl font-semibold tabular-nums text-gray-900">{stats.assigned}</span>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
+          <Card className="gap-2 py-4">
+            <CardHeader className="pb-0">
               <CardTitle className="text-sm font-medium text-gray-600">Unassigned</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center space-x-2">
-                <XCircle className="h-6 sm:h-8 w-6 sm:w-8 text-orange-600" />
-                <span className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.unassigned}</span>
+                <XCircle className="h-5 w-5 text-orange-600" />
+                <span className="text-2xl font-semibold tabular-nums text-gray-900">{stats.unassigned}</span>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Filters */}
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            {/* Active Filters Summary */}
-            {(() => {
-              const activeFilters: string[] = [];
-              if (searchTerm) activeFilters.push(`Search: "${searchTerm}"`);
-              if (filterStatus !== 'all') activeFilters.push(`Status: ${filterStatus}`);
-              if (filterAssigned !== 'all') activeFilters.push(`Assigned: ${filterAssigned === 'true' ? 'Yes' : 'No'}`);
-              if (filterDietitianId !== 'all') {
-                const dt = dietitians.find(d => d._id === filterDietitianId);
-                activeFilters.push(`Dietitian: ${dt?.firstName || 'Selected'}`);
-              }
-              if (filterHealthCounselorId !== 'all') {
-                const hc = healthCounselors.find(h => h._id === filterHealthCounselorId);
-                activeFilters.push(`HC: ${hc?.firstName || 'Selected'}`);
-              }
-              if (filterOnboarding !== 'all') activeFilters.push(`Onboarding: ${filterOnboarding === 'done' ? 'Done' : 'Pending'}`);
-              if (filterDateFrom) activeFilters.push(`From: ${filterDateFrom}`);
-              if (filterDateTo) activeFilters.push(`To: ${filterDateTo}`);
-
-              return activeFilters.length > 0 ? (
-                <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-blue-800">
-                        {activeFilters.length} Active Filter{activeFilters.length > 1 ? 's' : ''} (AND):
-                      </span>
-                      {activeFilters.map((filter, idx) => (
-                        <Badge key={idx} variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
-                          {filter}
-                        </Badge>
-                      ))}
-                    </div>
-                    <span className="text-sm text-blue-600">
-                      Showing {totalResults} matching client{totalResults !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                </div>
-              ) : null;
-            })()}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search clients..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-
-              {/* Status Filter */}
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="lead">Lead</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="hold">On Hold</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Assignment Filter */}
-              <Select value={filterAssigned} onValueChange={setFilterAssigned}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by assignment" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Clients</SelectItem>
-                  <SelectItem value="true">Assigned Only</SelectItem>
-                  <SelectItem value="false">Unassigned Only</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Primary Dietitian Filter */}
-              <Select value={filterDietitianId} onValueChange={setFilterDietitianId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Primary Dietitian" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Dietitians</SelectItem>
-                  {dietitians.map((d) => (
-                    <SelectItem key={d._id} value={d._id}>
-                      {d.firstName} {d.lastName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Primary Health Counselor Filter */}
-              <Select value={filterHealthCounselorId} onValueChange={setFilterHealthCounselorId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Primary Health Counselor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Health Counselors</SelectItem>
-                  {healthCounselors.map((hc) => (
-                    <SelectItem key={hc._id} value={hc._id}>
-                      {hc.firstName} {hc.lastName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Onboarding Filter */}
-              <Select value={filterOnboarding} onValueChange={setFilterOnboarding}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Onboarding Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Onboarding</SelectItem>
-                  <SelectItem value="done">Done</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Date From */}
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Joined From</label>
-                <Input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} />
-              </div>
-
-              {/* Date To */}
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Joined To</label>
-                <Input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} />
-              </div>
-
-              {/* Clear Filters */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="self-end"
-                onClick={() => {
-                  setSearchTerm('');
-                  setFilterStatus('all');
-                  setFilterAssigned('all');
-                  setFilterDateFrom('');
-                  setFilterDateTo('');
-                  setFilterDietitianId('all');
-                  setFilterHealthCounselorId('all');
-                  setFilterOnboarding('all');
-                  setCurrentPage(1);
-                }}
-              >
-                <XCircle className="h-4 w-4 mr-1" />
-                Clear Filters
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <AllClientFilters
+          value={filters}
+          onChange={next => { setFilters(next); setCurrentPage(1); setSelectedClients([]); }}
+          dietitians={dietitians}
+          healthCounselors={healthCounselors}
+          total={totalResults}
+          loading={loading || searchTerm !== debouncedSearchTerm}
+          failed={loadError}
+        />
 
         {/* Clients Table */}
         {loading ? (
