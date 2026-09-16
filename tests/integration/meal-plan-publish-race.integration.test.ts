@@ -78,4 +78,16 @@ describe('meal plan concurrent publication', () => {
     expect(result.status).toBe(400);
     expect((await ClientMealPlan.findById(plan._id))?.status).toBe('draft');
   });
+
+  it.each([{}, { status: 'active' }])('rejects reusing a published phase for later dates (%j)', async (status) => {
+    const { plan, dietitian } = await setup('active');
+    const result = await update(plan, dietitian, {
+      ...status, startDate: '2026-09-26', endDate: '2026-09-26',
+    });
+    expect(result.status).toBe(409);
+    expect(result.json.code).toBe('PUBLISHED_START_DATE_LOCKED');
+    const saved = await ClientMealPlan.findById(plan._id);
+    expect(saved?.startDate).toEqual(plan.startDate);
+    expect(saved?.meals).toEqual(plan.meals);
+  });
 });

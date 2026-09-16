@@ -629,6 +629,20 @@ export async function PUT(
       endDate !== undefined &&
       (incomingEndDateKey === null || incomingEndDateKey !== existingEndDateKey);
 
+    // An existing published phase is not a reusable shell for the next one.
+    // Moving its start date removes the client's historical coverage. Timeline
+    // shifts from explicit freeze/extension actions use their own endpoints.
+    if (existingPlan.status !== "draft" && startDateChanged) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PUBLISHED_START_DATE_LOCKED",
+          error: "This phase is already published. Create a new plan for new dates, or use Freeze/Extend to adjust its schedule.",
+        },
+        { status: 409 },
+      );
+    }
+
     // ------------------------------------------------------------------
     // HOLD STATUS CHECK: Block publishing meal plans to clients on hold
     // ------------------------------------------------------------------

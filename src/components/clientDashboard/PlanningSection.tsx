@@ -621,6 +621,7 @@ export default function PlanningSection({
   const draftSaveCompletionRef = useRef<Promise<boolean> | null>(null);
   const publishingRef = useRef(false);
   const draftSyncUnconfirmedRef = useRef(false);
+  const editorGenerationRef = useRef(0);
   const editorStepRef = useRef(step);
   editorStepRef.current = step;
   const draftSaveQueuedRef = useRef(false);
@@ -787,6 +788,7 @@ export default function PlanningSection({
     }
 
     draftSaveInProgressRef.current = true;
+    const editorGeneration = editorGenerationRef.current;
     draftSyncUnconfirmedRef.current = true;
     let finishDraftSave!: (saved: boolean) => void;
     let draftSaved = false;
@@ -879,6 +881,7 @@ export default function PlanningSection({
             onRecoveryState: handleDraftRecoveryState,
           },
         );
+        if (editorGeneration !== editorGenerationRef.current) return false;
         if (res.ok) {
           draftPlanIdRef.current = currentDraftPlanId;
           setDraftSaveStatus("saved");
@@ -916,8 +919,10 @@ export default function PlanningSection({
             onRecoveryState: handleDraftRecoveryState,
           },
         );
+        if (editorGeneration !== editorGenerationRef.current) return false;
         if (res.ok) {
           const data = await res.json();
+          if (editorGeneration !== editorGenerationRef.current) return false;
           if (!data.success || !data.mealPlan?._id) {
             throw new Error("The server did not confirm the saved draft. Retry Save before publishing.");
           }
@@ -947,6 +952,7 @@ export default function PlanningSection({
       draftSyncUnconfirmedRef.current = false;
       return true;
     } catch (error) {
+      if (editorGeneration !== editorGenerationRef.current) return false;
       console.error("Draft auto-save failed:", error);
       setDraftSaveStatus("error");
       setDraftSaveMessage(
@@ -1050,7 +1056,7 @@ export default function PlanningSection({
   useEffect(() => {
     if (onRegisterReset) {
       onRegisterReset(() => {
-        setStep("list");
+        resetForm();
         fetchClientPlans();
         checkPaymentStatus();
       });
@@ -2094,6 +2100,7 @@ export default function PlanningSection({
   }, [saveDraftToDB, draftSaveMessage, resolveCurrentMealPayload]);
 
   const resetForm = () => {
+    editorGenerationRef.current += 1;
     editorStepRef.current = "list";
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     setStep("list");
@@ -2189,6 +2196,7 @@ export default function PlanningSection({
 
   // Edit plan
   const handleEditPlan = (plan: any) => {
+    resetForm();
     // Log first day's meals for debugging
     if (plan.meals && plan.meals.length > 0) {
     }
@@ -5168,6 +5176,7 @@ export default function PlanningSection({
                   <Input
                     type="date"
                     value={startDate}
+                    disabled={isEditMode && editingPlan?.status !== "draft"}
                     onChange={(e) => {
                       const newStartDate = e.target.value;
                       const phaseStartPolicy =
@@ -5244,6 +5253,11 @@ export default function PlanningSection({
                         : undefined
                     }
                   />
+                  {isEditMode && editingPlan?.status !== "draft" && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Published dates are protected. Create a new plan for the next phase; use Freeze/Extend for schedule changes.
+                    </p>
+                  )}
                   {!isEditMode && getRequiredNextPhaseStartDate() && (
                     <p className="flex items-center gap-1 text-xs text-blue-600 mt-1">
                       <Link2 className="h-3 w-3" aria-hidden="true" />
@@ -5965,16 +5979,9 @@ export default function PlanningSection({
                       );
                       return;
                     }
-                    // Clear any stale state before creating new plan
-                    setEditingPlan(null);
-                    setIsEditMode(false);
-                    setViewingPlan(null);
-                    setPlanTitle("");
-                    setDescription("");
-                    setInitialMeals([]);
-                    setInitialMealTypes(DEFAULT_MEAL_TYPES_LIST);
-                    setSelectedTemplate(null);
-                    setPlanKey((prev) => prev + 1);
+                    // New phases must never reuse the previous editor's plan
+                    // ID, retry operation, pending meal payload, or save state.
+                    resetForm();
 
                     // Plans are delivered in 10-day phases. Keep the remaining
                     // entitlement as the upper bound instead of assigning the
