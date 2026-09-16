@@ -1,3 +1,5 @@
+import { withJsonCache } from '@/lib/cache/json-cache';
+import { completionMatchesMeal } from '@/lib/task-schedule';
 import { measureApi } from '@/lib/api/performance';
 import DietTemplate from '@/lib/db/models/DietTemplate';
 import { NextRequest, NextResponse } from 'next/server';
@@ -280,7 +282,7 @@ async function getHandler(request: NextRequest) {
       { ttl: 60000, tags: ['client'] }
     );
 
-    return NextResponse.json(data);
+    return NextResponse.json({ ...data, serverNow: new Date().toISOString() });
 
   } catch (error) {
     console.error('Error fetching client meal plan:', error);
@@ -319,8 +321,6 @@ function getDefaultMealSlots(planId: string, dayIndex: number): any[] {
   }));
 }
 
-const normalizeTypeForCompare = (type: string | undefined | null): string =>
-  (type || '').toLowerCase().replace(/[\s_-]+/g, '');
 
 function flattenMealFoods(meal: any): any[] {
   if (!meal) return [];
@@ -389,8 +389,6 @@ function checkMealCompletion(completions: any[], date: Date, mealType: string, o
 
   const dateStart = startOfDay(date);
   const dateEnd = endOfDay(date);
-  const targetMealKey = normalizeTypeForCompare(mealType);
-  const targetOriginalKey = normalizeTypeForCompare(originalMealType || mealType);
 
   return completions.some(c => {
     const cDate = new Date(c.date);
@@ -398,13 +396,7 @@ function checkMealCompletion(completions: any[], date: Date, mealType: string, o
       return false;
     }
 
-    const completionMealTypeKey = normalizeTypeForCompare(c.mealType);
-    const completionOriginalTypeKey = normalizeTypeForCompare(c.mealTypeOriginal);
-
-    return completionMealTypeKey === targetMealKey ||
-      completionMealTypeKey === targetOriginalKey ||
-      completionOriginalTypeKey === targetOriginalKey ||
-      completionOriginalTypeKey === targetMealKey;
+    return completionMatchesMeal(c, originalMealType || mealType);
   });
 }
 
@@ -606,7 +598,16 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
       });
     }
 
-    const recipes = await Recipe.find(query).lean() as any[];
+    const recipeCacheKey = JSON.stringify([
+      [...new Set(recipeIds)].sort(), [...new Set(recipeUuids)].sort(), [...new Set(recipeNames)].sort(),
+    ]);
+    const recipes = await withJsonCache(`meal-recipes:${recipeCacheKey}`, async () => {
+      const records = await Recipe.find(query)
+        .select('name uuid ingredients instructions prepTime cookTime servings difficulty cuisine tips calories protein carbs fat image images video equipment storage tags dietaryRestrictions allergens')
+        .lean();
+      // Cache JSON only; no mutable Mongoose documents or client records.
+      return JSON.parse(JSON.stringify(records)) as any[];
+    }, { ttl: 30_000, tags: ['recipes'] });
 
     // Create maps for quick lookup by both ID and UUID
     const recipeMapById = new Map(recipes.map((r: any) => [r._id.toString(), r]));

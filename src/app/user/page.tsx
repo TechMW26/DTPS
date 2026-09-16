@@ -35,6 +35,7 @@ import {
   PersonStanding,
   CookingPot
 } from 'lucide-react';
+import { ClientPlanSummary } from '@/components/client/ClientPlanSummary';
 import { CardGridSkeleton } from '@/components/ui/skeleton';
 import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import SmoothComponent from '@/components/animations/SmoothComponent';
@@ -351,7 +352,7 @@ export default function UserHomePage() {
     try {
       // Service-plan and dashboard-summary requests are independent.
       const [planRes] = await Promise.all([
-        fetch('/api/client/service-plans', { cache: 'no-store' }),
+        fetch('/api/client/service-plans?summary=true', { cache: 'no-store' }),
         fetchHealthData(true),
       ]);
 
@@ -391,7 +392,7 @@ export default function UserHomePage() {
   const loadServicePlans = async () => {
     try {
       const [planRes] = await Promise.all([
-        fetchWithTimeout('/api/client/service-plans', undefined, 4000),
+        fetchWithTimeout('/api/client/service-plans?summary=true', undefined, 4000),
         fetchHealthData(),
       ]);
       if (planRes.ok) {
@@ -524,7 +525,7 @@ export default function UserHomePage() {
         // Check onboarding and active plan in parallel
         const [onboardingRes, planRes] = await Promise.all([
           fetchWithTimeout('/api/client/onboarding', undefined, 2000),
-          fetchWithTimeout('/api/client/service-plans', undefined, 2000)
+          fetchWithTimeout('/api/client/service-plans?summary=true', undefined, 2000)
         ]);
 
         clearTimeout(hardStop);
@@ -822,22 +823,6 @@ export default function UserHomePage() {
 
           const showMealPlanCreatedState = Boolean(currentPurchase.mealPlanCreated) && hasOngoingMealPlanDates;
 
-          const displayPlanName = hasOngoingMealPlanDates
-            ? (currentPurchase.mealPlanName || currentMealPlan?.name || currentPurchase.planName)
-            : currentPurchase.planName;
-
-          const displayStartDate = hasOngoingMealPlanDates
-            ? currentPurchase.ongoingMealPlanStartDate
-            : (currentPurchase.expectedStartDate || null);
-
-          const displayEndDate = hasOngoingMealPlanDates
-            ? currentPurchase.ongoingMealPlanEndDate
-            : (currentPurchase.expectedEndDate || null);
-
-          const displayDuration = hasOngoingMealPlanDates
-            ? (currentPurchase.ongoingMealPlanDuration || currentMealPlan?.duration || currentPurchase.durationDays)
-            : currentPurchase.durationDays;
-
           return (
             <div key={currentPurchase._id}>
               {showMealPlanCreatedState ? (
@@ -908,35 +893,7 @@ export default function UserHomePage() {
                         Active
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
-                        <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Plan</p>
-                        <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-                          {displayPlanName}
-                        </p>
-                      </div>
-                      <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
-                        <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Duration</p>
-                        <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>{displayDuration} Days</p>
-                      </div>
-                      {/* Show meal plan dates (from actual meal plan, not payment) */}
-                      {displayStartDate && (
-                        <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
-                          <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Start Date</p>
-                          <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-                            {format(new Date(displayStartDate), 'dd MMM yyyy')}
-                          </p>
-                        </div>
-                      )}
-                      {displayEndDate && (
-                        <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-gray-950/40' : 'bg-white/60'}`}>
-                          <p className={`text-xs tracking-wide uppercase ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>End Date</p>
-                          <p className={`mt-1 text-sm font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-                            {format(new Date(displayEndDate), 'dd MMM yyyy')}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                    <ClientPlanSummary purchase={currentPurchase} isDarkMode={isDarkMode} />
                   </div>
 
                   {/* Quick Actions - View Meal Plan, Message & Book Appointment */}

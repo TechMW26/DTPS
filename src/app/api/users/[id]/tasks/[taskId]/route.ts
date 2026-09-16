@@ -1,3 +1,5 @@
+import { mealScheduleError, TASK_TIME_ZONE } from '@/lib/task-schedule';
+import { formatInTimeZone } from 'date-fns-tz';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
@@ -64,20 +66,23 @@ export async function PATCH(
     
     await connectDB();
 
-    const task = await withCache(
-      `users:id:tasks:taskId:${JSON.stringify({
-      _id: new mongoose.Types.ObjectId(taskId),
-      client: new mongoose.Types.ObjectId(id)
-    })}`,
-      async () => await Task.findOne({
-      _id: new mongoose.Types.ObjectId(taskId),
-      client: new mongoose.Types.ObjectId(id)
-    }),
-      { ttl: 60000, tags: ['users'] }
-    );
+    const task = await Task.findOne({ _id: taskId, client: id });
+
 
     if (!task) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
+
+    if (session.user?.role?.toLowerCase() === 'client') {
+      if (task.client?.toString() !== session.user.id ||
+          Object.keys(body).some((key) => key !== 'status') || body.status !== 'completed') {
+        return NextResponse.json({ error: 'Clients can only complete their own assigned tasks.' }, { status: 403 });
+      }
+      const scheduleError = mealScheduleError(
+        formatInTimeZone(new Date(task.startDate), TASK_TIME_ZONE, 'yyyy-MM-dd'),
+        task.allottedTime || '00:00'
+      );
+      if (scheduleError) return NextResponse.json({ error: scheduleError.replace(/meal/g, 'task') }, { status: 400 });
     }
 
     // Update allowed fields

@@ -1,3 +1,5 @@
+import { mealScheduleError, TASK_TIME_ZONE } from '@/lib/task-schedule';
+import { formatInTimeZone } from 'date-fns-tz';
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db/connection';
 import Task from '@/lib/db/models/Task';
@@ -65,14 +67,22 @@ export async function PUT(
     }
 
     // Find the task first to check ownership
-    const existingTask = await withCache(
-      `clients:clientId:tasks:taskId:${JSON.stringify(taskId)}`,
-      async () => await Task.findById(taskId),
-      { ttl: 60000, tags: ['clients'] }
-    );
+    const existingTask = await Task.findById(taskId);
     
     if (!existingTask) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
+
+    if (session.user?.role?.toLowerCase() === 'client') {
+      if (existingTask.client?.toString() !== session.user.id ||
+          Object.keys(body).some((key) => key !== 'status') || body.status !== 'completed') {
+        return NextResponse.json({ error: 'Clients can only complete their own assigned tasks.' }, { status: 403 });
+      }
+      const scheduleError = mealScheduleError(
+        formatInTimeZone(new Date(existingTask.startDate), TASK_TIME_ZONE, 'yyyy-MM-dd'),
+        existingTask.allottedTime || '00:00'
+      );
+      if (scheduleError) return NextResponse.json({ error: scheduleError.replace(/meal/g, 'task') }, { status: 400 });
     }
 
     // Health counselors and dietitians can only edit tasks they created

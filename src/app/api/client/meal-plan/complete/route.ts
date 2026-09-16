@@ -1,3 +1,5 @@
+import { mealScheduleError, mealIdentity, completionMatchesMeal } from '@/lib/task-schedule';
+import DietTemplate from '@/lib/db/models/DietTemplate';
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
@@ -7,11 +9,11 @@ import Message from "@/lib/db/models/Message";
 import User from "@/lib/db/models/User";
 import { Notification } from "@/lib/db/models";
 import { UserRole } from "@/types";
-import { parseISO, startOfDay, isValid } from "date-fns";
+import { parseISO, startOfDay, isValid, format } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { uploadToBlob } from "@/lib/storage/blob-storage";
 import { compressImageServer } from "@/lib/imageCompressionServer";
-import { MEAL_TYPE_KEYS, type MealTypeKey } from "@/lib/mealConfig";
+import { MEAL_TYPES, MEAL_TYPE_KEYS, type MealTypeKey } from "@/lib/mealConfig";
 import { socketManager } from "@/lib/realtime/socket-manager";
 import {
   broadcastUnreadCounts,
@@ -36,8 +38,6 @@ const CAMELCASE_TO_CANONICAL: Record<string, MealTypeKey> = {
   pastDinner: "PAST_DINNER",
 };
 
-const normalizeTypeForCompare = (type: string | undefined | null): string =>
-  (type || "").toLowerCase().replace(/[\s_-]+/g, "");
 
 function resolveBuiltInMealTypeKey(input: string): MealTypeKey | null {
   const raw = String(input || "").trim();
@@ -345,8 +345,9 @@ export async function POST(request: NextRequest) {
       _id: planId,
       clientId: session.user.id,
       status: "active",
+      isDeleted: { $ne: true },
     })
-      .select("mealCompletions analytics name startDate meals")
+      .select("mealCompletions analytics name startDate meals mealTypes templateId")
       .lean()) as any;
 
     if (!mealPlan) {
@@ -358,28 +359,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Determine meal type from mealId if not provided
-    const mealIdParts = mealId.split("-");
-    const mealIndex = parseInt(mealIdParts[2] || "0");
-
-    const requestedMealTypeRaw = String(mealType || "").trim();
-    const builtInRequestedType = requestedMealTypeRaw
-      ? resolveBuiltInMealTypeKey(requestedMealTypeRaw)
-      : null;
-
-    // Normalize meal type: handle camelCase from frontend, use canonical UPPERCASE keys for DB
-    let determinedMealType: MealTypeKey;
-    if (requestedMealTypeRaw) {
-      determinedMealType =
-        builtInRequestedType ||
-        MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
-    } else {
-      // Fallback to index-based meal type
-      determinedMealType = MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
+    // Resolve the actual published meal; the request cannot choose an earlier
+    // time, a different meal type, or a different day to bypass validation.
+    const idMatch = /^([a-f\d]{24})-(\d+)-(\d+)$/i.exec(mealId);
+    // Keep the public ID's day index consistent with the meal-plan GET route.
+    const dayIndex = Math.floor((startOfDay(requestedDate).getTime() - startOfDay(new Date(mealPlan.startDate)).getTime()) / 86400000);
+    if (!idMatch || Number(idMatch[2]) !== dayIndex || dayIndex < 0) {
+      return NextResponse.json({ error: 'Meal does not belong to the selected day.' }, { status: 400 });
     }
-
-    const isCustomMealType =
-      Boolean(requestedMealTypeRaw) && !builtInRequestedType;
+    const mealIndex = Number(idMatch[3]);
+    // Match the GET route's calendar-date lookup, including sparse legacy days.
+    let day = mealPlan.meals?.find((entry: any) => {
+      const entryDate = entry?.date ? new Date(entry.date) : null;
+      return entryDate && isValid(entryDate) && format(entryDate, 'yyyy-MM-dd') === requestedDateKey;
+    }) || mealPlan.meals?.[dayIndex];
+    if (!day?.meals && !mealPlan.mealTypes?.length && mealPlan.templateId) {
+      const template = await DietTemplate.findById(mealPlan.templateId).select('meals').lean();
+      if (template?.meals?.length) {
+        const templateDay = template.meals[dayIndex % template.meals.length];
+        day = { meals: templateDay.meals || templateDay };
+      }
+    }
+    const meals = day?.meals;
+    const entries: Array<[string, any]> = Array.isArray(meals)
+      ? meals.map((m: any, i: number) => [m.mealType || m.type || MEAL_TYPE_KEYS[i % MEAL_TYPE_KEYS.length], m])
+      : Object.entries(meals || {}).filter(([key, m]: [string, any]) =>
+          m && typeof m === 'object' && !Array.isArray(m) &&
+          (m.foods || m.items || m.foodOptions || resolveBuiltInMealTypeKey(key)));
+    const scheduledMeal = entries[mealIndex];
+    if (!scheduledMeal || (mealType && mealIdentity(mealType) !== mealIdentity(scheduledMeal[0]))) {
+      return NextResponse.json({ error: 'Meal does not match the published plan. Please refresh your plan.' }, { status: 400 });
+    }
+    const requestedMealTypeRaw = scheduledMeal[0];
+    const builtInRequestedType = resolveBuiltInMealTypeKey(requestedMealTypeRaw);
+    const determinedMealType: MealTypeKey = builtInRequestedType || MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
+    const isCustomMealType = !builtInRequestedType;
+    const scheduledTime = scheduledMeal[1].time || (builtInRequestedType ? MEAL_TYPES[builtInRequestedType].time12h : '12:00 PM');
+    const scheduleError = mealScheduleError(requestedDateKey, scheduledTime);
+    if (scheduleError) {
+      return NextResponse.json({ error: scheduleError, code: 'MEAL_NOT_AVAILABLE' }, { status: 400 });
+    }
 
     const mealCompletions = Array.isArray(mealPlan.mealCompletions)
       ? [...mealPlan.mealCompletions]
@@ -446,30 +465,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if meal is already completed for this date
-    const requestedCanonicalKey = normalizeTypeForCompare(determinedMealType);
-    const requestedOriginalKey = normalizeTypeForCompare(requestedMealTypeRaw);
-
-    const existingCompletionIndex = mealCompletions.findIndex((c: any) => {
-      const completionDate = new Date(c.date);
-      const targetDate = startOfDay(requestedDate);
-      if (startOfDay(completionDate).getTime() !== targetDate.getTime()) {
-        return false;
-      }
-
-      const completionCanonicalKey = normalizeTypeForCompare(c.mealType);
-      const completionOriginalKey = normalizeTypeForCompare(c.mealTypeOriginal);
-
-      if (isCustomMealType && requestedOriginalKey) {
-        if (
-          completionOriginalKey &&
-          completionOriginalKey === requestedOriginalKey
-        ) {
-          return true;
-        }
-      }
-
-      return completionCanonicalKey === requestedCanonicalKey;
-    });
+    const existingCompletionIndex = mealCompletions.findIndex((c: any) =>
+      startOfDay(new Date(c.date)).getTime() === startOfDay(requestedDate).getTime() &&
+      completionMatchesMeal(c, requestedMealTypeRaw)
+    );
 
     const isRepeatedOperation = Boolean(
       operationId &&

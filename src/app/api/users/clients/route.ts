@@ -1,3 +1,4 @@
+import { measureApi } from '@/lib/api/performance';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
@@ -12,7 +13,7 @@ import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
 import mongoose from 'mongoose';
 
 // GET /api/users/clients - Get clients for dietitians to book appointments 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -31,8 +32,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
-    const limit = parseInt(searchParams.get('limit') || '100'); // Increased default limit
-    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '100') || 100)); // Increased default limit
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
     const viewAs = searchParams.get('viewAs') || '';
 
     // Build query
@@ -354,6 +355,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Compute status from compact records first. Populate and load meal history
+    // only for the requested page, rather than for every assigned client.
+    let computedTotal: number | null = null;
+    if (shouldFilterByComputedStatus) {
+      const candidates = await User.find(query).select('_id holdStatus.isOnHold').lean();
+      const payments = await UnifiedPayment.find({
+        client: { $in: candidates.map((client: any) => client._id) },
+        $or: [{ status: { $in: ['paid', 'completed', 'active'] } }, { paymentStatus: 'paid' }],
+      }).select('client status paymentStatus expectedEndDate endDate').lean();
+      const byClient = new Map<string, any[]>();
+      for (const payment of payments) {
+        const key = String(payment.client);
+        const list = byClient.get(key) || [];
+        list.push(payment);
+        byClient.set(key, list);
+      }
+      const matchingIds = candidates.filter((client: any) =>
+        computeClientStatusFromDocs(byClient.get(String(client._id)) || [], Boolean(client.holdStatus?.isOnHold)) === statusFilter
+      ).map((client: any) => client._id);
+      computedTotal = matchingIds.length;
+      query = { $and: [query, { _id: { $in: matchingIds } }] };
+    }
+    const totalPromise = computedTotal === null ? User.countDocuments(query).exec() : Promise.resolve(computedTotal);
+
     const clientsQuery = User.find(query)
       .select('firstName lastName email avatar phone dateOfBirth gender height weight activityLevel healthGoals medicalConditions allergies dietaryRestrictions assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors status clientStatus holdStatus createdAt createdBy tags clientId onboardingCompleted')
       .populate('assignedDietitian', 'firstName lastName email avatar')
@@ -368,15 +393,15 @@ export async function GET(request: NextRequest) {
       })
       .sort({ firstName: 1, lastName: 1 });
 
-    const clientsData = shouldFilterByComputedStatus
-      ? await clientsQuery.lean()
-      : await clientsQuery
-        .limit(limit)
-        .skip((page - 1) * limit)
-        .lean();
+    const clientsData = await clientsQuery.limit(limit).skip((page - 1) * limit).lean();
 
     // Fetch meal plan data for all clients to get programStart, programEnd, lastDiet
     const clientIds = clientsData.map((c: any) => c._id);
+
+    const paymentDocsPromise = UnifiedPayment.find(
+      { client: { $in: clientIds }, $or: [{ status: { $in: ['paid', 'completed', 'active'] } }, { paymentStatus: 'paid' }] },
+      { client: 1, status: 1, paymentStatus: 1, expectedEndDate: 1, endDate: 1 }
+    ).lean().exec();
 
     // Get meal plan info for each client - we need both overall program dates and active plan dates
     const mealPlanData = await ClientMealPlan.aggregate([
@@ -432,10 +457,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch payment data (with dates) for all clients to determine LEAD vs ACTIVE vs INACTIVE.
     // ACTIVE/INACTIVE is driven by the subscription Expected End Date — not meal plans.
-    const paymentDocs = await UnifiedPayment.find(
-      { client: { $in: clientIds }, $or: [{ status: { $in: ['paid', 'completed', 'active'] } }, { paymentStatus: 'paid' }] },
-      { client: 1, status: 1, paymentStatus: 1, expectedEndDate: 1, endDate: 1 }
-    ).lean();
+    const paymentDocs = await paymentDocsPromise;
 
     // Group purchases by clientId
     const purchasesByClient = new Map<string, any[]>();
@@ -487,16 +509,8 @@ export async function GET(request: NextRequest) {
       User.bulkWrite(bulkOps).catch(err => console.error('Bulk status update error:', err));
     }
 
-    let responseClients = clients;
-    let total = await User.countDocuments(query);
-
-    // Apply computed status filtering after recomputation, then paginate.
-    if (shouldFilterByComputedStatus) {
-      const filteredByComputedStatus = clients.filter((client: any) => client.clientStatus === statusFilter);
-      total = filteredByComputedStatus.length;
-      const start = (page - 1) * limit;
-      responseClients = filteredByComputedStatus.slice(start, start + limit);
-    }
+    const responseClients = clients;
+    const total = await totalPromise;
 
     return NextResponse.json({
       clients: responseClients,
@@ -536,3 +550,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = measureApi('/api/users/clients', getHandler);

@@ -22,6 +22,8 @@ async function getHandler(request: NextRequest) {
 
         await dbConnect();
 
+        const summaryOnly = new URL(request.url).searchParams.get('summary') === 'true';
+
         // Fetch the client's primary dietitian from User model (not from payment)
         const clientUserPromise = User.findById(session.user.id)
             .select('assignedDietitian')
@@ -39,7 +41,7 @@ async function getHandler(request: NextRequest) {
                 client: session.user.id,
                 status: { $in: ['paid', 'completed', 'active'] },
                 paymentStatus: 'paid'
-            }).populate('dietitian', 'firstName lastName email phone avatar role').sort({ createdAt: -1 }),
+            }).populate('dietitian', 'firstName lastName email phone avatar role').sort({ createdAt: -1 }).lean(),
             { ttl: 120000, tags: ['client'] }
         );
 
@@ -153,7 +155,7 @@ async function getHandler(request: NextRequest) {
         const hasPendingDietitianAssignment = canonicalPurchases.some((p: any) => !p.dietitian);
 
         // Fetch service plans that are active and visible to clients
-        const plans = await withCache(
+        const plans = summaryOnly ? [] : await withCache(
             `client:service-plans:${JSON.stringify({
                 isActive: true,
                 showToClients: true
@@ -194,7 +196,9 @@ async function getHandler(request: NextRequest) {
                 const isCurrentMealPlanForThisPurchase = Boolean(
                     currentMealPlanDetails?.purchaseId && currentMealPlanDetails.purchaseId === purchaseId
                 );
-                const linkedMealPlan = latestMealPlanByPurchaseId.get(purchaseId) || null;
+                const linkedMealPlan = isCurrentMealPlanForThisPurchase
+                    ? activeClientMealPlan
+                    : latestMealPlanByPurchaseId.get(purchaseId) || null;
 
                 const expectedStartDate = p.expectedStartDate || p.startDate || null;
                 const expectedEndDate = p.expectedEndDate || p.endDate || null;

@@ -1,3 +1,4 @@
+import { taskDateError } from '@/lib/task-schedule';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import connectDB from '@/lib/db/connection';
@@ -101,6 +102,8 @@ export async function POST(request: NextRequest) {
         await connectDB();
         const { name, duration, intensity = 'moderate', sets = 0, reps = 0, date } = await request.json();
 
+        const dateError = taskDateError(date);
+        if (dateError) return NextResponse.json({ error: dateError }, { status: 400 });
         const targetDate = date ? parseISO(date) : new Date();
         const dayStart = startOfDay(targetDate);
         const dayEnd = endOfDay(targetDate);
@@ -188,6 +191,8 @@ export async function PATCH(request: NextRequest) {
         await connectDB();
         const { action, entryId, date } = await request.json();
 
+        const dateError = taskDateError(date);
+        if (dateError) return NextResponse.json({ error: dateError }, { status: 400 });
         const targetDate = date ? parseISO(date) : new Date();
         const dayStart = startOfDay(targetDate);
         const dayEnd = endOfDay(targetDate);

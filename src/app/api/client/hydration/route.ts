@@ -1,3 +1,4 @@
+import { taskDateError } from '@/lib/task-schedule';
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -134,6 +135,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
+    const dateError = taskDateError(dateParam);
+    if (dateError) return NextResponse.json({ error: dateError }, { status: 400 });
     const { targetDate, nextDay } = getDateRange(dateParam);
 
     const waterEntry = {
@@ -257,6 +260,8 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
+    const dateError = taskDateError(dateParam);
+    if (dateError) return NextResponse.json({ error: dateError }, { status: 400 });
     const { targetDate, nextDay } = getDateRange(dateParam);
 
     const [result, waterGoal] = await Promise.all([

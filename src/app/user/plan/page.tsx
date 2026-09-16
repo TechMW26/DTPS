@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { mealScheduleError } from '@/lib/task-schedule';
+import { useTaskClock } from '@/hooks/useTaskClock';
+import { createMealPlanLoader } from '@/lib/meal-plan-loader';
 import { flushSync } from 'react-dom';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
@@ -254,9 +257,12 @@ export default function UserPlanPage() {
   const { isDarkMode } = useTheme();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weekDates, setWeekDates] = useState<Date[]>([]);
+  const { now, readNow, syncClock } = useTaskClock();
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null);
   const [planDateWindow, setPlanDateWindow] = useState<PlanDateWindow | null>(null);
   const [entitlementStatus, setEntitlementStatus] = useState<ClientEntitlementStatus>('loading');
+  const [planLoadError, setPlanLoadError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
   const [loading, setLoading] = useState(true);
   const [isChangingDate, setIsChangingDate] = useState(false); // For skeleton loader on date change
   const [completingMeal, setCompletingMeal] = useState<string | null>(null);
@@ -326,15 +332,6 @@ export default function UserPlanPage() {
     setWeekDates(dates);
     setSelectedDate(initialDate);
     setDatePickerValue(format(initialDate, 'yyyy-MM-dd'));
-    fetchDayPlan(initialDate, true);
-
-    // Pre-fetch next 3 days and previous 3 days for faster navigation
-    setTimeout(() => {
-      [-3, -2, -1, 1, 2, 3].forEach(offset => {
-        const prefetchDate = addDays(initialDate, offset);
-        prefetchDayPlan(prefetchDate);
-      });
-    }, 500);
   }, []);
 
   // Keep the selected date visible, including an assigned start date added by
@@ -362,19 +359,13 @@ export default function UserPlanPage() {
   useEffect(() => {
     fetchDayPlan(selectedDate, false);
 
-    // Pre-fetch adjacent days when date changes
-    setTimeout(() => {
-      [-1, 1].forEach(offset => {
-        prefetchDayPlan(addDays(selectedDate, offset));
-      });
-    }, 100);
   }, [selectedDate]);
 
   // Load current/upcoming meal plan date window for empty-state guidance.
   useEffect(() => {
     const fetchPlanDateWindow = async () => {
       try {
-        const res = await fetch('/api/client/service-plans', { cache: 'no-store' });
+        const res = await fetch('/api/client/service-plans?summary=true', { cache: 'no-store' });
         if (!res.ok) {
           setEntitlementStatus('unknown');
           return;
@@ -581,159 +572,44 @@ export default function UserPlanPage() {
     }
   };
 
-  // Pre-fetch meal plan without updating UI (for caching)
-  const prefetchDayPlan = async (date: Date) => {
-    const dateKey = format(date, 'yyyy-MM-dd');
-
-    // Skip if already in cache
-    if (mealPlanCache.current.has(dateKey)) return;
-
-    try {
+  const loaderRef = useRef<ReturnType<typeof createMealPlanLoader<DayPlan>> | null>(null);
+  if (!loaderRef.current) {
+    loaderRef.current = createMealPlanLoader(mealPlanCache.current, async (dateKey) => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout for prefetch
-
-      const response = await fetch(`/api/client/meal-plan?date=${dateKey}`, {
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+      try {
+        const response = await fetch(`/api/client/meal-plan?date=${dateKey}`, { signal: controller.signal });
+        if (!response.ok) throw new Error('Unable to load your meal plan. Please try again.');
         const data = await response.json();
-        const plan: DayPlan = data.success && data.hasPlan
-          ? {
-            date: new Date(data.date),
-            meals: data.meals || [],
-            mealTypes: data.mealTypes || [],
-            totalCalories: data.totalCalories || 0,
-            hasPlan: true,
-            dailyNote: data.dailyNote || '',
-            isFrozen: data.isFrozen || false,
-            freezeInfo: data.freezeInfo || null,
-            planDetails: data.planDetails
-          }
-          : {
-            date: date,
-            meals: [],
-            mealTypes: [],
-            totalCalories: 0,
-            hasPlan: false,
-            dailyNote: '',
-            isFrozen: false,
-            freezeInfo: null
-          };
-        mealPlanCache.current.set(dateKey, plan);
-      }
-    } catch (error) {
-      // Silently fail for pre-fetch - these are background requests
-      if (error instanceof Error && error.name !== 'AbortError') {
-        console.debug(`Prefetch failed for ${dateKey}:`, error.message);
-      }
-    }
-  };
+        if (!data.success || typeof data.hasPlan !== 'boolean') throw new Error('Invalid meal plan response. Please try again.');
+        syncClock(data.serverNow);
+        return {
+          date: new Date(`${dateKey}T00:00:00`), meals: data.meals || [], mealTypes: data.mealTypes || [],
+          totalCalories: data.totalCalories || 0, hasPlan: data.hasPlan, dailyNote: data.dailyNote || '',
+          isFrozen: data.isFrozen || false, freezeInfo: data.freezeInfo || null, planDetails: data.planDetails,
+        };
+      } finally { clearTimeout(timeout); }
+    });
+  }
 
   const fetchDayPlan = async (date: Date, isInitialLoad = false) => {
-    const dateKey = format(date, 'yyyy-MM-dd');
-
-    // Check cache first - instant load!
-    if (mealPlanCache.current.has(dateKey)) {
-      setDayPlan(mealPlanCache.current.get(dateKey)!);
-      if (isInitialLoad) setLoading(false);
-      return;
-    }
-
-    // Show skeleton for date changes, full loader for initial
-    if (isInitialLoad) {
-      setLoading(true);
-    } else {
-      setIsChangingDate(true);
-    }
-
+    const version = ++requestVersion.current;
+    setPlanLoadError(null);
+    if (isInitialLoad) setLoading(true);
+    setIsChangingDate(true);
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-      const response = await fetch(`/api/client/meal-plan?date=${dateKey}`, {
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-
-        const plan: DayPlan = data.success && data.hasPlan
-          ? {
-            date: new Date(data.date),
-            meals: data.meals || [],
-            mealTypes: data.mealTypes || [],
-            totalCalories: data.totalCalories || 0,
-            hasPlan: true,
-            dailyNote: data.dailyNote || '',
-            isFrozen: data.isFrozen || false,
-            freezeInfo: data.freezeInfo || null,
-            planDetails: data.planDetails
-          }
-          : {
-            date: date,
-            meals: [],
-            mealTypes: [],
-            totalCalories: 0,
-            hasPlan: false,
-            dailyNote: '',
-            isFrozen: false,
-            freezeInfo: null
-          };
-
-        // Cache the result
-        mealPlanCache.current.set(dateKey, plan);
-        setDayPlan(plan);
-      } else {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error(`API Error: ${response.status}`, errorData);
-
-        const noplan: DayPlan = {
-          date: date,
-          meals: [],
-          totalCalories: 0,
-          hasPlan: false,
-          dailyNote: ''
-        };
-        mealPlanCache.current.set(dateKey, noplan);
-        setDayPlan(noplan);
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        return;
-      }
-
-      console.error('Error fetching meal plan:', error);
-
-      // More detailed error logging
-      if (error instanceof Error) {
-        if (error.message.includes('Failed to fetch')) {
-          console.error('Network error - failed to reach API server');
-        } else {
-          console.error('Fetch error:', error.message);
-        }
-      }
-
-      setDayPlan({
-        date: date,
-        meals: [],
-        totalCalories: 0,
-        hasPlan: false,
-        dailyNote: ''
-      });
+      const plan = await loaderRef.current!(format(date, 'yyyy-MM-dd'));
+      if (version !== requestVersion.current) return;
+      setDayPlan(plan);
+    } catch {
+      if (version !== requestVersion.current) return;
+      setDayPlan(null);
+      setPlanLoadError('We could not load your meal plan. Check your connection and try again.');
     } finally {
-      setLoading(false);
-      setIsChangingDate(false);
+      if (version === requestVersion.current) {
+        setLoading(false);
+        setIsChangingDate(false);
+      }
     }
   };
 
@@ -744,11 +620,20 @@ export default function UserPlanPage() {
     mealPlanCache.current.delete(dateKey);
     await fetchDayPlan(selectedDate, false);
     setRefreshing(false);
-    toast.success('Meal plan refreshed');
+
+  };
+
+  const completionBlocked = (meal: Meal) => {
+    const error = !isToday(selectedDate)
+      ? "You can only complete meals from today's plan."
+      : mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, readNow());
+    if (error) toast.info(error);
+    return Boolean(error);
   };
 
   // Open completion modal
   const openCompletionModal = (meal: Meal) => {
+    if (completionBlocked(meal)) return;
     setCompletionModal({ meal, isOpen: true });
     setCompletionNotes('');
     setCompletionImage(null);
@@ -829,6 +714,7 @@ export default function UserPlanPage() {
   // Submit meal completion with image
   const handleSubmitCompletion = async () => {
     if (!completionModal.meal) return;
+    if (completionBlocked(completionModal.meal)) return;
 
     if (!completionImage) {
       toast.error('Please add a photo of your meal');
@@ -918,6 +804,8 @@ export default function UserPlanPage() {
   };
 
   const handleMarkComplete = async (mealId: string) => {
+    const meal = dayPlan?.meals.find((entry) => entry.id === mealId);
+    if (!meal || completionBlocked(meal)) return;
     const dateKey = format(selectedDate, 'yyyy-MM-dd');
     const previousIsCompleted = dayPlan?.meals.find((m) => m.id === mealId)?.isCompleted ?? false;
 
@@ -928,8 +816,6 @@ export default function UserPlanPage() {
       updateMealCompletionLocally(mealId, true);
     });
 
-    // Show immediate toast confirmation
-    toast.success('Meal marked as complete!');
 
     try {
       const response = await fetch('/api/client/meal-plan/complete', {
@@ -1127,7 +1013,10 @@ export default function UserPlanPage() {
     return slots;
   };
 
-  const allMealSlots = getAllMealSlots();
+  const allMealSlots = getAllMealSlots().map((meal) => ({
+    ...meal,
+    isCompleted: meal.isCompleted && !mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, now),
+  }));
   // Only count meals that have food assigned
   const mealsWithFood = allMealSlots.filter(m => m.items.length > 0);
   const completedMeals = mealsWithFood.filter(m => m.isCompleted).length;
@@ -1426,6 +1315,13 @@ export default function UserPlanPage() {
                 </Link>
               </div>
             </div>
+          </div>
+        ) : planLoadError ? (
+          <div role="alert" className={`rounded-2xl p-6 text-center ${isDarkMode ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900'}`}>
+            <TriangleAlert className="mx-auto mb-3 h-8 w-8 text-amber-500" aria-hidden="true" />
+            <h2 className="text-lg font-semibold">Meal plan temporarily unavailable</h2>
+            <p className="mt-2 text-sm text-gray-500">{planLoadError}</p>
+            <button onClick={handleRefresh} disabled={refreshing} className="mt-4 rounded-xl bg-[#3AB1A0] px-5 py-2.5 font-semibold text-white">Try again</button>
           </div>
         ) : !dayPlan?.hasPlan ? (
           /* No Plan Message - Show Buy Plan option */
@@ -1729,6 +1625,15 @@ export default function UserPlanPage() {
                       >
                         <Clock className="w-4 h-4" />
                         <span>{selectedDate < new Date() ? 'Past Date' : 'Future Date'}</span>
+                      </button>
+                    ) : mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, now) ? (
+                      <button
+                        disabled
+                        title={mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, now) || undefined}
+                        className="flex-1 min-w-30 py-2.5 px-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 cursor-not-allowed"
+                      >
+                        <Clock className="w-4 h-4 shrink-0" aria-hidden="true" />
+                        <span>Available at {meal.time} IST</span>
                       </button>
                     ) : meal.items.length === 0 ? (
                       /* Hide complete button when no food is allotted */

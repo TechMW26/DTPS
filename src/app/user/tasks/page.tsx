@@ -1,5 +1,7 @@
 'use client';
 
+import { taskDateError } from '@/lib/task-schedule';
+import { useTaskClock } from '@/hooks/useTaskClock';
 import { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -79,6 +81,8 @@ export default function TasksPage() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date());
+    const { now } = useTaskClock();
+    const upcomingTaskError = taskDateError(format(selectedDate, 'yyyy-MM-dd'), now);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [tasksData, setTasksData] = useState<TasksData>({
         water: null,
@@ -176,6 +180,8 @@ export default function TasksPage() {
     };
 
     const handleCompleteTask = async (taskType: string, taskId?: string) => {
+        const dateError = taskDateError(format(selectedDate, 'yyyy-MM-dd'));
+        if (dateError) { toast.info(dateError); return; }
         setCompletingTask(taskId || taskType);
         try {
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -327,6 +333,11 @@ export default function TasksPage() {
                     </div>
                 </div>
 
+                {upcomingTaskError && (
+                    <p role="status" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        Tasks unlock on their scheduled date (IST).
+                    </p>
+                )}
                 {stats.total === 0 && !showWater ? (
                     <div className={`rounded-2xl p-8 text-center border ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                         <Target className={`w-16 h-16 mx-auto mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`} />
@@ -418,7 +429,8 @@ export default function TasksPage() {
                                                     return (
                                                         <button
                                                             onClick={() => handleCompleteTask('water')}
-                                                            disabled={completingTask === 'water'}
+                                                            title={upcomingTaskError || undefined}
+                                                            disabled={Boolean(upcomingTaskError) || completingTask === 'water'}
                                                             className="w-full py-3 bg-[#3AB1A0] text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-[#2A9A8B] disabled:opacity-50"
                                                         >
                                                             {completingTask === 'water' ? (
@@ -516,7 +528,8 @@ export default function TasksPage() {
                                                     </p>
                                                     <Button
                                                         onClick={() => handleCompleteTask('steps')}
-                                                        disabled={completingTask === 'steps'}
+                                                        title={upcomingTaskError || undefined}
+                                                            disabled={Boolean(upcomingTaskError) || completingTask === 'steps'}
                                                         className="w-full bg-[#3AB1A0] hover:bg-[#2A9A8B] text-white"
                                                     >
                                                         {completingTask === 'steps' ? (
@@ -626,7 +639,8 @@ export default function TasksPage() {
                                                     return (
                                                         <button
                                                             onClick={() => handleCompleteTask('sleep')}
-                                                            disabled={completingTask === 'sleep'}
+                                                            title={upcomingTaskError || undefined}
+                                                            disabled={Boolean(upcomingTaskError) || completingTask === 'sleep'}
                                                             className="w-full py-3 bg-[#DB9C6E] text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-[#C48A5E] disabled:opacity-50"
                                                         >
                                                             {completingTask === 'sleep' ? (
@@ -737,7 +751,8 @@ export default function TasksPage() {
                                                         ) : (
                                                             <button
                                                                 onClick={() => handleCompleteTask('activity', `activity-${index}`)}
-                                                                disabled={completingTask === `activity-${index}`}
+                                                                title={upcomingTaskError || undefined}
+                                                            disabled={Boolean(upcomingTaskError) || completingTask === `activity-${index}`}
                                                                 className="p-2 bg-[#E06A26] text-white rounded-lg hover:bg-[#C55A1C] disabled:opacity-50"
                                                             >
                                                                 {completingTask === `activity-${index}` ? (

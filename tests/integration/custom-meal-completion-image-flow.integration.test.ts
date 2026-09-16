@@ -89,14 +89,14 @@ describe('Custom Meal Type Completion With Image Flow', () => {
                 primaryGoal: 'health-improvement',
             },
             mealTypes: [
-                { name: 'Second Breakfast', time: '10:30 AM' },
+                { name: 'Second Breakfast', time: '12:00 AM' },
             ],
             meals: [
                 {
                     date: todayStart,
                     meals: {
                         'Second Breakfast': {
-                            time: '10:30 AM',
+                            time: '12:00 AM',
                             note: 'Custom meal type note',
                             foodOptions: [
                                 {
