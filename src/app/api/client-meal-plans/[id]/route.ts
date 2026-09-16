@@ -1059,6 +1059,62 @@ export async function PUT(
       updateData.lastPublishedAt = nowDate;
     }
 
+    const mongoUpdate: Record<string, unknown> = {
+      $set: updateData,
+      $inc: { __v: 1 },
+    };
+
+    // Track lifecycle audit + publish counters on relevant transitions.
+    const auditEntries: Array<Record<string, unknown>> = [];
+    if (isPublishing) {
+      mongoUpdate.$inc = { __v: 1, republishCount: 1 };
+      auditEntries.push({
+        action: existingPlan.firstPublishedAt ? "republish" : "publish",
+        at: new Date(),
+        by: session.user.id,
+        fromStatus: existingPlan.status,
+        toStatus: status,
+      });
+    } else if (isStatusChange) {
+      auditEntries.push({
+        action: "status_change",
+        at: new Date(),
+        by: session.user.id,
+        fromStatus: existingPlan.status,
+        toStatus: status,
+        reason:
+          typeof statusReason === "string" ? statusReason.trim() : undefined,
+      });
+    }
+    if (auditEntries.length > 0) {
+      mongoUpdate.$push = { lifecycleAudit: { $each: auditEntries } };
+    }
+
+    // Validation was based on this snapshot. A delayed autosave must never
+    // overwrite a plan published (or edited/frozen) while validation ran.
+    const updatedPlan = await ClientMealPlan.findOneAndUpdate(
+      {
+        _id: id,
+        isDeleted: { $ne: true },
+        status: existingPlan.status,
+        updatedAt: existingPlan.updatedAt ?? null,
+        __v: existingPlan.__v ?? null,
+      },
+      mongoUpdate,
+      { new: true, runValidators: true },
+    ).populate("templateId", "name category duration");
+
+    if (!updatedPlan) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PLAN_WRITE_CONFLICT",
+          error: "This plan changed while saving. Your changes have not overwritten the newer plan. Reload the plan before trying again.",
+        },
+        { status: 409 },
+      );
+    }
+
     if (isStatusChange) {
       const role = getNormalizedRole(session.user.role);
       const reasonText =
@@ -1091,47 +1147,6 @@ export async function PUT(
         },
         ...requestMeta,
       }).catch(() => null);
-    }
-
-    const mongoUpdate: Record<string, unknown> = { $set: updateData };
-
-    // Track lifecycle audit + publish counters on relevant transitions.
-    const auditEntries: Array<Record<string, unknown>> = [];
-    if (isPublishing) {
-      mongoUpdate.$inc = { republishCount: 1 };
-      auditEntries.push({
-        action: existingPlan.firstPublishedAt ? "republish" : "publish",
-        at: new Date(),
-        by: session.user.id,
-        fromStatus: existingPlan.status,
-        toStatus: status,
-      });
-    } else if (isStatusChange) {
-      auditEntries.push({
-        action: "status_change",
-        at: new Date(),
-        by: session.user.id,
-        fromStatus: existingPlan.status,
-        toStatus: status,
-        reason:
-          typeof statusReason === "string" ? statusReason.trim() : undefined,
-      });
-    }
-    if (auditEntries.length > 0) {
-      mongoUpdate.$push = { lifecycleAudit: { $each: auditEntries } };
-    }
-
-    const updatedPlan = await ClientMealPlan.findByIdAndUpdate(
-      id,
-      mongoUpdate,
-      { new: true, runValidators: true },
-    ).populate("templateId", "name category duration");
-
-    if (!updatedPlan) {
-      return NextResponse.json(
-        { success: false, error: "Meal plan not found" },
-        { status: 404 },
-      );
     }
 
     if (updatedPlan.status === "active") {

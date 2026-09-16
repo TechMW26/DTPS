@@ -371,6 +371,7 @@ export default function PlanningSection({
   const [saving, setSaving] = useState(false);
   const [clientPlans, setClientPlans] = useState<any[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
+  const plansRequestRef = useRef(0);
 
   // Edit mode states
   const [editingPlan, setEditingPlan] = useState<any | null>(null);
@@ -617,6 +618,11 @@ export default function PlanningSection({
   } | null>(null);
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const draftSaveInProgressRef = useRef(false);
+  const draftSaveCompletionRef = useRef<Promise<boolean> | null>(null);
+  const publishingRef = useRef(false);
+  const draftSyncUnconfirmedRef = useRef(false);
+  const editorStepRef = useRef(step);
+  editorStepRef.current = step;
   const draftSaveQueuedRef = useRef(false);
   const draftSaveFailCountRef = useRef(0);
   const draftOperationIdRef = useRef<string | null>(null);
@@ -750,6 +756,9 @@ export default function PlanningSection({
 
   // Save draft to DB
   const saveDraftToDB = useCallback(async (): Promise<boolean> => {
+    // Pending timers and reconnect callbacks cannot save during publication
+    // or recreate a draft after the editor has closed.
+    if (publishingRef.current || editorStepRef.current !== "meals") return false;
     if (draftSaveInProgressRef.current) {
       draftSaveQueuedRef.current = true;
       setDraftSaveStatus("saving");
@@ -778,6 +787,12 @@ export default function PlanningSection({
     }
 
     draftSaveInProgressRef.current = true;
+    draftSyncUnconfirmedRef.current = true;
+    let finishDraftSave!: (saved: boolean) => void;
+    let draftSaved = false;
+    draftSaveCompletionRef.current = new Promise<boolean>((resolve) => {
+      finishDraftSave = resolve;
+    });
     setDraftSaveStatus("saving");
     setDraftSaveMessage("Saving draft...");
 
@@ -903,10 +918,11 @@ export default function PlanningSection({
         );
         if (res.ok) {
           const data = await res.json();
-          if (data.success && data.mealPlan?._id) {
-            draftPlanIdRef.current = data.mealPlan._id;
-            setDraftPlanId(data.mealPlan._id);
+          if (!data.success || !data.mealPlan?._id) {
+            throw new Error("The server did not confirm the saved draft. Retry Save before publishing.");
           }
+          draftPlanIdRef.current = data.mealPlan._id;
+          setDraftPlanId(data.mealPlan._id);
           setDraftSaveStatus("saved");
           setDraftSaveMessage("All changes saved.");
           draftSaveFailCountRef.current = 0;
@@ -927,6 +943,8 @@ export default function PlanningSection({
       } catch {
         // Server persistence succeeded; restricted storage is non-fatal.
       }
+      draftSaved = true;
+      draftSyncUnconfirmedRef.current = false;
       return true;
     } catch (error) {
       console.error("Draft auto-save failed:", error);
@@ -940,6 +958,8 @@ export default function PlanningSection({
       return false;
     } finally {
       draftSaveInProgressRef.current = false;
+      finishDraftSave(draftSaved);
+      draftSaveCompletionRef.current = null;
       if (draftSaveQueuedRef.current) {
         draftSaveQueuedRef.current = false;
         window.setTimeout(() => saveDraftRef.current?.(), 0);
@@ -1071,6 +1091,7 @@ export default function PlanningSection({
   });
 
   const fetchClientPlans = async (silent = false) => {
+    const requestId = ++plansRequestRef.current;
     try {
       if (!silent) setLoadingPlans(true);
       // PERMANENT FIX: Always fetch with status=all and a generous limit so
@@ -1084,7 +1105,7 @@ export default function PlanningSection({
         return;
       }
       const data = await res.json();
-      if (data.success) {
+      if (data.success && requestId === plansRequestRef.current) {
         setClientPlans(
           Array.isArray(data.mealPlans)
             ? data.mealPlans.map((plan: any) => normalizePlanDates(plan))
@@ -1094,7 +1115,7 @@ export default function PlanningSection({
     } catch (error) {
       console.error("Error fetching client plans:", error);
     } finally {
-      if (!silent) setLoadingPlans(false);
+      if (requestId === plansRequestRef.current) setLoadingPlans(false);
     }
   };
 
@@ -1695,8 +1716,23 @@ export default function PlanningSection({
     mealsData: any[],
     mealTypesData?: { name: string; time: string }[],
   ) => {
+    if (publishingRef.current) return;
+    publishingRef.current = true;
+    draftSaveQueuedRef.current = false;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
     try {
       setSaving(true);
+      // A draft POST may still be assigning its ID. Wait for its confirmed
+      // result before choosing PUT vs POST, keeping one plan per editor.
+      const pendingDraft = draftSaveCompletionRef.current;
+      if (pendingDraft) await pendingDraft;
+      if (draftSyncUnconfirmedRef.current) {
+        toast.error("The draft has not finished saving. Retry Save before publishing.");
+        return;
+      }
 
       // CRITICAL: Log meal data for debugging template save issues
       console.log("[Publish Plan] Received mealsData:", {
@@ -1838,6 +1874,8 @@ export default function PlanningSection({
           goals: { primaryGoal },
           status: "active",
         };
+
+        if (selectedTemplate?._id) payload.templateId = selectedTemplate._id;
 
         console.log("[Publish Plan] Draft update payload:", {
           duration: payload.duration,
@@ -2024,6 +2062,7 @@ export default function PlanningSection({
       console.error("Error publishing plan:", error);
       toast.error("Failed to publish diet plan");
     } finally {
+      publishingRef.current = false;
       setSaving(false);
     }
   };
@@ -2055,6 +2094,8 @@ export default function PlanningSection({
   }, [saveDraftToDB, draftSaveMessage, resolveCurrentMealPayload]);
 
   const resetForm = () => {
+    editorStepRef.current = "list";
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     setStep("list");
     setPlanTitle("");
     setDescription("");
@@ -2077,6 +2118,7 @@ export default function PlanningSection({
     draftOperationIdRef.current = null;
     planMutationOperationIdRef.current = null;
     draftSaveQueuedRef.current = false;
+    draftSyncUnconfirmedRef.current = false;
     latestMealDataRef.current = null;
   };
 
