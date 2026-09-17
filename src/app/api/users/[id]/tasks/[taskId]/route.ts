@@ -1,4 +1,4 @@
-import { mealScheduleError, TASK_TIME_ZONE } from '@/lib/task-schedule';
+import { taskScheduleError, TASK_TIME_ZONE } from '@/lib/task-schedule';
 import { formatInTimeZone } from 'date-fns-tz';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
@@ -78,7 +78,7 @@ export async function PATCH(
           Object.keys(body).some((key) => key !== 'status') || body.status !== 'completed') {
         return NextResponse.json({ error: 'Clients can only complete their own assigned tasks.' }, { status: 403 });
       }
-      const scheduleError = mealScheduleError(
+      const scheduleError = taskScheduleError(
         formatInTimeZone(new Date(task.startDate), TASK_TIME_ZONE, 'yyyy-MM-dd'),
         task.allottedTime || '00:00'
       );

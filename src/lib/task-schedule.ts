@@ -18,10 +18,34 @@ export function scheduledTaskTime(date: string, time: string): number | null {
   return instant.getTime();
 }
 
-export function mealScheduleError(date: string, time: string, now = Date.now()): string | null {
+export function taskScheduleError(date: string, time: string, now = Date.now()): string | null {
   const availableAt = scheduledTaskTime(date, time);
   if (availableAt === null) return 'This meal has an invalid schedule. Please contact your dietitian.';
   return now < availableAt ? `Available on ${date} at ${time} IST. Upcoming meals cannot be completed.` : null;
+}
+
+export const MEAL_EARLY_BUFFER_MS = 60 * 60 * 1000;
+
+export function mealAvailableAt(date: string, time: string): number | null {
+  const scheduled = scheduledTaskTime(date, time);
+  const dayStart = scheduledTaskTime(date, '00:00');
+  if (scheduled === null || dayStart === null) return null;
+  // Keep the existing same-day rule for meals shortly after midnight.
+  return Math.max(dayStart, scheduled - MEAL_EARLY_BUFFER_MS);
+}
+
+export function mealAvailabilityLabel(date: string, time: string): string {
+  const availableAt = mealAvailableAt(date, time);
+  return availableAt === null ? 'Schedule unavailable' : `Available at ${formatInTimeZone(availableAt, TASK_TIME_ZONE, 'hh:mm a')} IST`;
+}
+
+export function mealScheduleError(date: string, time: string, now = Date.now()): string | null {
+  const availableAt = mealAvailableAt(date, time);
+  if (availableAt === null) return 'This meal has an invalid schedule. Please contact your dietitian.';
+  // Once unlocked, keep late meal logging available for the rest of the day.
+  return now < availableAt
+    ? `${mealAvailabilityLabel(date, time)} on ${date} (scheduled for ${time} IST).`
+    : null;
 }
 
 // Daily habits have a date but no scheduled hour. Past-day logging stays available.

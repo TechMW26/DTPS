@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { mealScheduleError } from '@/lib/task-schedule';
+import { mealScheduleError, mealAvailabilityLabel } from '@/lib/task-schedule';
 import { useTaskClock } from '@/hooks/useTaskClock';
 import { createMealPlanLoader } from '@/lib/meal-plan-loader';
 import { flushSync } from 'react-dom';
@@ -337,33 +337,30 @@ export default function UserPlanPage() {
   // Keep the selected date visible, including an assigned start date added by
   // the jump action when it falls outside the default calendar range.
   useEffect(() => {
-    if (weekDates.length > 0 && dateScrollRef.current) {
-      setTimeout(() => {
-        if (dateScrollRef.current) {
-          const selectedIndex = weekDates.findIndex(date => isSameDay(date, selectedDate));
-          if (selectedIndex !== -1) {
-            const buttonWidth = 58; // Approximate width of each date button
-            const centeredOffset = selectedIndex * buttonWidth
-              - (dateScrollRef.current.clientWidth / 2)
-              + (buttonWidth / 2);
-            dateScrollRef.current.scrollTo({
-              left: Math.max(0, centeredOffset),
-              behavior: 'smooth',
-            });
-          }
-        }
-      }, 50);
-    }
-  }, [weekDates, selectedDate]);
+    if (loading || status === 'loading') return;
+    const timer = setTimeout(() => {
+      const container = dateScrollRef.current;
+      const selected = container?.querySelector<HTMLElement>('[aria-pressed="true"]');
+      if (!container || !selected) return;
+      const bounds = selected.getBoundingClientRect();
+      const offset = bounds.left - container.getBoundingClientRect().left + container.scrollLeft;
+      container.scrollTo({
+        left: Math.max(0, offset - container.clientWidth / 2 + bounds.width / 2),
+        behavior: 'auto',
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [weekDates, selectedDate, loading, status]);
 
   useEffect(() => {
     fetchDayPlan(selectedDate, false);
 
-  }, [selectedDate]);
+  }, [selectedDate, status, session?.user?.id]);
 
   // Load current/upcoming meal plan date window for empty-state guidance.
   useEffect(() => {
     const fetchPlanDateWindow = async () => {
+      if (status !== 'authenticated') return;
       try {
         const res = await fetch('/api/client/service-plans?summary=true', { cache: 'no-store' });
         if (!res.ok) {
@@ -441,7 +438,7 @@ export default function UserPlanPage() {
     };
 
     fetchPlanDateWindow();
-  }, []);
+  }, [status, session?.user?.id]);
 
   // Auto-refresh on visibility change and focus (when user comes back to tab/window)
   useEffect(() => {
@@ -468,7 +465,7 @@ export default function UserPlanPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [selectedDate]);
+  }, [selectedDate, status, session?.user?.id]);
 
   // Real-time sync: Listen for meal plan updates from dietitian dashboard
   const handleRealtimeMessage = useCallback((event: any) => {
@@ -478,7 +475,7 @@ export default function UserPlanPage() {
       mealPlanCache.current.delete(dateKey);
       fetchDayPlan(selectedDate, false);
     }
-  }, [selectedDate]);
+  }, [selectedDate, status, session?.user?.id]);
 
   useRealtime({ onMessage: handleRealtimeMessage });
 
@@ -578,7 +575,7 @@ export default function UserPlanPage() {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15_000);
       try {
-        const response = await fetch(`/api/client/meal-plan?date=${dateKey}`, { signal: controller.signal });
+        const response = await fetch(`/api/client/meal-plan?date=${dateKey}`, { signal: controller.signal, cache: 'no-store' });
         if (!response.ok) throw new Error('Unable to load your meal plan. Please try again.');
         const data = await response.json();
         if (!data.success || typeof data.hasPlan !== 'boolean') throw new Error('Invalid meal plan response. Please try again.');
@@ -593,6 +590,7 @@ export default function UserPlanPage() {
   }
 
   const fetchDayPlan = async (date: Date, isInitialLoad = false) => {
+    if (status !== 'authenticated') return;
     const version = ++requestVersion.current;
     setPlanLoadError(null);
     if (isInitialLoad) setLoading(true);
@@ -1173,6 +1171,7 @@ export default function UserPlanPage() {
             return (
               <button
                 key={date.toISOString()}
+                aria-pressed={isSelected}
                 onClick={() => setSelectedDate(date)}
                 className={`flex flex-col items-center py-2 px-4 rounded-2xl min-w-12.5 transition-all ${isSelected
                   ? 'bg-[#3AB1A0] text-white'
@@ -1633,7 +1632,7 @@ export default function UserPlanPage() {
                         className="flex-1 min-w-30 py-2.5 px-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 cursor-not-allowed"
                       >
                         <Clock className="w-4 h-4 shrink-0" aria-hidden="true" />
-                        <span>Available at {meal.time} IST</span>
+                        <span>{mealAvailabilityLabel(format(selectedDate, 'yyyy-MM-dd'), meal.time)}</span>
                       </button>
                     ) : meal.items.length === 0 ? (
                       /* Hide complete button when no food is allotted */

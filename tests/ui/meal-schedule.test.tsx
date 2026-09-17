@@ -2,7 +2,8 @@ import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import UserPlanPage from '@/app/user/plan/page';
 
-jest.mock('next-auth/react', () => ({ useSession: () => ({ data: { user: { id: 'test-client' } }, status: 'authenticated' }) }));
+let mockSessionStatus = 'authenticated';
+jest.mock('next-auth/react', () => ({ useSession: () => ({ data: mockSessionStatus === 'authenticated' ? { user: { id: 'test-client' } } : null, status: mockSessionStatus }) }));
 jest.mock('@/contexts/ThemeContext', () => ({ useTheme: () => ({ isDarkMode: false }) }));
 jest.mock('@/hooks/useRealtime', () => ({ useRealtime: jest.fn() }));
 jest.mock('@/components/engagement/MealCompletionCelebration', () => ({ __esModule: true, default: () => null }));
@@ -16,8 +17,9 @@ let serverNow: string;
 let completed = false;
 
 beforeEach(() => {
-  jest.useFakeTimers({ now: new Date(`${day}T13:29:59Z`) });
-  serverNow = `${day}T13:29:59Z`;
+  mockSessionStatus = 'authenticated';
+  jest.useFakeTimers({ now: new Date(`${day}T12:29:59Z`) });
+  serverNow = `${day}T12:29:59Z`;
   completed = false;
   HTMLElement.prototype.scrollTo = jest.fn();
   global.fetch = jest.fn(async (url) => ({ ok: true, json: async () => String(url).includes('meal-plan') ? {
@@ -30,9 +32,9 @@ beforeEach(() => {
 });
 afterEach(() => jest.useRealTimers());
 
-it('disables an upcoming meal and unlocks it at its scheduled time without reloading', async () => {
+it('disables an upcoming meal and unlocks it one hour early without reloading', async () => {
   await act(async () => { render(<UserPlanPage />); });
-  expect(screen.getByRole('button', { name: 'Available at 07:00 PM IST' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Available at 06:00 PM IST' })).toBeDisabled();
   expect(screen.queryByRole('button', { name: /^Complete$/ })).not.toBeInTheDocument();
   await act(async () => { jest.advanceTimersByTime(1000); });
   const complete = screen.getByRole('button', { name: /^Complete$/ });
@@ -47,9 +49,37 @@ it('uses the server clock and hides a legacy premature completion', async () => 
   serverNow = `${day}T05:32:00Z`;
   completed = true;
   await act(async () => { render(<UserPlanPage />); });
-  expect(screen.getByRole('button', { name: 'Available at 07:00 PM IST' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Available at 06:00 PM IST' })).toBeDisabled();
   expect(screen.queryByText('Done')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Completed' })).not.toBeInTheDocument();
+});
+
+it('loads the plan when delayed authentication finishes', async () => {
+  mockSessionStatus = 'loading';
+  let view!: ReturnType<typeof render>;
+  await act(async () => { view = render(<UserPlanPage />); });
+  expect(global.fetch).not.toHaveBeenCalled();
+  mockSessionStatus = 'authenticated';
+  await act(async () => { view.rerender(<UserPlanPage />); });
+  expect(screen.getByRole('heading', { name: 'Dinner' })).toBeInTheDocument();
+  expect((global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/meal-plan?'))).toHaveLength(1);
+});
+
+it('centers the selected date after the loading screen reveals the calendar', async () => {
+  const normalFetch = global.fetch;
+  let resolvePlan!: (value: Response) => void;
+  global.fetch = jest.fn(async (url, options) => String(url).includes('/meal-plan?')
+    ? new Promise<Response>(resolve => { resolvePlan = resolve; }) : normalFetch(url, options));
+  await act(async () => { render(<UserPlanPage />); jest.advanceTimersByTime(100); });
+  expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
+  await act(async () => resolvePlan(await normalFetch('/api/client/meal-plan?date=2026-09-16')));
+  const selected = screen.getByRole('button', { name: 'Wed 16', pressed: true });
+  const container = selected.parentElement!;
+  Object.defineProperty(container, 'clientWidth', { value: 350 });
+  jest.spyOn(container, 'getBoundingClientRect').mockReturnValue({ left: 0 } as DOMRect);
+  jest.spyOn(selected, 'getBoundingClientRect').mockReturnValue({ left: 900, width: 50 } as DOMRect);
+  await act(async () => { jest.advanceTimersByTime(50); });
+  expect(container.scrollTo).toHaveBeenCalledWith({ left: 750, behavior: 'auto' });
 });
 
 it('shows a retry state for an API failure instead of caching a missing meal plan', async () => {

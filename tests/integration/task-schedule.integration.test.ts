@@ -5,7 +5,7 @@ import '@/lib/db/models/Tag';
 import JournalTracking from '@/lib/db/models/JournalTracking';
 import { createAssignedDietitianClientPair, ensureDatabaseConnection } from '../utils/database';
 import { invokeRoute, invokeRouteWithParams, mockSession } from '../utils/routes';
-import { completionMatchesMeal, mealScheduleError, scheduledTaskTime, taskDateError } from '@/lib/task-schedule';
+import { completionMatchesMeal, mealScheduleError, scheduledTaskTime, taskDateError, MEAL_EARLY_BUFFER_MS } from '@/lib/task-schedule';
 
 jest.mock('next-auth/next', () => ({ getServerSession: require('next-auth').getServerSession }));
 jest.mock('@/lib/utils/activityLogger', () => ({ logActivity: jest.fn().mockResolvedValue(undefined) }));
@@ -59,6 +59,20 @@ describe('scheduled client completion', () => {
       { mealType: 'breakfast' }, { mealId: `${plan._id}-1-0` }, { mealId: `${plan._id}-0-99` },
       { date: '2026-09-17' },
     ]) expect((await complete(client, plan, extra)).status).toBe(400);
+    expect((await ClientMealPlan.findById(plan._id))?.mealCompletions).toHaveLength(0);
+  });
+
+  it.each([-60, 60, 120])('allows meal completion %i minutes relative to its scheduled time', async (minutes) => {
+    const { client, plan } = await fixture();
+    clock(new Date(dinner.getTime() + minutes * 60_000));
+    expect((await complete(client, plan)).status).toBe(200);
+    expect((await ClientMealPlan.findById(plan._id))?.mealCompletions).toHaveLength(1);
+  });
+
+  it('rejects completion one millisecond before the buffer opens', async () => {
+    const { client, plan } = await fixture();
+    clock(new Date(dinner.getTime() - MEAL_EARLY_BUFFER_MS - 1));
+    expect((await complete(client, plan)).status).toBe(400);
     expect((await ClientMealPlan.findById(plan._id))?.mealCompletions).toHaveLength(0);
   });
 
@@ -145,6 +159,8 @@ describe('scheduled client completion', () => {
     expect((await invokeRouteWithParams(handler, { ...options, body: { status: 'completed', allottedTime: '01:00 AM' } })).status).toBe(403);
     expect((await invokeRouteWithParams(handler, { ...options, user: anotherClient })).status).toBe(403);
     expect((await Task.findById(task._id))?.status).toBe('pending');
+    clock(new Date(dinner.getTime() - 30 * 60_000));
+    expect((await invokeRouteWithParams(handler, options)).status).toBe(400);
     clock(dinner);
     expect((await invokeRouteWithParams(handler, options)).status).toBe(200);
     expect((await Task.findById(task._id))?.status).toBe('completed');
@@ -155,8 +171,11 @@ describe('scheduled client completion', () => {
     expect(scheduledTaskTime(day, '12:00 PM')).toBe(Date.parse('2026-09-16T06:30:00Z'));
     for (const time of ['24:00', '00:00 PM', '12:60', 'bad']) expect(scheduledTaskTime(day, time)).toBeNull();
     expect(scheduledTaskTime('2026-02-30', '19:00')).toBeNull();
-    expect(mealScheduleError(day, '19:00', dinner.getTime() - 1)).not.toBeNull();
+    expect(mealScheduleError(day, '19:00', dinner.getTime() - MEAL_EARLY_BUFFER_MS - 1)).not.toBeNull();
+    expect(mealScheduleError(day, '19:00', dinner.getTime() - MEAL_EARLY_BUFFER_MS)).toBeNull();
     expect(mealScheduleError(day, '19:00', dinner.getTime())).toBeNull();
+    expect(mealScheduleError(day, '00:30', scheduledTaskTime(day, '00:00')! - 1)).not.toBeNull();
+    expect(mealScheduleError(day, '00:30', scheduledTaskTime(day, '00:00')!)).toBeNull();
     expect(taskDateError('2026-09-17', morning.getTime())).not.toBeNull();
     expect(taskDateError('2026-09-15', morning.getTime())).toBeNull();
     expect(completionMatchesMeal({ mealType: 'DINNER', mealTypeOriginal: 'Brunch' }, 'dinner')).toBe(false);
