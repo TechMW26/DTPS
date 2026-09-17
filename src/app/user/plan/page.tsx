@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { mealScheduleError, mealAvailabilityLabel } from '@/lib/task-schedule';
+import { mealScheduleError, mealAvailabilityLabel, getDeviceMealTimeZone, TASK_TIME_ZONE } from '@/lib/task-schedule';
+import { formatInTimeZone } from 'date-fns-tz';
 import { useTaskClock } from '@/hooks/useTaskClock';
 import { createMealPlanLoader } from '@/lib/meal-plan-loader';
 import { flushSync } from 'react-dom';
@@ -258,6 +259,17 @@ export default function UserPlanPage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [weekDates, setWeekDates] = useState<Date[]>([]);
   const { now, readNow, syncClock } = useTaskClock();
+  const [mealTimeZone, setMealTimeZone] = useState(TASK_TIME_ZONE);
+  useEffect(() => {
+    const syncTimeZone = () => setMealTimeZone(getDeviceMealTimeZone());
+    syncTimeZone();
+    window.addEventListener('focus', syncTimeZone);
+    document.addEventListener('visibilitychange', syncTimeZone);
+    return () => {
+      window.removeEventListener('focus', syncTimeZone);
+      document.removeEventListener('visibilitychange', syncTimeZone);
+    };
+  }, []);
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null);
   const [planDateWindow, setPlanDateWindow] = useState<PlanDateWindow | null>(null);
   const [entitlementStatus, setEntitlementStatus] = useState<ClientEntitlementStatus>('loading');
@@ -622,9 +634,9 @@ export default function UserPlanPage() {
   };
 
   const completionBlocked = (meal: Meal) => {
-    const error = !isToday(selectedDate)
+    const error = format(selectedDate, 'yyyy-MM-dd') !== formatInTimeZone(readNow(), mealTimeZone, 'yyyy-MM-dd')
       ? "You can only complete meals from today's plan."
-      : mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, readNow());
+      : mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, readNow(), mealTimeZone);
     if (error) toast.info(error);
     return Boolean(error);
   };
@@ -760,7 +772,7 @@ export default function UserPlanPage() {
           notes: notesToSave,
           imageUrl: uploadedImage.url,
           imagePathname: uploadedImage.pathname,
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          timeZone: mealTimeZone,
           operationId,
         }),
       }, {
@@ -822,7 +834,7 @@ export default function UserPlanPage() {
         body: JSON.stringify({
           mealId,
           date: format(selectedDate, 'yyyy-MM-dd'),
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          timeZone: mealTimeZone,
         })
       });
       if (response.ok) {
@@ -1013,13 +1025,13 @@ export default function UserPlanPage() {
 
   const allMealSlots = getAllMealSlots().map((meal) => ({
     ...meal,
-    isCompleted: meal.isCompleted && !mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, now),
+    isCompleted: meal.isCompleted && !mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, now, mealTimeZone),
   }));
   // Only count meals that have food assigned
   const mealsWithFood = allMealSlots.filter(m => m.items.length > 0);
   const completedMeals = mealsWithFood.filter(m => m.isCompleted).length;
   const totalMeals = mealsWithFood.length || 0;
-  const isTodaySelected = isToday(selectedDate);
+  const isTodaySelected = format(selectedDate, 'yyyy-MM-dd') === formatInTimeZone(now, mealTimeZone, 'yyyy-MM-dd');
 
   const upcomingPlanWindow = (() => {
     if (!planDateWindow?.startDate || !planDateWindow?.endDate) return null;
@@ -1146,10 +1158,11 @@ export default function UserPlanPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs tracking-wider opacity-90 uppercase">
-              {isToday(selectedDate) ? 'Today' : 'Selected Date'}
+              {isTodaySelected ? 'Today' : 'Selected Date'}
             </p>
             <p className="text-2xl font-bold">{format(selectedDate, 'EEEE')}</p>
             <p className="text-sm opacity-90">{format(selectedDate, 'MMMM d, yyyy')}</p>
+            <p className="mt-1 text-xs opacity-90">Meal times follow your timezone: {mealTimeZone.replaceAll('_', ' ')}</p>
           </div>
           <div className="bg-white/20 rounded-2xl p-3 text-center min-w-17.5">
             <p className="text-xs font-medium opacity-90">{format(selectedDate, 'MMM')}</p>
@@ -1625,14 +1638,14 @@ export default function UserPlanPage() {
                         <Clock className="w-4 h-4" />
                         <span>{selectedDate < new Date() ? 'Past Date' : 'Future Date'}</span>
                       </button>
-                    ) : mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, now) ? (
+                    ) : mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, now, mealTimeZone) ? (
                       <button
                         disabled
-                        title={mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, now) || undefined}
+                        title={mealScheduleError(format(selectedDate, 'yyyy-MM-dd'), meal.time, now, mealTimeZone) || undefined}
                         className="flex-1 min-w-30 py-2.5 px-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 cursor-not-allowed"
                       >
                         <Clock className="w-4 h-4 shrink-0" aria-hidden="true" />
-                        <span>{mealAvailabilityLabel(format(selectedDate, 'yyyy-MM-dd'), meal.time)}</span>
+                        <span>{mealAvailabilityLabel(format(selectedDate, 'yyyy-MM-dd'), meal.time, mealTimeZone)}</span>
                       </button>
                     ) : meal.items.length === 0 ? (
                       /* Hide complete button when no food is allotted */

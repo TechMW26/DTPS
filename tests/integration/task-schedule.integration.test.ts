@@ -5,7 +5,7 @@ import '@/lib/db/models/Tag';
 import JournalTracking from '@/lib/db/models/JournalTracking';
 import { createAssignedDietitianClientPair, ensureDatabaseConnection } from '../utils/database';
 import { invokeRoute, invokeRouteWithParams, mockSession } from '../utils/routes';
-import { completionMatchesMeal, mealScheduleError, scheduledTaskTime, taskDateError, MEAL_EARLY_BUFFER_MS } from '@/lib/task-schedule';
+import { completionMatchesMeal, mealScheduleError, scheduledTaskTime, taskDateError, mealAvailableAt, MEAL_EARLY_BUFFER_MS } from '@/lib/task-schedule';
 
 jest.mock('next-auth/next', () => ({ getServerSession: require('next-auth').getServerSession }));
 jest.mock('@/lib/utils/activityLogger', () => ({ logActivity: jest.fn().mockResolvedValue(undefined) }));
@@ -52,14 +52,82 @@ describe('scheduled client completion', () => {
     expect((await ClientMealPlan.findById(plan._id))?.mealCompletions).toHaveLength(0);
   });
 
-  it('cannot bypass the stored schedule with request time, timezone, type or day', async () => {
+  it('cannot bypass the stored schedule with request time, type or day', async () => {
     const { client, plan } = await fixture();
     for (const extra of [
-      { time: '01:00 AM', timeZone: 'Pacific/Kiritimati' },
+      { time: '01:00 AM', timeZone: 'Asia/Kolkata' },
       { mealType: 'breakfast' }, { mealId: `${plan._id}-1-0` }, { mealId: `${plan._id}-0-99` },
       { date: '2026-09-17' },
     ]) expect((await complete(client, plan, extra)).status).toBe(400);
     expect((await ClientMealPlan.findById(plan._id))?.mealCompletions).toHaveLength(0);
+  });
+
+  it.each([
+    ['Australia/Sydney', '2026-09-16T08:00:00Z'],
+    ['America/New_York', '2026-09-16T22:00:00Z'],
+    ['Pacific/Kiritimati', '2026-09-16T04:00:00Z'],
+  ])('opens photo completion at 6 PM local time in %s', async (timeZone, opensAt) => {
+    const { client, plan } = await fixture();
+    const imageUrl = 'https://ik.imagekit.io/dtps/test-meal.jpg';
+    clock(new Date(Date.parse(opensAt) - 1));
+    const blocked = await complete(client, plan, { timeZone, imageUrl });
+    expect(blocked.status).toBe(400);
+    expect(blocked.json.code).toBe('MEAL_NOT_AVAILABLE');
+    expect((await ClientMealPlan.findById(plan._id))?.mealCompletions).toHaveLength(0);
+    clock(new Date(opensAt));
+    expect((await complete(client, plan, { timeZone, imageUrl })).status).toBe(200);
+    const saved = await ClientMealPlan.findById(plan._id);
+    expect(saved?.mealCompletions).toHaveLength(1);
+    expect(saved?.mealCompletions[0].imagePath).toBe(imageUrl);
+  });
+
+  it('keeps evening photo logging on the client date when it is tomorrow in India', async () => {
+    const { client, plan } = await fixture();
+    clock(new Date('2026-09-17T00:30:00Z')); // Sep 16, 8:30 PM New York; Sep 17 in India
+    expect((await complete(client, plan, { timeZone: 'America/New_York', imageUrl: 'https://ik.imagekit.io/dtps/evening.jpg' })).status).toBe(200);
+    const getRoute = await import('@/app/api/client/meal-plan/route');
+    const result = await invokeRoute(getRoute.GET, { method: 'GET', url: `http://localhost/api/client/meal-plan?date=${day}`, user: client });
+    expect(result.json.meals.find((meal: any) => meal.type === 'dinner').isCompleted).toBe(true);
+    expect((await complete(client, plan, { timeZone: 'America/New_York', date: '2026-09-17' })).status).toBe(400);
+  });
+
+  it('validates the timezone in multipart photo submissions before writing or uploading', async () => {
+    const { client, plan } = await fixture();
+    mockSession(client);
+    const route = await import('@/app/api/client/meal-plan/complete/route');
+    const { uploadToBlob } = await import('@/lib/storage/blob-storage');
+    for (const timeZone of ['Not/AZone', 'Australia/Sydney']) {
+      clock(new Date('2026-09-16T07:59:59Z'));
+      const form = new FormData();
+      form.set('mealId', `${plan._id}-0-0`);
+      form.set('date', day);
+      form.set('timeZone', timeZone);
+      form.set('image', new Blob(['photo'], { type: 'image/jpeg' }), 'meal.jpg');
+      const result = await route.POST(new NextRequest('http://localhost/api/client/meal-plan/complete', { method: 'POST', body: form }));
+      expect(result.status).toBe(400);
+    }
+    expect(uploadToBlob).not.toHaveBeenCalled();
+    expect((await ClientMealPlan.findById(plan._id))?.mealCompletions).toHaveLength(0);
+  });
+
+  it('rejects malformed timezone values instead of silently using India time', async () => {
+    const { client, plan } = await fixture();
+    clock(dinner);
+    for (const timeZone of ['Not/AZone', {}, 42]) {
+      expect((await complete(client, plan, { timeZone })).status).toBe(400);
+    }
+    expect((await ClientMealPlan.findById(plan._id))?.mealCompletions).toHaveLength(0);
+  });
+
+  it.each([
+    ['2026-03-07', '2026-03-07T23:00:00Z'], // New York before spring DST
+    ['2026-03-08', '2026-03-08T22:00:00Z'],
+    ['2026-10-31', '2026-10-31T22:00:00Z'], // before fall DST
+    ['2026-11-01', '2026-11-01T23:00:00Z'],
+  ])('applies the date-specific daylight-saving offset on %s', (date, opensAt) => {
+    expect(mealAvailableAt(date, '07:00 PM', 'America/New_York')).toBe(Date.parse(opensAt));
+    expect(mealScheduleError(date, '07:00 PM', Date.parse(opensAt) - 1, 'America/New_York')).not.toBeNull();
+    expect(mealScheduleError(date, '07:00 PM', Date.parse(opensAt), 'America/New_York')).toBeNull();
   });
 
   it.each([-60, 60, 120])('allows meal completion %i minutes relative to its scheduled time', async (minutes) => {

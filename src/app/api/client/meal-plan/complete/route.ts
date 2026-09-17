@@ -1,4 +1,4 @@
-import { mealScheduleError, mealIdentity, completionMatchesMeal } from '@/lib/task-schedule';
+import { mealScheduleError, mealIdentity, completionMatchesMeal, isValidMealTimeZone } from '@/lib/task-schedule';
 import DietTemplate from '@/lib/db/models/DietTemplate';
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
@@ -318,10 +318,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid date" }, { status: 400 });
     }
 
-    try {
-      new Intl.DateTimeFormat("en-US", { timeZone: clientTimeZone }).format();
-    } catch {
-      clientTimeZone = "Asia/Kolkata";
+    if (!isValidMealTimeZone(clientTimeZone)) {
+      return NextResponse.json({ error: 'Invalid timezone. Please refresh your plan and try again.' }, { status: 400 });
     }
 
     operationId = operationId.trim().slice(0, 120);
@@ -395,7 +393,7 @@ export async function POST(request: NextRequest) {
     const determinedMealType: MealTypeKey = builtInRequestedType || MEAL_TYPE_KEYS[mealIndex % MEAL_TYPE_KEYS.length];
     const isCustomMealType = !builtInRequestedType;
     const scheduledTime = scheduledMeal[1].time || (builtInRequestedType ? MEAL_TYPES[builtInRequestedType].time12h : '12:00 PM');
-    const scheduleError = mealScheduleError(requestedDateKey, scheduledTime);
+    const scheduleError = mealScheduleError(requestedDateKey, scheduledTime, Date.now(), clientTimeZone);
     if (scheduleError) {
       return NextResponse.json({ error: scheduleError, code: 'MEAL_NOT_AVAILABLE' }, { status: 400 });
     }

@@ -2,7 +2,8 @@
  * GLOBAL MEAL CONFIGURATION
  * 
  * Single source of truth for all meal types and times in the application.
- * All times are in IST (Asia/Kolkata timezone).
+ * Meal times are local wall-clock times for the client. Legacy clients without
+ * a device timezone use Asia/Kolkata; appointment times are handled separately.
  * 
  * IMPORTANT: This file is the ONLY place where meal types and times should be defined.
  * All other files must import from here.

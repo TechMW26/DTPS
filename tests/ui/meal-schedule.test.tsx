@@ -1,6 +1,13 @@
 import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import UserPlanPage from '@/app/user/plan/page';
+import * as taskSchedule from '@/lib/task-schedule';
+import { uploadFileReliably } from '@/lib/client-upload';
+import { compressImage, validateImageFile } from '@/lib/imageCompression';
+jest.mock('@/lib/task-schedule', () => {
+  const actual = jest.requireActual('@/lib/task-schedule');
+  return { ...actual, getDeviceMealTimeZone: jest.fn(actual.getDeviceMealTimeZone) };
+});
 
 let mockSessionStatus = 'authenticated';
 jest.mock('next-auth/react', () => ({ useSession: () => ({ data: mockSessionStatus === 'authenticated' ? { user: { id: 'test-client' } } : null, status: mockSessionStatus }) }));
@@ -17,6 +24,7 @@ let serverNow: string;
 let completed = false;
 
 beforeEach(() => {
+  jest.mocked(taskSchedule.getDeviceMealTimeZone).mockReturnValue('Asia/Kolkata');
   mockSessionStatus = 'authenticated';
   jest.useFakeTimers({ now: new Date(`${day}T12:29:59Z`) });
   serverNow = `${day}T12:29:59Z`;
@@ -30,7 +38,45 @@ beforeEach(() => {
     planDetails: { id: 'plan', name: 'My plan', startDate: day, endDate: day, status: 'active' },
   } : { hasActivePlan: true, activePurchases: [] } })) as jest.Mock;
 });
-afterEach(() => jest.useRealTimers());
+afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
+
+it('opens photo completion using the device timezone and its one-hour buffer', async () => {
+  jest.mocked(taskSchedule.getDeviceMealTimeZone).mockReturnValue('Australia/Sydney');
+  jest.setSystemTime(new Date(`${day}T07:59:59Z`));
+  serverNow = `${day}T07:59:59Z`;
+  await act(async () => { render(<UserPlanPage />); });
+  expect(screen.getByRole('button', { name: 'Available at 06:00 PM (Australia/Sydney)' })).toBeDisabled();
+  expect(screen.getByText('Meal times follow your timezone: Australia/Sydney')).toBeInTheDocument();
+  await act(async () => { jest.advanceTimersByTime(1000); });
+  fireEvent.click(screen.getByRole('button', { name: /^Complete$/ }));
+  expect(screen.getByRole('heading', { name: 'Complete Meal' })).toBeInTheDocument();
+  const photo = new File(['meal'], 'meal.jpg', { type: 'image/jpeg' });
+  jest.mocked(validateImageFile).mockReturnValue({ valid: true });
+  jest.mocked(compressImage).mockResolvedValue({ blob: photo } as any);
+  jest.mocked(uploadFileReliably).mockResolvedValue({ url: 'https://ik.imagekit.io/dtps/meal.jpg', pathname: 'meal.jpg' } as any);
+  URL.createObjectURL = jest.fn(() => 'blob:meal');
+  URL.revokeObjectURL = jest.fn();
+  await act(async () => {
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [photo] } });
+  });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Submit Completion' })); });
+  expect(uploadFileReliably).toHaveBeenCalled();
+  const submission = (global.fetch as jest.Mock).mock.calls.find(([url]) => url === '/api/client/meal-plan/complete');
+  expect(JSON.parse(submission![1].body)).toMatchObject({
+    date: day, timeZone: 'Australia/Sydney', imageUrl: 'https://ik.imagekit.io/dtps/meal.jpg',
+  });
+  expect(screen.getByRole('button', { name: 'Completed' })).toBeInTheDocument();
+});
+
+it('allows the local evening date even when India is already on the following day', async () => {
+  jest.mocked(taskSchedule.getDeviceMealTimeZone).mockReturnValue('America/New_York');
+  jest.setSystemTime(new Date('2026-09-17T00:30:00Z'));
+  serverNow = '2026-09-17T00:30:00Z';
+  await act(async () => { render(<UserPlanPage />); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Wed 16' })); });
+  expect(screen.getByRole('button', { name: /^Complete$/ })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'Past Date' })).not.toBeInTheDocument();
+});
 
 it('disables an upcoming meal and unlocks it one hour early without reloading', async () => {
   await act(async () => { render(<UserPlanPage />); });
