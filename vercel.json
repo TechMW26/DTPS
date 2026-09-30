@@ -5,6 +5,7 @@
   "installCommand": "npm ci --legacy-peer-deps",
   "framework": "nextjs",
   "regions": ["bom1"],
+  "crons": [{ "path": "/api/internal/meal-engagement", "schedule": "* * * * *" }],
   "functions": {
     "src/app/api/**/*.ts": {
       "maxDuration": 30
@@ -14,6 +15,9 @@
     },
     "src/app/api/upload/**/*.ts": {
       "maxDuration": 30
+    },
+    "src/app/api/internal/meal-engagement/route.ts": {
+      "maxDuration": 300
     }
   },
   "env": {

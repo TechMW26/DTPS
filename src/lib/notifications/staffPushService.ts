@@ -282,7 +282,9 @@ async function sendStaffPushNotification({
             metadata: {
                 successCount,
                 failureCount,
-                invalidTokens: sendResult?.invalidTokens || [],
+                invalidTokenCount: sendResult?.invalidTokens?.length || 0,
+                errorCode: sendResult?.errorCode,
+                providerErrors: [...new Set((sendResult?.responses || []).map(response => response.error).filter(Boolean))],
             },
         });
     } catch (sendError) {

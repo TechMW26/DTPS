@@ -1,4 +1,4 @@
-import { getMessaging } from './firebaseAdmin';
+import { getMessaging, getNativeMessaging } from './firebaseAdmin';
 import User from '@/lib/db/models/User';
 import Notification from '@/lib/db/models/Notification';
 import connectDB from '@/lib/db/connection';
@@ -333,7 +333,7 @@ async function sendNotificationToTokens(
                 priority: 'high' as const,
                 defaultSound: true,
                 defaultVibrateTimings: true,
-                ...(notification.icon && { icon: notification.icon }),
+                icon: 'ic_notification',
             },
         },
         webpush: {
@@ -345,7 +345,7 @@ async function sendNotificationToTokens(
                 ...(notification.image && { image: notification.image }),
             },
             fcmOptions: {
-                ...(notification.clickAction && { link: notification.clickAction }),
+                ...(notification.clickAction && { link: new URL(notification.clickAction, process.env.NEXT_PUBLIC_APP_URL || 'https://www.dtps.tech').href }),
             },
         },
         apns: {
@@ -366,10 +366,15 @@ async function sendNotificationToTokens(
     await Promise.all(
         normalizedTokens.map(async (token) => {
             try {
-                await messaging!.send({
-                    ...baseMessage,
-                    token,
-                });
+                const message = { ...baseMessage, token };
+                try {
+                    await messaging.send(message);
+                } catch (error: any) {
+                    if (error?.code !== 'messaging/mismatched-credential') throw error;
+                    const nativeMessaging = await getNativeMessaging();
+                    if (!nativeMessaging) throw error;
+                    await nativeMessaging.send(message);
+                }
                 successCount++;
                 responses.push({ token, success: true });
             } catch (error: any) {
@@ -380,14 +385,12 @@ async function sendNotificationToTokens(
                 // Check if token is invalid and should be removed
                 if (
                     errorCode === 'messaging/invalid-registration-token' ||
-                    errorCode === 'messaging/registration-token-not-registered' ||
-                    errorCode.includes('not-registered') ||
-                    errorCode.includes('invalid')
+                    errorCode === 'messaging/registration-token-not-registered'
                 ) {
                     invalidTokens.push(token);
                 }
 
-                console.error(`Failed to send to token ${token.substring(0, 20)}...:`, errorCode);
+                console.error('Push delivery failed:', errorCode);
             }
         })
     );

@@ -55,6 +55,7 @@ async function registerTokenWithBackend(token: string, deviceType: 'android' | '
         token,
         deviceType,
         deviceInfo: `${deviceType} WebView App`,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }),
       signal: controller.signal,
     });

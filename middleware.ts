@@ -20,6 +20,7 @@ const onboardingExemptRoutes = [
   '/api/client/onboarding',
   '/api/auth', // Auth routes must be exempt
   '/api/internal/runtime-alert',
+  '/api/internal/meal-engagement',
 ];
 
 // Routes exempt from maintenance mode (always accessible)
@@ -30,6 +31,7 @@ const maintenanceExemptRoutes = [
   '/api/auth',
   '/api/internal/runtime-alert',
   '/api/media/resolve',
+  '/api/internal/meal-engagement',
   '/api/audio-proxy',
   '/auth',
   '/_next',
@@ -260,6 +262,7 @@ export default withAuth(
           '/api/firebase-config',
           '/api/auth',
           '/api/internal/runtime-alert',
+          '/api/internal/meal-engagement', // Authenticated by CRON_SECRET in the route
           '/api/user/forget-password',
           '/api/user/reset-password',
           '/client-login',

@@ -23,6 +23,7 @@ export enum ClientStatus {
 }
 
 export interface IUser extends Document {
+  notificationTimeZone?: string;
   _id: Types.ObjectId;
   email: string;
   password: string;

@@ -3,14 +3,14 @@ import { runMealEngagementNotifications } from "@/lib/notifications/mealEngageme
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 declare global {
   var __mealEngagementRun: Promise<unknown> | undefined;
 }
 
-export async function POST(request: NextRequest) {
-  const secret = process.env.RUNTIME_MONITOR_SECRET;
-  if (!secret || request.headers.get("x-runtime-monitor-secret") !== secret) {
+async function run(authorized: boolean) {
+  if (!authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -28,4 +28,14 @@ export async function POST(request: NextRequest) {
   } finally {
     globalThis.__mealEngagementRun = undefined;
   }
+}
+
+export async function POST(request: NextRequest) {
+  const secret = process.env.RUNTIME_MONITOR_SECRET;
+  return run(Boolean(secret && request.headers.get('x-runtime-monitor-secret') === secret));
+}
+
+export async function GET(request: NextRequest) {
+  const secret = process.env.CRON_SECRET;
+  return run(Boolean(secret && request.headers.get('authorization') === `Bearer ${secret}`));
 }

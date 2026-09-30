@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import { registerFCMToken, unregisterFCMToken } from '@/lib/firebase';
+import User from '@/lib/db/models/User';
+import { isValidMealTimeZone } from '@/lib/task-schedule';
 
 /**
  * POST /api/fcm/token - Register a new FCM token
@@ -19,6 +21,9 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json();
         const { token, deviceType = 'web', deviceInfo } = body;
+        if (body.timeZone !== undefined && !isValidMealTimeZone(body.timeZone)) {
+            return NextResponse.json({ success: false, error: 'Invalid timezone' }, { status: 400 });
+        }
         const normalizedToken = String(token || '').trim();
         const loweredToken = normalizedToken.toLowerCase();
 
@@ -36,6 +41,9 @@ export async function POST(request: NextRequest) {
             deviceInfo || request.headers.get('user-agent') || 'Unknown device'
         );
 
+        if (result.success && body.timeZone) {
+            await User.updateOne({ _id: session.user.id }, { $set: { notificationTimeZone: body.timeZone } });
+        }
         return NextResponse.json(result);
     } catch (error: any) {
         console.error('Error registering FCM token:', error);

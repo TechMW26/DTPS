@@ -4,6 +4,7 @@ import MealEngagementDispatch from "@/lib/db/models/MealEngagementDispatch";
 import User from "@/lib/db/models/User";
 import { sendNotificationToUser } from "@/lib/firebase/firebaseNotification";
 import { MEAL_TYPES, type MealTypeKey } from "@/lib/mealConfig";
+import { isValidMealTimeZone, completionMatchesMeal } from '@/lib/task-schedule';
 
 export const MEAL_NOTIFICATION_TIMEZONE =
   process.env.MEAL_NOTIFICATION_TIMEZONE || "Asia/Kolkata";
@@ -138,9 +139,7 @@ function completionMatches(
     if (!completion?.completed) return false;
     const completionDate = getZonedDateKey(new Date(completion.date));
     if (completionDate !== mealDate) return false;
-    return [completion.mealType, completion.mealTypeOriginal]
-      .map(normalized)
-      .includes(mealKey);
+    return completionMatchesMeal(completion, mealKey);
   });
 }
 
@@ -200,7 +199,8 @@ export function getPlanMealSchedules(
     : plan.templateId?.meals || [];
   if (!planDays.length) return [];
 
-  const dayData = planDays[dayIndex % planDays.length];
+  const dayData = planDays.find((day: LooseRecord) => day.date && getZonedDateKey(new Date(day.date)) === mealDate)
+    || (plan.meals?.length ? planDays[dayIndex] : planDays[dayIndex % planDays.length]);
   const mealsData = dayData?.meals || dayData;
   const completions = Array.isArray(plan.mealCompletions) ? plan.mealCompletions : [];
   const schedules: ScheduledMealEngagement[] = [];
@@ -268,9 +268,6 @@ function scheduledDateForEvent(now: Date, currentMinute: number, targetMinute: n
 
 export async function runMealEngagementNotifications(now = new Date()) {
   await connectDB();
-  const parts = zonedParts(now);
-  const mealDate = getZonedDateKey(now);
-  const currentMinute = parts.hour * 60 + parts.minute;
   const lookbackMinutes = Math.max(
     1,
     Math.min(Number(process.env.MEAL_REMINDER_LOOKBACK_MINUTES || 4), 15),
@@ -291,15 +288,20 @@ export async function runMealEngagementNotifications(now = new Date()) {
 
   const clientIds = [...new Set(plans.map((plan) => String(plan.clientId)).filter(Boolean))];
   const users = (await User.find({ _id: { $in: clientIds } })
-    .select("settings.mealReminders settings.pushNotifications reminderPreferences.mealReminders")
+    .select("settings.mealReminders settings.pushNotifications reminderPreferences.mealReminders notificationTimeZone holdStatus")
     .lean()) as LooseRecord[];
   const preferencesByClient = new Map(
     users.map((user) => [String(user._id), user]),
   );
 
   const summary = { plans: plans.length, due: 0, sent: 0, duplicates: 0, failed: 0 };
-  for (const plan of plans) {
-    if (!allowsMealEngagement(preferencesByClient.get(String(plan.clientId)))) continue;
+  async function processPlan(plan: LooseRecord) {
+    const user = preferencesByClient.get(String(plan.clientId));
+    if (!allowsMealEngagement(user) || user?.holdStatus?.isOnHold) return;
+    const timeZone = isValidMealTimeZone(user?.notificationTimeZone) ? user.notificationTimeZone : MEAL_NOTIFICATION_TIMEZONE;
+    const parts = zonedParts(now, timeZone);
+    const mealDate = getZonedDateKey(now, timeZone);
+    const currentMinute = parts.hour * 60 + parts.minute;
     const events = getDueMealEvents(
       getPlanMealSchedules(plan, mealDate),
       currentMinute,
@@ -378,17 +380,19 @@ export async function runMealEngagementNotifications(now = new Date()) {
           { _id: dispatchId },
           {
             $set: {
-              status: "sent",
+              status: result.successCount > 0 ? "sent" : "failed",
               result: {
                 successCount: result.successCount,
                 failureCount: result.failureCount,
                 errorCode: result.errorCode,
+                providerErrors: [...new Set(result.responses?.map(response => response.error).filter(Boolean))],
                 storedInApp: true,
               },
             },
           },
         );
-        summary.sent++;
+        if (result.successCount > 0) summary.sent++;
+        else summary.failed++;
       } catch (error) {
         summary.failed++;
         await MealEngagementDispatch.updateOne(
@@ -398,6 +402,12 @@ export async function runMealEngagementNotifications(now = new Date()) {
         console.error("[MealEngagement] Failed to send notification", error);
       }
     }
+  }
+
+  // Bound concurrent sends so one busy meal slot does not run serially for
+  // thousands of clients or open unbounded Firebase/DB requests.
+  for (let index = 0; index < plans.length; index += 10) {
+    await Promise.all(plans.slice(index, index + 10).map(processPlan));
   }
 
   return summary;

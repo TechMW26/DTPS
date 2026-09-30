@@ -266,6 +266,8 @@ const userSchema = new Schema({
     type: String,
     default: 'UTC'
   },
+  // Explicit device timezone, distinct from the legacy profile's UTC default.
+  notificationTimeZone: { type: String },
 
   // Client specific fields
   dateOfBirth: {

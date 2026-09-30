@@ -235,6 +235,7 @@ export async function registerFCMTokenWithBackend(): Promise<boolean> {
                 token,
                 deviceType,
                 deviceInfo,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             }),
         });
 
