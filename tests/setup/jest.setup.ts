@@ -1,6 +1,6 @@
 import { createServer, type Server as HttpServer } from 'http';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryServer, MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Server as SocketIOServer } from 'socket.io';
 import type { Socket } from 'socket.io-client';
 import { getServerSession } from 'next-auth';
@@ -99,7 +99,7 @@ process.emitWarning = ((warning: string | Error, ...args: unknown[]) => {
 }) as typeof process.emitWarning;
 
 declare global {
-    var __DTPS_TEST_MONGO__: MongoMemoryServer | undefined;
+    var __DTPS_TEST_MONGO__: MongoMemoryServer | MongoMemoryReplSet | undefined;
     var __DTPS_TEST_HTTP_SERVER__: HttpServer | undefined;
     var __DTPS_TEST_IO__: SocketIOServer | undefined;
     var __DTPS_TEST_BASE_URL__: string | undefined;
@@ -116,7 +116,9 @@ async function startMongoMemoryServer(): Promise<void> {
         return;
     }
 
-    const mongoServer = await MongoMemoryServer.create({
+    const mongoServer = process.env.DTPS_TEST_REPLICA_SET === '1'
+        ? await MongoMemoryReplSet.create({ replSet: { count: 1 } })
+        : await MongoMemoryServer.create({
         instance: {
             dbName: 'dtps-socket-tests',
         },

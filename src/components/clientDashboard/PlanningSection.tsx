@@ -2128,7 +2128,10 @@ export default function PlanningSection({
         toast.error(data?.message || data?.error || "Failed to delete plan");
         return false;
       }
-      toast.success("Plan deleted successfully");
+      const result = await res.json();
+      toast.success(result.restoredDays > 0
+        ? `Plan deleted. ${result.restoredDays} day(s) returned to the program.`
+        : "Plan deleted successfully");
       emitDataChange(DataEventTypes.MEAL_PLAN_DELETED, { planId });
       if (editingPlan?._id === planId || viewingPlan?._id === planId) {
         resetForm();

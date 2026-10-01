@@ -45,7 +45,8 @@ export function PlanDeleteAction({ role, planName, compact = false, onDelete }: 
             <AlertDialogTitle>Delete plan?</AlertDialogTitle>
             <AlertDialogDescription>
               Remove &quot;{planName}&quot; from this client’s plans? The client will
-              no longer see this plan. A record will be kept for audit purposes.
+              no longer see this plan. Its allocated days will be returned to the
+              linked program. A record will be kept for audit purposes.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

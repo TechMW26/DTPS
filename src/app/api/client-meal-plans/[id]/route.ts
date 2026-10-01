@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { deleteMealPlanWithAllocation, PlanDeletionConflict } from "@/lib/meal-plan-deletion";
 import connectDB from "@/lib/db/connection";
 import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
 import UnifiedPayment from "@/lib/db/models/UnifiedPayment";
@@ -1336,19 +1337,8 @@ export async function DELETE(
     const clientId = mealPlan.clientId?.toString();
     const deletionReason = "admin-requested-plan-delete";
 
-    // Soft delete only (preserve forensic/audit trail)
-    const deletedPlan = await ClientMealPlan.findOneAndUpdate(
-      { _id: id, isDeleted: { $ne: true } },
-      {
-        $set: {
-          isDeleted: true,
-          deletedAt: new Date(),
-          deletedBy: session.user.id,
-          deletionReason,
-          status: "cancelled",
-        },
-      },
-      { new: false },
+    const { deletedPlan, restoredDays } = await deleteMealPlanWithAllocation(
+      id, session.user.id, Boolean(mealPlan.purchaseId),
     );
 
     if (!deletedPlan) {
@@ -1358,7 +1348,13 @@ export async function DELETE(
       );
     }
 
-    await clearCacheByTag("client_meal_plans");
+    await Promise.all([
+      clearCacheByTag("client_meal_plans"),
+      clearCacheByTag("client_purchases"),
+      ...(deletedPlan.purchaseId
+        ? [clearCacheByTag(`client-purchases:${JSON.stringify(String(deletedPlan.purchaseId))}`)]
+        : []),
+    ]);
 
     await logActivity({
       userId: session.user.id,
@@ -1375,6 +1371,8 @@ export async function DELETE(
       resourceName: mealPlan.name,
       details: {
         previousStatus: deletedPlan.status,
+        restoredDays,
+        purchaseId: deletedPlan.purchaseId?.toString(),
         deletionReason,
         deletedAt: new Date().toISOString(),
       },
@@ -1420,8 +1418,12 @@ export async function DELETE(
     return NextResponse.json({
       success: true,
       message: "Meal plan deleted successfully",
+      restoredDays,
     });
   } catch (error) {
+    if (error instanceof PlanDeletionConflict) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 409 });
+    }
     console.error("Error deleting meal plan:", error);
     return NextResponse.json(
       { success: false, error: "Failed to delete meal plan" },
