@@ -445,70 +445,56 @@ describe("client meal plan lifecycle & immutability (supertest + jest)", () => {
     }
   });
 
-  it("soft-deletes a draft with metadata", async () => {
-    const { client, dietitian } = await createAssignedDietitianClientPair();
-    const plan = await createDraftPlan({
-      clientId: client._id,
-      dietitianId: dietitian._id,
-    });
+  it.each(["draft", "active", "paused", "completed", "cancelled"])(
+    "allows an admin to soft-delete a %s plan while retaining its meals and audit metadata",
+    async (status) => {
+      const { client, dietitian } = await createAssignedDietitianClientPair();
+      const admin = await createUser({ role: UserRole.ADMIN });
+      const plan = await createDraftPlan({ clientId: client._id, dietitianId: dietitian._id });
+      await ClientMealPlan.updateOne({ _id: plan._id }, { $set: { status } });
+      (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
+      const route = await import("@/app/api/client-meal-plans/[id]/route");
+      const planId = entityId(plan);
+      const server = buildDeleteServer(planId, route);
+      try {
+        expect((await request(server).delete(`/api/client-meal-plans/${planId}`)).status).toBe(200);
+        const fresh: any = await ClientMealPlan.collection.findOne({ _id: plan._id });
+        expect(fresh.isDeleted).toBe(true);
+        expect(fresh.status).toBe("cancelled");
+        expect(fresh.deletedAt).toBeTruthy();
+        expect(String(fresh.deletedBy)).toBe(entityId(admin));
+        expect(fresh.deletionReason).toBe("admin-requested-plan-delete");
+        expect(fresh.meals).toHaveLength(plan.meals.length);
+        expect(await ClientMealPlan.findById(plan._id)).toBeNull();
+        expect((await request(server).delete(`/api/client-meal-plans/${planId}`)).status).toBe(404);
+      } finally {
+        server.close();
+      }
+    },
+  );
 
-    (getServerSession as jest.Mock).mockResolvedValue({
-      user: toSessionUser(dietitian),
-    });
-    const route = await import("@/app/api/client-meal-plans/[id]/route");
-    const planId = entityId(plan);
-    const server = buildDeleteServer(planId, route);
-
-    try {
-      const res = await request(server).delete(
-        `/api/client-meal-plans/${planId}`,
-      );
-      expect(res.status).toBe(200);
-
-      // Soft-deleted plans are excluded by the global findOne middleware; query directly.
-      const fresh: any = await ClientMealPlan.collection.findOne({
-        _id: plan._id,
-      });
-      expect(fresh.isDeleted).toBe(true);
-      expect(fresh.deletedAt).toBeTruthy();
-      expect(fresh.deletedBy).toBeTruthy();
-      expect(fresh.deletionReason).toBe("user-requested-draft-delete");
-    } finally {
-      server.close();
-    }
-  });
-
-  it("blocks delete on a published plan with 409", async () => {
-    const { client, dietitian } = await createAssignedDietitianClientPair();
-    const plan = await createDraftPlan({
-      clientId: client._id,
-      dietitianId: dietitian._id,
-    });
-    await ClientMealPlan.updateOne(
-      { _id: plan._id },
-      { $set: { status: "active" } },
-    );
-
-    (getServerSession as jest.Mock).mockResolvedValue({
-      user: toSessionUser(dietitian),
-    });
-    const route = await import("@/app/api/client-meal-plans/[id]/route");
-    const planId = entityId(plan);
-    const server = buildDeleteServer(planId, route);
-
-    try {
-      const res = await request(server).delete(
-        `/api/client-meal-plans/${planId}`,
-      );
-      expect(res.status).toBe(409);
-
-      const fresh: any = await ClientMealPlan.findById(plan._id).lean();
-      expect(fresh).toBeTruthy();
-      expect(fresh.isDeleted).not.toBe(true);
-    } finally {
-      server.close();
-    }
-  });
+  it.each([UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR, UserRole.CLIENT])(
+    "rejects %s deletion even when the caller owns a draft or published plan",
+    async (role) => {
+      const { client, dietitian } = await createAssignedDietitianClientPair();
+      const plan = await createDraftPlan({ clientId: client._id, dietitianId: dietitian._id });
+      (getServerSession as jest.Mock).mockResolvedValue({ user: { ...toSessionUser(dietitian), role } });
+      const route = await import("@/app/api/client-meal-plans/[id]/route");
+      const planId = entityId(plan);
+      const server = buildDeleteServer(planId, route);
+      try {
+        for (const status of ["draft", "active"]) {
+          await ClientMealPlan.updateOne({ _id: plan._id }, { $set: { status } });
+          expect((await request(server).delete(`/api/client-meal-plans/${planId}`)).status).toBe(403);
+          const fresh: any = await ClientMealPlan.findById(plan._id).lean();
+          expect(fresh.isDeleted).not.toBe(true);
+          expect(fresh.status).toBe(status);
+        }
+      } finally {
+        server.close();
+      }
+    },
+  );
 
   it("republishing same plan id increments republishCount and preserves firstPublishedAt", async () => {
     const { client, dietitian } = await createAssignedDietitianClientPair();

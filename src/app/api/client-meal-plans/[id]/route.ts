@@ -397,21 +397,6 @@ const canAccessMealPlan = async (
   return false;
 };
 
-const canDeleteMealPlan = async (
-  session: any,
-  mealPlan: any,
-): Promise<boolean> => {
-  const role = getNormalizedRole(session?.user?.role);
-  const sessionUserId = String(session?.user?.id || "");
-  if (!sessionUserId) return false;
-
-  // Hard safety: only admins or plan owners can perform delete action.
-  if (role === UserRole.ADMIN) return true;
-
-  const isOwner = mealPlan.dietitianId?.toString() === sessionUserId;
-  return isOwner;
-};
-
 const getRequestMeta = (request: NextRequest) => ({
   ipAddress:
     request.headers.get("x-forwarded-for") ||
@@ -1315,7 +1300,7 @@ export async function DELETE(
     }
 
     const role = getNormalizedRole(session.user.role);
-    const canDelete = await canDeleteMealPlan(session, mealPlan);
+    const canDelete = role === UserRole.ADMIN && Boolean(session.user.id);
     if (!canDelete) {
       await logActivity({
         userId: session.user.id,
@@ -1348,48 +1333,11 @@ export async function DELETE(
       );
     }
 
-    // Protect published plans from deletion to prevent data loss.
-    if (mealPlan.status !== "draft") {
-      await logActivity({
-        userId: session.user.id,
-        userRole: toActivityRole(role),
-        userName: session.user.name || session.user.email || "Unknown",
-        userEmail: session.user.email || undefined,
-        action: "Blocked Published Meal Plan Deletion",
-        actionType: "delete",
-        category: "meal_plan",
-        description: `Blocked deletion for non-draft meal plan "${mealPlan.name}"`,
-        targetUserId: mealPlan.clientId?.toString(),
-        resourceId: mealPlan._id?.toString(),
-        resourceType: "ClientMealPlan",
-        resourceName: mealPlan.name,
-        details: {
-          reason: "published-plan-deletion-disabled",
-          mealPlanStatus: mealPlan.status,
-        },
-        ipAddress:
-          request.headers.get("x-forwarded-for") ||
-          request.headers.get("x-real-ip") ||
-          undefined,
-        userAgent: request.headers.get("user-agent") || undefined,
-      }).catch(() => null);
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Deletion blocked",
-          message:
-            "Only draft meal plans can be deleted. For published plans, use status updates (pause/cancel) instead.",
-        },
-        { status: 409 },
-      );
-    }
-
     const clientId = mealPlan.clientId?.toString();
-    const deletionReason = "user-requested-draft-delete";
+    const deletionReason = "admin-requested-plan-delete";
 
     // Soft delete only (preserve forensic/audit trail)
-    await ClientMealPlan.findOneAndUpdate(
+    const deletedPlan = await ClientMealPlan.findOneAndUpdate(
       { _id: id, isDeleted: { $ne: true } },
       {
         $set: {
@@ -1403,6 +1351,13 @@ export async function DELETE(
       { new: false },
     );
 
+    if (!deletedPlan) {
+      return NextResponse.json(
+        { success: false, error: "Meal plan not found" },
+        { status: 404 },
+      );
+    }
+
     await clearCacheByTag("client_meal_plans");
 
     await logActivity({
@@ -1410,16 +1365,16 @@ export async function DELETE(
       userRole: toActivityRole(role),
       userName: session.user.name || session.user.email || "Unknown",
       userEmail: session.user.email || undefined,
-      action: "Soft Deleted Meal Plan Draft",
+      action: "Soft Deleted Meal Plan",
       actionType: "delete",
       category: "meal_plan",
-      description: `Soft deleted draft meal plan "${mealPlan.name}"`,
+      description: `Soft deleted meal plan "${mealPlan.name}"`,
       targetUserId: mealPlan.clientId?.toString(),
       resourceId: mealPlan._id?.toString(),
       resourceType: "ClientMealPlan",
       resourceName: mealPlan.name,
       details: {
-        previousStatus: mealPlan.status,
+        previousStatus: deletedPlan.status,
         deletionReason,
         deletedAt: new Date().toISOString(),
       },
@@ -1435,12 +1390,12 @@ export async function DELETE(
         userId: clientId,
         action: "delete",
         category: "diet",
-        description: `Draft meal plan removed: ${mealPlan.name}`,
+        description: `Meal plan removed: ${mealPlan.name}`,
         performedById: session.user.id,
         metadata: {
           mealPlanId: mealPlan._id,
           name: mealPlan.name,
-          status: "draft",
+          status: deletedPlan.status,
           softDeleted: true,
         },
       }).catch(() => null);
@@ -1451,7 +1406,7 @@ export async function DELETE(
       try {
         const newStatus = await updateClientStatusFromMealPlan(clientId);
         console.log(
-          `[ClientMealPlan] Client ${clientId} status updated to: ${newStatus} after draft meal plan soft-delete`,
+          `[ClientMealPlan] Client ${clientId} status updated to: ${newStatus} after meal plan soft-delete`,
         );
       } catch (statusError) {
         console.error(
@@ -1464,7 +1419,7 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: "Draft meal plan deleted successfully",
+      message: "Meal plan deleted successfully",
     });
   } catch (error) {
     console.error("Error deleting meal plan:", error);

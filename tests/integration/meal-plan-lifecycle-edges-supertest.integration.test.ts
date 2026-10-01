@@ -197,7 +197,7 @@ describe('client meal plan — exhaustive edge cases', () => {
             }
         });
 
-        it('Admin is still blocked from hard-deleting a published plan', async () => {
+        it('Admin removes a published plan using soft deletion', async () => {
             const { client, dietitian } = await createAssignedDietitianClientPair();
             const admin = await createUser({ role: UserRole.ADMIN, email: 'admin-edge3@example.com' });
             const plan = await createDraftPlan({ clientId: client._id, dietitianId: dietitian._id });
@@ -208,9 +208,10 @@ describe('client meal plan — exhaustive edge cases', () => {
             const server = deleteServer(entityId(plan), route);
             try {
                 const res = await request(server).delete(`/api/client-meal-plans/${entityId(plan)}`);
-                expect(res.status).toBe(409);
-                const fresh: any = await ClientMealPlan.findById(plan._id).lean();
-                expect(fresh.isDeleted).not.toBe(true);
+                expect(res.status).toBe(200);
+                const fresh: any = await ClientMealPlan.collection.findOne({ _id: plan._id });
+                expect(fresh.isDeleted).toBe(true);
+                expect(fresh.meals).toHaveLength(plan.meals.length);
             } finally {
                 server.close();
             }
@@ -749,6 +750,8 @@ describe('client meal plan — exhaustive edge cases', () => {
                 editServer.close();
             }
 
+            const admin = await createUser({ role: UserRole.ADMIN });
+            (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(admin) });
             const removeServer = deleteServer(entityId(plan), route);
             try {
                 const deleteRes = await request(removeServer)

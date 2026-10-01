@@ -11,7 +11,6 @@ import {
   Calendar,
   Plus,
   Edit,
-  Trash2,
   ArrowLeft,
   ArrowRight,
   Utensils,
@@ -60,17 +59,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { PlanDeleteAction } from "./PlanDeleteAction";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -2129,34 +2118,27 @@ export default function PlanningSection({
     latestMealDataRef.current = null;
   };
 
-  // Delete draft plan state
-  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  // Delete a draft plan
-  const handleDeleteDraft = async (planId: string) => {
+  const handleDeletePlan = async (planId: string): Promise<boolean> => {
     try {
-      setIsDeleting(true);
       const res = await fetch(`/api/client-meal-plans/${planId}`, {
         method: "DELETE",
       });
-      if (res.ok) {
-        toast.success("Draft deleted successfully");
-        emitDataChange(DataEventTypes.MEAL_PLAN_DELETED, { planId });
-        fetchClientPlans();
-        // If we're viewing/editing this plan, go back to list
-        if (editingPlan?._id === planId || viewingPlan?._id === planId) {
-          resetForm();
-        }
-      } else {
-        toast.error("Failed to delete draft");
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.message || data?.error || "Failed to delete plan");
+        return false;
       }
+      toast.success("Plan deleted successfully");
+      emitDataChange(DataEventTypes.MEAL_PLAN_DELETED, { planId });
+      if (editingPlan?._id === planId || viewingPlan?._id === planId) {
+        resetForm();
+      }
+      await Promise.all([fetchClientPlans(), checkPaymentStatus()]);
+      return true;
     } catch (error) {
-      console.error("Error deleting draft:", error);
-      toast.error("Failed to delete draft");
-    } finally {
-      setIsDeleting(false);
-      setDeletingPlanId(null);
+      console.error("Error deleting plan:", error);
+      toast.error("Failed to delete plan. Please try again.");
+      return false;
     }
   };
 
@@ -3961,55 +3943,12 @@ export default function PlanningSection({
                     Edit Plan
                   </Button>
                 )}
-                {/* Delete button — only for draft plans */}
-                {viewingPlan.status === "draft" && (
-                  <AlertDialog
-                    open={deletingPlanId === viewingPlan._id}
-                    onOpenChange={(open) => {
-                      if (!open) setDeletingPlanId(null);
-                    }}
-                  >
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => setDeletingPlanId(viewingPlan._id)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Draft?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will permanently delete the draft &quot;
-                          {viewingPlan.name}&quot;. This action cannot be
-                          undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isDeleting}>
-                          Cancel
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-red-600 hover:bg-red-700"
-                          onClick={() => handleDeleteDraft(viewingPlan._id)}
-                          disabled={isDeleting}
-                        >
-                          {isDeleting ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
-                              Deleting...
-                            </>
-                          ) : (
-                            "Delete"
-                          )}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
+                <PlanDeleteAction
+                  role={session?.user?.role}
+                  planName={viewingPlan.name}
+                  compact={false}
+                  onDelete={() => handleDeletePlan(viewingPlan._id)}
+                />
               </div>
             </div>
           </CardHeader>
@@ -6349,64 +6288,12 @@ export default function PlanningSection({
                                   </>
                                 )}
 
-                                {/* Delete button — only for draft plans */}
-                                {plan.status === "draft" && (
-                                  <AlertDialog
-                                    open={deletingPlanId === plan._id}
-                                    onOpenChange={(open) => {
-                                      if (!open) setDeletingPlanId(null);
-                                    }}
-                                  >
-                                    <AlertDialogTrigger asChild>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        title="Delete draft"
-                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                        onClick={() =>
-                                          setDeletingPlanId(plan._id)
-                                        }
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>
-                                          Delete Draft?
-                                        </AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                          This will permanently delete the draft
-                                          &quot;{plan.name}&quot;. This action
-                                          cannot be undone.
-                                        </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel
-                                          disabled={isDeleting}
-                                        >
-                                          Cancel
-                                        </AlertDialogCancel>
-                                        <AlertDialogAction
-                                          className="bg-red-600 hover:bg-red-700"
-                                          onClick={() =>
-                                            handleDeleteDraft(plan._id)
-                                          }
-                                          disabled={isDeleting}
-                                        >
-                                          {isDeleting ? (
-                                            <>
-                                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
-                                              Deleting...
-                                            </>
-                                          ) : (
-                                            "Delete"
-                                          )}
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
-                                )}
+                                <PlanDeleteAction
+                                  role={session?.user?.role}
+                                  planName={plan.name}
+                                  compact
+                                  onDelete={() => handleDeletePlan(plan._id)}
+                                />
                               </>
                             );
                           })()}
@@ -6545,9 +6432,6 @@ export default function PlanningSection({
                       <div className="flex gap-2 ml-4">
                         <Button size="sm" variant="outline">
                           <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     )}
