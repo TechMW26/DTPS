@@ -435,7 +435,7 @@ export async function registerFCMToken(
 
         // Keep one token mapped to one user to avoid stale cross-account sends.
         await User.updateMany(
-            { _id: { $ne: userId } },
+            { _id: { $ne: userId }, 'fcmTokens.token': normalizedToken },
             { $pull: { fcmTokens: { token: normalizedToken } } }
         );
 

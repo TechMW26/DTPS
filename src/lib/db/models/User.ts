@@ -577,6 +577,7 @@ const userSchema = new Schema({
 
 userSchema.index({ role: 1 });
 userSchema.index({ role: 1, clientId: 1 });
+userSchema.index({ 'fcmTokens.token': 1 });
 userSchema.index({ assignedDietitian: 1 });
 userSchema.index({ assignedDietitians: 1 });
 userSchema.index({ clientStatus: 1 }); // For filtering by status
