@@ -3949,6 +3949,7 @@ export default function PlanningSection({
                 <PlanDeleteAction
                   role={session?.user?.role}
                   planName={viewingPlan.name}
+                  isDraft={viewingPlan.status === "draft" && !viewingPlan.firstPublishedAt}
                   compact={false}
                   onDelete={() => handleDeletePlan(viewingPlan._id)}
                 />
@@ -6294,6 +6295,7 @@ export default function PlanningSection({
                                 <PlanDeleteAction
                                   role={session?.user?.role}
                                   planName={plan.name}
+                                  isDraft={plan.status === "draft" && !plan.firstPublishedAt}
                                   compact
                                   onDelete={() => handleDeletePlan(plan._id)}
                                 />

@@ -9,16 +9,19 @@ import {
 } from "@/components/ui/alert-dialog";
 import { UserRole } from "@/types";
 
-export function PlanDeleteAction({ role, planName, compact = false, onDelete }: {
+export function PlanDeleteAction({ role, planName, isDraft = false, compact = false, onDelete }: {
   role?: string;
   planName: string;
+  isDraft?: boolean;
   compact?: boolean;
   onDelete: () => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
-  if (role?.trim().toLowerCase() !== UserRole.ADMIN) return null;
+  const normalizedRole = role?.trim().toLowerCase();
+  const isStaff = [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR, "dietician"].includes(normalizedRole || "");
+  if (normalizedRole !== UserRole.ADMIN && !(isDraft && isStaff)) return null;
 
   const confirm = async () => {
     if (pending) return;

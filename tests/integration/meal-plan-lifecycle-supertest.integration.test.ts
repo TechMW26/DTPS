@@ -474,7 +474,7 @@ describe("client meal plan lifecycle & immutability (supertest + jest)", () => {
   );
 
   it.each([UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR, UserRole.CLIENT])(
-    "rejects %s deletion even when the caller owns a draft or published plan",
+    "allows staff to delete owned drafts but protects published plans from %s",
     async (role) => {
       const { client, dietitian } = await createAssignedDietitianClientPair();
       const plan = await createDraftPlan({ clientId: client._id, dietitianId: dietitian._id });
@@ -485,7 +485,13 @@ describe("client meal plan lifecycle & immutability (supertest + jest)", () => {
       try {
         for (const status of ["draft", "active"]) {
           await ClientMealPlan.updateOne({ _id: plan._id }, { $set: { status } });
-          expect((await request(server).delete(`/api/client-meal-plans/${planId}`)).status).toBe(403);
+          const allowed = status === "draft" && role !== UserRole.CLIENT;
+          const response = await request(server).delete(`/api/client-meal-plans/${planId}`);
+          expect(response.status).toBe(allowed ? 200 : 403);
+          if (allowed) {
+            await ClientMealPlan.collection.updateOne({ _id: plan._id }, { $set: { isDeleted: false } });
+            continue;
+          }
           const fresh: any = await ClientMealPlan.findById(plan._id).lean();
           expect(fresh.isDeleted).not.toBe(true);
           expect(fresh.status).toBe(status);
@@ -495,6 +501,31 @@ describe("client meal plan lifecycle & immutability (supertest + jest)", () => {
       }
     },
   );
+
+  it("permits assigned staff to delete drafts but rejects unrelated staff", async () => {
+    const { client, dietitian } = await createAssignedDietitianClientPair();
+    const other = await createUser({ role: UserRole.DIETITIAN });
+    const plan = await createDraftPlan({ clientId: client._id, dietitianId: other._id });
+    const route = await import("@/app/api/client-meal-plans/[id]/route");
+    const server = buildDeleteServer(entityId(plan), route);
+    try {
+      const stranger = await createUser({ role: UserRole.DIETITIAN });
+      (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(stranger) });
+      expect((await request(server).delete(`/api/client-meal-plans/${entityId(plan)}`)).status).toBe(403);
+      (getServerSession as jest.Mock).mockResolvedValue({ user: toSessionUser(dietitian) });
+      expect((await request(server).delete(`/api/client-meal-plans/${entityId(plan)}`)).status).toBe(200);
+    } finally { server.close(); }
+  });
+
+  it("does not delete a plan published after the draft permission check", async () => {
+    const { client, dietitian } = await createAssignedDietitianClientPair();
+    const plan = await createDraftPlan({ clientId: client._id, dietitianId: dietitian._id });
+    await ClientMealPlan.updateOne({ _id: plan._id }, { $set: { status: "active" } });
+    const { deleteMealPlanWithAllocation } = await import("@/lib/meal-plan-deletion");
+    const result = await deleteMealPlanWithAllocation(entityId(plan), entityId(dietitian), false, true);
+    expect(result.deletedPlan).toBeNull();
+    expect(await ClientMealPlan.findById(plan._id)).toBeTruthy();
+  });
 
   it("republishing same plan id increments republishCount and preserves firstPublishedAt", async () => {
     const { client, dietitian } = await createAssignedDietitianClientPair();

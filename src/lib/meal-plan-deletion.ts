@@ -10,13 +10,16 @@ export async function deleteMealPlanWithAllocation(
   planId: string,
   actorId: string,
   hasPurchase: boolean,
+  draftOnly = false,
 ) {
   const remove = async (session?: mongoose.ClientSession) => {
     const deletedPlan = await ClientMealPlan.findOneAndUpdate(
-      { _id: planId, isDeleted: { $ne: true } },
+      { _id: planId, isDeleted: { $ne: true },
+        ...(draftOnly ? { status: "draft", firstPublishedAt: null } : {}),
+      },
       { $set: {
         isDeleted: true, deletedAt: new Date(), deletedBy: actorId,
-        deletionReason: "admin-requested-plan-delete", status: "cancelled",
+        deletionReason: draftOnly ? "staff-requested-draft-delete" : "admin-requested-plan-delete", status: "cancelled",
       } },
       { new: false, session },
     );

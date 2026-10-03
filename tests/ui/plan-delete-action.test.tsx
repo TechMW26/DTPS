@@ -34,3 +34,13 @@ it('keeps confirmation open for retry when deletion fails', async () => {
   await waitFor(() => expect(screen.getByRole('button', { name: 'Delete plan' })).toBeEnabled());
   expect(screen.getByRole('alertdialog')).toBeInTheDocument();
 });
+
+it.each(['admin', 'dietitian', 'health_counselor', 'dietician'])('shows draft deletion for %s', (role) => {
+  render(<PlanDeleteAction role={role} isDraft planName="Draft phase" onDelete={jest.fn()} />);
+  expect(screen.getByRole('button', { name: 'Delete plan Draft phase' })).toBeVisible();
+});
+
+it.each(['client', undefined])('does not expose staff draft actions to %s', (role) => {
+  render(<PlanDeleteAction role={role} isDraft planName="Draft phase" onDelete={jest.fn()} />);
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+});

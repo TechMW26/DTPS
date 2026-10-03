@@ -1301,7 +1301,12 @@ export async function DELETE(
     }
 
     const role = getNormalizedRole(session.user.role);
-    const canDelete = role === UserRole.ADMIN && Boolean(session.user.id);
+    const isAdmin = role === UserRole.ADMIN && Boolean(session.user.id);
+    const isStaff = [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR, "dietician"].includes(role);
+    const canDelete = isAdmin || (
+      isStaff && mealPlan.status === "draft" && !mealPlan.firstPublishedAt &&
+      await canAccessMealPlan(session, mealPlan)
+    );
     if (!canDelete) {
       await logActivity({
         userId: session.user.id,
@@ -1335,10 +1340,10 @@ export async function DELETE(
     }
 
     const clientId = mealPlan.clientId?.toString();
-    const deletionReason = "admin-requested-plan-delete";
+    const deletionReason = isAdmin ? "admin-requested-plan-delete" : "staff-requested-draft-delete";
 
     const { deletedPlan, restoredDays } = await deleteMealPlanWithAllocation(
-      id, session.user.id, Boolean(mealPlan.purchaseId),
+      id, session.user.id, Boolean(mealPlan.purchaseId), !isAdmin,
     );
 
     if (!deletedPlan) {
