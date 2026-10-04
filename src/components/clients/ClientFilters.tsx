@@ -43,7 +43,7 @@ const dateLabel = (value: string) => {
 };
 export function ClientFilters({draft, applied, onChange, onApply, onClear, onRemove, search, onSearch, dietitians, tags, total, loading, failed}: Props) {
   const id = useId();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const dirty = (Object.keys(EMPTY_CLIENT_FILTERS) as Key[]).some(key => draft[key] !== applied[key]);

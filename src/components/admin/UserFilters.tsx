@@ -37,7 +37,7 @@ export function UserFilters({ value, onChange, dietitians, healthCounselors, loa
   const id = useId();
   const moreButton = useRef<HTMLButtonElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const update = (key: keyof UserFilterValues, next: string) => onChange({ ...value, [key]: next });
   const dietitianOptions = [['all', 'All dietitians'], ...staffOptions(dietitians)];
   const counselorOptions = [['all', 'All health counselors'], ...staffOptions(healthCounselors)];

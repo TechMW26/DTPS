@@ -16,8 +16,10 @@ function Fixture({initial=EMPTY_CLIENT_FILTERS}: {initial?:ClientFilterValues}) 
 beforeEach(()=>{Element.prototype.scrollIntoView=jest.fn();Element.prototype.hasPointerCapture=jest.fn(()=>false);Element.prototype.releasePointerCapture=jest.fn();});
 afterEach(()=>{cleanup();jest.useRealTimers();});
 const selectOption=(label:string, option:string)=>{fireEvent.keyDown(screen.getByRole('combobox',{name:label}),{key:'ArrowDown'});fireEvent.click(screen.getByRole('option',{name:option}));};
-test('starts expanded and keeps draft changes separate from applied chips',()=>{
+test('starts collapsed, expands on request and keeps draft changes separate from applied chips',()=>{
  render(<Fixture/>);
+ expect(screen.getByRole('button',{name:/More filters/})).toHaveAttribute('aria-expanded','false');
+ fireEvent.click(screen.getByRole('button',{name:/More filters/}));
  expect(screen.getByRole('button',{name:/More filters/})).toHaveAttribute('aria-expanded','true');
  fireEvent.change(screen.getByLabelText('Plan name'),{target:{value:'Wellness'}});
  expect(screen.getByText('You have unapplied changes.')).toBeVisible();
@@ -30,6 +32,8 @@ test('starts expanded and keeps draft changes separate from applied chips',()=>{
 });
 test('blocks reversed date ranges and removes dates when plan timing changes',()=>{
  render(<Fixture initial={{...EMPTY_CLIENT_FILTERS,planDuration:'dateRange',planDurationFrom:'2026-09-01',planDurationTo:'2026-09-30'}}/>);
+ expect(screen.getByRole('button',{name:/More filters/})).toHaveAttribute('aria-expanded','false');
+ fireEvent.click(screen.getByRole('button',{name:/More filters/}));
  fireEvent.change(screen.getByLabelText('Dietitian assigned from'),{target:{value:'2026-09-20'}});
  fireEvent.change(screen.getByLabelText('Dietitian assigned to'),{target:{value:'2026-09-01'}});
  expect(screen.getByRole('button',{name:'Apply filters'})).toBeDisabled();
@@ -47,6 +51,8 @@ test('applies status on the server, preserves other drafts on chip removal, and 
  const urls:string[]=[];
  global.fetch=jest.fn(async(url:any)=>{urls.push(String(url));return {ok:true,json:async()=>String(url).startsWith('/api/users/clients?')?{clients:[],pagination:{total:12,pages:1}}:{dietitians:[],tags:[]}};}) as any;
  render(<ClientsPage/>);
+ expect(screen.getByRole('button',{name:/More filters/})).toHaveAttribute('aria-expanded','false');
+ fireEvent.click(screen.getByRole('button',{name:/More filters/}));
  await act(async()=>{});
  const clientUrls=()=>urls.filter(url=>url.startsWith('/api/users/clients?'));
  selectOption('Client status','Active');

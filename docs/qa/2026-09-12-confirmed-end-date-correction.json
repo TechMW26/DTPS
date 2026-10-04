@@ -1,0 +1,8 @@
+{
+  "clientId": "C-6519",
+  "purchaseId": "6a3a248c680d1a48aa2ad1cb",
+  "before": "2026-09-27T00:00:00.000Z",
+  "after": "2026-09-24T00:00:00.000Z",
+  "reason": "User reported incorrect date; confirmed 90 contiguous scheduled days and no holds/freezes",
+  "at": "2026-09-12T09:20:56.911Z"
+}

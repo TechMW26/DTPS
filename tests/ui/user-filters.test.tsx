@@ -14,6 +14,8 @@ function Fixture({initial = EMPTY_USER_FILTERS}: {initial?: UserFilterValues}) {
 afterEach(() => { cleanup(); jest.useRealTimers(); });
 test('keeps advanced selections visible as removable chips when the panel is collapsed', () => {
   render(<Fixture initial={{...EMPTY_USER_FILTERS, dietitian:'d1', role:'client'}}/>);
+ expect(screen.getByRole('button',{name:/More filters/})).toHaveAttribute('aria-expanded','false');
+ fireEvent.click(screen.getByRole('button',{name:/More filters/}));
   expect(screen.getByRole('button', {name:/More filters/})).toHaveAttribute('aria-expanded','true');
   expect(screen.getByLabelText('Primary dietitian')).toBeVisible();
   fireEvent.click(screen.getByRole('button', {name:/More filters/}));
@@ -27,6 +29,8 @@ test('keeps advanced selections visible as removable chips when the panel is col
 });
 test('clears search without losing keyboard focus and describes reversed date ranges', () => {
   render(<Fixture initial={{...EMPTY_USER_FILTERS, search:'Sample'}}/>);
+ expect(screen.getByRole('button',{name:/More filters/})).toHaveAttribute('aria-expanded','false');
+ fireEvent.click(screen.getByRole('button',{name:/More filters/}));
   fireEvent.click(screen.getByRole('button', {name:'Clear search'}));
   expect(screen.getByRole('searchbox')).toHaveFocus();
   fireEvent.change(screen.getByLabelText('From'), {target:{value:'2026-09-20'}});
@@ -43,6 +47,8 @@ test('debounces requests, rejects stale responses and skips invalid date ranges'
     return new Promise(resolve => requests.push({url:String(url),signal:options.signal,resolve}));
   }) as any;
   render(<AdminUsersPage/>);
+ expect(screen.getByRole('button',{name:/More filters/})).toHaveAttribute('aria-expanded','false');
+ fireEvent.click(screen.getByRole('button',{name:/More filters/}));
   await act(async()=>{});
   expect(requests).toHaveLength(1);
   fireEvent.change(screen.getByRole('searchbox'), {target:{value:'Sam'}});

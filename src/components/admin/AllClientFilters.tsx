@@ -40,7 +40,7 @@ export function AllClientFilters({ value, onChange, dietitians, healthCounselors
   const id = useId();
   const moreButton = useRef<HTMLButtonElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const update = (key: keyof AllClientFilterValues, next: string) => onChange({ ...value, [key]: next });
   const dietitianOptions = [['all', 'All dietitians'], ...staffOptions(dietitians)];
   const counselorOptions = [['all', 'All health counselors'], ...staffOptions(healthCounselors)];
