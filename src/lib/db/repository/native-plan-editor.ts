@@ -71,9 +71,13 @@ export class NativePlanEditor {
   }
   return this.db.runTransaction(async tx=>{
    const originals=[...this.documents.values()];
-   const current=await tx.getAll(...originals.map(doc=>doc.ref));
+   // All reads must finish before writing; independent validation reads can overlap.
+   const [current,queryResults]=await Promise.all([
+    tx.getAll(...originals.map(doc=>doc.ref)),
+    Promise.all(this.queries.map(observed=>tx.get(observed.query))),
+   ]);
    if(current.some((doc,i)=>doc.exists!==originals[i].exists||!doc.updateTime?.isEqual(originals[i].updateTime!)&&doc.exists))return false;
-   for(const observed of this.queries)if(signature((await tx.get(observed.query)).docs)!==observed.signature)return false;
+   if(queryResults.some((rows,i)=>signature(rows.docs)!==this.queries[i].signature))return false;
    ready.forEach(item=>tx.update(item.ref,item.patch));preparedCreates.forEach(item=>tx.create(item.ref,item.data));return true;
   });
  }

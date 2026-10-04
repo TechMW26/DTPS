@@ -38,10 +38,11 @@ export async function listNativePlans(db:Firestore,actor:{id:string;role:string}
  const load=async(ids?:string[])=>{
   let query:Query=db.collection('clientmealplans');if(ids)query=ids.length===1?query.where('clientId','==',ids[0]):query.where('clientId','in',ids);
   if(options.status&&options.status!=='all')query=query.where('status','==',options.status);
+  if(clientIds)query=query.orderBy('clientId');
   const result=await query.select('clientId','status','isDeleted','createdAt').get();
   rows.push(...result.docs.map(doc=>({...nativeDates(doc.data()),_id:doc.id})));
  };
- if(clientIds){for(let start=0;start<clientIds.length;start+=30)await load(clientIds.slice(start,start+30));}else await load();
+ if(clientIds){for(let start=0;start<clientIds.length;start+=180)await Promise.all(Array.from({length:Math.min(6,Math.ceil((clientIds.length-start)/30))},(_,slot)=>load(clientIds.slice(start+slot*30,start+slot*30+30))));}else await load();
  const visible=rows.filter(row=>(role==='admin'&&options.includeDeleted||!row.isDeleted)&&(role!=='client'||['active','completed','paused'].includes(row.status)));
  visible.sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime()||String(b._id).localeCompare(String(a._id)));
  const selected=visible.slice((options.page-1)*options.limit,options.page*options.limit),plans:DocumentData[]=[];

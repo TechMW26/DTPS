@@ -41,8 +41,13 @@ export async function hydrateBlobDocument(data, readNativeFile) {
   }
   const result=clone(data);
   delete result[REFERENCES];
+  const pending=[];
+  const paths=new Set();
   for(const field of fields||[]) {
     if(!Array.isArray(field.path) || !field.path.length || !['utf8','bytes'].includes(field.encoding)) throw new Error('Invalid external field mapping');
+    const pathKey=JSON.stringify(field.path);
+    if(paths.has(pathKey))throw new Error('Duplicate external field mapping');
+    paths.add(pathKey);
     let parent=result;
     for(const part of field.path.slice(0,-1)) {
       if(!parent || !Object.hasOwn(parent,part)) throw new Error('Missing external field path');
@@ -50,8 +55,16 @@ export async function hydrateBlobDocument(data, readNativeFile) {
     }
     const key=field.path.at(-1);
     if(!parent || !Object.hasOwn(parent,key) || parent[key]!==null) throw new Error('External field placeholder mismatch');
-    const bytes=await readNativeFile(field.file);
-    parent[key]=field.encoding==='utf8'?bytes.toString('utf8'):bytes;
+    pending.push({parent,key,field});
   }
+  // Validate every path first, then overlap independent private Blob reads.
+  // Bound downloads so image-heavy plans cannot exhaust connections or memory.
+  let next=0;
+  await Promise.all(Array.from({length:Math.min(4,pending.length)},async()=>{
+    for(;;){const item=pending[next++];if(!item)return;
+      const bytes=await readNativeFile(item.field.file);
+      item.parent[item.key]=item.field.encoding==='utf8'?bytes.toString('utf8'):bytes;
+    }
+  }));
   return result;
 }
