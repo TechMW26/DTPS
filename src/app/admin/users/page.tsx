@@ -79,6 +79,7 @@ interface AdminUser {
   hasSuccessfulPayment?: boolean;
 }
 
+
 // Helper function to get status display info - unified for all users
 function getStatusDisplay(status: UserStatus, clientStatus?: string, role?: UserRole, expectedStartDate?: string, expectedEndDate?: string, hasSuccessfulPayment?: boolean) {
   // Status configuration for all users - unified client-like status
@@ -236,8 +237,8 @@ export default function AdminUsersPage() {
         admins: data.roleCounts?.admin || 0,
         dietitians: data.roleCounts?.dietitian || 0,
         healthCounselors: data.roleCounts?.healthCounselor || 0,
-        // Display latest allocated client sequence so dashboard matches C-xxxx numbering.
-        clients: data.clientStats?.latestClientIdNumber || data.roleCounts?.client || 0,
+        // The card represents actual users; clientStats is only the next/last C-xxxx sequence.
+        clients: data.roleCounts?.client || 0,
       });
     } catch (e: any) {
       if (!controller.signal.aborted) setError(e?.message || "Failed to load users");
@@ -1324,4 +1325,3 @@ export default function AdminUsersPage() {
     </DashboardLayout>
   );
 }
-
