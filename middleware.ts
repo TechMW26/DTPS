@@ -260,6 +260,8 @@ export default withAuth(
           '/api/firebase-config',
           '/api/auth',
           '/api/internal/meal-engagement', // Authenticated by CRON_SECRET in the route
+          '/api/internal/notification-outbox', // Authenticated by CRON_SECRET in the route
+          '/api/internal/realtime-cleanup', // Authenticated by CRON_SECRET in the route
           '/api/user/forget-password',
           '/api/user/reset-password',
           '/client-login',
