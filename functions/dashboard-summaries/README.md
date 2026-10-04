@@ -20,8 +20,7 @@ computes live data. Missing revision state, malformed payloads, cache read error
 cache write errors, and oversized results preserve live calculation behavior.
 Live calculation errors still fail the request rather than serve expired data.
 
-The switch `FIRESTORE_DASHBOARD_SUMMARIES_ENABLED=true` is OFF by default. It has
-not been added to local/live environment files. No backfill or source-data change
+The switch `FIRESTORE_DASHBOARD_SUMMARIES_ENABLED=true` is OFF by default. Production activation is recorded below; local environment files remain unchanged. No backfill or source-data change
 is needed. A revision appears after the first relevant event; until then that
 collection continues live calculations.
 
@@ -39,7 +38,7 @@ when FUNCTIONS_EMULATOR is true and rejects non-demo emulator project events.
 expiry, duplicate/out-of-order events, concurrent duplicate delivery, scope keys,
 invalidation during calculation and failures through the Firestore emulator.
 
-## Production activation sequence (not performed)
+## Production activation sequence
 
 1. Verify the `dtps-2cbac` database's location and the configured function region
    (`asia-south1`) are appropriate. The production trigger database is explicitly
@@ -62,3 +61,12 @@ stores the aggregate. Thus this primarily benefits repeat reads and is not an
 unconditional cost reduction for write-heavy or rarely visited dashboards.
 
 Reference: https://firebase.google.com/docs/functions/firestore-events
+
+## Production activation, October 4, 2026
+
+Both Gen-2 functions were deployed to asia-south1 and verified ACTIVE with the
+exact named-database filters. Live synthetic probes verified create/update/delete
+invalidation for both source collections and were removed. TTL policies for both
+cache and event receipts are ACTIVE; payload indexing is disabled. Function image
+retention is seven days. FIRESTORE_DASHBOARD_SUMMARIES_ENABLED is enabled for the
+next Vercel production release. The 30-second bounded-staleness contract remains.
