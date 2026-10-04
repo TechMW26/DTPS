@@ -1,4 +1,5 @@
 'use client';
+import { startForegroundPolling } from '@/lib/browser/foreground-polling';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -97,24 +98,7 @@ export default function StaffNotificationCenter({ isDarkMode = false, className 
 
         fetchNotifications();
 
-        const interval = setInterval(() => {
-            fetchNotifications(true);
-        }, 30000);
-
-        const onVisibility = () => {
-            if (document.visibilityState === 'visible') {
-                fetchNotifications(true);
-            }
-        };
-
-        window.addEventListener('focus', onVisibility);
-        document.addEventListener('visibilitychange', onVisibility);
-
-        return () => {
-            clearInterval(interval);
-            window.removeEventListener('focus', onVisibility);
-            document.removeEventListener('visibilitychange', onVisibility);
-        };
+        return startForegroundPolling(() => fetchNotifications(true), 30000);
     }, [status, isStaffRole, fetchNotifications]);
 
     const markAsRead = useCallback(async (notificationId: string) => {

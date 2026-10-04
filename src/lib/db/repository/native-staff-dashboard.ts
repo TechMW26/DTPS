@@ -446,7 +446,9 @@ export async function nativePendingPlans(db:Firestore,actorId:string,params:URLS
 async function dashboardAppointments(db:Firestore,actorId:string,role:string,health:boolean,start:Date,end:Date){
  let q:Query=db.collection('appointments');if(role!=='admin')q=health?q.where(Filter.or(Filter.where('dietitian','==',actorId),Filter.where('healthCounselor','==',actorId))):q.where('dietitian','==',actorId);
  const count=async(q:Query)=>(await q.count().get()).data().count,day=q.where('scheduledAt','>=',start).where('scheduledAt','<',end);
- const [totalAppointments,todaysAppointments,confirmedAppointments,pendingAppointments,completedSessions,totalPastAppointments,rows]=await Promise.all([count(q.where('scheduledAt','>=',start).where('status','in',['scheduled','confirmed','rescheduled','in-progress','pending'])),count(day),count(day.where('status','in',['scheduled','confirmed','rescheduled'])),count(day.where('status','==','pending')),count(q.where('scheduledAt','<',start).where('status','in',['confirmed','completed'])),count(q.where('scheduledAt','<',start)),day.select('client','scheduledAt','duration','status','type').orderBy('scheduledAt').get()]);
+ const [totalAppointments,completedSessions,totalPastAppointments,rows]=await Promise.all([count(q.where('scheduledAt','>=',start).where('status','in',['scheduled','confirmed','rescheduled','in-progress','pending'])),count(q.where('scheduledAt','<',start).where('status','in',['confirmed','completed'])),count(q.where('scheduledAt','<',start)),day.select('client','scheduledAt','duration','status','type').orderBy('scheduledAt').get()]);
+ // Derive today's counters from the schedule already required by the response.
+ const todaysAppointments=rows.size,confirmedAppointments=rows.docs.filter(row=>['scheduled','confirmed','rescheduled'].includes(row.get('status'))).length,pendingAppointments=rows.docs.filter(row=>row.get('status')==='pending').length;
  const schedule:DocumentData[]=rows.docs.map(r=>({_id:r.id,...nativeDates(r.data())}));const ids=[...new Set(schedule.map(r=>r.client).filter(Boolean))];const users=new Map();for(let i=0;i<ids.length;i+=100)for(const r of await db.getAll(...ids.slice(i,i+100).map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName','email','avatar']}))if(r.exists)users.set(r.id,{_id:r.id,...r.data()});for(const r of schedule)r.client=users.get(r.client)||null;
  return {metrics:{totalAppointments,todaysAppointments,confirmedAppointments,pendingAppointments,completedSessions,totalPastAppointments},schedule};
 }
@@ -456,14 +458,17 @@ export async function nativeStaffStats(db:Firestore,actorId:string,kind:'dietiti
  const useCoveringIndexes=process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST;
  // Reuse this request's verified scope density; do not bill a second population count.
  const allowDenseScan=useCoveringIndexes&&denseScope;
- const [appt,planSummary,paymentSummary]=await Promise.all([
+ let taskQuery:Query=db.collection('tasks');if(role!=='admin')taskQuery=taskQuery.where('dietitian','==',actorId);
+ const [appt,planSummary,paymentSummary,taskRows]=await Promise.all([
   dashboardAppointments(db,actorId,role,kind==='health_counselor',startOfToday,endOfToday),
-  useCoveringIndexes?indexedDashboardPlanSummary(clientIds,startOfToday,endOfPendingWindow,allowDenseScan):dashboardRelated(db,'clientmealplans','clientId',clientIds,['clientId','name','startDate','endDate','status','isDeleted'],q=>q.where('status','==','active')).then(plans=>{const active=plans.filter(p=>p.isDeleted!==true);return {activeClientIds:[...new Set(active.map(p=>p.clientId))],expiringPlans:active.filter(p=>p.endDate>=startOfToday&&p.endDate<endOfPendingWindow)};}),
-  useCoveringIndexes?indexedDashboardPaymentSummary(clientIds,startOfExpiredWindow,endOfToday,allowDenseScan):dashboardRelated(db,'unifiedpayments','client',clientIds,'client amount currency status planName planCategory durationDays durationLabel transactionId createdAt expectedEndDate'.split(' ')).then(payments=>summarizeDashboardPayments(payments,startOfExpiredWindow,endOfToday))
+  useCoveringIndexes?indexedDashboardPlanSummary(clientIds,startOfToday,endOfPendingWindow,allowDenseScan,kind!=='health_counselor'):dashboardRelated(db,'clientmealplans','clientId',clientIds,['clientId','name','startDate','endDate','status','isDeleted'],q=>q.where('status','==','active')).then(plans=>{const active=plans.filter(p=>p.isDeleted!==true);return {activeClientIds:[...new Set(active.map(p=>p.clientId))],expiringPlans:active.filter(p=>p.endDate>=startOfToday&&p.endDate<endOfPendingWindow)};}),
+  useCoveringIndexes?indexedDashboardPaymentSummary(clientIds,startOfExpiredWindow,endOfToday,allowDenseScan,kind!=='health_counselor'):dashboardRelated(db,'unifiedpayments','client',clientIds,'client amount currency status planName planCategory durationDays durationLabel transactionId createdAt expectedEndDate'.split(' ')).then(payments=>summarizeDashboardPayments(payments,startOfExpiredWindow,endOfToday)),
+  kind==='health_counselor'?Promise.resolve(null):taskQuery.where('startDate','<=',endOfToday).where('endDate','>=',startOfToday).orderBy('endDate').orderBy('startDate').select('client','title','taskType','allottedTime','status','startDate','endDate','createdAt').get()
  ]);
+ const visibleTasks=(taskRows?.docs||[]).map(r=>({_id:r.id,...nativeDates(r.data())}) as DocumentData).filter(t=>t.status!=='cancelled').sort((a,b)=>a.startDate-b.startDate||b.createdAt-a.createdAt).slice(0,10);
  if(summaryOnly){
-  const visible=assignedClients.filter(client=>[client.dateOfBirth,client.anniversary].some(value=>{const date=new Date(value);return date.getMonth()===todayMonth&&date.getDate()===todayDate;})||client.createdAt>=startOfToday&&client.createdAt<endOfToday);
-  await hydrateDashboardClientDetails(assignedClients,[...assignedClients.slice(0,10).map(c=>c._id),...visible.map(c=>c._id),...planSummary.expiringPlans.map(p=>p.clientId),...paymentSummary.expiredPayments.map(p=>p.client),...paymentSummary.recentPayments.map(p=>p.client)]);
+  const visible=kind==='health_counselor'?[]:assignedClients.filter(client=>[client.dateOfBirth,client.anniversary].some(value=>{const date=new Date(value);return date.getMonth()===todayMonth&&date.getDate()===todayDate;})||client.createdAt>=startOfToday&&client.createdAt<endOfToday);
+  await hydrateDashboardClientDetails(assignedClients,[...assignedClients.slice(0,10).map(c=>c._id),...visible.map(c=>c._id),...(kind==='health_counselor'?[]:[...planSummary.expiringPlans.map(p=>p.clientId),...paymentSummary.expiredPayments.map(p=>p.client),...paymentSummary.recentPayments.map(p=>p.client),...visibleTasks.map(t=>t.client)])]);
  }
  const activePlanClientIds=planSummary.activeClientIds,todaysSchedule=appt.schedule;
  if(kind==='health_counselor'){
@@ -607,10 +612,7 @@ export async function nativeStaffStats(db:Firestore,actorId:string,kind:'dietiti
  const expiredMealPlans=paymentSummary.expiredPayments.sort((a,b)=>b.expectedEndDate-a.expectedEndDate).map(p=>({...p,client:clientMap.get(p.client)}));
  const activeMealPlanClientIds=activePlanClientIds,recentPayments=paymentSummary.recentPayments.map(p=>({...p,client:clientMap.get(p.client)}));
  const totalRevenueResult=[{total:paymentSummary.groups.filter(p=>['completed','pending','paid'].includes(p.status)).reduce((s,p)=>s+p.amount,0)}],pendingPaymentsCount=paymentSummary.groups.filter(p=>p.status==='pending').reduce((s,p)=>s+p.count,0),completedPaymentsCount=paymentSummary.groups.filter(p=>p.status==='completed').reduce((s,p)=>s+p.count,0);
- let taskQuery:Query=db.collection('tasks');if(role!=='admin')taskQuery=taskQuery.where('dietitian','==',actorId);
- const taskRows=await taskQuery.where('startDate','<=',endOfToday).where('endDate','>=',startOfToday).orderBy('endDate').orderBy('startDate').select('client','title','taskType','allottedTime','status','startDate','endDate','createdAt').get();
- if(summaryOnly)await hydrateDashboardClientDetails(assignedClients,taskRows.docs.map(row=>row.get('client')).filter(id=>clientMap.has(id)&&!clientMap.get(id)?.firstName));
- const todaysTasks=taskRows.docs.map(r=>({_id:r.id,...nativeDates(r.data())}) as DocumentData).filter(t=>t.status!=='cancelled').sort((a,b)=>a.startDate-b.startDate||b.createdAt-a.createdAt).slice(0,10).map(t=>({...t,client:clientMap.get(t.client)}));
+ const todaysTasks=visibleTasks.map(t=>({...t,client:clientMap.get(t.client)}));
     const clientsWithMealPlans = activeMealPlanClientIds.length;
     const completionRate =
       totalPastAppointments > 0

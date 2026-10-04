@@ -1,6 +1,6 @@
 import {randomBytes,createHash} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/firestore-native';
-import {registerNativePushToken,removeNativePushTokens,saveNativeNotifications} from '@/lib/db/repository/native-notifications';
+import {nativeUnreadMessageCount,registerNativePushToken,removeNativePushTokens,saveNativeNotifications} from '@/lib/db/repository/native-notifications';
 const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
 suite('native notification storage',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
@@ -17,6 +17,15 @@ suite('native notification storage',()=>{
   await removeNativePushTokens(db,one.id,[token]);
   expect((await two.get()).get('fcmTokens')).toHaveLength(1);
   await removeNativePushTokens(db,two.id,[token]);expect((await two.get()).get('fcmTokens')).toEqual([]);
+ });
+ it('counts only unread messages belonging to the recipient',async()=>{
+  const recipient=randomBytes(12).toString('hex');
+  for(const data of [{receiver:recipient,isRead:false},{receiver:recipient,isRead:false},{receiver:recipient,isRead:true},{receiver:'another',isRead:false}]){
+   const ref=db.collection('messages').doc();refs.push(ref);await ref.set(data);
+  }
+  const collection=jest.spyOn(db,'collection');
+  expect(await nativeUnreadMessageCount(db,recipient)).toBe(2);
+  expect(collection.mock.calls.map(args=>args[0])).toEqual(['messages']);collection.mockRestore();
  });
  it('creates one persisted unread notification per unique recipient',async()=>{
   const ids=await saveNativeNotifications(db,['synthetic','synthetic'],{title:'test',message:'test',type:'system',actionUrl:undefined});

@@ -1,3 +1,4 @@
+import {indexedDashboardRows} from './native-dashboard-indexed';
 import {nativeMigrationIssues} from './native-migration-issues';
 import {type Firestore,type DocumentData} from 'firebase-admin/firestore';
 import {nativeDates} from './native-plan-editor';
@@ -16,9 +17,22 @@ export async function populateNativeDirectory(db:Firestore,rows:DocumentData[]):
  for(let i=0;i<ids.length;i+=100){for(const doc of await db.getAll(...ids.slice(i,i+100).map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName','email','avatar','role']})){if(doc.exists)people.set(doc.id,{_id:doc.id,...nativeDates(doc.data())});}}
  return rows.map(d=>({...d,...Object.fromEntries(['assignedDietitian','assignedHealthCounselor'].filter(k=>typeof d[k]==='string').map(k=>[k,people.get(d[k])||null])),...Object.fromEntries(['assignedDietitians','assignedHealthCounselors'].filter(k=>Array.isArray(d[k])).map(k=>[k,d[k].map((id:string)=>people.get(id)).filter(Boolean)])),...(d.createdBy?.userId?{createdBy:{...d.createdBy,userId:people.get(d.createdBy.userId)||null}}:{})}));
 }
-export async function nativeDirectoryStatuses(db:Firestore,rows:DocumentData[]){
- const result=new Map<string,DocumentData[]>();const ids=rows.filter(d=>d.role==='client').map(d=>d._id as string);
- for(let batch=0;batch<ids.length;batch+=180){await Promise.all(Array.from({length:Math.min(6,Math.ceil((ids.length-batch)/30))},async(_,slot)=>{const i=batch+slot*30;const payments=await db.collection('unifiedpayments').where('client','in',ids.slice(i,i+30)).select('client','status','paymentStatus','expectedEndDate','endDate').get();for(const p of payments.docs){const d=nativeDates(p.data());result.set(d.client,[...(result.get(d.client)||[]),d]);}}));}
+export async function nativeDirectoryStatuses(db:Firestore,rows:DocumentData[],loadedPayments?:DocumentData[]){
+ const result=new Map<string,DocumentData[]>(),ids=[...new Set(rows.filter(d=>d.role==='client').map(d=>d._id as string))],allowed=new Set(ids);
+ const collect=(payments:DocumentData[])=>{for(const payment of payments){if(!allowed.has(payment.client))continue;const group=result.get(payment.client)||[];group.push(payment);result.set(payment.client,group);}};
+ if(loadedPayments)collect(loadedPayments);
+ else if(ids.length>=300&&process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST)collect(await indexedDashboardRows('directoryPayments',ids));
+ else{
+  let next=0;
+  await Promise.all(Array.from({length:Math.min(6,Math.ceil(ids.length/30))},async()=>{
+   for(;;){const i=next++*30;if(i>=ids.length)return;
+    // Membership ordering encourages the existing relationship index and does not
+    // exclude any extra rows: every matching payment already has a client field.
+    const payments=await db.collection('unifiedpayments').where('client','in',ids.slice(i,i+30)).orderBy('client').select('client','status','paymentStatus','expectedEndDate','endDate').get();
+    collect(payments.docs.map(p=>nativeDates(p.data())));
+   }
+  }));
+ }
  return rows.map(d=>d.role==='client'?{...d,clientStatus:computeClientStatusFromDocs(result.get(d._id)||[],!!d.holdStatus?.isOnHold)}:d);
 }
 /** Filter projections contain no passwords, tokens, documents or medical histories. Full profiles are never scanned. */

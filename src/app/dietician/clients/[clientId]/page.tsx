@@ -1,4 +1,5 @@
 "use client";
+import { startForegroundPolling } from '@/lib/browser/foreground-polling';
 
 import {
   useState,
@@ -858,27 +859,10 @@ export default function ClientDetailPage() {
   useEffect(() => {
     if (!params.clientId) return;
 
-    const refreshWeight = () => {
-      fetchCurrentWeightSummary(true).catch(() => {});
-      fetchClientWeightLog(true).catch(() => {});
-    };
-
-    const intervalId = window.setInterval(refreshWeight, 20000);
-    const onFocus = () => refreshWeight();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        refreshWeight();
-      }
-    };
-
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisible);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    return startForegroundPolling(() => Promise.all([
+      fetchCurrentWeightSummary(true),
+      fetchClientWeightLog(true),
+    ]), 20000);
   }, [params.clientId]);
 
   const fetchClientWeightLog = async (silent = false) => {

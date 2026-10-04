@@ -70,7 +70,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { format, addDays } from "date-fns";
-import { DietPlanDashboard } from "@/components/dietplandashboard/DietPlanDashboard";
+import dynamic from "next/dynamic";
+const DietPlanDashboard = dynamic(
+  () => import("@/components/dietplandashboard/DietPlanDashboard").then(module => module.DietPlanDashboard),
+  { loading: () => <div role="status" aria-live="polite" className="min-h-64 space-y-4 p-6">
+    <span className="text-sm text-gray-500">Loading meal plan...</span>
+    <div aria-hidden="true" className="h-10 rounded bg-gray-100 motion-safe:animate-pulse" />
+    <div aria-hidden="true" className="h-36 rounded bg-gray-100 motion-safe:animate-pulse" />
+  </div> },
+);
 import {
   useDataRefresh,
   emitDataChange,

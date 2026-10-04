@@ -1,0 +1,42 @@
+import React from 'react';
+import {act,cleanup,render} from '@testing-library/react';
+import SystemRefreshListener from '@/components/providers/SystemRefreshListener';
+jest.mock('next-auth/react',()=>({useSession:()=>({status:'authenticated',data:{user:{id:'staff'}}})}));
+jest.mock('next/navigation',()=>({useRouter:()=>router}));
+jest.mock('@/lib/realtime/socket-client',()=>({socketClient:{on:()=>()=>{}}}));
+jest.mock('sonner',()=>({toast:{info:jest.fn(),error:jest.fn()}}));
+const router={refresh:jest.fn()};
+let fetchMock:jest.Mock;
+beforeEach(()=>{
+ jest.useFakeTimers();
+ Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});
+ Object.defineProperty(navigator,'onLine',{configurable:true,value:true});
+ fetchMock=jest.fn(async()=>({ok:true,json:async()=>({revision:0})}));global.fetch=fetchMock;
+});
+afterEach(()=>{cleanup();jest.useRealTimers();});
+test('pauses hidden and offline checks and refreshes after returning',async()=>{
+ render(<SystemRefreshListener/>);await act(async()=>{});
+ expect(fetchMock).toHaveBeenCalledTimes(1);
+ Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});
+ await act(async()=>{jest.advanceTimersByTime(240_000);});
+ expect(fetchMock).toHaveBeenCalledTimes(1);
+ Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});
+ await act(async()=>{document.dispatchEvent(new Event('visibilitychange'));});
+ expect(fetchMock).toHaveBeenCalledTimes(2);
+ Object.defineProperty(navigator,'onLine',{configurable:true,value:false});
+ await act(async()=>{jest.advanceTimersByTime(240_000);});
+ expect(fetchMock).toHaveBeenCalledTimes(2);
+ Object.defineProperty(navigator,'onLine',{configurable:true,value:true});
+ await act(async()=>{window.dispatchEvent(new Event('online'));});
+ expect(fetchMock).toHaveBeenCalledTimes(3);
+});
+test('does not overlap slow checks on interval and focus',async()=>{
+ let resolve!:(value:any)=>void;
+ fetchMock.mockImplementation(()=>new Promise(r=>{resolve=r;}));
+ render(<SystemRefreshListener/>);
+ await act(async()=>{jest.advanceTimersByTime(240_000);window.dispatchEvent(new Event('focus'));});
+ expect(fetchMock).toHaveBeenCalledTimes(1);
+ await act(async()=>{resolve({ok:true,json:async()=>({revision:0})});});
+ await act(async()=>{jest.advanceTimersByTime(120_000);});
+ expect(fetchMock).toHaveBeenCalledTimes(2);
+});

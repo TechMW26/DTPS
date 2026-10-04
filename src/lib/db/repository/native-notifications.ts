@@ -42,6 +42,9 @@ export async function removeNativePushTokens(db:Firestore,userId:string,tokens:s
   for(const index of indexes)if(index.exists)tx.update(index.ref,{ownerIds:(index.get('ownerIds')||[]).filter((id:string)=>id!==userId),updatedAt:new Date()});
  });
 }
+export async function nativeUnreadMessageCount(db:Firestore,userId:string){
+ return (await db.collection('messages').where('receiver','==',userId).where('isRead','==',false).count().get()).data().count;
+}
 export async function nativeUnreadCounts(db:Firestore,userId:string) {
  const [notifications,messages]=await Promise.all([
   db.collection('notifications').where('userId','==',userId).where('read','==',false).count().get(),

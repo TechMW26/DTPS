@@ -5,20 +5,21 @@ const mockBatches:string[][]=[];
 let mockActive=0,mockPeak=0,mockReject=false;
 let mockDenseIds:string[]=[];
 const mockLimits:number[]=[];
+let mockActiveFilters=0;
 jest.mock('@/lib/db/firestore-native',()=>({nativeDatabaseSettings:()=>({projectId:'test',databaseId:'test',clientEmail:'test',privateKey:'test'})}));
 jest.mock('@google-cloud/firestore',()=>{
  const actual=jest.requireActual('@google-cloud/firestore');
  return {...actual,Firestore:class{
   pipeline(){return {collection:()=>{
    let ids:string[]=[];
-   const query:any={where:(condition:any)=>{if(condition.ids)ids=condition.ids;return query;},select:()=>query,limit:(n:number)=>{mockLimits.push(n);return query;},execute:async()=>{
+   const query:any={where:(condition:any)=>{if(condition.ids)ids=condition.ids;if(condition.equals==='active')mockActiveFilters++;return query;},select:()=>query,limit:(n:number)=>{mockLimits.push(n);return query;},execute:async()=>{
     mockBatches.push(ids);mockActive++;mockPeak=Math.max(mockPeak,mockActive);
     try{await new Promise(r=>setTimeout(r,2));if(mockReject)throw new Error('index unavailable');return {results:(ids.length?ids:mockDenseIds).map(id=>({get:()=>id,data:()=>({_id:`plan-${id}`,clientId:id,endDate:actual.Timestamp.fromDate(new Date('2026-10-04T00:00:00Z'))})}))};}finally{mockActive--;}
    }};return query;
   }};}
- },Pipelines:{field:()=>({equalAny:(ids:string[])=>({ids}),equal:()=>({}),documentId:()=>({as:()=>({})})})}};
+ },Pipelines:{field:()=>({equalAny:(ids:string[])=>({ids}),equal:(value:string)=>({equals:value}),documentId:()=>({as:()=>({})})})}};
 });
-beforeEach(()=>{mockBatches.length=0;mockLimits.length=0;mockDenseIds=[];mockActive=0;mockPeak=0;mockReject=false;});
+beforeEach(()=>{mockActiveFilters=0;mockBatches.length=0;mockLimits.length=0;mockDenseIds=[];mockActive=0;mockPeak=0;mockReject=false;});
 
 test('indexed dashboard requests only authorized IDs, deduplicates, and retains IDs and dates',async()=>{
  const ids=Array.from({length:1901},(_,i)=>`client-${i}`);
@@ -64,4 +65,21 @@ test('payment summary retains legacy numeric strings, status counts and expiry b
  expect(summary.expiredPayments.map(row=>row._id)).toEqual(['a','c']);
  expect(summary.recentPayments[0]._id).toBe('b');
  expect(rows[0]._id).toBe('a');
+});
+
+test('client-list metadata reads include drafts and history rather than filtering to active plans',async()=>{
+ await indexedDashboardRows('plans',['one'],false,false);
+ expect(mockActiveFilters).toBe(0);
+ await indexedDashboardRows('plans',['one']);
+ expect(mockActiveFilters).toBe(1);
+});
+
+test('directory payment batching preserves the full authorized scope and does not apply active-plan filtering',async()=>{
+ const ids=Array.from({length:1501},(_,i)=>`client-${i}`);
+ const rows=await indexedDashboardRows('directoryPayments',ids,true);
+ expect(rows).toHaveLength(ids.length);
+ expect(mockBatches.flat()).toEqual(ids);
+ expect(mockActiveFilters).toBe(0);
+ expect(mockLimits).toEqual([]);
+ expect(mockPeak).toBe(3);
 });

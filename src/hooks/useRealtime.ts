@@ -1,4 +1,5 @@
 'use client';
+import { TypingUpdates } from '@/lib/realtime/typing-updates';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
@@ -228,36 +229,18 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
     });
   }, [session?.user?.id, deliverCallEvent]);
 
-  // Send typing indicator via socket (with REST fallback)
-  const sendTyping = useCallback(
-    async (conversationId: string, isTyping: boolean) => {
-      if (!session?.user?.id) return;
+  const typingUpdates = useRef<TypingUpdates | null>(null);
+  useEffect(() => {
+    const updates = new TypingUpdates();
+    typingUpdates.current = updates;
+    return () => { updates.dispose(); if (typingUpdates.current === updates) typingUpdates.current = null; };
+  }, [session?.user?.id]);
 
-      // Prefer socket emit — avoids an HTTP round-trip
-      if (socketClient.connected) {
-        socketClient.emit(SOCKET_EVENTS.SEND_TYPING, {
-          receiverId: conversationId,
-          isTyping,
-        });
-      } else {
-        // Fallback to REST
-        try {
-          await fetch('/api/realtime/typing', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              conversationId,
-              isTyping,
-              userId: session.user.id,
-            }),
-          });
-        } catch (error) {
-          console.error('Failed to send typing indicator:', error);
-        }
-      }
-    },
-    [session?.user?.id]
-  );
+  // Both connected and disconnected transports use the same authenticated endpoint.
+  const sendTyping = useCallback(async (conversationId: string, isTyping: boolean) => {
+    if (!session?.user?.id) return;
+    await typingUpdates.current?.send(conversationId, isTyping);
+  }, [session?.user?.id]);
 
   const forceReconnect = useCallback(() => {
     if (session?.user?.id) {

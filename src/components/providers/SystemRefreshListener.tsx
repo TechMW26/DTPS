@@ -71,6 +71,7 @@ export default function SystemRefreshListener() {
   const router = useRouter();
   const applyingRef = useRef(false);
   const lastCheckAtRef = useRef(0);
+  const checkingRef = useRef(false);
   const reloadTimerRef = useRef<number | null>(null);
 
   const applyRefresh = useCallback(
@@ -129,7 +130,11 @@ export default function SystemRefreshListener() {
   );
 
   const checkForRefresh = useCallback(async () => {
-    if (status !== "authenticated" || !session?.user?.id) return;
+    if (status !== "authenticated" || !session?.user?.id ||
+        document.visibilityState === "hidden" || navigator.onLine === false ||
+        checkingRef.current) return;
+    checkingRef.current = true;
+    lastCheckAtRef.current = Date.now();
 
     try {
       const response = await fetch("/api/admin/system-refresh", {
@@ -142,6 +147,8 @@ export default function SystemRefreshListener() {
       await applyRefresh(payload);
     } catch {
       // Realtime, focus, online, and interval checks will try again later.
+    } finally {
+      checkingRef.current = false;
     }
   }, [applyRefresh, session?.user?.id, status]);
 

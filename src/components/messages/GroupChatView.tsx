@@ -1,4 +1,5 @@
 'use client';
+import { startForegroundPolling } from '@/lib/browser/foreground-polling';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, ArrowLeft, Users, Info, Loader2, Check, CheckCheck, Paperclip, Smile, Image as ImageIcon } from 'lucide-react';
@@ -107,11 +108,7 @@ export default function GroupChatView({
     if (onNewGroupMessage) return; // Parent handles SSE
 
     // Otherwise, we can set up polling as fallback
-    const interval = setInterval(() => {
-      fetchMessagesQuiet();
-    }, 15_000);
-
-    return () => clearInterval(interval);
+    return startForegroundPolling(fetchMessagesQuiet, 15_000);
   }, [group._id]);
 
   const scrollToBottom = () => {

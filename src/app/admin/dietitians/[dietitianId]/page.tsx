@@ -1,4 +1,5 @@
 'use client';
+import { startForegroundPolling } from '@/lib/browser/foreground-polling';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -289,10 +290,7 @@ export default function AdminDietitianDetailPage() {
   // Fallback refresh in case an event is missed while reconnecting.
   useEffect(() => {
     if (!dietitianId) return;
-    const interval = setInterval(() => {
-      fetchDietitianDetailsQuiet();
-    }, 30000);
-    return () => clearInterval(interval);
+    return startForegroundPolling(fetchDietitianDetailsQuiet, 30000);
   }, [dietitianId, fetchDietitianDetailsQuiet]);
 
   const fetchDietitianDetails = async () => {

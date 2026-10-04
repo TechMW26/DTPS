@@ -24,7 +24,7 @@ export async function publishNativeEvent(db: Firestore, targets: string[], event
 }
 export async function nativeRealtimeActor(db: Firestore, id: string) {
   if (!/^[a-f0-9]{24}$/i.test(id)) return null;
-  const user = await db.collection('users').doc(id).get();
+  const [user] = await db.getAll(db.collection('users').doc(id), {fieldMask:['role','status','isDeleted']});
   if (!user.exists || user.get('status') === 'inactive' || user.get('isDeleted')) return null;
   const role = String(user.get('role') || '');
   return ['admin','dietitian','health_counselor','client'].includes(role) ? { id, role } : null;

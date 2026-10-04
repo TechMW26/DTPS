@@ -1,3 +1,4 @@
+import { socketClient } from '@/lib/realtime/socket-client';
 import { SharedRealtimePolling, claimCallNotification } from '@/lib/realtime/shared-polling';
 jest.mock('@/lib/realtime/socket-client', () => ({ socketClient: { connected: false } }));
 
@@ -13,6 +14,7 @@ describe('shared browser realtime polling', () => {
     Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: true } });
     fetchMock = jest.fn(async () => ({ ok: true, json: async () => ({ signals: [] }) }));
     Object.defineProperty(globalThis, 'fetch', { configurable: true, writable: true, value: fetchMock });
+    (socketClient as any).connected = false;
     jest.useFakeTimers();
     poller = new SharedRealtimePolling();
     cleanups = [];
@@ -31,6 +33,17 @@ describe('shared browser realtime polling', () => {
     await jest.advanceTimersByTimeAsync(60_000);
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/webrtc/signal')).toHaveLength(13);
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/realtime/status')).toHaveLength(2);
+  });
+
+  it('uses SSE presence while connected and restores heartbeat on disconnection', async () => {
+    (socketClient as any).connected = true;
+    cleanups.push(poller.subscribe(jest.fn()));
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/realtime/status')).toHaveLength(0);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/webrtc/signal')).toHaveLength(5);
+    (socketClient as any).connected = false;
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/realtime/status')).toHaveLength(1);
   });
 
   it('delivers a signal to every consumer and accelerates active call negotiation', async () => {

@@ -111,7 +111,9 @@ export class SharedRealtimePolling {
     this.heartbeatController = controller;
     const timeout = setTimeout(() => controller.abort(), 8_000);
     try {
-      if (this.visible()) await fetch('/api/realtime/status', {
+      // The SSE transport already renews presence every 30 seconds.
+      // Retain this fallback when that transport is unavailable.
+      if (this.visible() && !socketClient.connected) await fetch('/api/realtime/status', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'heartbeat' }), signal: controller.signal,
       });

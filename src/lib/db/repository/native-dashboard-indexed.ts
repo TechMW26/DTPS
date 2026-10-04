@@ -1,11 +1,16 @@
+import {dashboardSummaryKey,persistentDashboardSummary} from './persistent-dashboard-summary';
 import {Firestore,Pipelines,Timestamp} from '@google-cloud/firestore';
 import {getNativeDatabase,nativeDatabaseSettings} from '@/lib/db/firestore-native';
 
-// These covering indexes are managed in firestore.native.indexes.json on the
-// verified Enterprise database. Every returned field is served from the index,
-// avoiding reads of the large meal-plan documents themselves.
+// These indexes are managed in firestore.native.indexes.json on the verified
+// Enterprise database. Plan and dashboard projections are covered, avoiding
+// large meal-plan document reads. Directory payment status fields also fetch
+// primary records, as noted below.
 const specs={
  plans:{collection:'clientmealplans',index:'CICAgJjmiJEJ',relation:'clientId',fields:['clientId','status','name','startDate','endDate','isDeleted']},
+ // Directory status fields require primary-record reads; batching still avoids
+ // hundreds of small RPCs without scanning payments outside the authorized IDs.
+ directoryPayments:{collection:'unifiedpayments',index:'CICAgLiT6MEI',relation:'client',fields:['client','planName','status','paymentStatus','expectedEndDate','endDate']},
  payments:{collection:'unifiedpayments',index:'CICAgLiT6MEI',relation:'client',fields:['client','status','amount','currency','planName','planCategory','durationDays','durationLabel','transactionId','createdAt','expectedEndDate']},
 } as const;
 let database:Firestore|undefined;
@@ -61,17 +66,28 @@ export async function indexedDashboardScope(staff:string|null|undefined,health:b
  return [...new Set(results.flat())];
 }
 
-export async function indexedDashboardRows(kind:keyof typeof specs,clientIds:string[],allowDenseScan=false){
+export async function indexedDashboardRows(kind:keyof typeof specs,clientIds:string[],allowDenseScan=false,activePlansOnly=true,planNameTerms:string[]=[]){
  const ids=[...new Set(clientIds)];if(!ids.length)return [];
  const db=pipelineDatabase(),spec=specs[kind],batchSize=300;
- const source=()=>(db as Firestore & {pipeline():Pipelines.PipelineSource}).pipeline().collection({collection:spec.collection,forceIndex:spec.index});
+ const source=()=>{
+  let query=(db as Firestore & {pipeline():Pipelines.PipelineSource}).pipeline().collection({collection:spec.collection,forceIndex:spec.index});
+  if(kind==='plans'&&planNameTerms.length){
+   const name=Pipelines.field('name'),isString=name.type().equal('string');
+   const lower=Pipelines.toLower(Pipelines.conditional(isString,name,Pipelines.constant('')));
+   // Pass legacy non-string names through for the existing JS String conversion.
+   // The final client predicate remains authoritative for matching and permissions.
+   const matches=planNameTerms.map(term=>Pipelines.stringContains(lower,term));
+   query=query.where(Pipelines.or(Pipelines.not(isString),matches[0],...matches.slice(1)));
+  }
+  return query;
+ };
  const project=(query:Pipelines.Pipeline)=>query.select(spec.fields[0],...spec.fields.slice(1),Pipelines.field('__name__').documentId().as('_id'));
  const decode=(row:Pipelines.PipelineResult)=>Object.fromEntries(Object.entries(row.data()).map(([key,value])=>[key,value instanceof Timestamp?value.toDate():value]));
- if(allowDenseScan&&ids.length>=3000&&ids.length<=10000){
+ if(kind!=='directoryPayments'&&allowDenseScan&&ids.length>=3000&&ids.length<=10000){
   // For accounts owning most clients, one bounded covering-index read avoids
   // thousands of index seeks. Only projected index fields are fetched. Enforce
   // the fresh authorized scope before returning anything to the caller.
-  let query=source();if(kind==='plans')query=query.where(Pipelines.field('status').equal('active'));
+  let query=source();if(kind==='plans'&&activePlansOnly)query=query.where(Pipelines.field('status').equal('active'));
   const result=await project(query).limit(50001).execute();
   if(result.results.length<50001){const allowed=new Set(ids);return result.results.filter(row=>allowed.has(row.get(spec.relation))).map(decode);}
   // Never truncate metrics as the database grows. Fall back to scoped queries.
@@ -84,7 +100,7 @@ export async function indexedDashboardRows(kind:keyof typeof specs,clientIds:str
    // firebase-admin also declares the older Firestore ambient class. The
    // dedicated 8.x runtime above supports PipelineSource regardless of that.
    let query=source().where(Pipelines.field(spec.relation).equalAny(batch));
-   if(kind==='plans')query=query.where(Pipelines.field('status').equal('active'));
+   if(kind==='plans'&&activePlansOnly)query=query.where(Pipelines.field('status').equal('active'));
    const result=await project(query).execute();
    // This SDK has its own Timestamp class, separate from firebase-admin's SDK.
    batches[slot]=result.results.map(decode);
@@ -93,42 +109,58 @@ export async function indexedDashboardRows(kind:keyof typeof specs,clientIds:str
  return batches.flat();
 }
 
-export async function indexedDashboardPlanSummary(clientIds:string[],start:Date,end:Date,allowDenseScan=false){
+async function cachedAggregate<T>(collection:'clientmealplans'|'unifiedpayments',ids:string[],load:()=>Promise<T>):Promise<T>{
+ if(process.env.FIRESTORE_DASHBOARD_SUMMARIES_ENABLED!=='true')return load();
+ const key=dashboardSummaryKey([collection,[...new Set(ids)].sort()]);
+ return persistentDashboardSummary(getNativeDatabase(),collection,key,load);
+}
+
+export async function indexedDashboardPlanSummary(clientIds:string[],start:Date,end:Date,allowDenseScan=false,includeDetails=true){
  const ids=[...new Set(clientIds)],allowed=new Set(ids);
- if(allowDenseScan&&ids.length>=3000&&ids.length<=10000){
+ if(!ids.length)return {activeClientIds:[],expiringPlans:[]};
+ const dense=allowDenseScan&&ids.length>=3000&&ids.length<=10000;
+ // Small detail dashboards need these records anyway; extra aggregates cost more RPCs.
+ if(dense||!includeDetails&&ids.length<=300){
   const db=pipelineDatabase(),spec=specs.plans;
-  const source=()=>(db as Firestore & {pipeline():Pipelines.PipelineSource}).pipeline()
-   .collection({collection:spec.collection,forceIndex:spec.index})
-   .where(Pipelines.field('status').equal('active'))
-   .where(Pipelines.field('isDeleted').ifNull(false).notEqual(true));
+  const source=()=>{
+   let query=(db as Firestore & {pipeline():Pipelines.PipelineSource}).pipeline()
+    .collection({collection:spec.collection,forceIndex:spec.index})
+    .where(Pipelines.field('status').equal('active'))
+    .where(Pipelines.field('isDeleted').ifNull(false).notEqual(true));
+   if(!dense)query=query.where(Pipelines.field('clientId').equalAny(ids));
+   return query;
+  };
   const [clients,expiring]=await Promise.all([
-   source().distinct('clientId').limit(50001).execute(),
-   source().where(Pipelines.field('endDate').greaterThanOrEqual(start)).where(Pipelines.field('endDate').lessThan(end))
-    .select(...spec.fields,Pipelines.field('__name__').documentId().as('_id')).limit(50001).execute(),
+   cachedAggregate('clientmealplans',ids,async()=>{const result=await source().distinct('clientId').limit(50001).execute();return result.results.map(row=>row.get('clientId') as string);}),
+   includeDetails?source().where(Pipelines.field('endDate').greaterThanOrEqual(start)).where(Pipelines.field('endDate').lessThan(end))
+    .select(...spec.fields,Pipelines.field('__name__').documentId().as('_id')).limit(50001).execute():Promise.resolve({results:[]}),
   ]);
-  if(clients.results.length<50001&&expiring.results.length<50001)return {
-   activeClientIds:clients.results.map(row=>row.get('clientId') as string).filter(id=>allowed.has(id)),
+  if(clients.length<50001&&expiring.results.length<50001)return {
+   activeClientIds:clients.filter(id=>allowed.has(id)),
    expiringPlans:expiring.results.filter(row=>allowed.has(row.get('clientId'))).map(row=>Object.fromEntries(Object.entries(row.data()).map(([key,value])=>[key,value instanceof Timestamp?value.toDate():value]))),
   };
  }
  const plans=(await indexedDashboardRows('plans',ids)).filter(plan=>plan.isDeleted!==true);
- return {activeClientIds:[...new Set(plans.map(plan=>plan.clientId as string))],expiringPlans:plans.filter(plan=>plan.endDate>=start&&plan.endDate<end)};
+ return {activeClientIds:[...new Set(plans.map(plan=>plan.clientId as string))],expiringPlans:includeDetails?plans.filter(plan=>plan.endDate>=start&&plan.endDate<end):[]};
 }
 
-export async function indexedDashboardPaymentSummary(clientIds:string[],start:Date,end:Date,allowDenseScan=false){
+export async function indexedDashboardPaymentSummary(clientIds:string[],start:Date,end:Date,allowDenseScan=false,includeDetails=true){
  const ids=[...new Set(clientIds)];
- if(allowDenseScan&&ids.length>=3000&&ids.length<=10000){
+ if(!ids.length)return {groups:[],recentPayments:[],expiredPayments:[]};
+ const dense=allowDenseScan&&ids.length>=3000&&ids.length<=10000;
+ // Small detail dashboards need these records anyway; extra aggregates cost more RPCs.
+ if(dense||!includeDetails&&ids.length<=300){
   const db=pipelineDatabase(),spec=specs.payments;
   const source=()=>(db as Firestore & {pipeline():Pipelines.PipelineSource}).pipeline()
    .collection({collection:spec.collection,forceIndex:spec.index})
-   .where(Pipelines.array(ids).arrayContains(Pipelines.field('client')));
+   .where(dense?Pipelines.array(ids).arrayContains(Pipelines.field('client')):Pipelines.field('client').equalAny(ids));
   const project=(q:Pipelines.Pipeline)=>q.select(...spec.fields,Pipelines.field('__name__').documentId().as('_id'));
   const [totals,recent,expired]=await Promise.all([
-   source().aggregate({groups:['status',Pipelines.field('amount').ifNull(0).type().as('amountType')],accumulators:[Pipelines.field('amount').sum().as('amount'),Pipelines.field('client').count().as('count')]}).execute(),
-   project(source().sort(Pipelines.field('createdAt').descending()).limit(10)).execute(),
-   project(source().where(Pipelines.field('expectedEndDate').greaterThanOrEqual(start)).where(Pipelines.field('expectedEndDate').lessThan(end))).limit(50001).execute(),
+   cachedAggregate('unifiedpayments',ids,async()=>{const result=await source().aggregate({groups:['status',Pipelines.field('amount').ifNull(0).type().as('amountType')],accumulators:[Pipelines.field('amount').sum().as('amount'),Pipelines.field('client').count().as('count')]}).execute();return result.results.map(row=>row.data());}),
+   includeDetails?project(source().sort(Pipelines.field('createdAt').descending()).limit(10)).execute():Promise.resolve({results:[]}),
+   includeDetails?project(source().where(Pipelines.field('expectedEndDate').greaterThanOrEqual(start)).where(Pipelines.field('expectedEndDate').lessThan(end))).limit(50001).execute():Promise.resolve({results:[]}),
   ]);
-  const groups=totals.results.map(row=>row.data());
+  const groups=totals;
   // Legacy string amounts must retain JavaScript Number conversion semantics.
   if(groups.every(row=>['int64','float64'].includes(row.amountType))&&expired.results.length<50001){
    const decode=(row:Pipelines.PipelineResult)=>Object.fromEntries(Object.entries(row.data()).map(([key,value])=>[key,value instanceof Timestamp?value.toDate():value]));
@@ -136,7 +168,8 @@ export async function indexedDashboardPaymentSummary(clientIds:string[],start:Da
   }
  }
  const payments=await indexedDashboardRows('payments',ids,allowDenseScan);
- return summarizeDashboardPayments(payments,start,end);
+ const summary=summarizeDashboardPayments(payments,start,end);
+ return includeDetails?summary:{groups:summary.groups,recentPayments:[],expiredPayments:[]};
 }
 
 export function summarizeDashboardPayments(payments:FirebaseFirestore.DocumentData[],start:Date,end:Date){
