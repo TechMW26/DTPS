@@ -25,7 +25,7 @@ export interface UseRealtimeOptions {
 
 /**
  * All known event types that consumers can receive via `onMessage`.
- * Socket.io delivers data already parsed — no JSON.parse needed.
+ * The native event stream delivers data already parsed — no JSON.parse needed.
  */
 const CALL_EVENTS = new Set([
   'incoming_call', 'call_accepted', 'call_rejected',
@@ -191,7 +191,7 @@ export function useRealtime(options: UseRealtimeOptions = {}) {
 
     for (const evt of domainEvents) {
       unsubs.push(socketClient.on(evt, (data: any) => {
-        // Socket.io delivers objects directly — stringify for backward compat
+        // The native event stream delivers objects directly — stringify for backward compat
         // with consumers that call JSON.parse on event.data
         const payload = typeof data === 'string' ? data : JSON.stringify(data);
         onMessageRef.current?.({ type: evt, data: payload, timestamp: Date.now() });

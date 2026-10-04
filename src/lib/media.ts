@@ -54,6 +54,12 @@ export function getMediaUrl(reference: MediaReference): string {
   if (!reference || typeof reference !== "object") return "";
   const values = reference as Record<string, unknown>;
 
+  // Migrated, authenticated Blob references take priority over legacy source URLs.
+  for (const field of MEDIA_URL_FIELDS) {
+    const value = values[field];
+    if (typeof value === "string" && /^\/api\/media\/[a-f0-9]{64}(?:[?/#]|$)/i.test(value.trim())) return value.trim();
+  }
+
   // Prefer direct CDN URLs (Vercel Blob, etc.) over DB-backed file routes.
   // This avoids unnecessary 307 redirect hops that break WaveSurfer.js
   // and other media players that don't follow redirects correctly.

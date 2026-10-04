@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/config';
 import { getBaseUrl } from '@/lib/config';
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeSessionStatus,saveNativeCalendarCredentials} from '@/lib/db/repository/native-auth';
 import { google } from 'googleapis';
 
 /**
@@ -76,8 +76,7 @@ export async function GET(req: NextRequest) {
 
     // Save tokens to database with timeout
     try {
-      await connectDB();
-      const user = await User.findById(session.user.id);
+      const user = await nativeSessionStatus(getNativeDatabase(),session.user.id);
 
       if (!user) {
         return NextResponse.redirect(
@@ -85,10 +84,10 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      user.googleCalendarAccessToken = tokens.tokens.access_token;
-      user.googleCalendarRefreshToken = tokens.tokens.refresh_token || user.googleCalendarRefreshToken;
-      user.googleCalendarTokenExpiry = tokens.tokens.expiry_date ? new Date(tokens.tokens.expiry_date) : undefined;
-      await user.save();
+      await saveNativeCalendarCredentials(getNativeDatabase(),session.user.id,{
+        access_token:tokens.tokens.access_token||undefined,refresh_token:tokens.tokens.refresh_token||undefined,
+        expires_at:tokens.tokens.expiry_date?tokens.tokens.expiry_date/1000:undefined,
+      });
 
       console.log('Google Calendar tokens saved successfully for user:', session.user.id);
     } catch (dbError: any) {

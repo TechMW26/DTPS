@@ -91,7 +91,7 @@ export function summarizeWater(water: Array<{ amount: number; unit: string }>, t
         'Bottle (500ml)': 500,
         'Bottle (1L)': 1000,
         'Cup (200ml)': 200,
-        glasses: 250,
+        glasses: 250, ml: 1, ML: 1, L: 1000, l: 1000, cups: 200,
     };
 
     let totalMl = 0;

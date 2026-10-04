@@ -1,10 +1,11 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeAuthorizedPaymentLink} from '@/lib/db/repository/native-payment-link-admin';
+import {NativeCheckoutError} from '@/lib/db/repository/native-checkout';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import PaymentLink from '@/lib/db/models/PaymentLink';
 import { sendEmail, getInvoiceEmailTemplate } from '@/lib/services/email';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // Generate invoice number
 function generateInvoiceNumber(paymentLinkId: string, createdAt: Date): string {
@@ -20,29 +21,23 @@ export async function GET(request: NextRequest) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
     const paymentLinkId = searchParams.get('id');
 
     if (!paymentLinkId) {
-      return NextResponse.json({ error: 'Payment link ID is required' }, { status: 400 });
+      return nativeResponseJson({ error: 'Payment link ID is required' }, { status: 400 });
     }
 
-    await connectDB();
+
 
     // Find the payment link with populated data
-    const paymentLink = await withCache(
-      `payment-links:invoice:${JSON.stringify(paymentLinkId)}`,
-      async () => await PaymentLink.findById(paymentLinkId)
-        .populate('client', 'firstName lastName email phone')
-        .populate('dietitian', 'firstName lastName email'),
-      { ttl: 120000, tags: ['payment_links'] }
-    );
+    const paymentLink = await nativeAuthorizedPaymentLink(getNativeDatabase(), session.user.id, paymentLinkId, request.method === 'POST');
 
     if (!paymentLink) {
-      return NextResponse.json({ error: 'Payment link not found' }, { status: 404 });
+      return nativeResponseJson({ error: 'Payment link not found' }, { status: 404 });
     }
 
     // Generate invoice data
@@ -93,14 +88,15 @@ export async function GET(request: NextRequest) {
     return new NextResponse(invoiceHtml, {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'private, no-store',
       },
     });
 
   } catch (error) {
-    console.error('Error generating invoice:', error);
-    return NextResponse.json({
+    if(error instanceof NativeCheckoutError)return nativeResponseJson({error:error.message},{status:error.status});
+    return nativeResponseJson({
       error: 'Failed to generate invoice',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      code: 'INVOICE_UNAVAILABLE'
     }, { status: 500 });
   }
 }
@@ -111,40 +107,34 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await request.json();
     const { paymentLinkId } = body;
 
     if (!paymentLinkId) {
-      return NextResponse.json({ error: 'Payment link ID is required' }, { status: 400 });
+      return nativeResponseJson({ error: 'Payment link ID is required' }, { status: 400 });
     }
 
-    await connectDB();
+
 
     // Find the payment link with populated data
-    const paymentLink = await withCache(
-      `payment-links:invoice:${JSON.stringify(paymentLinkId)}`,
-      async () => await PaymentLink.findById(paymentLinkId)
-        .populate('client', 'firstName lastName email phone')
-        .populate('dietitian', 'firstName lastName email'),
-      { ttl: 120000, tags: ['payment_links'] }
-    );
+    const paymentLink = await nativeAuthorizedPaymentLink(getNativeDatabase(), session.user.id, paymentLinkId, request.method === 'POST');
 
     if (!paymentLink) {
-      return NextResponse.json({ error: 'Payment link not found' }, { status: 404 });
+      return nativeResponseJson({ error: 'Payment link not found' }, { status: 404 });
     }
 
     // Check if payment is paid
     if (paymentLink.status !== 'paid') {
-      return NextResponse.json({ error: 'Invoice can only be generated for paid payments' }, { status: 400 });
+      return nativeResponseJson({ error: 'Invoice can only be generated for paid payments' }, { status: 400 });
     }
 
     // Get client email
     const clientEmail = paymentLink.client?.email;
     if (!clientEmail) {
-      return NextResponse.json({ error: 'Client email not found' }, { status: 400 });
+      return nativeResponseJson({ error: 'Client email not found' }, { status: 400 });
     }
 
     // Prepare data
@@ -189,7 +179,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Send email
-    console.log('[INVOICE] Sending invoice to:', clientEmail);
+    if (process.env.NODE_ENV !== 'production') return nativeResponseJson({ error: 'Email delivery is disabled during local migration testing' }, { status: 409 });
     const sent = await sendEmail({
       to: clientEmail,
       subject: emailTemplate.subject,
@@ -198,20 +188,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (!sent) {
-      console.error('[INVOICE] Failed to send invoice email');
-      return NextResponse.json({
+        return nativeResponseJson({
         error: 'Failed to send invoice email. Please check SMTP configuration.',
         hint: 'Ensure SMTP_HOST, SMTP_USER, SMTP_PASS are configured in .env',
-        debug: {
-          smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
-          smtpHost: process.env.SMTP_HOST || 'NOT SET',
-          smtpUser: process.env.SMTP_USER || 'NOT SET'
-        }
+        code: 'DELIVERY_FAILED'
       }, { status: 500 });
     }
 
-    console.log('[INVOICE] Invoice sent successfully to:', clientEmail);
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: `Invoice sent to ${clientEmail}`,
       invoiceNumber,
@@ -219,10 +203,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error sending invoice:', error);
-    return NextResponse.json({
+    if(error instanceof NativeCheckoutError)return nativeResponseJson({error:error.message},{status:error.status});
+    return nativeResponseJson({
       error: 'Failed to send invoice',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      code: 'INVOICE_UNAVAILABLE'
     }, { status: 500 });
   }
 }
@@ -264,14 +248,14 @@ function generateInvoiceHTML(data: {
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background-color: #f4f7fa;
       padding: 20px;
       color: #333;
     }
-    
+
     .invoice-container {
       max-width: 800px;
       margin: 0 auto;
@@ -280,7 +264,7 @@ function generateInvoiceHTML(data: {
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
       overflow: hidden;
     }
-    
+
     .invoice-header {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: #fff;
@@ -289,44 +273,44 @@ function generateInvoiceHTML(data: {
       justify-content: space-between;
       align-items: center;
     }
-    
+
     .company-info h1 {
       font-size: 28px;
       font-weight: 700;
       margin-bottom: 5px;
     }
-    
+
     .company-info p {
       font-size: 14px;
       opacity: 0.9;
     }
-    
+
     .invoice-title {
       text-align: right;
     }
-    
+
     .invoice-title h2 {
       font-size: 32px;
       font-weight: 300;
       letter-spacing: 2px;
     }
-    
+
     .invoice-title .invoice-number {
       font-size: 14px;
       opacity: 0.9;
       margin-top: 5px;
     }
-    
+
     .invoice-body {
       padding: 40px;
     }
-    
+
     .invoice-details {
       display: flex;
       justify-content: space-between;
       margin-bottom: 40px;
     }
-    
+
     .detail-section h3 {
       font-size: 12px;
       text-transform: uppercase;
@@ -334,23 +318,23 @@ function generateInvoiceHTML(data: {
       color: #888;
       margin-bottom: 10px;
     }
-    
+
     .detail-section p {
       font-size: 15px;
       line-height: 1.6;
     }
-    
+
     .detail-section strong {
       font-weight: 600;
       color: #333;
     }
-    
+
     .items-table {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 30px;
     }
-    
+
     .items-table th {
       background-color: #f8fafc;
       padding: 14px;
@@ -361,55 +345,55 @@ function generateInvoiceHTML(data: {
       color: #666;
       border-bottom: 2px solid #e2e8f0;
     }
-    
+
     .items-table th:last-child {
       text-align: right;
     }
-    
+
     .items-table td {
       padding: 16px 14px;
       border-bottom: 1px solid #e2e8f0;
       font-size: 15px;
     }
-    
+
     .items-table td:last-child {
       text-align: right;
     }
-    
+
     .item-name {
       font-weight: 500;
     }
-    
+
     .item-desc {
       font-size: 13px;
       color: #888;
       margin-top: 4px;
     }
-    
+
     .subtotal-row td {
       padding: 10px 14px;
       font-size: 14px;
       color: #666;
     }
-    
+
     .discount-row td {
       color: #10b981;
     }
-    
+
     .total-row {
       background-color: ${isPaid ? '#f0fdf4' : '#fef3c7'};
     }
-    
+
     .total-row td {
       padding: 18px 14px;
       font-size: 18px;
       font-weight: 700;
     }
-    
+
     .total-row td:last-child {
       color: ${isPaid ? '#10b981' : '#f59e0b'};
     }
-    
+
     .payment-status {
       text-align: center;
       padding: 25px;
@@ -417,7 +401,7 @@ function generateInvoiceHTML(data: {
       border-radius: 8px;
       margin-bottom: 30px;
     }
-    
+
     .status-badge {
       display: inline-block;
       background-color: ${isPaid ? '#10b981' : '#f59e0b'};
@@ -428,29 +412,29 @@ function generateInvoiceHTML(data: {
       font-weight: 600;
       letter-spacing: 1px;
     }
-    
+
     .payment-info {
       margin-top: 15px;
       font-size: 13px;
       color: #666;
     }
-    
+
     .invoice-footer {
       background-color: #f8fafc;
       padding: 25px 40px;
       text-align: center;
       border-top: 1px solid #e2e8f0;
     }
-    
+
     .footer-text {
       font-size: 13px;
       color: #888;
     }
-    
+
     .footer-text strong {
       color: #333;
     }
-    
+
     .print-button {
       position: fixed;
       bottom: 20px;
@@ -465,23 +449,23 @@ function generateInvoiceHTML(data: {
       cursor: pointer;
       box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
     }
-    
+
     .print-button:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
     }
-    
+
     @media print {
       body {
         background: #fff;
         padding: 0;
       }
-      
+
       .invoice-container {
         box-shadow: none;
         max-width: 100%;
       }
-      
+
       .print-button {
         display: none;
       }
@@ -500,7 +484,7 @@ function generateInvoiceHTML(data: {
         <p class="invoice-number">#${data.invoiceNumber}</p>
       </div>
     </div>
-    
+
     <div class="invoice-body">
       <div class="invoice-details">
         <div class="detail-section">
@@ -520,7 +504,7 @@ function generateInvoiceHTML(data: {
           </p>
         </div>
       </div>
-      
+
       <table class="items-table">
         <thead>
           <tr>
@@ -555,13 +539,13 @@ function generateInvoiceHTML(data: {
           </tr>
         </tbody>
       </table>
-      
+
       <div class="payment-status">
         <span class="status-badge">${isPaid ? '✓ PAID' : '⏳ PENDING'}</span>
         ${data.paymentId ? `<div class="payment-info">Transaction ID: ${data.paymentId}</div>` : ''}
       </div>
     </div>
-    
+
     <div class="invoice-footer">
       <p class="footer-text">
         ${data.dietitianName ? `Issued by: <strong>${data.dietitianName}</strong> ${data.dietitianEmail ? `(${data.dietitianEmail})` : ''}<br>` : ''}
@@ -570,7 +554,7 @@ function generateInvoiceHTML(data: {
       </p>
     </div>
   </div>
-  
+
   <button class="print-button" onclick="window.print()">🖨️ Print Invoice</button>
 </body>
 </html>

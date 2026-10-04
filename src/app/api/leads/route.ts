@@ -1,31 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db/connection';
-import Lead from '@/lib/db/models/Lead';
-
-export async function POST(request: NextRequest) {
-  try {
-    await connectDB();
-    const body = await request.json();
-
-    if (!body.email && !body.phone && !body.name) {
-      return NextResponse.json({ error: 'name, email, or phone is required' }, { status: 400 });
-    }
-
-    const lead = await Lead.create({
-      name: body.name || '',
-      email: body.email || '',
-      phone: body.phone || '',
-      source: body.source || 'external',
-      status: body.status || 'new',
-      message: body.message || '',
-      notes: body.notes || '',
-      metadata: body.metadata || {},
-      origin: body.origin || 'dtps'
-    });
-
-    return NextResponse.json({ lead });
-  } catch (error) {
-    console.error('Error creating lead:', error);
-    return NextResponse.json({ error: 'Failed to create lead' }, { status: 500 });
-  }
-}
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {NextRequest,NextResponse} from 'next/server';
+import {getServerSession} from 'next-auth';
+import {authOptions} from '@/lib/auth/config';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {readNativeLeads,writeNativeLead} from '@/lib/db/repository/native-admin-leads';
+import {NativeDirectoryError} from '@/lib/db/repository/native-client-directory';
+export async function POST(r:NextRequest){try{return nativeResponseJson(await writeNativeLead(getNativeDatabase(),await r.json(),undefined,undefined,false,r.headers.get('x-forwarded-for')?.split(',')[0]||'local'));}catch(e){return nativeResponseJson({error:e instanceof NativeDirectoryError?e.message:'Unable to submit lead'},{status:e instanceof NativeDirectoryError?e.status:500});}}

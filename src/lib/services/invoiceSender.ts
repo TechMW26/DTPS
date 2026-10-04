@@ -1,61 +1,29 @@
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import { sendEmail } from '@/lib/services/email';
-import {
-    generateEmailInvoiceHTML,
-    buildInvoiceDataFromPayment,
-} from '@/lib/services/invoiceTemplate';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeDates} from '@/lib/db/repository/native-plan-editor';
+import {sendEmail} from '@/lib/services/email';
+import {generateEmailInvoiceHTML,buildInvoiceDataFromPayment} from '@/lib/services/invoiceTemplate';
 
-/**
- * Send invoice email automatically after a payment is verified as paid.
- * 
- * This is a fire-and-forget function — it logs errors but does not throw,
- * so it won't block the main payment verification flow.
- * 
- * @param paymentId - The UnifiedPayment document ID
- */
-export async function sendInvoiceOnPayment(paymentId: string): Promise<void> {
-    try {
-        const payment = await UnifiedPayment.findById(paymentId)
-            .populate('client', 'firstName lastName email phone')
-            .lean() as any;
-
-        if (!payment) {
-            console.warn('[AUTO-INVOICE] Payment not found:', paymentId);
-            return;
-        }
-
-        // Only send invoice for paid/completed payments
-        if (payment.paymentStatus !== 'paid' && payment.status !== 'paid' && payment.status !== 'completed') {
-            console.log('[AUTO-INVOICE] Payment not paid, skipping invoice:', paymentId);
-            return;
-        }
-
-        // Get client email
-        const clientEmail = payment.client?.email || payment.payerEmail;
-        if (!clientEmail) {
-            console.warn('[AUTO-INVOICE] No client email found for payment:', paymentId);
-            return;
-        }
-
-        const invoiceData = buildInvoiceDataFromPayment(payment);
-        const emailTemplate = generateEmailInvoiceHTML(invoiceData);
-
-        console.log('[AUTO-INVOICE] Sending invoice to:', clientEmail, 'for payment:', paymentId);
-
-        const sent = await sendEmail({
-            to: clientEmail,
-            subject: emailTemplate.subject,
-            html: emailTemplate.html,
-            text: emailTemplate.text,
-        });
-
-        if (sent) {
-            console.log('[AUTO-INVOICE] Invoice sent successfully to:', clientEmail);
-        } else {
-            console.error('[AUTO-INVOICE] Failed to send invoice email to:', clientEmail);
-        }
-    } catch (error) {
-        // Never throw - this is fire-and-forget
-        console.error('[AUTO-INVOICE] Error sending invoice:', error instanceof Error ? error.message : error);
-    }
+/** Returns a provider acknowledgement; the outbox owns retry/uncertain delivery state. */
+export async function deliverNativePaymentInvoice(paymentId:string):Promise<'sent'|'skipped'|'disabled'> {
+ if(process.env.NODE_ENV!=='production')return 'disabled';
+ if(!/^[a-f0-9]{24}$/.test(paymentId))throw new Error('Invalid payment ID');
+ const db=getNativeDatabase(),row=await db.collection('unifiedpayments').doc(paymentId).get();
+ if(!row.exists)throw new Error('Payment not found');
+ const payment=nativeDates(row.data());
+ if(payment.paymentStatus!=='paid'&&!['paid','completed'].includes(payment.status))throw new Error('Payment is not paid');
+ const client=await db.collection('users').doc(payment.client).get();
+ const person=client.exists?Object.fromEntries(['firstName','lastName','email','phone'].filter(key=>client.get(key)!==undefined).map(key=>[key,client.get(key)])):null;
+ const recipient=person?.email||payment.payerEmail;if(!recipient)return 'skipped';
+ const template=generateEmailInvoiceHTML(buildInvoiceDataFromPayment({...payment,_id:row.id,client:person}));
+ if(!await sendEmail({to:recipient,subject:template.subject,html:template.html,text:template.text}))throw new Error('Invoice provider did not confirm delivery');
+ return 'sent';
+}
+/** Legacy callers enqueue the durable effect instead of sending a duplicate email directly. */
+export async function sendInvoiceOnPayment(paymentId:string):Promise<void>{
+ if(!/^[a-f0-9]{24}$/.test(paymentId))throw new Error('Invalid payment ID');
+ const db=getNativeDatabase(),ref=db.collection('_nativeOutbox').doc('invoice-email-'+paymentId);
+ await db.runTransaction(async tx=>{
+  const row=await tx.get(ref);if(row.exists)return;
+  tx.create(ref,{type:'invoice-email',paymentId,status:'pending',createdAt:new Date()});
+ });
 }

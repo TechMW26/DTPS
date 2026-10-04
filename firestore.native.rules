@@ -1,0 +1,7 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Server repositories enforce session/role authorization. No client data access yet.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

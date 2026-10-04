@@ -1,5 +1,7 @@
 'use client';
 
+import {MigrationCorrectionNotice} from '@/components/ui/migration-correction-notice';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Target, Activity, AlertCircle, Apple } from 'lucide-react';
@@ -56,7 +58,7 @@ export default function ClientDetailsTab({ client, onUpdate }: ClientDetailsTabP
   const bmiCategory = bmi ? getBMICategory(parseFloat(bmi)) : null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><MigrationCorrectionNotice issues={(client as any)._nativeMigrationIssues} />
       {/* Basic Information */}
       <Card>
         <CardHeader>

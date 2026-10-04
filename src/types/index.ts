@@ -1,4 +1,4 @@
-import { Document, Types } from 'mongoose';
+export interface StoredDocument { _id: string; createdAt?: Date; updatedAt?: Date; }
 
 // User Types
 export enum UserRole {
@@ -22,9 +22,9 @@ export enum ClientStatus {
   HOLD = 'hold'           // Manual override — program paused; overrides ACTIVE/INACTIVE
 }
 
-export interface IUser extends Document {
+export interface IUser extends StoredDocument {
   notificationTimeZone?: string;
-  _id: Types.ObjectId;
+  _id: string;
   email: string;
   password: string;
   firstName: string;
@@ -151,7 +151,7 @@ export interface IZoomMeetingDetails {
   hostEmail?: string;
 }
 
-export interface IAppointment extends Document {
+export interface IAppointment extends StoredDocument {
   dietitian: string;
   client: string;
   type: AppointmentType;
@@ -208,7 +208,7 @@ export interface INutrition {
   sodium?: number; // in mg
 }
 
-export interface IRecipe extends Document {
+export interface IRecipe extends StoredDocument {
   name: string;
   description?: string;
   ingredients: {
@@ -229,7 +229,7 @@ export interface IRecipe extends Document {
   updatedAt: Date;
 }
 
-export interface IMealPlan extends Document {
+export interface IMealPlan extends StoredDocument {
   name: string;
   description?: string;
   dietitian: string;
@@ -294,7 +294,7 @@ export interface IMessageReaction {
   createdAt: Date;
 }
 
-export interface IMessage extends Document {
+export interface IMessage extends StoredDocument {
   sender: string;
   receiver: string;
   type: MessageType;
@@ -330,7 +330,7 @@ export enum PaymentType {
   SERVICE_PLAN = 'service_plan'
 }
 
-export interface IPayment extends Document {
+export interface IPayment extends StoredDocument {
   client: string;
   dietitian: string;
   type: PaymentType;
@@ -366,7 +366,7 @@ export interface IPayment extends Document {
 }
 
 // Progress Tracking Types
-export interface IProgressEntry extends Document {
+export interface IProgressEntry extends StoredDocument {
   user: string;
   type: string;
   value: number;
@@ -378,7 +378,7 @@ export interface IProgressEntry extends Document {
 }
 
 // Food Log Types
-export interface IFoodLog extends Document {
+export interface IFoodLog extends StoredDocument {
   client: string;
   date: Date;
   meals: {

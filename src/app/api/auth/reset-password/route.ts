@@ -1,6 +1,8 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {consumeNativeReset,validateNativeReset} from '@/lib/db/repository/native-account';
+import {invalidateUserStatusCache} from '@/lib/auth/config';
 import crypto from 'crypto';
 
 // POST /api/auth/reset-password - Reset user password with token
@@ -8,8 +10,8 @@ export async function POST(request: NextRequest) {
   try {
     const { token, email, password } = await request.json();
 
-    if (!token || !email || !password) {
-      return NextResponse.json(
+    if (typeof token!=='string'||typeof email!=='string'||typeof password!=='string'||!token||!email||!password) {
+      return nativeResponseJson(
         { error: 'Token, email, and password are required' },
         { status: 400 }
       );
@@ -17,13 +19,12 @@ export async function POST(request: NextRequest) {
 
     // Validate password length
     if (password.length < 4) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'Password must be at least 4 characters long' },
         { status: 400 }
       );
     }
 
-    await connectDB();
 
     // Hash the provided token to compare with stored hash
     const hashedToken = crypto
@@ -32,30 +33,18 @@ export async function POST(request: NextRequest) {
       .digest('hex');
 
     // Find user with valid token
-    const user = await User.findOne({
-      email: email.toLowerCase().trim(),
-      passwordResetToken: hashedToken,
-      passwordResetTokenExpiry: { $gt: new Date() }
-    });
+    const user = await consumeNativeReset(getNativeDatabase(),email,hashedToken,password);
 
     if (!user) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'Invalid or expired password reset link. Please request a new one.' },
         { status: 400 }
       );
     }
 
-    // Update password (will be hashed by pre-save hook)
-    user.password = password;
+    invalidateUserStatusCache(user._id);
 
-    // Clear reset token fields
-    user.passwordResetToken = null;
-    user.passwordResetTokenExpiry = null;
-
-    await user.save();
-
-
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: 'Password has been reset successfully. You can now login with your new password.',
       role: user.role
@@ -63,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error in reset password:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'An error occurred. Please try again later.' },
       { status: 500 }
     );
@@ -78,13 +67,12 @@ export async function GET(request: NextRequest) {
     const email = searchParams.get('email');
 
     if (!token || !email) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { valid: false, error: 'Token and email are required' },
         { status: 400 }
       );
     }
 
-    await connectDB();
 
     // Hash the provided token to compare with stored hash
     const hashedToken = crypto
@@ -93,27 +81,23 @@ export async function GET(request: NextRequest) {
       .digest('hex');
 
     // Find user with valid token
-    const user = await User.findOne({
-      email: email.toLowerCase().trim(),
-      passwordResetToken: hashedToken,
-      passwordResetTokenExpiry: { $gt: new Date() }
-    });
+    const user = await validateNativeReset(getNativeDatabase(),email,hashedToken);
 
     if (!user) {
-      return NextResponse.json({
+      return nativeResponseJson({
         valid: false,
         error: 'Invalid or expired password reset link. Please request a new one.'
       });
     }
 
-    return NextResponse.json({
+    return nativeResponseJson({
       valid: true,
       userName: user.firstName
     });
 
   } catch (error) {
     console.error('Error validating reset token:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { valid: false, error: 'An error occurred. Please try again later.' },
       { status: 500 }
     );

@@ -1,8 +1,9 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import { registerFCMToken, unregisterFCMToken } from '@/lib/firebase';
-import User from '@/lib/db/models/User';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
 import { isValidMealTimeZone } from '@/lib/task-schedule';
 
 /**
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
         const session = await getServerSession(authOptions);
 
         if (!session?.user?.id) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Unauthorized' },
                 { status: 401 }
             );
@@ -21,14 +22,15 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json();
         const { token, deviceType = 'web', deviceInfo } = body;
+        if (!['web', 'android', 'ios'].includes(deviceType)) return nativeResponseJson({error:'Invalid device type'},{status:400});
         if (body.timeZone !== undefined && !isValidMealTimeZone(body.timeZone)) {
-            return NextResponse.json({ success: false, error: 'Invalid timezone' }, { status: 400 });
+            return nativeResponseJson({ success: false, error: 'Invalid timezone' }, { status: 400 });
         }
         const normalizedToken = String(token || '').trim();
         const loweredToken = normalizedToken.toLowerCase();
 
         if (!normalizedToken || loweredToken === 'null' || loweredToken === 'undefined' || loweredToken === 'nan') {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Token is required' },
                 { status: 400 }
             );
@@ -42,12 +44,12 @@ export async function POST(request: NextRequest) {
         );
 
         if (result.success && body.timeZone) {
-            await User.updateOne({ _id: session.user.id }, { $set: { notificationTimeZone: body.timeZone } });
+            await getNativeDatabase().collection('users').doc(session.user.id).update({ notificationTimeZone: body.timeZone, updatedAt: new Date() });
         }
-        return NextResponse.json(result);
+        return nativeResponseJson(result, {status:result.success?200:503});
     } catch (error: any) {
         console.error('Error registering FCM token:', error);
-        return NextResponse.json(
+        return nativeResponseJson(
             { success: false, error: error.message || 'Internal server error' },
             { status: 500 }
         );
@@ -62,7 +64,7 @@ export async function DELETE(request: NextRequest) {
         const session = await getServerSession(authOptions);
 
         if (!session?.user?.id) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Unauthorized' },
                 { status: 401 }
             );
@@ -74,7 +76,7 @@ export async function DELETE(request: NextRequest) {
         const loweredToken = normalizedToken.toLowerCase();
 
         if (!normalizedToken || loweredToken === 'null' || loweredToken === 'undefined' || loweredToken === 'nan') {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Token is required' },
                 { status: 400 }
             );
@@ -82,10 +84,10 @@ export async function DELETE(request: NextRequest) {
 
         const result = await unregisterFCMToken(session.user.id, normalizedToken);
 
-        return NextResponse.json(result);
+        return nativeResponseJson(result, {status:result.success?200:503});
     } catch (error: any) {
         console.error('Error unregistering FCM token:', error);
-        return NextResponse.json(
+        return nativeResponseJson(
             { success: false, error: error.message || 'Internal server error' },
             { status: 500 }
         );

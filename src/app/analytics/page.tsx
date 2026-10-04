@@ -125,7 +125,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.id) {
       fetchAnalytics();
-      loadDataFromDatabase(); // Load from MongoDB instead of WooCommerce
+      loadDataFromDatabase(); // Load from the native database instead of WooCommerce
     } else if (status === 'unauthenticated') {
       setLoading(false);
     }
@@ -248,10 +248,10 @@ export default function AnalyticsPage() {
         if (saveResponse.ok) {
           const result = await saveResponse.json();
           setDbLastSync(result.timestamp);
-          alert(`Successfully saved to MongoDB!\n• ${result.savedClientsCount || 0} new clients\n• ${result.updatedClientsCount || 0} updated clients\n• ${result.ordersCount || 0} orders processed`);
+          alert(`Successfully saved to the database!\n• ${result.savedClientsCount || 0} new clients\n• ${result.updatedClientsCount || 0} updated clients\n• ${result.ordersCount || 0} orders processed`);
         } else {
-          console.error('Failed to save data to MongoDB');
-          alert('Failed to save data to MongoDB');
+          console.error('Failed to save data to the database');
+          alert('Failed to save data to the database');
         }
       }
     } catch (error) {
@@ -266,7 +266,7 @@ export default function AnalyticsPage() {
     try {
       setLoadingOrders(true);
 
-      // Fetch data from MongoDB
+      // Fetch data from the native database
       const dbResponse = await fetch('/api/woocommerce/from-db?type=all&per_page=1000');
 
       if (dbResponse.ok) {
@@ -277,10 +277,10 @@ export default function AnalyticsPage() {
         setDataSource('database');
         setDbLastSync(dbData.summary?.lastSync || null);
 
-        // alert(`Successfully loaded from MongoDB!\n• ${dbData.clients?.length || 0} clients\n• ${dbData.orders?.length || 0} orders`);
+        // alert(`Successfully loaded from the database!\n• ${dbData.clients?.length || 0} clients\n• ${dbData.orders?.length || 0} orders`);
       } else {
-        console.error('Failed to load data from MongoDB');
-        // alert('Failed to load data from MongoDB');
+        console.error('Failed to load data from the database');
+        // alert('Failed to load data from the database');
       }
     } catch (error) {
       console.error('Error loading data from database:', error);
@@ -656,7 +656,7 @@ export default function AnalyticsPage() {
                       </p>
                       <div className="flex items-center mt-2 space-x-2">
                         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          💾 MongoDB Client Database
+                          💾 Client Database
                         </span>
                         {dbLastSync && (
                           <span className="text-xs text-blue-600">

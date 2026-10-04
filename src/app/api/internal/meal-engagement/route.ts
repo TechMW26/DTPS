@@ -30,12 +30,10 @@ async function run(authorized: boolean) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const secret = process.env.RUNTIME_MONITOR_SECRET;
-  return run(Boolean(secret && request.headers.get('x-runtime-monitor-secret') === secret));
-}
-
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   return run(Boolean(secret && request.headers.get('authorization') === `Bearer ${secret}`));
 }
+
+// Self-hosted scheduler uses the same credential as the Vercel cron.
+export const POST = GET;

@@ -1,10 +1,8 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
-import WooCommerceClient from '@/lib/db/models/WooCommerceClient';
-import ActivityLog from '@/lib/db/models/ActivityLog';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativePasswordLogin,nativeOtpLogin,nativeSessionStatus,recordNativeLogin,saveNativeCalendarCredentials,nativeOnboardingStatus} from '@/lib/db/repository/native-auth';
 import { UserRole } from '@/types';
 import { getBaseUrl } from '@/lib/config';
 import { verify } from 'jsonwebtoken';
@@ -13,7 +11,7 @@ import { grantDietPlanAccessIfPublished } from '@/lib/auth/onboarding-access';
 
 /**
  * In-memory cache for user active-status checks in the session callback.
- * Avoids hitting MongoDB on EVERY getServerSession() call.
+ * Avoids a Firestore read on every getServerSession() call.
  * Cache TTL: 5 minutes — a user deactivated by admin will be locked out within 5 min.
  */
 const userStatusCache = new Map<string, {
@@ -200,240 +198,34 @@ export const authOptions: NextAuthOptions = {
         const loginContext = (credentials as any)?.loginContext as 'staff' | 'client' | undefined;
         const otpToken = (credentials as any)?.otpToken as string | undefined;
 
-        // Phone OTP login (Firebase SMS primary, verified WhatsApp fallback)
-        if (otpToken) {
+        const db=getNativeDatabase();
+        let user;
+        if(otpToken) {
+          const secret=process.env.NEXTAUTH_SECRET;
+          if(!secret)throw new Error('Server configuration error');
           try {
-            const jwtSecret = process.env.NEXTAUTH_SECRET;
-            if (!jwtSecret) {
-              throw new Error('Server configuration error');
-            }
-
-            // Verify the OTP token
-            const decoded = verify(otpToken, jwtSecret) as {
-              userId: string;
-              email: string;
-              name: string;
-              role: string;
-              onboardingCompleted?: boolean;
-            };
-
-            if (!decoded.userId) {
-              throw new Error('Invalid token: missing userId');
-            }
-
-            await connectDB();
-
-            // Fetch fresh user data using userId from token
-            const user = await User.findById(decoded.userId).select(
-              'firstName lastName email role status avatar emailVerified onboardingCompleted'
-            );
-
-            if (!user) {
-              throw new Error('User not found');
-            }
-
-            if (user.status !== 'active') {
-              throw new Error('Your account is not active. Please contact support.');
-            }
-
-            // Verify the email matches if both are present (extra safety check)
-            const tokenEmail = decoded.email?.toLowerCase();
-            const credEmail = credentials?.email?.toLowerCase();
-            if (tokenEmail && credEmail && tokenEmail !== credEmail) {
-              console.warn('OTP auth: email mismatch, token:', tokenEmail, 'cred:', credEmail);
-              // Don't reject — the userId from the signed token is authoritative
-            }
-
-            // Update lastLoginAt
-            await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
-
-            try {
-              await ActivityLog.create({
-                userId: user._id,
-                userRole: user.role,
-                userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
-                userEmail: user.email,
-                action: 'Logged In',
-                actionType: 'login',
-                category: 'auth',
-                description: `${user.firstName || ''} ${user.lastName || ''}`.trim() ? `${user.firstName} ${user.lastName} logged in` : 'User logged in',
-                ipAddress: loginIp,
-                userAgent: loginUserAgent,
-                details: {
-                  deviceName: loginDeviceName,
-                  sessionId: loginSessionId,
-                },
-                isRead: false,
-              });
-            } catch (logError) {
-              console.error('Failed to create login activity log:', logError);
-            }
-
-            // Use user's real email from DB, or token email — never generate a fake email
-            const userEmail = user.email || decoded.email || '';
-
-            return {
-              id: user._id.toString(),
-              email: userEmail,
-              name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-              role: user.role,
-              firstName: user.firstName,
-              lastName: user.lastName,
-              avatar: user.avatar,
-              emailVerified: user.emailVerified || true,
-              onboardingCompleted: user.onboardingCompleted,
-              sessionId: loginSessionId,
-              sessionStartedAt: loginSessionStartedAt,
-            };
-          } catch (error) {
-            console.error('OTP token auth error:', error);
-            throw new Error('Invalid or expired OTP session');
-          }
+            const decoded=verify(otpToken,secret) as {userId?:string};
+            if(!decoded.userId)throw new Error('Missing account');
+            user=await nativeOtpLogin(db,decoded.userId,loginContext);
+          }catch {throw new Error('Invalid or expired OTP session');}
+        } else {
+          if(!credentials?.email||!credentials?.password)throw new Error('Email and password are required');
+          user=await nativePasswordLogin(db,credentials.email,credentials.password,loginContext);
         }
-
-        // Standard Email/Password Login
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error('Email and password are required');
-        }
-
+        if(!user)throw new Error('Wrong email or password');
         try {
-          await connectDB();
-
-          // First, try to find user in main User collection
-          const user = await User.findOne({
-            email: credentials.email.toLowerCase()
-          }).select('+password');
-
-          if (user) {
-            // Block clients from using the staff auth pages, and block staff from using the client auth pages.
-            if (loginContext === 'staff' && user.role === UserRole.CLIENT) {
-              throw new Error('Wrong email or password');
-            }
-            if (loginContext === 'client' && user.role !== UserRole.CLIENT) {
-              throw new Error('Wrong email or password');
-            }
-
-            const isPasswordValid = await user.comparePassword(credentials.password);
-
-            if (!isPasswordValid) {
-              throw new Error('Wrong email or password');
-            }
-
-            // Check account status and provide specific error messages
-            if (user.status === 'inactive') {
-              throw new Error('Your account has been deactivated. Please contact admin.');
-            }
-
-            if (user.status === 'suspended') {
-              throw new Error('Your account has been suspended. Please contact admin for assistance.');
-            }
-
-            if (user.status !== 'active') {
-              throw new Error('Account is not active. Please contact support.');
-            }
-
-            // Update lastLoginAt
-            await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
-
-            try {
-              await ActivityLog.create({
-                userId: user._id,
-                userRole: user.role,
-                userName: user.fullName,
-                userEmail: user.email,
-                action: 'Logged In',
-                actionType: 'login',
-                category: 'auth',
-                description: `${user.fullName} logged in`,
-                ipAddress: loginIp,
-                userAgent: loginUserAgent,
-                details: {
-                  deviceName: loginDeviceName,
-                  sessionId: loginSessionId,
-                },
-                isRead: false,
-              });
-            } catch (logError) {
-              console.error('Failed to create login activity log:', logError);
-            }
-
-            return {
-              id: user._id.toString(),
-              email: user.email,
-              name: user.fullName,
-              role: user.role,
-              firstName: user.firstName,
-              lastName: user.lastName,
-              avatar: user.avatar,
-              emailVerified: user.emailVerified,
-              sessionId: loginSessionId,
-              sessionStartedAt: loginSessionStartedAt,
-            };
-          }
-
-          // If not found in User collection, check WooCommerceClient collection
-          const wooClient = await WooCommerceClient.findOne({
-            email: credentials.email.toLowerCase()
+          await recordNativeLogin(db,{
+            userId:user._id,userRole:user.role,userName:user.fullName,userEmail:user.email,
+            action:'Logged In',actionType:'login',category:'auth',description:`${user.fullName||'User'} logged in`,
+            ipAddress:loginIp,userAgent:loginUserAgent,details:{deviceName:loginDeviceName,sessionId:loginSessionId},
           });
-
-          if (wooClient) {
-            // WooCommerce clients are always clients.
-            if (loginContext === 'staff') {
-              throw new Error('Wrong email or password');
-            }
-
-            // For WooCommerce clients, use plain text password comparison
-            if (wooClient.password !== credentials.password) {
-              throw new Error('Wrong email or password');
-            }
-
-            try {
-              await ActivityLog.create({
-                userId: wooClient._id,
-                userRole: UserRole.CLIENT,
-                userName: wooClient.name,
-                userEmail: wooClient.email,
-                action: 'Logged In',
-                actionType: 'login',
-                category: 'auth',
-                description: `${wooClient.name} logged in`,
-                ipAddress: loginIp,
-                userAgent: loginUserAgent,
-                details: {
-                  deviceName: loginDeviceName,
-                  sessionId: loginSessionId,
-                },
-                isRead: false,
-              });
-            } catch (logError) {
-              console.error('Failed to create login activity log for Woo client:', logError);
-            }
-
-            return {
-              id: wooClient._id.toString(),
-              email: wooClient.email,
-              name: wooClient.name,
-              role: UserRole.CLIENT,
-              firstName: wooClient.name.split(' ')[0] || wooClient.name,
-              lastName: wooClient.name.split(' ').slice(1).join(' ') || '',
-              avatar: undefined,
-              emailVerified: true,
-              isWooCommerceClient: true,
-              phone: wooClient.phone,
-              city: wooClient.city,
-              country: wooClient.country,
-              totalOrders: wooClient.totalOrders,
-              totalSpent: wooClient.totalSpent,
-              sessionId: loginSessionId,
-              sessionStartedAt: loginSessionStartedAt,
-            };
-          }
-
-          throw new Error('Wrong email or password');
-        } catch (error) {
-          console.error('Auth error:', error);
-          throw error;
-        }
+        }catch {console.error('Failed to record login activity');}
+        return {
+          id:user._id,email:user.email||'',name:user.fullName,role:user.role,
+          firstName:user.firstName,lastName:user.lastName,avatar:user.avatar,emailVerified:!!user.emailVerified,
+          onboardingCompleted:user.onboardingCompleted,sessionId:loginSessionId,sessionStartedAt:loginSessionStartedAt,
+          ...(user.isWooCommerceClient?{isWooCommerceClient:true,phone:user.phone,city:user.city,country:user.country,totalOrders:user.totalOrders,totalSpent:user.totalSpent}:{}),
+        };
       }
     }),
     GoogleProvider({
@@ -504,13 +296,12 @@ export const authOptions: NextAuthOptions = {
         // For client users, fetch onboardingCompleted from database on initial sign in
         if (user.role === UserRole.CLIENT && !user.isWooCommerceClient) {
           try {
-            await connectDB();
-            const dbUser = await User.findById(user.id).select('onboardingCompleted');
-            const hasAccessiblePlan = dbUser?.onboardingCompleted
+            const completed=await nativeOnboardingStatus(getNativeDatabase(),user.id);
+            const hasAccessiblePlan = completed
               ? false
               : await grantDietPlanAccessIfPublished(user.id);
             token.onboardingCompleted = Boolean(
-              dbUser?.onboardingCompleted || hasAccessiblePlan
+              completed || hasAccessiblePlan
             );
           } catch (error) {
             console.error('Error fetching onboarding status:', error);
@@ -540,14 +331,7 @@ export const authOptions: NextAuthOptions = {
 
         // Store tokens in database for later use
         try {
-          await connectDB();
-          const dbUser = await User.findById(token.sub);
-          if (dbUser) {
-            dbUser.googleCalendarAccessToken = account.access_token;
-            dbUser.googleCalendarRefreshToken = account.refresh_token;
-            dbUser.googleCalendarTokenExpiry = account.expires_at ? new Date(account.expires_at * 1000) : undefined;
-            await dbUser.save();
-          }
+          if(token.sub)await saveNativeCalendarCredentials(getNativeDatabase(),token.sub,account);
         } catch (error) {
           console.error('Error storing Google Calendar tokens:', error);
         }
@@ -555,12 +339,10 @@ export const authOptions: NextAuthOptions = {
 
       // Handle session update - allows refreshing onboardingCompleted after onboarding completion
       if (trigger === 'update' && session) {
-        // If onboardingCompleted is explicitly set in the update, use it
-        if (typeof session.onboardingCompleted === 'boolean') {
-          token.onboardingCompleted = session.onboardingCompleted;
+        // Session updates are untrusted client input. Refresh permitted fields from storage.
+        if(token.sub && token.role===UserRole.CLIENT && !token.isWooCommerceClient) {
+          token.onboardingCompleted=await nativeOnboardingStatus(getNativeDatabase(),token.sub);
         }
-        // Merge other session updates
-        token = { ...token, ...session };
       }
 
       return token;
@@ -622,65 +404,20 @@ export const authOptions: NextAuthOptions = {
               return { user: {}, expires: new Date(0).toISOString() } as any;
             }
           } else {
-            // Cache miss — check DB ONLY if connection already exists
-            // This avoids blocking session callbacks on cold DB connections
+            // Missing or unreadable accounts must not be cached as active.
             try {
-              // Only attempt DB check if mongoose is already connected (readyState === 1)
-              const mongoose = await import('mongoose');
-              if (mongoose.default.connection.readyState === 1) {
-                // Use AbortController for clean timeout handling (no unhandled rejections)
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 1500);
-
-                try {
-                  const userDoc = await User.findById(userId).select('status logoutOtherSessionsAt keepCurrentSessionId').lean();
-                  clearTimeout(timeoutId);
-
-                  const user = userDoc as {
-                    status?: string;
-                    logoutOtherSessionsAt?: Date;
-                    keepCurrentSessionId?: string;
-                  } | null;
-                  if (user) {
-                    setCachedUserStatus(
-                      userId,
-                      user.status || 'active',
-                      user.logoutOtherSessionsAt,
-                      user.keepCurrentSessionId,
-                    );
-                    if (user.status !== 'active') {
-                      // Return empty session to trigger logout instead of null
-                      return { user: {}, expires: new Date(0).toISOString() } as any;
-                    }
-
-                    const shouldLogoutThisSession = Boolean(
-                      user.logoutOtherSessionsAt &&
-                      token.sessionId !== user.keepCurrentSessionId &&
-                      (
-                        !token.sessionStartedAt ||
-                        Number(token.sessionStartedAt) <= new Date(user.logoutOtherSessionsAt).getTime()
-                      )
-                    );
-
-                    if (shouldLogoutThisSession) {
-                      return { user: {}, expires: new Date(0).toISOString() } as any;
-                    }
-                  } else {
-                    // User not found in DB - cache as active to prevent repeated lookups
-                    setCachedUserStatus(userId, 'active');
-                  }
-                } catch {
-                  clearTimeout(timeoutId);
-                  // Query failed - cache as active
-                  setCachedUserStatus(userId, 'active');
-                }
-              } else {
-                // DB not connected - assume active and cache it
-                setCachedUserStatus(userId, 'active');
+              const user=await nativeSessionStatus(getNativeDatabase(),userId,!!token.isWooCommerceClient);
+              if(!user || user.status!=='active') {
+                setCachedUserStatus(userId,user?.status||'inactive');
+                return {user:{},expires:new Date(0).toISOString()} as any;
               }
-            } catch {
-              // Silently cache 'active' on any error to prevent repeated attempts
-              setCachedUserStatus(userId, 'active');
+              setCachedUserStatus(userId,user.status,user.logoutOtherSessionsAt,user.keepCurrentSessionId);
+              if(user.logoutOtherSessionsAt && token.sessionId!==user.keepCurrentSessionId &&
+                (!token.sessionStartedAt || Number(token.sessionStartedAt)<=user.logoutOtherSessionsAt.getTime())) {
+                return {user:{},expires:new Date(0).toISOString()} as any;
+              }
+            }catch {
+              return {user:{},expires:new Date(0).toISOString()} as any;
             }
           }
         }

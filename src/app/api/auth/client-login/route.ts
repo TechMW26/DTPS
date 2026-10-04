@@ -1,164 +1,35 @@
-import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db/connection';
-import WooCommerceClient from '@/lib/db/models/WooCommerceClient';
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {NextRequest,NextResponse} from 'next/server';
 import jwt from 'jsonwebtoken';
-import { logActivity } from '@/lib/utils/activityLogger';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativePasswordLogin,recordNativeLogin} from '@/lib/db/repository/native-auth';
 
-const JWT_SECRET = process.env.NEXTAUTH_SECRET || 'your-secret-key';
-
-// POST /api/auth/client-login - Client login endpoint
-export async function POST(request: NextRequest) {
-  try {
-    // Connect to MongoDB
-    await connectDB();
-
-    const body = await request.json();
-    const { email, password } = body;
-
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: 'Email and password are required' },
-        { status: 400 }
-      );
-    }
-
-    // Find client by email
-    const client = await WooCommerceClient.findOne({
-      email: email.toLowerCase().trim()
-    }).lean() as any;
-
-    if (!client) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      );
-    }
-
-    // Check password (plain text comparison as per your preference)
-    if ((client as any).password !== password) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      );
-    }
-
-    // Create JWT token for client session
-    const token = jwt.sign(
-      {
-        clientId: (client as any)._id,
-        email: (client as any).email,
-        name: (client as any).name,
-        role: 'client'
-      },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    // Log login activity
-    logActivity({
-      userId: String(client._id),
-      userRole: 'client',
-      userName: client.name || client.email,
-      userEmail: client.email,
-      action: 'Logged In',
-      actionType: 'login',
-      category: 'auth',
-      description: `Client ${client.name || client.email} logged in.`,
-      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
-      userAgent: request.headers.get('user-agent') || '',
-    }).catch(() => { });
-
-    // Return client data and token
-    return NextResponse.json({
-      message: 'Login successful',
-      client: {
-        id: client._id,
-        name: client.name,
-        email: client.email,
-        phone: client.phone,
-        city: client.city,
-        country: client.country,
-        totalOrders: client.totalOrders,
-        totalSpent: client.totalSpent,
-        lastOrderDate: client.lastOrderDate
-      },
-      token,
-      expiresIn: '7d'
-    });
-
-  } catch (error) {
-    console.error('Client login error:', error);
-    return NextResponse.json(
-      { error: 'Login failed' },
-      { status: 500 }
-    );
-  }
+function secret(){const value=process.env.NEXTAUTH_SECRET;if(!value)throw new Error('Authentication secret is not configured');return value;}
+async function clientProfile(id:string) {
+ if(!id||id.includes('/'))return null;
+ const doc=await getNativeDatabase().collection('woocommerceclients').doc(id).get(),data=doc.data();
+ if(!data||(data.status&&data.status!=='active'))return null;
+ return {id:doc.id,...Object.fromEntries(['name','email','phone','city','country','totalOrders','totalSpent'].filter(k=>data[k]!==undefined).map(k=>[k,data[k]])),lastOrderDate:data.lastOrderDate?.toDate?data.lastOrderDate.toDate().toISOString():data.lastOrderDate};
 }
-
-// GET /api/auth/client-login - Verify client token
-export async function GET(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get('authorization');
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'No token provided' },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.substring(7);
-
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-
-      if (decoded.role !== 'client') {
-        return NextResponse.json(
-          { error: 'Invalid token type' },
-          { status: 401 }
-        );
-      }
-
-      // Connect to MongoDB
-      await connectDB();
-
-      // Get fresh client data
-      const client = await WooCommerceClient.findById(decoded.clientId).lean();
-
-      if (!client) {
-        return NextResponse.json(
-          { error: 'Client not found' },
-          { status: 404 }
-        );
-      }
-
-      return NextResponse.json({
-        valid: true,
-        client: {
-          id: (client as any)._id,
-          name: (client as any).name,
-          email: (client as any).email,
-          phone: (client as any).phone,
-          city: (client as any).city,
-          country: (client as any).country,
-          totalOrders: (client as any).totalOrders,
-          totalSpent: (client as any).totalSpent,
-          lastOrderDate: (client as any).lastOrderDate
-        }
-      });
-
-    } catch (jwtError) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-  } catch (error) {
-    console.error('Token verification error:', error);
-    return NextResponse.json(
-      { error: 'Token verification failed' },
-      { status: 500 }
-    );
-  }
+export async function POST(request:NextRequest) {
+ try {
+  const {email,password}=await request.json();
+  if(typeof email!=='string'||typeof password!=='string'||!email||!password)return nativeResponseJson({error:'Email and password are required'},{status:400});
+  const user=await nativePasswordLogin(getNativeDatabase(),email,password,'client');
+  if(!user?.isWooCommerceClient)return nativeResponseJson({error:'Invalid email or password'},{status:401});
+  const client=await clientProfile(user._id);if(!client)return nativeResponseJson({error:'Invalid email or password'},{status:401});
+  const token=jwt.sign({clientId:user._id,email:user.email,name:user.fullName,role:'client'},secret(),{expiresIn:'7d'});
+  try{await recordNativeLogin(getNativeDatabase(),{userId:user._id,userRole:'client',userName:user.fullName,userEmail:user.email,action:'Logged In',actionType:'login',category:'auth',description:'Client logged in',ipAddress:request.headers.get('x-forwarded-for')||'',userAgent:request.headers.get('user-agent')||''});}catch{console.error('Failed to record client login');}
+  return nativeResponseJson({message:'Login successful',client,token,expiresIn:'7d'});
+ }catch{return nativeResponseJson({error:'Login failed'},{status:500});}
+}
+export async function GET(request:NextRequest) {
+ const header=request.headers.get('authorization');
+ if(!header?.startsWith('Bearer '))return nativeResponseJson({error:'No token provided'},{status:401});
+ try {
+  const decoded=jwt.verify(header.slice(7),secret()) as {role?:string;clientId?:string};
+  if(decoded.role!=='client'||typeof decoded.clientId!=='string')return nativeResponseJson({error:'Invalid token type'},{status:401});
+  const client=await clientProfile(decoded.clientId);if(!client)return nativeResponseJson({error:'Client not found'},{status:404});
+  return nativeResponseJson({valid:true,client});
+ }catch{return nativeResponseJson({error:'Invalid token'},{status:401});}
 }

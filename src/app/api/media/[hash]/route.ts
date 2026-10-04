@@ -1,0 +1,10 @@
+import {NextRequest,NextResponse} from 'next/server';
+import {getServerSession} from 'next-auth';
+import {authOptions} from '@/lib/auth';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {lookupNativeMedia} from '@/lib/db/repository/native-media';
+import {nativeMediaResponse} from '@/lib/api/native-media-response';
+export async function GET(_request:NextRequest,{params}:{params:Promise<{hash:string}>}){
+ try{const {hash}=await params,session=await getServerSession(authOptions);return await nativeMediaResponse(await lookupNativeMedia(getNativeDatabase(),hash,session?.user?.id?{id:session.user.id,role:session.user.role}:null),_request);}
+ catch{return new NextResponse('Media service temporarily unavailable',{status:503});}
+}

@@ -1,7 +1,6 @@
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { nativeNotificationUsers, saveNativeNotifications, registerNativePushToken, removeNativePushTokens } from '@/lib/db/repository/native-notifications';
 import { getMessaging, getNativeMessaging } from './firebaseAdmin';
-import User from '@/lib/db/models/User';
-import Notification from '@/lib/db/models/Notification';
-import connectDB from '@/lib/db/connection';
 
 export interface FCMNotificationPayload {
     title: string;
@@ -20,7 +19,7 @@ export interface SendNotificationResult {
     invalidTokens: string[];
     responses: Array<{ token: string; success: boolean; error?: string }>;
     skippedNoToken?: boolean;
-    errorCode?: 'NO_TOKEN' | 'FIREBASE_UNAVAILABLE' | 'CLIENT_ON_HOLD' | 'UNKNOWN';
+    errorCode?: 'NO_TOKEN' | 'FIREBASE_UNAVAILABLE' | 'CLIENT_ON_HOLD' | 'LOCAL_DELIVERY_DISABLED' | 'UNKNOWN';
     errorMessage?: string;
 }
 
@@ -106,10 +105,10 @@ export async function sendNotificationToUser(
     notification: FCMNotificationPayload
 ): Promise<SendNotificationResult> {
     try {
-        await connectDB();
+        const db = getNativeDatabase();
 
         // Check if user is a client on hold - skip notifications for held clients
-        const userForHoldCheck = await User.findById(userId).select('role holdStatus').lean() as any;
+        const [userForHoldCheck] = await nativeNotificationUsers(db, [userId]);
         if (userForHoldCheck?.role === 'client' && userForHoldCheck?.holdStatus?.isOnHold) {
             console.log(`[Notification] Skipping notification for client ${userId} - client is on hold`);
             return {
@@ -128,7 +127,7 @@ export async function sendNotificationToUser(
         // Save notification to database (unless explicitly disabled)
         if (notification.saveToDb !== false) {
             try {
-                const savedNotification = await Notification.create({
+                const [notificationId] = await saveNativeNotifications(db, [userId], {
                     userId,
                     title: notification.title,
                     message: notification.body,
@@ -137,14 +136,14 @@ export async function sendNotificationToUser(
                     actionUrl: notification.clickAction,
                     read: false
                 });
-                notificationRecordId = String(savedNotification._id);
+                notificationRecordId = notificationId;
             } catch (dbError) {
                 console.error('Error saving notification to database:', dbError);
                 // Continue with push notification even if DB save fails
             }
         }
 
-        const user = await User.findById(userId).select('fcmTokens');
+        const user = userForHoldCheck;
         const tokens = extractValidTokenStrings(user?.fcmTokens);
 
         if (!user || tokens.length === 0) {
@@ -183,28 +182,17 @@ export async function sendNotificationToUsers(
     notification: FCMNotificationPayload
 ): Promise<SendNotificationResult> {
     try {
-        await connectDB();
+        const db = getNativeDatabase();
 
-        // Save notifications to database for all users (unless explicitly disabled)
-        if (notification.saveToDb !== false && userIds.length > 0) {
-            try {
-                const notificationsToInsert = userIds.map(userId => ({
-                    userId,
-                    title: notification.title,
-                    message: notification.body,
-                    type: mapNotificationType(notification.data?.type),
-                    data: notification.data,
-                    actionUrl: notification.clickAction,
-                    read: false
-                }));
-                await Notification.insertMany(notificationsToInsert);
-            } catch (dbError) {
-                console.error('Error saving notifications to database:', dbError);
-                // Continue with push notifications even if DB save fails
-            }
+        const users = (await nativeNotificationUsers(db, userIds))
+            .filter(user => !(user.role === 'client' && user.holdStatus?.isOnHold));
+        if (notification.saveToDb !== false && users.length) {
+            await saveNativeNotifications(db, users.map(user=>user._id), {
+                title: notification.title, message: notification.body,
+                type: mapNotificationType(notification.data?.type), data: notification.data,
+                actionUrl: notification.clickAction,
+            });
         }
-
-        const users = await User.find({ _id: { $in: userIds } }).select('fcmTokens');
 
         const allTokensSet = new Set<string>();
         const tokenOwnerByToken = new Map<string, string>();
@@ -284,6 +272,11 @@ async function sendNotificationToTokens(
             errorCode: 'NO_TOKEN',
             errorMessage: 'No valid FCM token values were found to send.',
         };
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+        return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [],
+            errorCode: 'LOCAL_DELIVERY_DISABLED', errorMessage: 'Live push delivery is disabled during local migration testing.' };
     }
 
     const messaging = await getMessaging();
@@ -407,10 +400,8 @@ async function sendNotificationToTokens(
  */
 async function removeInvalidTokens(userId: string, tokensToRemove: string[]): Promise<void> {
     try {
-        await connectDB();
-        await User.findByIdAndUpdate(userId, {
-            $pull: { fcmTokens: { token: { $in: tokensToRemove } } },
-        });
+        const db = getNativeDatabase();
+        await removeNativePushTokens(db, userId, tokensToRemove);
     } catch (error) {
         console.error('Error removing invalid tokens:', error);
     }
@@ -426,48 +417,15 @@ export async function registerFCMToken(
     deviceInfo?: string
 ): Promise<{ success: boolean; message: string }> {
     try {
-        await connectDB();
+        const db = getNativeDatabase();
 
         const normalizedToken = normalizeTokenValue(token);
         if (!normalizedToken) {
             return { success: false, message: 'Invalid token value' };
         }
 
-        // Keep one token mapped to one user to avoid stale cross-account sends.
-        await User.updateMany(
-            { _id: { $ne: userId }, 'fcmTokens.token': normalizedToken },
-            { $pull: { fcmTokens: { token: normalizedToken } } }
-        );
-
-        // Check if token already exists for this user
-        const existingUser = await User.findOne({
-            _id: userId,
-            'fcmTokens.token': normalizedToken,
-        });
-
-        if (existingUser) {
-            // Update the lastUsed timestamp
-            await User.findOneAndUpdate(
-                { _id: userId, 'fcmTokens.token': normalizedToken },
-                { $set: { 'fcmTokens.$.lastUsed': new Date() } }
-            );
-            return { success: true, message: 'Token already registered, updated lastUsed' };
-        }
-
-        // Add new token
-        await User.findByIdAndUpdate(userId, {
-            $push: {
-                fcmTokens: {
-                    token: normalizedToken,
-                    deviceType,
-                    deviceInfo: deviceInfo || 'Unknown device',
-                    createdAt: new Date(),
-                    lastUsed: new Date(),
-                },
-            },
-        });
-
-        return { success: true, message: 'Token registered successfully' };
+        const existing = await registerNativePushToken(db, userId, normalizedToken, deviceType, deviceInfo);
+        return { success: true, message: existing ? 'Token already registered, updated lastUsed' : 'Token registered successfully' };
     } catch (error) {
         console.error('Error registering FCM token:', error);
         return { success: false, message: 'Failed to register token' };
@@ -487,10 +445,8 @@ export async function unregisterFCMToken(
             return { success: false, message: 'Invalid token value' };
         }
 
-        await connectDB();
-        await User.findByIdAndUpdate(userId, {
-            $pull: { fcmTokens: { token: normalizedToken } },
-        });
+        const db = getNativeDatabase();
+        await removeNativePushTokens(db, userId, [normalizedToken]);
         return { success: true, message: 'Token unregistered successfully' };
     } catch (error) {
         console.error('Error unregistering FCM token:', error);
@@ -519,9 +475,9 @@ export async function sendNotificationToRole(
     }
 
     try {
-        await connectDB();
-        const users = await User.find({ role }).select('_id fcmTokens');
-        const userIds = users.map((u: any) => u._id.toString());
+        const db = getNativeDatabase();
+        const users = await db.collection('users').where('role', '==', role).select().get();
+        const userIds = users.docs.map(doc => doc.id);
 
         if (userIds.length === 0) {
             return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };

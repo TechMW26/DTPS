@@ -1,13 +1,12 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import dbConnect from "@/lib/db/connection";
-import JournalTracking from "@/lib/db/models/JournalTracking";
-import User from "@/lib/db/models/User";
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import FoodLog from '@/lib/db/models/FoodLog';
-import { withCache } from '@/lib/api/utils';
-import { isValid, parseISO, startOfDay } from 'date-fns';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { readNativeHabit, nativeHabitDay, NativeHabitError } from '@/lib/db/repository/native-habits';
+import { nativePlanForDate } from '@/lib/db/repository/native-client-meals';
+import { nativeDates } from '@/lib/db/repository/native-plan-editor';
+import { hydrateNativeDocument } from '@/lib/storage/native-document';
 import {
   buildDailyNutritionSummary,
   getNutritionDateKey,
@@ -17,81 +16,39 @@ function toArray<T>(value: T[] | T | null | undefined): T[] {
   return Array.isArray(value) ? value : [];
 }
 
-function resolveTargetDate(dateParam: string | null): Date | null {
-  const requestedDate = parseISO(dateParam || getNutritionDateKey(new Date()));
-  if (!isValid(requestedDate)) {
-    return null;
-  }
-
-  return startOfDay(requestedDate);
-}
-
 export async function GET(request: Request) {
   try {
     const [session] = await Promise.all([
       getServerSession(authOptions),
-      dbConnect(),
     ]);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
     const userId = session.user.id;
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
 
-    // Build a safe date range that matches the day-based journal endpoints
-    const targetDate = resolveTargetDate(dateParam);
-    if (!targetDate) {
-      return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
-    }
-
-    const nextDay = new Date(targetDate);
-    nextDay.setDate(nextDay.getDate() + 1);
-
-    // Single DB query for ALL journal tracking data (hydration, sleep, activity, steps)
-    // + user profile for goals — run in parallel
-    const cacheKey = `dashboard:${userId}:${targetDate.toISOString().slice(0, 10)}`;
-
-    const data = await withCache(
-      cacheKey,
-      async () => {
-        const [journal, user, mealPlan, foodLog] = await Promise.all([
-          JournalTracking.findOne({
-            client: userId,
-            date: { $gte: targetDate, $lt: nextDay },
-          })
-            .select('water sleep activities steps assignedWater assignedSteps assignedSleep assignedActivities targets updatedAt hydration activity')
-            .lean() as any,
-          User.findById(userId)
-            .select('goals dailyGoals heightCm weightKg bmi bmiCategory generalGoal firstName lastName avatar')
-            .lean() as any,
-          ClientMealPlan.findOne({
-            clientId: userId,
-            status: { $in: ['active', 'completed', 'paused'] },
-            isDeleted: { $ne: true },
-            startDate: { $lt: nextDay },
-            endDate: { $gte: targetDate },
-          })
-            .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
-            .select('startDate endDate meals mealCompletions customizations')
-            .lean() as any,
-          FoodLog.findOne({
-            client: userId,
-            date: { $gte: targetDate, $lt: nextDay },
-          })
-            .select('date totalNutrition meals')
-            .lean() as any,
-        ]);
-
+    const day = nativeHabitDay(dateParam);
+    const targetDate = day.start, nextDay = day.end, db = getNativeDatabase();
+    const [journal, userRow, mealPlan, foodRows] = await Promise.all([
+      readNativeHabit(db,userId,dateParam),
+      db.collection('users').doc(userId).get(),
+      nativePlanForDate(db,userId,targetDate,new Date(nextDay.getTime()-1)),
+      db.collection('foodlogs').where('client','==',userId).where('date','>=',targetDate).where('date','<',nextDay).limit(2).get(),
+    ]);
+    if(foodRows.size>1) throw new NativeHabitError('Duplicate food logs require reconciliation',409);
+    const user=userRow.data(), foodLog=foodRows.empty?null:nativeDates(await hydrateNativeDocument(foodRows.docs[0].data()));
+    const data = (() => {
         const waterEntries = toArray(journal?.water ?? journal?.hydration?.entries);
         const sleepEntries = toArray(journal?.sleep ?? journal?.sleep?.entries);
         const activityEntries = toArray(journal?.activities ?? journal?.activity?.entries);
         const stepsEntries = toArray(journal?.steps ?? journal?.steps?.entries);
 
         // --- Hydration ---
-        const totalWater = waterEntries.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+        const units:Record<string,number>={'Glass (250ml)':250,'Bottle (500ml)':500,'Bottle (1L)':1000,'Cup (200ml)':200,glasses:250,ml:1};
+        const totalWater = waterEntries.reduce((sum: number, e: any) => sum + Number(e.amount || 0)*(units[e.unit]||1), 0);
         // `dailyGoals.water` is stored in ml (e.g. 2500). The legacy `goals.water`
         // is stored in GLASSES (e.g. 8), so convert it (1 glass = 250ml).
         const dailyWaterMl = user?.dailyGoals?.water;
@@ -180,16 +137,14 @@ export async function GET(request: Request) {
             avatar,
           },
         };
-      },
-      { ttl: 5000, tags: ['client'] } // Short 5s cache: this summary is NOT invalidated by tracker writes, so keep it brief to stay near real-time
-    );
+    })();
 
-    return NextResponse.json(data);
+    return nativeResponseJson(data);
   } catch (error: any) {
     console.error('Dashboard summary error:', error);
-    return NextResponse.json(
-      { error: 'Failed to load dashboard data' },
-      { status: 500 }
+    return nativeResponseJson(
+      { error: error instanceof NativeHabitError ? error.message : 'Failed to load dashboard data' },
+      { status: error instanceof NativeHabitError ? error.status : 503 }
     );
   }
 }

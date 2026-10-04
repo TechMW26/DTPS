@@ -105,7 +105,7 @@ export default function AdminPaymentsPage() {
     try {
       const response = await fetch('/api/admin/payments');
       if (!response.ok) return;
-      const data = await response.json();
+      const data: any = await response.json();
       setPayments(data.payments || []);
       setStats(data.stats || {
         totalPayments: 0,
@@ -132,7 +132,7 @@ export default function AdminPaymentsPage() {
       setLoading(true);
       const response = await fetch('/api/admin/payments');
       if (response.ok) {
-        const data = await response.json();
+        const data: any = await response.json();
         setPayments(data.payments || []);
         setStats(data.stats || {
           totalPayments: 0,
@@ -155,17 +155,17 @@ export default function AdminPaymentsPage() {
   const syncWithRazorpay = async () => {
     try {
       setSyncing(true);
-      const response = await fetch('/api/admin/payments/sync', {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success(`Synced ${data.synced} payments with Razorpay`);
-        fetchPayments(); // Refresh data
-      } else {
-        toast.error('Failed to sync with Razorpay');
+      let next: {phase: string; cursor: string | null} | null = {phase: 'links', cursor: null};
+      let synced = 0, failed = 0;
+      while (next) {
+        const response: Response = await fetch('/api/admin/payments/sync', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(next)});
+        const data: any = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Payment verification failed');
+        synced += data.synced || 0; failed += data.errors?.length || 0; next = data.next;
       }
+      if (failed) toast.warning(`Verified ${synced} payments; ${failed} require reconciliation`);
+      else toast.success(`Verified ${synced} payments with Razorpay`);
+      fetchPayments();
     } catch (error) {
       console.error('Error syncing:', error);
       toast.error('Error syncing with Razorpay');

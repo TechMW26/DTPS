@@ -1,6 +1,5 @@
-import { History } from '@/lib/db/models/History';
-import User from '@/lib/db/models/User';
-import connectDB from '../db/connection';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { createNativeAudit } from '@/lib/db/repository/native-audit';
 
 export type HistoryAction = 'create' | 'update' | 'delete' | 'upload' | 'assign' | 'download' | 'view';
 export type HistoryCategory = 'profile' | 'medical' | 'lifestyle' | 'diet' | 'payment' | 'appointment' | 'document' | 'assignment' | 'other' | 'journal' | 'plan';
@@ -22,16 +21,14 @@ interface HistoryLogInput {
 
 export async function logHistoryServer(input: HistoryLogInput) {
   try {
-    await connectDB();
+    const db = getNativeDatabase();
 
     let performerName = input.performedByName;
     let performerEmail = input.performedByEmail;
     let performerRole = input.performedByRole;
 
     if (input.performedById && (!performerName || !performerRole)) {
-      const performer = await User.findById(input.performedById)
-        .select('firstName lastName email role')
-        .lean();
+      const performer = (await db.collection('users').doc(input.performedById).get()).data();
 
       const performerDoc = performer as { firstName?: string; lastName?: string; email?: string; role?: string } | null;
 
@@ -42,7 +39,7 @@ export async function logHistoryServer(input: HistoryLogInput) {
       }
     }
 
-    await History.create({
+    await createNativeAudit(db, 'histories', {
       userId: input.userId,
       action: input.action,
       category: input.category,

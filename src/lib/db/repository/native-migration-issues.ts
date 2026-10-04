@@ -1,0 +1,2 @@
+/** Staff-facing correction hints never include the quarantined source value. */
+export function nativeMigrationIssues(input:unknown):Array<{path:string;reason:string;status:string}>{return Array.isArray(input)?input.filter(v=>v&&typeof v==='object'&&v.status==='needs-staff-correction').map(v=>({path:String(v.path||'Unknown field'),reason:String(v.reason||'Invalid source date'),status:'needs-staff-correction'})):[];}

@@ -1,13 +1,13 @@
 # Copilot instructions (DTPS)
 
 ## Project overview
-- **Stack:** Next.js 15 App Router · React 19 · Tailwind CSS v4 · shadcn/ui (new-york style) · MongoDB/Mongoose · NextAuth v4 (JWT)
+- **Stack:** Next.js App Router (read installed Next.js docs) · React 19 · Tailwind CSS v4 · shadcn/ui (new-york style) · native Cloud Firestore + existing Vercel Blob · NextAuth v4 (JWT)
 - Multi-role platform (admin / dietitian / health_counselor / client) with role gating in `middleware.ts` and client onboarding redirects.
 - Backend is entirely App Router API routes (`src/app/api/**`) — no separate server process.
 - Native mobile shell in `mobile-app/` (iOS/Android) wraps the web app via WebView; the `useNativeApp` hook bridges JS ↔ native.
 
 ## Architecture & data flow
-- **DB:** Singleton connection in `src/lib/db/connection.ts`. Call `connectDB()` once per API request. 45+ Mongoose models live in `src/lib/db/models/` (PascalCase singular files, default exports). All models are auto-registered via barrel import in the connection module.
+- **DB:** `getNativeDatabase()` in `src/lib/db/firestore-native.ts`, with explicit domain repositories in `src/lib/db/repository/native-*.ts`. Dedicated `FIRESTORE_NATIVE_*` credentials are isolated from FCM credentials. Database writes require current role/ownership checks and transactions for related records. Production execution requires the explicit `FIRESTORE_NATIVE_PRODUCTION_ENABLED=true` cutover flag and the verified native database.
 - **Auth:** `src/lib/auth/config.ts` — Credentials + Google providers. JWT carries `role` (UserRole enum), `onboardingCompleted`, `isNewUser`, calendar fields. Session strategy is JWT, 30-day max age.
 - **Base URLs:** Always use `getBaseUrl()` / `getPaymentCallbackUrl()` from `src/lib/config.ts` — never raw `NEXTAUTH_URL`.
 - **Middleware** (`middleware.ts`): Adds `X-App-Version` + `Cache-Control: no-store` on API responses. Enforces role-based route access and redirects clients with `onboardingCompleted === false` to `/user/onboarding`.
@@ -18,18 +18,19 @@
   ```ts
   import { getServerSession } from 'next-auth';
   import { authOptions } from '@/lib/auth/config';
-  import connectDB from '@/lib/db/connection';
-  import User from '@/lib/db/models/User';
+  import { getNativeDatabase } from '@/lib/db/firestore-native';
+  import { nativeResponseJson } from '@/lib/api/native-response';
 
   export async function GET(req: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    await connectDB();
+    const db = getNativeDatabase();
+    // Validate current role and ownership before reading or writing.
     // ... query ...
-    return NextResponse.json({ data });
+    return nativeResponseJson({ data });
   }
   ```
-- **Wrapper pattern (preferred for new routes):** `withAPIHandler()` from `src/lib/api/utils.ts` auto-handles auth, DB connect with timeout, and `errorResponse()` with codes (`AUTH_REQUIRED`, `VALIDATION_ERROR`, `DB_ERROR`, etc.).
+- **Responses:** Use `nativeResponseJson` so migrated media remains behind authenticated `/api/media` and `/api/files` routes. Hydrate externalized fields through native document helpers; never expose private Blob pointers.
 - **Caching:** `withCache` / `clearCacheByTag` from `src/lib/cache/memoryCache.ts` (in-process, TTL-based, max 1000 entries). Use `CacheTTL` and `CachePrefix` constants. **Never cache `/api/client/**`** — conditional caching (ETag/304) is admin/internal only.
 - **Role access:** Compare against `UserRole` enum (`admin`, `dietitian`, `health_counselor`, `client`) from `@/types`, never raw strings.
 
@@ -50,8 +51,7 @@
 - **Contexts** in `src/contexts/`: `ThemeContext`, `UnreadCountContext`, `StaffUnreadCountContext`, `StabilityContext`. Each exports a `use{X}` hook.
 
 ## Realtime & messaging
-- **Socket.io** for all real-time communication. Server: `src/lib/realtime/socket-manager.ts` (singleton on `globalThis.__socketManager`, lazy-init from `globalThis.__socketIO`). Client: `src/lib/realtime/socket-client.ts` (singleton with exponential backoff 1s → 30s, 15 retries). Shared event constants in `src/lib/realtime/socket-events.ts`.
-- Custom server entry: `server.js` (project root) creates HTTP server + Socket.io, passes HTTP to Next.js handler. Auth middleware on Socket.io decodes NextAuth JWT from cookie.
+- **Realtime:** Firestore event documents + authenticated SSE at `/api/realtime/events`, with explicit reconnect and expiry. `socket-manager.ts` and `socket-client.ts` retain the existing event API but do not use Socket.IO or a separate server. Vercel functions close streams before their duration limit and the client reconnects with a cursor.
 - Room architecture: `user:<userId>` for personal events, `role:<role>` for role-based broadcasts.
 - React context: `SocketProvider` in `src/contexts/SocketContext.tsx` wraps the app.
 - `useRealtime()` hook in `src/hooks/useRealtime.ts` provides `{isConnected, onlineUsers, connectionError, connect, disconnect, sendTyping, forceReconnect}`.
@@ -59,7 +59,7 @@
 
 ## File uploads & images
 - Upload component: `src/components/ui/file-upload.tsx` — drag-and-drop, typed by purpose (`avatar`, `medical-report`, `recipe-image`, etc.), POSTs `FormData` to `/api/upload`.
-- **ImageKit** CDN (`src/lib/imagekit.ts`) for storage — lazy-initialized singleton.
+- **Storage:** Existing Vercel Blob store only, with native `files` metadata, ownership checks, verified migrated-media references, and private large-document storage. Never create another store for this migration.
 - Client-side compression: `src/lib/imageCompression.ts` (canvas resize 1200×1200, JPEG 0.8) before upload.
 
 ## Notifications & push
@@ -74,14 +74,14 @@
 
 ## Key workflows
 - **Dev:** `npm run dev` · **Build:** `npm run build` · **Start:** `npm run start` · **Lint:** `npm run lint`
-- **Production:** `docker-compose.prod.yml` + `Dockerfile` (app + nginx). Healthcheck hits `/api/health`.
-- **Environment:** `.env.local` in production compose; keep `NEXTAUTH_URL` aligned with production domain.
+- **Deployment target:** Vercel. Do not deploy or enable provider delivery during local migration acceptance.
+- **Environment:** Dedicated native Firestore staging configuration in local environment; keep FCM project credentials separate. Source credentials belong only in the isolated private migration runner.
 - **Error monitoring:** Sentry (edge + server configs at project root, `instrumentation.ts`).
 
 ## Naming conventions
 | Entity | Convention | Example |
 |---|---|---|
-| Mongoose model file | PascalCase singular | `MealPlan.ts`, `ProgressEntry.ts` |
+| Domain repository | native kebab-case | `native-plans.ts`, `native-progress.ts` |
 | API route directory | kebab-case | `meal-plan-templates/`, `food-logs/` |
 | Hook | `use{Feature}` camelCase | `useSSE`, `useNativeApp`, `useAutoSave` |
 | Context | `{Feature}Context` + `use{Feature}` | `ThemeContext`, `useTheme()` |

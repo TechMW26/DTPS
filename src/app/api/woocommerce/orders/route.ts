@@ -1,12 +1,15 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeCommerceAdmin} from '@/lib/db/repository/native-staff-ecommerce';
 
 // WooCommerce API configuration
 const WOOCOMMERCE_API_URL = 'https://dtpoonamsagar.com/wp-json/wc/v3/orders';
-const CONSUMER_KEY = 'ck_d86b1ffbd2e0cc67b4dcefcb8f4ff39e2ca91845';
-const CONSUMER_SECRET = 'cs_8846aba57d6ec3c8c0cc323d89e9b13eb117a985';
+const CONSUMER_KEY = process.env.WOOCOMMERCE_CONSUMER_KEY || '';
+const CONSUMER_SECRET = process.env.WOOCOMMERCE_CONSUMER_SECRET || '';
 
 interface WooCommerceOrder {
   id: number;
@@ -47,13 +50,15 @@ interface WooCommerceOrder {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+    if(session?.user?.id)await nativeCommerceAdmin(getNativeDatabase(),session.user.id);
+    if(process.env.NODE_ENV!=='production')return nativeResponseJson({error:'Live WooCommerce provider access is disabled during local migration testing'},{status:409});
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Only allow admins to access WooCommerce data
     if (session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return nativeResponseJson({ error: 'Forbidden' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -64,8 +69,6 @@ export async function GET(request: NextRequest) {
 
     // Build WooCommerce API URL with authentication
     const apiUrl = new URL(WOOCOMMERCE_API_URL);
-    apiUrl.searchParams.append('consumer_key', CONSUMER_KEY);
-    apiUrl.searchParams.append('consumer_secret', CONSUMER_SECRET);
 
     // Only add status filter if not 'any'
     if (status !== 'any') {
@@ -89,8 +92,6 @@ export async function GET(request: NextRequest) {
 
       while (hasMorePages && currentPage <= maxPages) {
         const pageApiUrl = new URL(WOOCOMMERCE_API_URL);
-        pageApiUrl.searchParams.append('consumer_key', CONSUMER_KEY);
-        pageApiUrl.searchParams.append('consumer_secret', CONSUMER_SECRET);
 
         // Don't add status filter when fetching all orders
         // if (status !== 'any') {
@@ -106,6 +107,7 @@ export async function GET(request: NextRequest) {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
+          Authorization: 'Basic '+Buffer.from(CONSUMER_KEY+':'+CONSUMER_SECRET).toString('base64'),
           },
         });
 
@@ -138,6 +140,7 @@ export async function GET(request: NextRequest) {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: 'Basic '+Buffer.from(CONSUMER_KEY+':'+CONSUMER_SECRET).toString('base64'),
         },
       });
 
@@ -254,7 +257,7 @@ export async function GET(request: NextRequest) {
       currency: filteredOrders[0]?.currency || 'INR',
     };
 
-    return NextResponse.json({
+    return nativeResponseJson({
       orders: filteredOrders,
       clients,
       summary,
@@ -267,8 +270,8 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error fetching WooCommerce orders:', error);
-    return NextResponse.json(
+    console.error('Unable to fetch WooCommerce orders');
+    return nativeResponseJson(
       { error: 'Failed to fetch orders' },
       { status: 500 }
     );
@@ -279,32 +282,35 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+    if(session?.user?.id)await nativeCommerceAdmin(getNativeDatabase(),session.user.id);
+    if(process.env.NODE_ENV!=='production')return nativeResponseJson({error:'Live WooCommerce provider access is disabled during local migration testing'},{status:409});
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Only allow admins to update orders
     if (session.user.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return nativeResponseJson({ error: 'Forbidden' }, { status: 403 });
     }
 
     const body = await request.json();
     const { orderId, status } = body;
 
-    if (!orderId || !status) {
-      return NextResponse.json(
+    if (!/^\d+$/.test(String(orderId)) || !['pending','processing','on-hold','completed','cancelled','refunded','failed'].includes(status)) {
+      return nativeResponseJson(
         { error: 'Order ID and status are required' },
         { status: 400 }
       );
     }
 
     // Update order status in WooCommerce
-    const apiUrl = `${WOOCOMMERCE_API_URL}/${orderId}?consumer_key=${CONSUMER_KEY}&consumer_secret=${CONSUMER_SECRET}`;
-    
+    const apiUrl = `${WOOCOMMERCE_API_URL}/${encodeURIComponent(String(orderId))}`;
+
     const response = await fetch(apiUrl, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+          Authorization: 'Basic '+Buffer.from(CONSUMER_KEY+':'+CONSUMER_SECRET).toString('base64'),
       },
       body: JSON.stringify({ status }),
     });
@@ -315,14 +321,14 @@ export async function POST(request: NextRequest) {
 
     const updatedOrder = await response.json();
 
-    return NextResponse.json({
+    return nativeResponseJson({
       message: 'Order status updated successfully',
       order: updatedOrder,
     });
 
   } catch (error) {
-    console.error('Error updating order status:', error);
-    return NextResponse.json(
+    console.error('Unable to update WooCommerce order status');
+    return nativeResponseJson(
       { error: 'Failed to update order status' },
       { status: 500 }
     );

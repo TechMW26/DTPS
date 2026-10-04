@@ -1,165 +1,43 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import Notification from '@/lib/db/models/Notification';
-import Message from '@/lib/db/models/Message';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { nativeUnreadCounts,mutateNativeNotifications } from '@/lib/db/repository/native-notifications';
+import { nativeJson } from '@/lib/db/repository/native-history';
+import { hydrateNativeDocument } from '@/lib/storage/native-document';
 import { broadcastUnreadCounts } from '@/lib/realtime/broadcast-counts';
 
-// GET /api/client/notifications - Get all notifications for the current user
-export async function GET(request: NextRequest) {
-  try {
-    // Run auth + DB connection in PARALLEL
-    const [session] = await Promise.all([
-      getServerSession(authOptions),
-      connectDB()
-    ]);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const type = searchParams.get('type');
-    const unreadOnly = searchParams.get('unread') === 'true';
-
-    const skip = (page - 1) * limit;
-
-    // Build query
-    const query: Record<string, unknown> = {
-      userId: session.user.id
-    };
-
-    if (type) {
-      query.type = type;
-    }
-
-    if (unreadOnly) {
-      query.read = false;
-    }
-
-    const [notifications, total, unreadCount] = await Promise.all([
-      Notification.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Notification.countDocuments(query),
-      Notification.countDocuments({
-        userId: session.user.id,
-        read: false
-      })
-    ]);
-
-    return NextResponse.json({
-      success: true,
-      notifications,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      },
-      unreadCount
-    });
-
-  } catch (error) {
-    console.error('Error fetching notifications:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch notifications' },
-      { status: 500 }
-    );
-  }
+export async function GET(request:NextRequest){
+ try{
+  const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});
+  const search=request.nextUrl.searchParams,page=Number(search.get('page')||1),limit=Number(search.get('limit')||20);
+  if(!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(limit)||limit<1||limit>100||(page-1)*limit>100000)return nativeResponseJson({error:'Invalid pagination'},{status:400});
+  const db=getNativeDatabase();let query=db.collection('notifications').where('userId','==',session.user.id);
+  if(search.get('type'))query=query.where('type','==',search.get('type'));
+  if(search.get('unread')==='true')query=query.where('read','==',false);
+  const [rows,total,unread]=await Promise.all([query.orderBy('createdAt','desc').offset((page-1)*limit).limit(limit).get(),query.count().get(),db.collection('notifications').where('userId','==',session.user.id).where('read','==',false).count().get()]);
+  const notifications=await Promise.all(rows.docs.map(doc=>hydrateNativeDocument({...doc.data(),_id:doc.id})));
+  return nativeResponseJson({success:true,notifications:nativeJson(notifications),pagination:{page,limit,total:total.data().count,pages:Math.ceil(total.data().count/limit)},unreadCount:unread.data().count});
+ }catch{return nativeResponseJson({error:'Failed to fetch notifications'},{status:500});}
 }
-
-// POST /api/client/notifications/mark-read - Mark notifications as read
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    await connectDB();
-
-    const body = await request.json();
-    const { notificationIds, markAll } = body;
-
-    if (markAll) {
-      // Mark all notifications as read
-      await Notification.updateMany(
-        { userId: session.user.id, read: false },
-        { read: true }
-      );
-    } else if (notificationIds && notificationIds.length > 0) {
-      // Mark specific notifications as read
-      await Notification.updateMany(
-        {
-          _id: { $in: notificationIds },
-          userId: session.user.id
-        },
-        { read: true }
-      );
-    }
-
-    // These counters are independent and can share the same round trip window.
-    const [unreadCount, messageCount] = await Promise.all([
-      Notification.countDocuments({ userId: session.user.id, read: false }),
-      Message.countDocuments({ receiver: session.user.id, isRead: false }),
-    ]);
-
-    broadcastUnreadCounts(session.user.id, {
-      notifications: unreadCount,
-      messages: messageCount
-    });
-
-    return NextResponse.json({
-      success: true,
-      unreadCount
-    });
-
-  } catch (error) {
-    console.error('Error marking notifications as read:', error);
-    return NextResponse.json(
-      { error: 'Failed to mark notifications as read' },
-      { status: 500 }
-    );
-  }
+export async function POST(request:NextRequest){
+ try{
+  const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});
+  let body;try{body=await request.json();}catch{return nativeResponseJson({error:'Invalid request'},{status:400});}
+  const ids=body?.notificationIds;
+  if(body?.markAll!==true&&(!Array.isArray(ids)||ids.length>100||ids.some((id:unknown)=>typeof id!=='string'||!id||id.includes('/'))))return nativeResponseJson({error:'Invalid notification IDs'},{status:400});
+  const db=getNativeDatabase();await mutateNativeNotifications(db,session.user.id,'read',body.markAll===true?undefined:ids);
+  const counts=await nativeUnreadCounts(db,session.user.id);broadcastUnreadCounts(session.user.id,counts);
+  return nativeResponseJson({success:true,unreadCount:counts.notifications});
+ }catch{return nativeResponseJson({error:'Failed to mark notifications as read'},{status:500});}
 }
-
-// DELETE /api/client/notifications - Delete notifications
-export async function DELETE(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    await connectDB();
-
-    const { searchParams } = new URL(request.url);
-    const notificationId = searchParams.get('id');
-    const deleteAll = searchParams.get('all') === 'true';
-
-    if (deleteAll) {
-      await Notification.deleteMany({ userId: session.user.id });
-    } else if (notificationId) {
-      await Notification.deleteOne({
-        _id: notificationId,
-        userId: session.user.id
-      });
-    }
-
-    return NextResponse.json({
-      success: true
-    });
-
-  } catch (error) {
-    console.error('Error deleting notifications:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete notifications' },
-      { status: 500 }
-    );
-  }
+export async function DELETE(request:NextRequest){
+ try{
+  const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});
+  const all=request.nextUrl.searchParams.get('all')==='true',id=request.nextUrl.searchParams.get('id');
+  if(!all&&(!id||id.includes('/')))return nativeResponseJson({error:'Invalid notification ID'},{status:400});
+  await mutateNativeNotifications(getNativeDatabase(),session.user.id,'delete',all?undefined:[id!]);
+  return nativeResponseJson({success:true});
+ }catch{return nativeResponseJson({error:'Failed to delete notifications'},{status:500});}
 }

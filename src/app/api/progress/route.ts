@@ -1,227 +1,27 @@
-import { measureApi } from '@/lib/api/performance';
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import ProgressEntry from '@/lib/db/models/ProgressEntry';
-import User from '@/lib/db/models/User';
-import { UserRole } from '@/types';
-import { withCache } from '@/lib/api/utils';
-import { type FilterQuery, Types } from 'mongoose';
-
-type ProgressQuery = {
-  user?: string;
-  recordedAt?: {
-    $gte: Date;
-    $lte: Date;
-  };
-  type?: string;
-};
-
-interface ClientAssignment {
-  assignedDietitian?: unknown;
-  assignedDietitians?: unknown[];
-}
-
-// GET /api/progress - Get progress entries
-async function getHandler(request: NextRequest) {
-  try {
-    const sessionPromise = getServerSession(authOptions);
-    const dbPromise = connectDB();
-    const session = await sessionPromise;
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    await dbPromise;
-
-    const { searchParams } = new URL(request.url);
-    const clientId = searchParams.get('clientId');
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
-    const type = searchParams.get('type'); // weight, measurements, etc.
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const page = parseInt(searchParams.get('page') || '1');
-
-    // Build query based on user role
-    const query: FilterQuery<ProgressQuery> = {};
-
-    if (clientId && !Types.ObjectId.isValid(clientId)) {
-      return NextResponse.json(
-        { error: 'Invalid client ID' },
-        { status: 400 }
-      );
-    }
-
-    if (session.user.role === UserRole.CLIENT) {
-      query.user = session.user.id;
-    } else if (session.user.role === UserRole.DIETITIAN) {
-      if (clientId) {
-        // Verify the dietitian is assigned to this client
-        const clientDocument = await withCache(
-          `progress:client-assignment:${clientId}`,
-          async () => await User.findById(clientId)
-            .select('assignedDietitian assignedDietitians')
-            .lean(),
-          { ttl: 120000, tags: ['progress'] }
-        );
-        const client = clientDocument as unknown as ClientAssignment | null;
-        const isAssigned =
-          client?.assignedDietitian?.toString() === session.user.id ||
-          client?.assignedDietitians?.some((d: unknown) => String(d) === session.user.id);
-
-        if (!isAssigned) {
-          return NextResponse.json(
-            { error: 'You are not assigned to this client' },
-            { status: 403 }
-          );
-        }
-        query.user = clientId;
-      } else {
-        return NextResponse.json(
-          { error: 'Client ID required for dietitian' },
-          { status: 400 }
-        );
-      }
-    } else {
-      // Admin can see all progress
-      if (clientId) {
-        query.user = clientId;
-      }
-    }
-
-    // Date filtering
-    if (startDate && endDate) {
-      query.recordedAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
-    }
-
-    // Type filtering
-    if (type) {
-      query.type = type;
-    }
-
-    const skip = (page - 1) * limit;
-    const cacheScope = `${session.user.role}:${session.user.id || 'unknown'}`;
-
-    const [progressEntries, total, latestEntries] = await Promise.all([
-      withCache(
-        `progress:entries:${cacheScope}:${JSON.stringify(query)}:page=${page}:limit=${limit}`,
-        async () => await ProgressEntry.find(query)
-          .populate('user', 'firstName lastName')
-          .sort({ recordedAt: -1 })
-          .limit(limit)
-          .skip(skip)
-          .lean(),
-        { ttl: 120000, tags: ['progress'] }
-      ),
-      withCache(
-        `progress:count:${cacheScope}:${JSON.stringify(query)}`,
-        async () => await ProgressEntry.countDocuments(query),
-        { ttl: 120000, tags: ['progress'] }
-      ),
-      withCache(
-        `progress:latest:${cacheScope}:${JSON.stringify(query)}`,
-        async () => {
-          if (type) {
-            const latest = await ProgressEntry.findOne(query)
-              .sort({ recordedAt: -1 })
-              .lean();
-
-            if (!latest) {
-              return [];
-            }
-
-            return [
-              {
-                _id: String(type),
-                latestEntry: latest,
-              },
-            ];
-          }
-
-          return ProgressEntry.aggregate([
-            { $match: query },
-            { $sort: { recordedAt: -1 } },
-            {
-              $group: {
-                _id: '$type',
-                latestEntry: { $first: '$$ROOT' }
-              }
-            }
-          ]);
-        },
-        { ttl: 120000, tags: ['progress'] }
-      )
-    ]);
-
-    return NextResponse.json({
-      progressEntries,
-      latestEntries: latestEntries.reduce((acc, item) => {
-        acc[item._id] = item.latestEntry;
-        return acc;
-      }, {}),
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    });
-
-  } catch (error) {
-    console.error('Error fetching progress entries:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch progress entries' },
-      { status: 500 }
-    );
-  }
-}
-
-// POST /api/progress - Create new progress entry
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { type, value, unit, notes, recordedAt } = body;
-
-    await connectDB();
-
-    // Validate required fields
-    if (!type || value === undefined) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    // Create progress entry
-    const progressEntry = new ProgressEntry({
-      user: session.user.id,
-      type,
-      value,
-      unit,
-      notes,
-      recordedAt: recordedAt ? new Date(recordedAt) : new Date()
-    });
-
-    await progressEntry.save();
-
-    return NextResponse.json(progressEntry, { status: 201 });
-
-  } catch (error) {
-    console.error('Error creating progress entry:', error);
-    return NextResponse.json(
-      { error: 'Failed to create progress entry' },
-      { status: 500 }
-    );
-  }
-}
-
-export const GET = measureApi('/api/progress', getHandler);
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {NextRequest,NextResponse} from 'next/server';
+import {getServerSession} from 'next-auth';
+import {authOptions} from '@/lib/auth/config';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {saveNativeProgress} from '@/lib/db/repository/native-progress';
+import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
+import {nativeDates} from '@/lib/db/repository/native-plan-editor';
+import {nativeJson} from '@/lib/db/repository/native-history';
+import {hydrateNativeDocument} from '@/lib/storage/native-document';
+import {nativeMediaJson} from '@/lib/api/native-media-json';
+import {NativeProgressError} from '@/lib/db/repository/native-progress';
+const fail=(e:any)=>nativeResponseJson({error:e?.status?e.message:'Progress operation failed'},{status:e?.status||503});
+export async function GET(request:NextRequest){try{
+ const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});
+ const db=getNativeDatabase(),actor=await db.collection('users').doc(session.user.id).get();if(!actor.exists||['inactive','deleted'].includes(actor.get('status')))throw new NativeProgressError('Unauthorized',401);
+ const p=request.nextUrl.searchParams,clientId=actor.get('role')==='client'?session.user.id:p.get('clientId');if(clientId)await taskClientAccess(db,session.user.id,clientId);else if(actor.get('role')!=='admin')throw new NativeProgressError('Client ID required',400);
+ let query:FirebaseFirestore.Query=db.collection('progressentries');if(clientId)query=query.where('user','==',clientId);if(p.get('type'))query=query.where('type','==',p.get('type'));
+ for(const [key,operator]of [['startDate','>='],['endDate','<=']]as const)if(p.get(key)){const date=new Date(p.get(key)!);if(!Number.isFinite(date.getTime()))throw new NativeProgressError('Invalid date',400);query=query.where('recordedAt',operator,date);}
+ const page=Math.max(1,Math.floor(Number(p.get('page'))||1)),limit=Math.min(100,Math.max(1,Math.floor(Number(p.get('limit'))||50)));
+ const all=await query.orderBy('recordedAt','desc').select('type','deletedAt','recordedAt').get(),visible=all.docs.filter(row=>!row.get('deletedAt')),latest=new Map();for(const row of visible)if(!latest.has(row.get('type')))latest.set(row.get('type'),row);
+ const selected=visible.slice((page-1)*limit,page*limit),ids=[...new Set([...selected,...latest.values()].map(row=>row.id))],records=new Map<string,any>();for(let i=0;i<ids.length;i+=100)for(const row of await db.getAll(...ids.slice(i,i+100).map(id=>db.collection('progressentries').doc(id))))if(row.exists)records.set(row.id,{...nativeDates(await hydrateNativeDocument(row.data()!)),_id:row.id});
+ const userIds=[...new Set<string>([...records.values()].map(row=>row.user))],users=new Map();for(let i=0;i<userIds.length;i+=100)for(const row of await db.getAll(...userIds.slice(i,i+100).map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName']}))users.set(row.id,{_id:row.id,...row.data()});
+ const clean=(row:any)=>{const data={...row};delete data._nativeSource;delete data._nativeExternalFields;return data;};
+ return nativeResponseJson(await nativeMediaJson(db,nativeJson({progressEntries:selected.map(row=>({...clean(records.get(row.id)),user:users.get(records.get(row.id).user)})),latestEntries:Object.fromEntries([...latest].map(([type,row])=>[type,clean(records.get(row.id))])),pagination:{page,limit,total:visible.length,pages:Math.ceil(visible.length/limit)}})));
+ }catch(e){return fail(e);}}
+export async function POST(request:NextRequest){try{const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});const db=getNativeDatabase();await taskClientAccess(db,session.user.id,session.user.id);const result=await saveNativeProgress(db,session.user.id,await request.json(),request.headers.get('idempotency-key'));return nativeResponseJson(nativeJson(result.entries[0]),{status:result.created?201:200});}catch(e){return fail(e);}}

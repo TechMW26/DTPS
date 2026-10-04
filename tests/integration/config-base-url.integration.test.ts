@@ -1,12 +1,7 @@
-import { ensureDatabaseConnection } from '../utils/database';
 
 describe('canonical application URLs', () => {
   const originalVercelUrl = process.env.VERCEL_URL;
   const originalNodeEnv = process.env.NODE_ENV;
-
-  beforeEach(async () => {
-    await ensureDatabaseConnection();
-  });
 
   afterAll(() => {
     process.env.VERCEL_URL = originalVercelUrl;

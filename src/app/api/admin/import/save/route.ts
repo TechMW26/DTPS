@@ -1,3 +1,6 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {requireNativeAuditAdmin} from '@/lib/db/repository/native-admin-audit';
 /**
  * API Route: Data Import - Save
  * POST /api/admin/import/save
@@ -15,8 +18,9 @@ export async function POST(request: NextRequest) {
   try {
     // Auth check - admin only
     const session = await getServerSession(authOptions);
+    if(session?.user)await requireNativeAuditAdmin(getNativeDatabase(),session.user.id);
     if (!session?.user || (session.user as any).role !== 'admin') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -36,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     if (!sessionId) {
       console.error(`[Import Save] No sessionId provided in request`);
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Session ID is required' },
         { status: 400 }
       );
@@ -56,7 +60,7 @@ export async function POST(request: NextRequest) {
     if (!importSession) {
       console.error(`[Import Save] ❌ Session "${sessionId}" not found`);
       console.log(`[Import Save] Available sessions: ${Array.from(dataImportService.getAllSessions()).map(s => s.id).join(', ')}`);
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           error: 'Import session not found',
@@ -71,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     // Check if save is allowed
     if (!importSession.canSave) {
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           error: 'Cannot save: validation errors exist or no valid data',
@@ -82,10 +86,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Save all data with transaction
-    const saveResult = await dataImportService.saveAll(sessionId);
+    const saveResult = await dataImportService.saveAll(sessionId, session.user.id);
 
     if (!saveResult.success) {
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           error: saveResult.message,
@@ -96,7 +100,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: saveResult.message,
       savedCounts: saveResult.savedCounts,
@@ -105,7 +109,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Import save error:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       {
         success: false,
         error: 'Server error',

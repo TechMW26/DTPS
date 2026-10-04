@@ -542,7 +542,7 @@ export default function AdminDashboard() {
                 <span>Top Performing Dietitians</span>
               </CardTitle>
               <CardDescription>
-                Based on client count and ratings
+                Based on assigned clients and completed appointments
               </CardDescription>
             </CardHeader>
             <CardContent>

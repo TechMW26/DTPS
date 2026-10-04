@@ -1,8 +1,10 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getToken } from "next-auth/jwt";
-import { after, NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/db/connection";
-import FileModel from "@/lib/db/models/File";
+import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
+import { getNativeDatabase } from "@/lib/db/firestore-native";
+import { reserveNativeUpload, saveNativeUpload, nativeUploadId } from "@/lib/db/repository/native-files";
 
 export const runtime = "nodejs";
 
@@ -50,7 +52,7 @@ export async function POST(request: NextRequest) {
       body,
       onBeforeGenerateToken: async (pathname, rawPayload) => {
         // Decode the signed JWT directly. Calling getServerSession here can run
-        // session callbacks and make Blob token issuance depend on MongoDB.
+        // session callbacks during Blob token issuance.
         const token = await getToken({
           req: request,
           secret: process.env.NEXTAUTH_SECRET,
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
         const rule = uploadRules[payload.uploadType];
         const mimeType = String(payload.mimeType || "").toLowerCase();
 
-        if (!rule || !pathname.startsWith(`${rule.folder}/`)) {
+        if (!rule || !pathname.startsWith(`${rule.folder}/`) || pathname.includes("..") || pathname.length > 500) {
           throw new Error("Invalid upload destination");
         }
         if (!Number.isFinite(payload.size) || payload.size <= 0 || payload.size > rule.max) {
@@ -71,6 +73,8 @@ export async function POST(request: NextRequest) {
           throw new Error("Unsupported file type");
         }
 
+        await reserveNativeUpload(getNativeDatabase(), pathname, token.sub,
+          createHash("sha256").update(JSON.stringify([payload.uploadType,payload.originalName,mimeType,payload.size])).digest("hex"));
         return {
           allowedContentTypes: [mimeType],
           maximumSizeInBytes: rule.max,
@@ -84,39 +88,23 @@ export async function POST(request: NextRequest) {
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
         const payload = parsePayload<TokenPayload>(tokenPayload || null);
-        // The file is already safely in Blob storage. Persist metadata after
-        // acknowledging the callback so a transient Mongo outage cannot make a
-        // successful media upload appear to have failed in the client.
-        after(async () => {
-          try {
-            await connectDB();
-            await FileModel.updateOne(
-              { imageKitFileId: blob.pathname },
-              {
-                $setOnInsert: {
-                  filename: blob.pathname.split("/").pop() || payload.originalName,
-                  originalName: payload.originalName,
-                  mimeType: payload.mimeType,
-                  size: payload.size,
-                  type: payload.uploadType,
-                  imageKitFileId: blob.pathname,
-                  imageKitUrl: blob.url,
-                  uploadedBy: payload.userId,
-                },
-              },
-              { upsert: true },
-            );
-          } catch (metadataError) {
-            console.error("[ClientUpload] Blob uploaded but metadata persistence failed:", metadataError);
-          }
+        await saveNativeUpload(getNativeDatabase(), nativeUploadId(blob.pathname), {
+          filename: blob.pathname.split("/").pop() || payload.originalName,
+          originalName: payload.originalName,
+          mimeType: blob.contentType || payload.mimeType,
+          size: payload.size,
+          type: payload.uploadType,
+          imageKitFileId: blob.pathname,
+          imageKitUrl: blob.url,
+          uploadedBy: payload.userId,
         });
       },
     });
 
-    return NextResponse.json(response);
+    return nativeResponseJson(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Upload failed";
     const status = message === "Unauthorized" ? 401 : 400;
-    return NextResponse.json({ error: message }, { status });
+    return nativeResponseJson({ error: message }, { status });
   }
 }

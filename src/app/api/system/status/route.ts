@@ -1,7 +1,8 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
-import { checkDBHealth } from "@/lib/db/connection";
+import {getNativeDatabase} from "@/lib/db/firestore-native";
 import { UserRole } from "@/types";
 
 /**
@@ -11,7 +12,7 @@ import { UserRole } from "@/types";
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
   }
 
   const role = session.user.role;
@@ -22,19 +23,14 @@ export async function GET() {
 
   const services: Record<string, { status: "up" | "down"; message?: string }> = {};
 
-  const database = await checkDBHealth();
-  if (!database.healthy) {
-    services.database = {
-      status: "down",
-      message: "MongoDB is temporarily unreachable",
-    };
-  } else {
-    services.database = { status: "up" };
-  }
+  try {
+    await getNativeDatabase().collection('_nativeHealth').doc('connectivity').get();
+    services.database={status:'up'};
+  } catch {services.database={status:'down',message:'Firestore is temporarily unreachable'};}
 
   const allUp = Object.values(services).every((s) => s.status === "up");
 
-  return NextResponse.json({
+  return nativeResponseJson({
     status: allUp ? "healthy" : "degraded",
     services: isStaff ? services : undefined,
     timestamp: new Date().toISOString(),

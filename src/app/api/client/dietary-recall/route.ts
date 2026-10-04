@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import {nativeResponseJson} from '@/lib/api/native-response';
+import { after, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import dbConnect from "@/lib/db/connection";
-import DietaryRecall from "@/lib/db/models/DietaryRecall";
-import { clearCacheByTag } from '@/lib/api/utils';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {readNativeClientForm,writeNativeClientForm,listNativeRecalls} from '@/lib/db/repository/native-client-forms';
+import {ZodError} from 'zod';
+import { clearCacheByTag } from '@/lib/cache/memoryCache';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { MEAL_TYPES, MEAL_TYPE_KEYS } from '@/lib/mealConfig';
 import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
@@ -22,40 +24,37 @@ export async function GET() {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await dbConnect();
+
 
     // Fetch directly from DB — never cache /api/client/** (multi-process safe)
-    const recalls = await DietaryRecall.find({ userId: session.user.id })
-      .sort({ date: -1 })
-      .limit(30);
+    const recalls=await listNativeRecalls(getNativeDatabase(),session.user.id);
 
-    return NextResponse.json({ recalls });
+    return nativeResponseJson({ recalls });
   } catch (error) {
     console.error("Error fetching dietary recall:", error);
-    return NextResponse.json({ error: "Failed to fetch dietary recall" }, { status: 500 });
+    return nativeResponseJson({ error: "Failed to fetch dietary recall" }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
     // OPTIMIZATION: Run auth + DB + body parsing in PARALLEL
-    const [session, , data] = await Promise.all([
+    const [session, data] = await Promise.all([
       getServerSession(authOptions),
-      dbConnect(),
       request.json()
     ]);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
     const mealsInput = Array.isArray(data.meals) ? data.meals : null;
 
     if (!mealsInput) {
-      return NextResponse.json({ error: "Meals array is required" }, { status: 400 });
+      return nativeResponseJson({ error: "Meals array is required" }, { status: 400 });
     }
 
     const validMeals: Array<{
@@ -84,35 +83,22 @@ export async function POST(request: Request) {
     }
 
     if (hasInvalidMealType) {
-      return NextResponse.json({ error: "One or more meal types are invalid" }, { status: 400 });
+      return nativeResponseJson({ error: "One or more meal types are invalid" }, { status: 400 });
     }
 
     // If date is provided, use it, otherwise use today
     const date = data.date ? new Date(data.date) : new Date();
     date.setHours(0, 0, 0, 0);
 
-    // OPTIMIZED: Use findOneAndUpdate with upsert for atomic operation
-    const dietaryRecall = await DietaryRecall.findOneAndUpdate(
-      {
-        userId: session.user.id,
-        date: {
-          $gte: date,
-          $lt: new Date(date.getTime() + 24 * 60 * 60 * 1000)
-        }
-      },
-      {
-        $set: { meals: validMeals },
-        $setOnInsert: { userId: session.user.id, date }
-      },
-      { upsert: true, new: true }
-    );
+    if(!Number.isFinite(date.getTime()))return nativeResponseJson({error:'Invalid date'},{status:400});
+    const dietaryRecall=await writeNativeClientForm(getNativeDatabase(),'dietaryrecalls',session.user.id,{meals:validMeals},date);
 
     // Clear cache synchronously before returning so next fetch sees fresh data
     clearCacheByTag('client');
 
     // Log activity and notify (fire-and-forget non-critical side effects)
-    Promise.resolve().then(() => {
-      logActivity({
+    after(async () => {
+      await logActivity({
         userId: session.user.id,
         userRole: 'client',
         userName: session.user.name || '',
@@ -129,17 +115,18 @@ export async function POST(request: Request) {
         }
       }).catch(() => { });
 
-      notifyClientDataUpdate({
+      await notifyClientDataUpdate({
         clientId: session.user.id,
         updateType: 'recall_form',
         eventKey: `recall:${date.toISOString()}`,
       }).catch(() => { });
     });
 
-    return NextResponse.json({ success: true, data: dietaryRecall });
+    return nativeResponseJson({ success: true, data: dietaryRecall });
   } catch (error) {
+    if(error instanceof ZodError)return nativeResponseJson({error:'Invalid dietary recall',details:error.issues},{status:400});
     console.error("Error saving dietary recall:", error);
-    return NextResponse.json({ error: "Failed to save dietary recall" }, { status: 500 });
+    return nativeResponseJson({ error: "Failed to save dietary recall" }, { status: 500 });
   }
 }
 

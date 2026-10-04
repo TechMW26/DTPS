@@ -1,6 +1,5 @@
 import { google, calendar_v3 } from 'googleapis';
-import User from '@/lib/db/models/User';
-import { getBaseUrl } from '@/lib/config';
+import { getNativeGoogleCalendarClient, getNativeGoogleCalendarClientByEmail } from './native-google-calendar';
 
 export interface MeetingLinkResult {
   success: boolean;
@@ -56,58 +55,9 @@ export async function generateMeetingLink(
 /**
  * Get OAuth2 client for a user (for Google Meet/Calendar integration)
  */
-async function getOAuth2ClientForUser(userId: string) {
-  const user = await User.findById(userId);
-
-  if (!user || !user.googleCalendarAccessToken) {
-    return null;
-  }
-
-  let baseUrl = getBaseUrl();
-  baseUrl = baseUrl.replace(/\/$/, '');
-
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    `${baseUrl}/api/auth/google-calendar/callback`
-  );
-
-  oauth2Client.setCredentials({
-    access_token: user.googleCalendarAccessToken,
-    refresh_token: user.googleCalendarRefreshToken,
-    expiry_date: user.googleCalendarTokenExpiry ? new Date(user.googleCalendarTokenExpiry).getTime() : undefined
-  });
-
-  // Try to refresh token if needed
-  try {
-    const { credentials } = await oauth2Client.refreshAccessToken();
-    if (credentials.access_token) {
-      oauth2Client.setCredentials(credentials);
-      user.googleCalendarAccessToken = credentials.access_token;
-      if (credentials.refresh_token) {
-        user.googleCalendarRefreshToken = credentials.refresh_token;
-      }
-      if (credentials.expiry_date) {
-        user.googleCalendarTokenExpiry = new Date(credentials.expiry_date);
-      }
-      await user.save();
-    }
-  } catch (refreshError) {
-    console.warn('Token refresh failed for user:', userId, refreshError);
-  }
-
-  return oauth2Client;
-}
-
 /**
  * Find user by email and get their OAuth2 client
  */
-async function getOAuth2ClientByEmail(email: string) {
-  const user = await User.findOne({ email: email.toLowerCase() });
-  if (!user) return null;
-  return { client: await getOAuth2ClientForUser(user._id.toString()), userId: user._id.toString() };
-}
-
 /**
  * Generate a Google Meet link using Google Calendar API
  * Creates a calendar event with conference data to get a real Google Meet link
@@ -122,7 +72,7 @@ async function generateGoogleMeetLink(config: {
 }): Promise<MeetingLinkResult> {
   try {
     // Try to get OAuth2 client for the host
-    const hostResult = await getOAuth2ClientByEmail(config.hostEmail);
+    const hostResult = await getNativeGoogleCalendarClientByEmail(config.hostEmail);
 
     if (hostResult?.client) {
       // Use Google Calendar API to create event with Google Meet
@@ -170,7 +120,7 @@ async function generateGoogleMeetLink(config: {
       const meetId = response.data.conferenceData?.conferenceId || response.data.id;
 
       if (meetLink) {
-        console.log('[GoogleMeet] Successfully created Google Meet:', meetLink);
+
         return {
           success: true,
           meetingLink: meetLink,
@@ -184,37 +134,12 @@ async function generateGoogleMeetLink(config: {
       }
     }
 
-    // Fallback: Generate a placeholder meet code if Google Calendar API is not available
-    console.log('[GoogleMeet] Falling back to generated meet code (no Google Calendar auth)');
-    const generateMeetCode = () => {
-      const chars = 'abcdefghijklmnopqrstuvwxyz';
-      const segment = () => {
-        let result = '';
-        for (let i = 0; i < 3; i++) {
-          result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return result;
-      };
-      return `${segment()}-${segment()}-${segment()}`;
-    };
-
-    const meetCode = generateMeetCode();
-    const meetLink = `https://meet.google.com/${meetCode}`;
-
-    return {
-      success: true,
-      meetingLink: meetLink,
-      meetingDetails: {
-        meetingId: meetCode,
-        joinUrl: meetLink,
-        provider: 'google_meet',
-      },
-    };
+    return { success: false, error: 'Google Calendar is not connected or did not return a meeting link' };
   } catch (error: any) {
-    console.error('Failed to create Google Meet link:', error);
+    console.error('Calendar provider operation failed');
     return {
       success: false,
-      error: error.message || 'Failed to create Google Meet link',
+      error: 'Failed to create Google Meet link',
     };
   }
 }
@@ -233,59 +158,5 @@ export function requiresMeetingLink(modeName: string): boolean {
   );
 }
 
-/**
- * Delete a meeting link
- */
-export async function deleteMeetingLink(
-  meetingId: string,
-  provider: 'zoom' | 'google_meet'
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    // Zoom support removed. Google Meet links don't need explicit deletion.
-    void meetingId;
-    void provider;
-
-    return { success: true };
-  } catch (error: any) {
-    console.error(`Failed to delete ${provider} meeting:`, error);
-    return {
-      success: false,
-      error: error.message || `Failed to delete ${provider} meeting`,
-    };
-  }
-}
-
-/**
- * Update a meeting link
- */
-export async function updateMeetingLink(
-  meetingId: string,
-  provider: 'zoom' | 'google_meet',
-  config: {
-    topic?: string;
-    scheduledAt?: Date;
-    duration?: number;
-  }
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    // Zoom support removed. Google Meet links don't require update.
-    void meetingId;
-    void provider;
-    void config;
-
-    return { success: true };
-  } catch (error: any) {
-    console.error(`Failed to update ${provider} meeting:`, error);
-    return {
-      success: false,
-      error: error.message || `Failed to update ${provider} meeting`,
-    };
-  }
-}
-
-export default {
-  generateMeetingLink,
-  requiresMeetingLink,
-  deleteMeetingLink,
-  updateMeetingLink,
-};
+// Calendar lifecycle is handled by the appointment outbox with the owning calendar event ID.
+export default {generateMeetingLink,requiresMeetingLink};

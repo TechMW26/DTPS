@@ -1,3 +1,6 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {requireNativeAuditAdmin} from '@/lib/db/repository/native-admin-audit';
 /**
  * API Route: Data Import - Update Row
  * PATCH /api/admin/import/row
@@ -14,8 +17,9 @@ export async function PATCH(request: NextRequest) {
   try {
     // Auth check - admin only
     const session = await getServerSession(authOptions);
+    if(session?.user)await requireNativeAuditAdmin(getNativeDatabase(),session.user.id);
     if (!session?.user || (session.user as any).role !== 'admin') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -27,7 +31,7 @@ export async function PATCH(request: NextRequest) {
     console.log(`[Row Update] Received update for session: ${sessionId}, model: ${modelName}, row: ${rowIndex}`);
 
     if (!sessionId || !modelName || rowIndex === undefined || !data) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Missing required fields', details: { sessionId, modelName, rowIndex, hasData: !!data } },
         { status: 400 }
       );
@@ -43,9 +47,9 @@ export async function PATCH(request: NextRequest) {
 
     if (!result.success) {
       console.error(`[Row Update] Failed to update row: ${sessionId}/${modelName}/${rowIndex}`);
-      return NextResponse.json(
-        { 
-          success: false, 
+      return nativeResponseJson(
+        {
+          success: false,
           error: 'Failed to update row',
           details: {
             sessionId,
@@ -60,7 +64,7 @@ export async function PATCH(request: NextRequest) {
 
     console.log(`[Row Update] Successfully updated row ${rowIndex} in session ${sessionId}`);
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       row: result.row,
       sessionCanSave: result.sessionCanSave
@@ -68,11 +72,11 @@ export async function PATCH(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Import row update error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
+    return nativeResponseJson(
+      {
+        success: false,
         error: 'Server error',
-        message: error.message 
+        message: error.message
       },
       { status: 500 }
     );
@@ -83,8 +87,9 @@ export async function DELETE(request: NextRequest) {
   try {
     // Auth check - admin only
     const session = await getServerSession(authOptions);
+    if(session?.user)await requireNativeAuditAdmin(getNativeDatabase(),session.user.id);
     if (!session?.user || (session.user as any).role !== 'admin') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -96,7 +101,7 @@ export async function DELETE(request: NextRequest) {
     const rowIndex = searchParams.get('rowIndex');
 
     if (!sessionId || !rowIndex) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
       );
@@ -119,24 +124,24 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (!result.success) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Failed to remove row' },
         { status: 400 }
       );
     }
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       sessionCanSave: result.sessionCanSave
     });
 
   } catch (error: any) {
     console.error('Import row delete error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
+    return nativeResponseJson(
+      {
+        success: false,
         error: 'Server error',
-        message: error.message 
+        message: error.message
       },
       { status: 500 }
     );

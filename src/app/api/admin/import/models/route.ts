@@ -1,3 +1,6 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {requireNativeAuditAdmin} from '@/lib/db/repository/native-admin-audit';
 /**
  * API Route: Data Import - Models & Templates
  * GET /api/admin/import/models
@@ -14,8 +17,9 @@ export async function GET(request: NextRequest) {
   try {
     // Auth check - admin only
     const session = await getServerSession(authOptions);
+    if(session?.user)await requireNativeAuditAdmin(getNativeDatabase(),session.user.id);
     if (!session?.user || (session.user as any).role !== 'admin') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -29,13 +33,13 @@ export async function GET(request: NextRequest) {
     if (modelName && action === 'template') {
       const template = dataImportService.getImportTemplate(modelName);
       if (!template) {
-        return NextResponse.json(
+        return nativeResponseJson(
           { success: false, error: 'Model not found' },
           { status: 404 }
         );
       }
 
-      return NextResponse.json({
+      return nativeResponseJson({
         success: true,
         modelName,
         template
@@ -46,13 +50,13 @@ export async function GET(request: NextRequest) {
     if (modelName && action === 'fields') {
       const model = modelRegistry.get(modelName);
       if (!model) {
-        return NextResponse.json(
+        return nativeResponseJson(
           { success: false, error: 'Model not found' },
           { status: 404 }
         );
       }
 
-      return NextResponse.json({
+      return nativeResponseJson({
         success: true,
         modelName,
         displayName: model.displayName,
@@ -65,16 +69,16 @@ export async function GET(request: NextRequest) {
     // List all models (not just importable)
     const allModels = modelRegistry.getAll();
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       models: allModels.map(m => ({
         name: m.name,
         displayName: m.displayName,
         description: m.description,
         requiredFields: m.requiredFields,
-        fieldCount: m.fields.filter(f => 
-          !f.path.startsWith('_') && 
-          f.path !== 'createdAt' && 
+        fieldCount: m.fields.filter(f =>
+          !f.path.startsWith('_') &&
+          f.path !== 'createdAt' &&
           f.path !== 'updatedAt'
         ).length
       }))
@@ -82,11 +86,11 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Import models error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
+    return nativeResponseJson(
+      {
+        success: false,
         error: 'Server error',
-        message: error.message 
+        message: error.message
       },
       { status: 500 }
     );

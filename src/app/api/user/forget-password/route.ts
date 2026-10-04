@@ -1,6 +1,7 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeAccountByEmail,setNativeResetToken} from '@/lib/db/repository/native-account';
 import { sendEmail, getPasswordResetTemplate } from '@/lib/services/email';
 import { getBaseUrl } from '@/lib/config';
 import crypto from 'crypto';
@@ -11,25 +12,20 @@ export async function POST(request: NextRequest) {
     const { email } = await request.json();
 
 
-    
-    if (!email) {
-      return NextResponse.json(
+
+    if (typeof email!=='string'||!email.trim()||email.length>320) {
+      return nativeResponseJson(
         { error: 'Email is required' },
         { status: 400 }
       );
     }
 
-    await connectDB();
-
-    // Find user by email - only allow clients
-    const user = await User.findOne({ 
-      email: email.toLowerCase().trim(),
-      role: 'client'
-    });
+    const found=await nativeAccountByEmail(getNativeDatabase(),email);
+    const user=found?.role==='client'?found:null;
 
     // Always return success message to prevent email enumeration
     if (!user) {
-      return NextResponse.json({
+      return nativeResponseJson({
         success: true,
         message: 'If an account exists with this email, you will receive a password reset link.'
       });
@@ -47,10 +43,7 @@ export async function POST(request: NextRequest) {
     const tokenExpiry = new Date(Date.now() + 60 * 60 * 1000);
 
     // Save hashed token and expiry to user
-    user.passwordResetToken = hashedToken;
-    user.passwordResetTokenExpiry = tokenExpiry;
-    await user.save({ validateBeforeSave: false });
-
+    await setNativeResetToken(getNativeDatabase(),user._id,hashedToken,tokenExpiry);
 
     // Generate reset link - use client-auth route which doesn't require authentication
     const baseUrl = getBaseUrl();
@@ -64,7 +57,6 @@ export async function POST(request: NextRequest) {
       expiryMinutes: 60
     });
 
-    console.log(`[USER_FORGET_PASSWORD] Sending reset email to: ${email}`);
     const emailSent = await sendEmail({
       to: email,
       subject: emailTemplate.subject,
@@ -73,20 +65,18 @@ export async function POST(request: NextRequest) {
     });
 
     if (!emailSent) {
-      console.error(`[USER_FORGET_PASSWORD] Failed to send password reset email to: ${email}`);
     } else {
-      console.log(`[USER_FORGET_PASSWORD] Password reset email sent successfully to: ${email}`);
     }
 
     // Always return success message for security (don't reveal if account exists)
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: 'If an account exists with this email, you will receive a password reset link.'
     });
 
   } catch (error) {
     console.error('Error in user forget password:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'An error occurred. Please try again later.' },
       { status: 500 }
     );

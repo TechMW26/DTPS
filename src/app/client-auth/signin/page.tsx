@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import './signin.css';
 import { Eye, EyeOff, Mail, Lock, ArrowLeft, ShieldCheck, Phone, MessageSquare, Flag } from 'lucide-react';
 import { signInSchema, SignInInput } from '@/lib/validations/auth';
-import { validatePhoneNumber } from '@/lib/validations/contact';
+import { validateLoginPhone, loginPhoneMaxLength, loginPhoneLengths, cleanLoginPhoneInput } from '@/lib/validations/login-phone';
 import { COUNTRY_CODE_OPTIONS } from '@/lib/constants/countries';
 import Image from 'next/image';
 import type { ConfirmationResult } from 'firebase/auth';
@@ -163,8 +163,8 @@ export default function ClientSignInPage() {
 
   const handleSendOtp = async () => {
     // Strip non-digits and remove leading zeros (e.g. UK local 07911... → 7911...)
-    const localDigits = phoneNumber.replace(/\D/g, '').replace(/^0+/, '');
-    const phoneValidation = validatePhoneNumber(`${countryCode}${localDigits}`, countryCode);
+    const localDigits = phoneNumber.replace(/\D/g, '');
+    const phoneValidation = validateLoginPhone(`${countryCode}${localDigits}`, countryCode);
     if (!phoneValidation.isValid) {
       setError(phoneValidation.error || 'Please enter a valid phone number');
       return;
@@ -245,8 +245,8 @@ export default function ClientSignInPage() {
       return;
     }
 
-    const localDigitsVerify = phoneNumber.replace(/\D/g, '').replace(/^0+/, '');
-    const phoneValidation = validatePhoneNumber(`${countryCode}${localDigitsVerify}`, countryCode);
+    const localDigitsVerify = phoneNumber.replace(/\D/g, '');
+    const phoneValidation = validateLoginPhone(`${countryCode}${localDigitsVerify}`, countryCode);
     if (!phoneValidation.isValid) {
       setError(phoneValidation.error || 'Please enter a valid phone number');
       return;
@@ -469,7 +469,7 @@ export default function ClientSignInPage() {
                   <div className="space-y-2">
                     <label htmlFor="signin-phone" className="text-sm font-medium text-gray-700">Phone number</label>
                     <div className="signin-phone-field flex items-center h-12 sm:h-14 bg-[#3AB1A0]/5 border border-[#3AB1A0]/20 rounded-xl overflow-hidden px-2">
-                      <Select value={countryCode} onValueChange={setCountryCode}>
+                      <Select value={countryCode} onValueChange={(code) => { setCountryCode(code); setPhoneNumber(''); setError(''); setRegistrationPrompt(null); }}>
                         <SelectTrigger aria-label="Country calling code" className="w-24 h-full border-0 bg-transparent px-2 focus:ring-0 focus:outline-none text-sm">
                           <SelectValue />
                         </SelectTrigger>
@@ -493,17 +493,26 @@ export default function ClientSignInPage() {
                         type="tel"
                         autoComplete="tel-national"
                         inputMode="tel"
-                        aria-describedby="signin-phone-help"
+                        aria-describedby="signin-phone-help signin-phone-length"
                         placeholder="Phone number"
                         value={phoneNumber}
                         onChange={(e) => {
-                          setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 15));
+                          setPhoneNumber(cleanLoginPhoneInput(e.target.value, countryCode));
+                          setRegistrationPrompt(null);
+                        }}
+                        onPaste={(e) => {
+                          // Normalize the complete clipboard before the browser applies maxLength.
+                          e.preventDefault();
+                          setPhoneNumber(cleanLoginPhoneInput(e.clipboardData.getData('text'), countryCode));
                           setRegistrationPrompt(null);
                         }}
                         className="flex-1 h-full border-0 outline-none bg-transparent text-black placeholder:text-gray-400 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none shadow-none"
-                        maxLength={15}
+                        maxLength={loginPhoneMaxLength(countryCode)}
                       />
                     </div>
+                    <p id="signin-phone-length" className="text-xs text-gray-500" aria-live="polite">
+                      {loginPhoneLengths(countryCode).length === 1 ? `${loginPhoneMaxLength(countryCode)} digits` : `Up to ${loginPhoneMaxLength(countryCode)} digits`} excluding {countryCode}. {phoneNumber.length}/{loginPhoneMaxLength(countryCode)}
+                    </p>
                     <p id="signin-phone-help" className="text-xs text-gray-500 flex items-start gap-1.5 leading-5">
                       <MessageSquare aria-hidden="true" className="mt-1 h-3 w-3 shrink-0" />
                       {nativeIosApp
@@ -518,7 +527,7 @@ export default function ClientSignInPage() {
                     onClick={handleSendOtp}
                     aria-busy={isLoading}
                     className="signin-primary w-full h-12 text-white font-semibold text-base rounded-xl"
-                    disabled={isLoading || phoneNumber.replace(/\D/g, '').length < 6}
+                    disabled={isLoading || !validateLoginPhone(`${countryCode}${phoneNumber}`,countryCode).isValid}
                   >
                     {isLoading ? 'Sending OTP...' : 'Send OTP'}
                   </Button>

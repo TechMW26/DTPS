@@ -1,33 +1,28 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions, invalidateUserStatusCache } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
-import ActivityLog from '@/lib/db/models/ActivityLog';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {revokeNativeOtherSessions} from '@/lib/db/repository/native-account';
+import {recordNativeLogin} from '@/lib/db/repository/native-auth';
 
 export async function POST() {
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        await connectDB();
 
         const now = new Date();
         const keepSessionId = session.user.sessionId || '';
 
-        await User.findByIdAndUpdate(session.user.id, {
-            $set: {
-                logoutOtherSessionsAt: now,
-                keepCurrentSessionId: keepSessionId,
-            },
-        });
+        await revokeNativeOtherSessions(getNativeDatabase(),session.user.id,keepSessionId,!!session.user.isWooCommerceClient);
 
         invalidateUserStatusCache(session.user.id);
 
         try {
-            await ActivityLog.create({
+            await recordNativeLogin(getNativeDatabase(),{
                 userId: session.user.id,
                 userRole: session.user.role,
                 userName: session.user.name || `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim() || 'User',
@@ -46,9 +41,9 @@ export async function POST() {
             console.error('Failed to log logout-other-sessions activity:', logError);
         }
 
-        return NextResponse.json({ success: true });
+        return nativeResponseJson({ success: true });
     } catch (error) {
         console.error('Error logging out other sessions:', error);
-        return NextResponse.json({ error: 'Failed to logout other sessions' }, { status: 500 });
+        return nativeResponseJson({ error: 'Failed to logout other sessions' }, { status: 500 });
     }
 }

@@ -1,84 +1,12 @@
-import { NextResponse } from 'next/server';
-import { checkDBHealth, getConnectionStats } from '@/lib/db/connection';
-
-const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || process.env.npm_package_version || '1.0.0';
-
-export async function GET() {
-  const startTime = Date.now();
-  
-  // Memory stats for monitoring
-  const memoryUsage = process.memoryUsage();
-  const memory = {
-    heapUsedMB: Math.round(memoryUsage.heapUsed / 1024 / 1024),
-    heapTotalMB: Math.round(memoryUsage.heapTotal / 1024 / 1024),
-    rssMB: Math.round(memoryUsage.rss / 1024 / 1024),
-    externalMB: Math.round(memoryUsage.external / 1024 / 1024),
-  };
-  
-  try {
-    // Check database connection with health utility
-    const dbHealth = await checkDBHealth();
-    const stats = getConnectionStats();
-    
-    const responseTime = Date.now() - startTime;
-    
-    const baseHeaders = {
-      'Cache-Control': 'no-store, no-cache, must-revalidate',
-      'X-App-Version': APP_VERSION,
-    };
-    
-    if (!dbHealth.healthy) {
-      return NextResponse.json({
-        status: 'degraded',
-        timestamp: new Date().toISOString(),
-        database: 'disconnected',
-        error: dbHealth.error,
-        connectionStats: stats,
-        responseTimeMs: responseTime,
-        version: APP_VERSION,
-        uptime: process.uptime(),
-        memory,
-      }, { 
-        status: 503,
-        headers: {
-          ...baseHeaders,
-          'Retry-After': '5',
-        },
-      });
-    }
-    
-    return NextResponse.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      database: 'connected',
-      connectionStats: {
-        readyState: stats.readyState,
-        provider: 'mongodb',
-      },
-      responseTimeMs: responseTime,
-      version: APP_VERSION,
-      uptime: process.uptime(),
-      memory,
-    }, { headers: baseHeaders });
-  } catch (error: any) {
-    const responseTime = Date.now() - startTime;
-    
-    return NextResponse.json({
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      database: 'error',
-      error: error.message || 'Database connection failed',
-      responseTimeMs: responseTime,
-      version: APP_VERSION,
-      uptime: process.uptime(),
-      memory,
-    }, { 
-      status: 500,
-      headers: {
-        'Cache-Control': 'no-store',
-        'X-App-Version': APP_VERSION,
-        'Retry-After': '5',
-      },
-    });
-  }
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {NextResponse} from 'next/server';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+const version=process.env.NEXT_PUBLIC_APP_VERSION||process.env.npm_package_version||'1.0.0';
+export async function GET(){
+ const started=Date.now(),headers={'Cache-Control':'no-store','X-App-Version':version};
+ try{
+  // A server read verifies credentials and connectivity even when the sentinel does not exist.
+  await getNativeDatabase().collection('_nativeHealth').doc('connectivity').get();
+  return nativeResponseJson({status:'healthy',database:'connected',connectionStats:{provider:'firestore-native'},timestamp:new Date().toISOString(),responseTimeMs:Date.now()-started,version},{headers});
+ }catch{return nativeResponseJson({status:'degraded',database:'disconnected',connectionStats:{provider:'firestore-native'},timestamp:new Date().toISOString(),responseTimeMs:Date.now()-started,version,error:'Database temporarily unavailable'},{status:503,headers:{...headers,'Retry-After':'5'}});}
 }

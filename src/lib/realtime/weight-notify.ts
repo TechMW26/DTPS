@@ -1,4 +1,4 @@
-import User from '@/lib/db/models/User';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 
@@ -16,9 +16,7 @@ export async function emitClientWeightUpdate({
     source,
 }: EmitClientWeightUpdateParams): Promise<void> {
     try {
-        const client = await User.findById(clientId)
-            .select('assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors')
-            .lean() as any;
+        const client = (await getNativeDatabase().collection('users').doc(clientId).get()).data();
 
         const recipients = new Set<string>();
         recipients.add(clientId);
@@ -39,7 +37,7 @@ export async function emitClientWeightUpdate({
             client.assignedHealthCounselors.forEach((id: any) => recipients.add(String(id)));
         }
 
-        socketManager.sendToUsers(Array.from(recipients), SOCKET_EVENTS.CLIENT_WEIGHT_UPDATED, {
+        await socketManager.sendToUsers(Array.from(recipients), SOCKET_EVENTS.CLIENT_WEIGHT_UPDATED, {
             clientId,
             weightKg,
             bmi,

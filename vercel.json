@@ -4,8 +4,23 @@
   "devCommand": "next dev --port 3000",
   "installCommand": "npm ci --legacy-peer-deps",
   "framework": "nextjs",
-  "regions": ["bom1"],
-  "crons": [{ "path": "/api/internal/meal-engagement", "schedule": "* * * * *" }],
+  "regions": [
+    "bom1"
+  ],
+  "crons": [
+    {
+      "path": "/api/internal/meal-engagement",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/notification-outbox",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/realtime-cleanup",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "functions": {
     "src/app/api/**/*.ts": {
       "maxDuration": 30
@@ -18,6 +33,15 @@
     },
     "src/app/api/internal/meal-engagement/route.ts": {
       "maxDuration": 300
+    },
+    "src/app/api/realtime/events/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/internal/notification-outbox/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/internal/realtime-cleanup/route.ts": {
+      "maxDuration": 60
     }
   },
   "env": {
@@ -28,24 +52,48 @@
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "https://dtps.tech" },
-        { "key": "Access-Control-Allow-Credentials", "value": "true" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,PATCH,DELETE,OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-Requested-With" }
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "https://dtps.tech"
+        },
+        {
+          "key": "Access-Control-Allow-Credentials",
+          "value": "true"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization, X-Requested-With"
+        }
       ]
     },
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
       ]
     },
     {
       "source": "/assets/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
       ]
     }
   ],

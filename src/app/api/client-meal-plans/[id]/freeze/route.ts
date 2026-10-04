@@ -1,12 +1,12 @@
+import {planNeedsDateCorrection} from '@/lib/meal-plan-date-validity';
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import dbConnect from '@/lib/db/connect';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import ServicePlan, { ClientPurchase } from '@/lib/db/models/ServicePlan';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {NativePlanEditor,nativePlanStaffAccess} from '@/lib/db/repository/native-plan-editor';
 import { addDays, format, differenceInDays, startOfDay, parseISO } from 'date-fns';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import {clearCacheByTag} from '@/lib/cache/memoryCache';
 import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
 import { toISTDateKey } from '@/lib/utils/ist';
 
@@ -22,27 +22,27 @@ function calculateAllowedFreezeDaysFallback(durationDays: number): number {
 // Checks: 1. ClientPurchase.selectedTier.freezeDays
 //         2. UnifiedPayment → ServicePlan.pricingTiers (matching durationDays)
 //         3. Falls back to calculated value
-async function getFreezeDaysFromPurchase(purchaseId: string | null, durationDays: number): Promise<number> {
+async function getFreezeDaysFromPurchase(editor:NativePlanEditor,clientId:string,purchaseId: string | null, durationDays: number): Promise<number> {
   if (!purchaseId) {
     return calculateAllowedFreezeDaysFallback(durationDays);
   }
 
   try {
     // First, try ClientPurchase model
-    const clientPurchase: any = await ClientPurchase.findById(purchaseId).lean();
+    const clientPurchase: any = await editor.document('clientpurchases',purchaseId);
+    if(clientPurchase && String(clientPurchase.client || clientPurchase.clientId || '')!==clientId)throw new Error('Linked purchase ownership mismatch');
     if (typeof clientPurchase?.selectedTier?.freezeDays === 'number' && clientPurchase.selectedTier.freezeDays >= 0) {
       return clientPurchase.selectedTier.freezeDays;
     }
 
     // Second, try UnifiedPayment model and fetch from ServicePlan
-    const unifiedPayment: any = await UnifiedPayment.findById(purchaseId)
-      .populate('servicePlan')
-      .lean();
+    const unifiedPayment: any = await editor.document('unifiedpayments',purchaseId);
 
+    if(unifiedPayment && String(unifiedPayment.client || '')!==clientId)throw new Error('Linked purchase ownership mismatch');
     if (unifiedPayment?.servicePlan) {
-      const servicePlan = unifiedPayment.servicePlan;
+      const servicePlan = await editor.document('serviceplans',String(unifiedPayment.servicePlan));
       // Find the matching pricing tier based on duration
-      const matchingTier = servicePlan.pricingTiers?.find(
+      const matchingTier = servicePlan?.pricingTiers?.find(
         (tier: any) => tier.durationDays === (unifiedPayment.durationDays || durationDays) && tier.isActive
       );
 
@@ -53,7 +53,7 @@ async function getFreezeDaysFromPurchase(purchaseId: string | null, durationDays
 
     // Third, if UnifiedPayment has servicePlan reference, try direct ServicePlan lookup
     if (!unifiedPayment && clientPurchase?.servicePlan) {
-      const servicePlan: any = await ServicePlan.findById(clientPurchase.servicePlan).lean();
+      const servicePlan: any = await editor.document('serviceplans',String(clientPurchase.servicePlan));
       if (servicePlan?.pricingTiers) {
         const matchingTier = servicePlan.pricingTiers.find(
           (tier: any) => tier.durationDays === durationDays && tier.isActive
@@ -64,7 +64,7 @@ async function getFreezeDaysFromPurchase(purchaseId: string | null, durationDays
       }
     }
   } catch (error) {
-    console.error('Error fetching purchase for freeze days:', error);
+    throw error;
   }
 
   // Fallback to calculated value if not found in any source
@@ -72,7 +72,7 @@ async function getFreezeDaysFromPurchase(purchaseId: string | null, durationDays
 }
 
 // Helper function to get aggregated freeze info from all plans linked to the same purchase
-async function getSharedFreezeInfo(purchaseId: string | null, currentPlanId: string): Promise<{
+async function getSharedFreezeInfo(editor:NativePlanEditor,clientId:string,purchaseId: string | null, currentPlanId: string): Promise<{
   totalFreezeCount: number;
   allFreezedDays: any[];
   linkedPlanIds: string[];
@@ -83,14 +83,15 @@ async function getSharedFreezeInfo(purchaseId: string | null, currentPlanId: str
   }
 
   // Find all meal plans linked to the same purchase
-  const linkedPlans: any[] = await ClientMealPlan.find({ purchaseId, isDeleted: { $ne: true } }).lean();
+  const linkedPlans: any[] = (await editor.query('clientmealplans',[['purchaseId','==',purchaseId],['clientId','==',clientId]])).filter(plan=>!plan.isDeleted);
 
   let totalFreezeCount = 0;
   let allFreezedDays: any[] = [];
   let totalDurationDays = 0;
   const linkedPlanIds: string[] = [];
 
-  for (const plan of linkedPlans) {
+  for (const raw of linkedPlans) {
+    const plan=await editor.hydrate(raw);
     linkedPlanIds.push(plan._id.toString());
     totalFreezeCount += plan.totalFreezeCount || 0;
 
@@ -122,7 +123,7 @@ type PurchaseDateRecord = {
   createdAt?: Date;
 };
 
-async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<{
+async function resolveLinkedPurchaseTargets(editor:NativePlanEditor,clientId:string,purchaseId: string | null): Promise<{
   unifiedTargets: PurchaseDateRecord[];
   legacyTargets: PurchaseDateRecord[];
 }> {
@@ -130,18 +131,18 @@ async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<
     return { unifiedTargets: [], legacyTargets: [] };
   }
 
-  const selectFields = '_id paymentLink expectedEndDate endDate updatedAt createdAt';
   const unifiedTargetsMap = new Map<string, PurchaseDateRecord>();
   const legacyTargetsMap = new Map<string, PurchaseDateRecord>();
 
   const registerTarget = (map: Map<string, PurchaseDateRecord>, record: any) => {
     if (!record?._id) return;
+    if(String(record.client || record.clientId || '')!==clientId)throw new Error('Linked purchase ownership mismatch');
     map.set(String(record._id), record as PurchaseDateRecord);
   };
 
   const [primaryUnifiedPurchase, primaryLegacyPurchase] = await Promise.all([
-    UnifiedPayment.findById(purchaseId).select(selectFields).lean(),
-    ClientPurchase.findById(purchaseId).select(selectFields).lean()
+    editor.document('unifiedpayments',purchaseId),
+    editor.document('clientpurchases',purchaseId)
   ]);
 
   registerTarget(unifiedTargetsMap, primaryUnifiedPurchase);
@@ -154,8 +155,8 @@ async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<
 
   if (relatedPaymentLinkId) {
     const [linkedUnifiedTargets, linkedLegacyTargets] = await Promise.all([
-      UnifiedPayment.find({ paymentLink: relatedPaymentLinkId }).select(selectFields).lean(),
-      ClientPurchase.find({ paymentLink: relatedPaymentLinkId }).select(selectFields).lean()
+      editor.query('unifiedpayments',[['paymentLink','==',relatedPaymentLinkId]]),
+      editor.query('clientpurchases',[['paymentLink','==',relatedPaymentLinkId]])
     ]);
 
     linkedUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
@@ -164,8 +165,8 @@ async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<
 
   if (unifiedTargetsMap.size === 0 && legacyTargetsMap.size === 0) {
     const [fallbackUnifiedTargets, fallbackLegacyTargets] = await Promise.all([
-      UnifiedPayment.find({ paymentLink: purchaseId }).select(selectFields).lean(),
-      ClientPurchase.find({ paymentLink: purchaseId }).select(selectFields).lean()
+      editor.query('unifiedpayments',[['paymentLink','==',purchaseId]]),
+      editor.query('clientpurchases',[['paymentLink','==',purchaseId]])
     ]);
 
     fallbackUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
@@ -178,12 +179,12 @@ async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<
   };
 }
 
-async function resolveLatestLinkedMealPlanEndDate(purchaseId: string | null, fallbackDate: Date): Promise<Date> {
+async function resolveLatestLinkedMealPlanEndDate(editor:NativePlanEditor,clientId:string,mutations:Mutation[],purchaseId: string | null, fallbackDate: Date): Promise<Date> {
   if (!purchaseId) {
     return fallbackDate;
   }
 
-  const linkedPlans = await ClientMealPlan.find({ purchaseId }).select('endDate updatedAt createdAt').lean();
+  const linkedPlans = (await editor.query('clientmealplans',[['purchaseId','==',purchaseId],['clientId','==',clientId]])).filter(plan=>!plan.isDeleted).map(plan=>({...plan,...mutations.find(item=>item.collection==='clientmealplans'&&item.id===plan._id)?.patch}));
   let latestEndDate = fallbackDate;
 
   for (const plan of linkedPlans) {
@@ -241,54 +242,55 @@ function sortPhasesForCascade(a: any, b: any): number {
   return aCreated - bCreated;
 }
 
+type Mutation={collection:string;id:string;patch:Record<string,any>};
 async function cascadeShiftLinkedPhases(
-  purchaseId: string | null,
-  anchorPlanId: string,
-  deltaDays: number
-): Promise<void> {
-  if (!purchaseId || deltaDays === 0) return;
+    editor: NativePlanEditor,
+    clientId: string,
+    purchaseId: string | null,
+    anchorPlanId: string,
+    deltaDays: number
+): Promise<Array<{collection:string;id:string;patch:Record<string,any>}>> {
+    if (!purchaseId || deltaDays === 0) return [];
 
-  const linkedPlans: any[] = await ClientMealPlan.find({
-    purchaseId,
-    isDeleted: { $ne: true }
-  });
+    const linkedPlans=await editor.query('clientmealplans',[['purchaseId','==',purchaseId],['clientId','==',clientId]]);
+    const mutations:Array<{collection:string;id:string;patch:Record<string,any>}>=[];
+    if (linkedPlans.length <= 1) return mutations;
 
-  if (linkedPlans.length <= 1) return;
+    const orderedPlans = linkedPlans.filter(plan=>!plan.isDeleted).sort(sortPhasesForCascade);
+    const anchorIndex = orderedPlans.findIndex((plan) => String(plan._id) === String(anchorPlanId));
+    if (anchorIndex < 0 || anchorIndex >= orderedPlans.length - 1) return mutations;
 
-  const orderedPlans = [...linkedPlans].sort(sortPhasesForCascade);
-  const anchorIndex = orderedPlans.findIndex((plan) => String(plan._id) === String(anchorPlanId));
-  if (anchorIndex < 0 || anchorIndex >= orderedPlans.length - 1) return;
+    for (let i = anchorIndex + 1; i < orderedPlans.length; i += 1) {
+        const plan = await editor.hydrate(orderedPlans[i]);
 
-  for (let i = anchorIndex + 1; i < orderedPlans.length; i += 1) {
-    const plan = orderedPlans[i];
+        const shiftedStartDate = shiftDateValue(plan.startDate, deltaDays);
+        const shiftedEndDate = shiftDateValue(plan.endDate, deltaDays);
+        if (shiftedStartDate) plan.startDate = shiftedStartDate;
+        if (shiftedEndDate) plan.endDate = shiftedEndDate;
 
-    const shiftedStartDate = shiftDateValue(plan.startDate, deltaDays);
-    const shiftedEndDate = shiftDateValue(plan.endDate, deltaDays);
-    if (shiftedStartDate) plan.startDate = shiftedStartDate;
-    if (shiftedEndDate) plan.endDate = shiftedEndDate;
+        if (Array.isArray(plan.meals)) {
+            plan.meals = plan.meals.map((meal: any) => {
+                if (!meal?.date) return meal;
+                const shiftedMealDate = shiftDateValue(meal.date, deltaDays);
+                if (!shiftedMealDate) return meal;
+                return {
+                    ...meal,
+                    date: shiftedMealDate
+                };
+            });
+        }
 
-    if (Array.isArray(plan.meals)) {
-      plan.meals = plan.meals.map((meal: any) => {
-        if (!meal?.date) return meal;
-        const shiftedMealDate = shiftDateValue(meal.date, deltaDays);
-        if (!shiftedMealDate) return meal;
-        return {
-          ...meal,
-          date: shiftedMealDate
-        };
-      });
+        if (Array.isArray(plan.freezedDays)) {
+            plan.freezedDays = plan.freezedDays.map((fd: any) => ({
+                ...fd,
+                date: shiftDateValue(fd?.date, deltaDays) || fd?.date,
+                addedDate: fd?.addedDate ? (shiftDateValue(fd.addedDate, deltaDays) || fd.addedDate) : fd?.addedDate
+            }));
+        }
+
+        mutations.push({collection:'clientmealplans',id:plan._id,patch:{startDate:plan.startDate,endDate:plan.endDate,...(plan.meals?{meals:plan.meals}:{}),...(plan.freezedDays?{freezedDays:plan.freezedDays}:{})}});
     }
-
-    if (Array.isArray(plan.freezedDays)) {
-      plan.freezedDays = plan.freezedDays.map((fd: any) => ({
-        ...fd,
-        date: shiftDateValue(fd?.date, deltaDays) || fd?.date,
-        addedDate: fd?.addedDate ? (shiftDateValue(fd.addedDate, deltaDays) || fd.addedDate) : fd?.addedDate
-      }));
-    }
-
-    await plan.save();
-  }
+    return mutations;
 }
 
 // GET - Get freeze information for a meal plan
@@ -300,17 +302,20 @@ export async function GET(
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await dbConnect();
+    const editor=new NativePlanEditor(getNativeDatabase());
     const { id } = await params;
 
-    const mealPlan: any = await ClientMealPlan.findById(id).lean();
+    let mealPlan: any = await editor.plan(id);
 
     if (!mealPlan) {
-      return NextResponse.json({ error: 'Meal plan not found' }, { status: 404 });
+      return nativeResponseJson({ error: 'Meal plan not found' }, { status: 404 });
     }
+    if(!await nativePlanStaffAccess(editor,mealPlan,session.user))return nativeResponseJson({error:'Forbidden'},{status:403});
+    if(planNeedsDateCorrection(mealPlan))return nativeResponseJson({error:'An administrator must confirm missing plan dates first',code:'PLAN_DATES_NEED_CORRECTION'},{status:409});
+    mealPlan=await editor.hydrate(mealPlan);
 
     // Keep duration tied to original plan length (freeze days must not increase duration)
     const startDate = new Date(mealPlan.startDate);
@@ -323,13 +328,13 @@ export async function GET(
     let freezedDays = mealPlan.freezedDays || [];
 
     // Get allowed freeze days from the purchase/service plan (database value)
-    let allowedFreezeDays = await getFreezeDaysFromPurchase(purchaseId, durationDays);
+    let allowedFreezeDays = await getFreezeDaysFromPurchase(editor,String(mealPlan.clientId),purchaseId, durationDays);
     let isSharedFreeze = false;
     let linkedPlanCount = 0;
 
     if (purchaseId) {
       // Get aggregated freeze info from all plans linked to the same purchase
-      const sharedInfo = await getSharedFreezeInfo(purchaseId, id);
+      const sharedInfo = await getSharedFreezeInfo(editor,String(mealPlan.clientId),purchaseId, id);
 
       if (sharedInfo.linkedPlanIds.length > 1) {
         // Multiple plans share the same purchase - use aggregated data
@@ -345,7 +350,7 @@ export async function GET(
     // Calculate remaining freeze days
     const remainingFreezeDays = Math.max(0, allowedFreezeDays - totalFreezeCount);
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       data: {
         planId: mealPlan._id,
@@ -374,7 +379,7 @@ export async function GET(
     });
   } catch (error) {
     console.error('Error getting freeze info:', error);
-    return NextResponse.json({ error: 'Failed to get freeze information' }, { status: 500 });
+    return nativeResponseJson({ error: 'Failed to get freeze information' }, { status: 500 });
   }
 }
 
@@ -387,31 +392,32 @@ export async function POST(
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await dbConnect();
+    const editor=new NativePlanEditor(getNativeDatabase());
     const { id } = await params;
     const body = await request.json();
     const { freezeDates, reason } = body; // Array of date strings in YYYY-MM-DD format + optional reason
 
     if (!freezeDates || !Array.isArray(freezeDates) || freezeDates.length === 0) {
-      return NextResponse.json({ error: 'freezeDates array is required' }, { status: 400 });
+      return nativeResponseJson({ error: 'freezeDates array is required' }, { status: 400 });
     }
+
+    if(freezeDates.length>366 || (reason!==undefined && (typeof reason!=='string'||reason.length>2000)))return nativeResponseJson({error:'Invalid freeze request'},{status:400});
 
     // Get the user name for frozenBy field
     const frozenBy = session.user.name || session.user.email || 'Unknown';
 
     // Fetch the meal plan
-    const mealPlan = await withCache(
-      `client-meal-plans:id:freeze:${JSON.stringify(id)}`,
-      async () => await ClientMealPlan.findById(id),
-      { ttl: 120000, tags: ['client_meal_plans'] }
-    );
+    let mealPlan = await editor.plan(id);
 
     if (!mealPlan) {
-      return NextResponse.json({ error: 'Meal plan not found' }, { status: 404 });
+      return nativeResponseJson({ error: 'Meal plan not found' }, { status: 404 });
     }
+    if(!await nativePlanStaffAccess(editor,mealPlan,session.user))return nativeResponseJson({error:'Forbidden'},{status:403});
+    if(planNeedsDateCorrection(mealPlan))return nativeResponseJson({error:'An administrator must confirm missing plan dates first',code:'PLAN_DATES_NEED_CORRECTION'},{status:409});
+    mealPlan=await editor.hydrate(mealPlan);
 
     // Keep allowance tied to the originally assigned phase duration. The
     // current date span may already include earlier freeze extensions.
@@ -424,14 +430,14 @@ export async function POST(
     let currentFreezeCount = mealPlan.totalFreezeCount || 0;
 
     // Get allowed freeze days from the purchase/service plan (database value)
-    let allowedFreezeDays = await getFreezeDaysFromPurchase(purchaseId, durationDays);
+    let allowedFreezeDays = await getFreezeDaysFromPurchase(editor,String(mealPlan.clientId),purchaseId, durationDays);
     let existingFreezeSet = new Set(
       (mealPlan.freezedDays || []).map((fd: any) => format(new Date(fd.date), 'yyyy-MM-dd'))
     );
 
     if (purchaseId) {
       // Get aggregated freeze info from all plans linked to the same purchase
-      const sharedInfo = await getSharedFreezeInfo(purchaseId, id);
+      const sharedInfo = await getSharedFreezeInfo(editor,String(mealPlan.clientId),purchaseId, id);
 
       if (sharedInfo.linkedPlanIds.length > 1) {
         // Use aggregated freeze count from all linked plans
@@ -452,13 +458,13 @@ export async function POST(
     const requestedFreezeDateSet = new Set<string>();
 
     for (const dateStr of freezeDates) {
-      if (typeof dateStr !== 'string') {
-        return NextResponse.json({ error: 'Every freeze date must use YYYY-MM-DD format' }, { status: 400 });
+      if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return nativeResponseJson({ error: 'Every freeze date must use YYYY-MM-DD format' }, { status: 400 });
       }
 
       const freezeDate = startOfDay(parseISO(dateStr));
       if (Number.isNaN(freezeDate.getTime())) {
-        return NextResponse.json({ error: `Invalid freeze date: ${dateStr}` }, { status: 400 });
+        return nativeResponseJson({ error: `Invalid freeze date: ${dateStr}` }, { status: 400 });
       }
       const formattedDate = format(freezeDate, 'yyyy-MM-dd');
 
@@ -474,7 +480,7 @@ export async function POST(
       // A pause may continue beyond the currently prepared diet. Its first day
       // must still fall inside this phase; continuity is validated below.
       if (freezeDate < startDate) {
-        return NextResponse.json({
+        return nativeResponseJson({
           error: `Date ${formattedDate} is before the plan starts (${format(startDate, 'yyyy-MM-dd')})`
         }, { status: 400 });
       }
@@ -482,7 +488,7 @@ export async function POST(
       // A same-day pause is a deliberate staff action and must be permitted;
       // only completed calendar days are immutable.
       if (freezeDate < today) {
-        return NextResponse.json({
+        return nativeResponseJson({
           error: `Cannot freeze a past date: ${formattedDate}`
         }, { status: 400 });
       }
@@ -491,7 +497,7 @@ export async function POST(
     }
 
     if (validFreezeDates.length === 0) {
-      return NextResponse.json({
+      return nativeResponseJson({
         error: 'No valid dates to freeze. All dates may already be frozen.'
       }, { status: 400 });
     }
@@ -499,7 +505,7 @@ export async function POST(
     // Check if we have enough remaining freeze days (considering shared tracking)
     const newTotalFreezeCount = currentFreezeCount + validFreezeDates.length;
     if (newTotalFreezeCount > allowedFreezeDays) {
-      return NextResponse.json({
+      return nativeResponseJson({
         error: `Cannot freeze ${validFreezeDates.length} days. Only ${allowedFreezeDays - currentFreezeCount} days remaining${purchaseId ? ' (shared across all plan phases)' : ''}.`,
         allowedFreezeDays,
         currentFreezeCount,
@@ -517,14 +523,14 @@ export async function POST(
     const extendsBeyondPreparedPlan = validFreezeDates.some(date => date > endDate);
     if (extendsBeyondPreparedPlan) {
       if (validFreezeDates[0] > endDate) {
-        return NextResponse.json({
+        return nativeResponseJson({
           error: 'A pause extending beyond the prepared plan must start on or before the current plan end date.'
         }, { status: 400 });
       }
 
       for (let index = 1; index < validFreezeDates.length; index += 1) {
         if (differenceInDays(validFreezeDates[index], validFreezeDates[index - 1]) !== 1) {
-          return NextResponse.json({
+          return nativeResponseJson({
             error: 'A pause extending beyond the prepared plan must be one continuous date range.'
           }, { status: 400 });
         }
@@ -651,10 +657,11 @@ export async function POST(
     mealPlan.endDate = newEndDate; // Extend end date by frozen days
     mealPlan.duration = originalPhaseDuration; // Keep assigned phase duration immutable
 
-    await mealPlan.save();
+
 
     // Keep subsequent linked phases contiguous when this phase timeline grows.
-    await cascadeShiftLinkedPhases(purchaseId, String(mealPlan._id), validFreezeDates.length);
+    const mutations=await cascadeShiftLinkedPhases(editor,String(mealPlan.clientId),purchaseId,String(mealPlan._id),validFreezeDates.length);
+    mutations.push({collection:'clientmealplans',id:String(mealPlan._id),patch:{freezedDays:mealPlan.freezedDays,totalFreezeCount:mealPlan.totalFreezeCount,meals:mealPlan.meals,endDate:mealPlan.endDate}});
 
     // Ensure subsequent reads return fresh freeze state and copied recovery days.
     clearCacheByTag('client_meal_plans');
@@ -662,15 +669,16 @@ export async function POST(
 
     // For standalone plans (no linked purchase), keep linked payment dates aligned to plan.
     if (!purchaseId) {
-      await UnifiedPayment.updateOne(
-        { mealPlan: mealPlan._id },
-        { $set: { endDate: newEndDate, expectedEndDate: newEndDate } }
-      );
+      const payments=await editor.query('unifiedpayments',[['mealPlan','==',mealPlan._id]]);
+      for(const payment of payments){
+        if(payment.client!==mealPlan.clientId)throw new Error('Linked payment ownership mismatch');
+        mutations.push({collection:'unifiedpayments',id:payment._id,patch:{endDate:newEndDate,expectedEndDate:newEndDate}});
+      }
     }
 
     // If this plan is linked to a purchase, extend linked purchase expected/end dates too
     if (purchaseId) {
-      const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(purchaseId);
+      const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(editor,String(mealPlan.clientId),purchaseId);
 
       const purchaseRecords = [
         ...linkedPurchaseTargets.unifiedTargets,
@@ -679,7 +687,7 @@ export async function POST(
 
       // Base from the purchase window first (e.g. 15 Jun -> 15 Jul), not from current phase end.
       const purchaseBaselineEnd = resolvePurchaseExpectedEndBaseline(purchaseRecords, endDate);
-      const latestLinkedMealPlanEnd = await resolveLatestLinkedMealPlanEndDate(purchaseId, newEndDate);
+      const latestLinkedMealPlanEnd = await resolveLatestLinkedMealPlanEndDate(editor,String(mealPlan.clientId),mutations,purchaseId, newEndDate);
       const extendedPurchaseEnd = addDays(startOfDay(purchaseBaselineEnd), validFreezeDates.length);
       const newExpectedEndDate = extendedPurchaseEnd.getTime() > latestLinkedMealPlanEnd.getTime()
         ? extendedPurchaseEnd
@@ -691,22 +699,13 @@ export async function POST(
         }
       };
 
-      const unifiedTargetIds = linkedPurchaseTargets.unifiedTargets.map((record) => String(record._id));
-      const legacyTargetIds = linkedPurchaseTargets.legacyTargets.map((record) => String(record._id));
-      const updateOps: Promise<any>[] = [];
-
-      if (unifiedTargetIds.length > 0) {
-        updateOps.push(UnifiedPayment.updateMany({ _id: { $in: unifiedTargetIds } }, purchaseUpdate));
-      }
-      if (legacyTargetIds.length > 0) {
-        updateOps.push(ClientPurchase.updateMany({ _id: { $in: legacyTargetIds } }, purchaseUpdate));
-      }
-      if (updateOps.length > 0) {
-        await Promise.all(updateOps);
-      }
-
-      clearCacheByTag('client_purchases');
+      if(!purchaseRecords.length)return nativeResponseJson({error:'Linked purchase not found'},{status:404});
+      for(const record of linkedPurchaseTargets.unifiedTargets)mutations.push({collection:'unifiedpayments',id:record._id,patch:purchaseUpdate.$set});
+      for(const record of linkedPurchaseTargets.legacyTargets)mutations.push({collection:'clientpurchases',id:record._id,patch:purchaseUpdate.$set});
     }
+
+    if(!await editor.commit(mutations))return nativeResponseJson({error:'The plan or purchase changed. Refresh and try again.'},{status:409});
+    clearCacheByTag('client_meal_plans');clearCacheByTag('client_purchases');clearCacheByTag('client');
 
     // Freezing shifts the Expected End Date — recompute client status (ACTIVE/INACTIVE).
     if (mealPlan.clientId) {
@@ -723,10 +722,10 @@ export async function POST(
 
     // Calculate the new shared freeze count for the response
     const newSharedTotalFreezeCount = purchaseId
-      ? (await getSharedFreezeInfo(purchaseId, id)).totalFreezeCount
+      ? (await getSharedFreezeInfo(editor,String(mealPlan.clientId),purchaseId, id)).totalFreezeCount
       : thisPlanNewFreezeCount;
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: `Successfully froze ${validFreezeDates.length} days. Meals copied to new days. End date extended to ${format(newEndDate, 'yyyy-MM-dd')}.`,
       data: {
@@ -746,7 +745,7 @@ export async function POST(
 
   } catch (error) {
     console.error('Error freezing dates:', error);
-    return NextResponse.json({ error: 'Failed to freeze dates' }, { status: 500 });
+    return nativeResponseJson({ error: 'Failed to freeze dates' }, { status: 500 });
   }
 }
 
@@ -759,33 +758,34 @@ export async function DELETE(
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await dbConnect();
+    const editor=new NativePlanEditor(getNativeDatabase());
     const { id } = await params;
     const body = await request.json();
     const { unfreezeDates } = body; // Array of date strings in YYYY-MM-DD format to unfreeze
 
     if (!unfreezeDates || !Array.isArray(unfreezeDates) || unfreezeDates.length === 0) {
-      return NextResponse.json({ error: 'unfreezeDates array is required' }, { status: 400 });
+      return nativeResponseJson({ error: 'unfreezeDates array is required' }, { status: 400 });
     }
 
     // Fetch the meal plan
-    const mealPlan = await withCache(
-      `client-meal-plans:id:freeze:${JSON.stringify(id)}`,
-      async () => await ClientMealPlan.findById(id),
-      { ttl: 120000, tags: ['client_meal_plans'] }
-    );
+    let mealPlan = await editor.plan(id);
 
     if (!mealPlan) {
-      return NextResponse.json({ error: 'Meal plan not found' }, { status: 404 });
+      return nativeResponseJson({ error: 'Meal plan not found' }, { status: 404 });
     }
+    if(!await nativePlanStaffAccess(editor,mealPlan,session.user))return nativeResponseJson({error:'Forbidden'},{status:403});
+    if(planNeedsDateCorrection(mealPlan))return nativeResponseJson({error:'An administrator must confirm missing plan dates first',code:'PLAN_DATES_NEED_CORRECTION'},{status:409});
+    mealPlan=await editor.hydrate(mealPlan);
 
     const meals = mealPlan.meals || [];
     const originalPhaseDuration = mealPlan.duration;
     const freezedDays = mealPlan.freezedDays || [];
     const currentFreezeCount = mealPlan.totalFreezeCount || 0;
+
+    if(unfreezeDates.length>366 || unfreezeDates.some((d:unknown)=>typeof d!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(d)||Number.isNaN(parseISO(d).getTime())))return nativeResponseJson({error:'Invalid unfreeze dates'},{status:400});
 
     // Convert unfreeze dates to Set for quick lookup
     const unfreezeDateSet = new Set(unfreezeDates.map((d: string) => format(parseISO(d), 'yyyy-MM-dd')));
@@ -805,7 +805,7 @@ export async function DELETE(
     }
 
     if (datesToUnfreeze.length === 0) {
-      return NextResponse.json({
+      return nativeResponseJson({
         error: 'No matching frozen dates found to unfreeze'
       }, { status: 400 });
     }
@@ -847,7 +847,7 @@ export async function DELETE(
     const currentEndDate = startOfDay(new Date(mealPlan.endDate));
     const lastUpdatedMeal = updatedMeals[updatedMeals.length - 1];
     const newEndDate = lastUpdatedMeal?.date
-      ? startOfDay(parseISO(lastUpdatedMeal.date))
+      ? startOfDay(new Date(lastUpdatedMeal.date))
       : addDays(startDate, (originalPhaseDuration || 0) - 1);
 
     // Only unused dates are credited back. Removing an elapsed freeze date
@@ -863,13 +863,14 @@ export async function DELETE(
     mealPlan.endDate = newEndDate;
     mealPlan.duration = originalPhaseDuration; // Keep assigned phase duration immutable
 
-    await mealPlan.save();
+
 
     // If linked to a purchase, keep linked expected/end dates aligned without decrementing
     const purchaseId = mealPlan.purchaseId?.toString() || null;
 
     // Keep subsequent linked phases contiguous when this phase timeline shrinks.
-    await cascadeShiftLinkedPhases(purchaseId, String(mealPlan._id), -datesToUnfreeze.length);
+    const mutations=await cascadeShiftLinkedPhases(editor,String(mealPlan.clientId),purchaseId,String(mealPlan._id),differenceInDays(newEndDate,currentEndDate));
+    mutations.push({collection:'clientmealplans',id:String(mealPlan._id),patch:{freezedDays:mealPlan.freezedDays,totalFreezeCount:mealPlan.totalFreezeCount,meals:mealPlan.meals,endDate:mealPlan.endDate}});
 
     // Ensure subsequent reads return fresh unfreeze state immediately.
     clearCacheByTag('client_meal_plans');
@@ -877,14 +878,15 @@ export async function DELETE(
 
     // For standalone plans (no linked purchase), keep linked payment dates aligned to plan.
     if (!purchaseId) {
-      await UnifiedPayment.updateOne(
-        { mealPlan: mealPlan._id },
-        { $set: { endDate: newEndDate, expectedEndDate: newEndDate } }
-      );
+      const payments=await editor.query('unifiedpayments',[['mealPlan','==',mealPlan._id]]);
+      for(const payment of payments){
+        if(payment.client!==mealPlan.clientId)throw new Error('Linked payment ownership mismatch');
+        mutations.push({collection:'unifiedpayments',id:payment._id,patch:{endDate:newEndDate,expectedEndDate:newEndDate}});
+      }
     }
 
     if (purchaseId) {
-      const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(purchaseId);
+      const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(editor,String(mealPlan.clientId),purchaseId);
 
       const purchaseRecords = [
         ...linkedPurchaseTargets.unifiedTargets,
@@ -893,7 +895,7 @@ export async function DELETE(
 
       // Unfreeze should roll back expected end window by removed freeze days.
       const purchaseBaselineEnd = resolvePurchaseExpectedEndBaseline(purchaseRecords, currentEndDate);
-      const latestLinkedMealPlanEnd = await resolveLatestLinkedMealPlanEndDate(purchaseId, newEndDate);
+      const latestLinkedMealPlanEnd = await resolveLatestLinkedMealPlanEndDate(editor,String(mealPlan.clientId),mutations,purchaseId, newEndDate);
       const decrementedExpectedEnd = addDays(startOfDay(purchaseBaselineEnd), -datesToUnfreeze.length);
       const newExpectedEndDate = decrementedExpectedEnd.getTime() > latestLinkedMealPlanEnd.getTime()
         ? decrementedExpectedEnd
@@ -906,22 +908,13 @@ export async function DELETE(
         }
       };
 
-      const unifiedTargetIds = linkedPurchaseTargets.unifiedTargets.map((record) => String(record._id));
-      const legacyTargetIds = linkedPurchaseTargets.legacyTargets.map((record) => String(record._id));
-      const updateOps: Promise<any>[] = [];
-
-      if (unifiedTargetIds.length > 0) {
-        updateOps.push(UnifiedPayment.updateMany({ _id: { $in: unifiedTargetIds } }, purchaseUpdate));
-      }
-      if (legacyTargetIds.length > 0) {
-        updateOps.push(ClientPurchase.updateMany({ _id: { $in: legacyTargetIds } }, purchaseUpdate));
-      }
-      if (updateOps.length > 0) {
-        await Promise.all(updateOps);
-      }
-
-      clearCacheByTag('client_purchases');
+      if(!purchaseRecords.length)return nativeResponseJson({error:'Linked purchase not found'},{status:404});
+      for(const record of linkedPurchaseTargets.unifiedTargets)mutations.push({collection:'unifiedpayments',id:record._id,patch:purchaseUpdate.$set});
+      for(const record of linkedPurchaseTargets.legacyTargets)mutations.push({collection:'clientpurchases',id:record._id,patch:purchaseUpdate.$set});
     }
+
+    if(!await editor.commit(mutations))return nativeResponseJson({error:'The plan or purchase changed. Refresh and try again.'},{status:409});
+    clearCacheByTag('client_meal_plans');clearCacheByTag('client_purchases');clearCacheByTag('client');
 
     // Unfreezing shifts the Expected End Date back — recompute client status.
     if (mealPlan.clientId) {
@@ -937,13 +930,13 @@ export async function DELETE(
     }
 
     const allowedFreezeDays = await getFreezeDaysFromPurchase(
-      purchaseId, mealPlan.duration || differenceInDays(newEndDate, startDate) + 1,
+      editor,String(mealPlan.clientId),purchaseId, mealPlan.duration || differenceInDays(newEndDate, startDate) + 1,
     );
     const sharedTotalFreezeCount = purchaseId
-      ? (await getSharedFreezeInfo(purchaseId, id)).totalFreezeCount
+      ? (await getSharedFreezeInfo(editor,String(mealPlan.clientId),purchaseId, id)).totalFreezeCount
       : thisPlanFreezeCount;
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: `Successfully unfroze ${datesToUnfreeze.length} days and restored ${creditedFreezeDays} unused freeze days. End date updated to ${format(newEndDate, 'yyyy-MM-dd')}.`,
       data: {
@@ -963,6 +956,6 @@ export async function DELETE(
 
   } catch (error) {
     console.error('Error unfreezing dates:', error);
-    return NextResponse.json({ error: 'Failed to unfreeze dates' }, { status: 500 });
+    return nativeResponseJson({ error: 'Failed to unfreeze dates' }, { status: 500 });
   }
 }

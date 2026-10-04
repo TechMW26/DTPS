@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {retryTransient} from './retry.mjs';
+test('retries bounded idempotent transport failures including wrapped TLS errors',async()=>{let calls=0;const retries=[];const result=await retryTransient(async()=>{if(++calls<3)throw new Error('fetch failed',{cause:Object.assign(new Error('TLS'),{code:'ERR_SSL_SSLV3_ALERT_BAD_RECORD_MAC'})});return 42;},{wait:async()=>{},onRetry:x=>retries.push(x)});assert.equal(result,42);assert.equal(calls,3);assert.equal(retries.length,2);});
+test('does not retry permission errors or exceed its retry budget',async()=>{let calls=0;await assert.rejects(()=>retryTransient(async()=>{calls++;throw Object.assign(new Error('denied'),{code:7});},{wait:async()=>{}}));assert.equal(calls,1);calls=0;await assert.rejects(()=>retryTransient(async()=>{calls++;throw Object.assign(new Error('reset'),{code:'ECONNRESET'});},{attempts:2,wait:async()=>{}}));assert.equal(calls,2);});

@@ -61,7 +61,8 @@ export default function AdminRecipesPage() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       setLoading(true);
@@ -71,10 +72,11 @@ export default function AdminRecipesPage() {
       const sortParam = searchQuery ? 'sortBy=relevance' : 'sortBy=uuid';
       const searchParam = searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : '';
       const res = await fetch(
-        `/api/recipes?limit=${itemsPerPage}&page=${page}&includeTotal=true&includeInactive=true&${sortParam}${searchParam}`,
-        { signal: abortControllerRef.current.signal }
+        `/api/recipes?limit=${itemsPerPage}&page=${page}&includeTotal=true&includeInactive=true&summary=true&${sortParam}${searchParam}`,
+        { signal: controller.signal }
       );
       const body = await res.json();
+      if (controller.signal.aborted || abortControllerRef.current !== controller) return;
 
       if (!res.ok) {
         throw new Error(body.error || body.details || "Failed to load recipes");
@@ -95,12 +97,12 @@ export default function AdminRecipesPage() {
       console.log(`Fetched ${recipesData.length} recipes from total ${body.pagination?.total}`);
     } catch (e: any) {
       // Ignore abort errors
-      if (e.name === 'AbortError') return;
+      if (e.name === 'AbortError' || abortControllerRef.current !== controller) return;
       console.error('Error fetching recipes:', e);
       setError(e?.message || "Failed to load recipes");
       setRecipes([]);
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) setLoading(false);
     }
   }, [itemsPerPage]);
 

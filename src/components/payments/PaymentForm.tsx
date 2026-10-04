@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -42,6 +42,7 @@ const CheckoutForm = ({
 }: PaymentFormProps) => {
   const stripe = useStripe();
   const elements = useElements();
+  const checkoutKey = useRef<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [succeeded, setSucceeded] = useState(false);
@@ -65,11 +66,13 @@ const CheckoutForm = ({
     }
 
     try {
+      if (!checkoutKey.current) checkoutKey.current = crypto.randomUUID();
       // Create payment intent
       const response = await fetch('/api/payments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Idempotency-Key': checkoutKey.current,
         },
         body: JSON.stringify({
           amount,
@@ -101,10 +104,10 @@ const CheckoutForm = ({
         setError(stripeError.message || 'Payment failed');
         onError?.(stripeError.message || 'Payment failed');
       } else if (confirmedPaymentIntent?.status === 'succeeded') {
-        setSucceeded(true);
+
         
         // Update payment status in our database
-        await fetch('/api/payments', {
+        const verification = await fetch('/api/payments', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -118,6 +121,8 @@ const CheckoutForm = ({
           }),
         });
 
+        if (!verification.ok) throw new Error('Payment received; confirmation is pending. Please refresh before retrying.');
+        setSucceeded(true);
         onSuccess?.(confirmedPaymentIntent);
       }
     } catch (err) {

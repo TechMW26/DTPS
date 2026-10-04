@@ -1,7 +1,8 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 /**
  * API Route: Admin Recipe Import & Update
  * POST /api/admin/recipes/import
- * 
+ *
  * Handles bulk recipe imports with:
  * - Duplicate prevention using upsert logic
  * - CSV and JSON support
@@ -12,9 +13,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
-import connectDB from '@/lib/db/connection';
-import Recipe from '@/lib/db/models/Recipe';
-import mongoose from 'mongoose';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {recipeActor,saveStaffRecipe} from '@/lib/db/repository/native-staff-recipes';
+import {NativeStaffClientError} from '@/lib/db/repository/native-staff-client';
+
+
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -46,7 +49,7 @@ function normalizeArrayField(value: any, fieldName: string): any[] {
   if (Array.isArray(value)) {
     return value;
   }
-  
+
   if (typeof value === 'string') {
     // Handle pipe-delimited or comma-separated strings
     if (fieldName === 'ingredients') {
@@ -78,7 +81,7 @@ function normalizeArrayField(value: any, fieldName: string): any[] {
         .filter(item => item.length > 0);
     }
   }
-  
+
   if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
     // Handle object-based array fields
     if (fieldName === 'ingredients' && value.name) {
@@ -93,14 +96,14 @@ function normalizeArrayField(value: any, fieldName: string): any[] {
     // Single item for other array fields
     return [value];
   }
-  
+
   return [];
 }
 
 // Normalize ingredient objects to ensure consistent structure
 function normalizeIngredients(ingredients: any[]): any[] {
   if (!Array.isArray(ingredients)) return [];
-  
+
   return ingredients
     .map(ing => {
       if (typeof ing === 'string') {
@@ -222,160 +225,13 @@ function transformRecipeData(rawData: Record<string, any>): Record<string, any> 
   }
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    // Auth check - admin only
-    const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized - admin access required' },
-        { status: 401 }
-      );
-    }
-
-    const body: ImportRequest = await request.json();
-    const { recipes = [], mode = 'upsert', identifierField = 'name' } = body;
-
-    if (!Array.isArray(recipes) || recipes.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'No recipes provided' },
-        { status: 400 }
-      );
-    }
-
-    await connectDB();
-
-    const result: ImportResult = {
-      success: true,
-      message: '',
-      stats: { total: recipes.length, created: 0, updated: 0, failed: 0 },
-      errors: []
-    };
-
-    // Use MongoDB session for transaction support
-    const mongoSession = await mongoose.startSession();
-
-    try {
-      await mongoSession.withTransaction(async () => {
-        for (let i = 0; i < recipes.length; i++) {
-          try {
-            const rawRecipe = recipes[i];
-            const transformed = transformRecipeData(rawRecipe);
-
-            if (!transformed) {
-              result.stats.failed++;
-              result.errors.push({
-                index: i,
-                name: rawRecipe.name || `Row ${i + 1}`,
-                error: 'Invalid or incomplete recipe data (missing name or ingredients)'
-              });
-              continue;
-            }
-
-            // Determine identifier for upsert
-            let filter: Record<string, any> = {};
-
-            if (mode === 'create-only') {
-              // Only create if not exists
-              filter = { name: transformed.name };
-            } else if (mode === 'update-only') {
-              // Only update existing
-              if (identifierField === '_id' && mongoose.Types.ObjectId.isValid(rawRecipe._id)) {
-                filter = { _id: new mongoose.Types.ObjectId(rawRecipe._id) };
-              } else {
-                filter = { name: transformed.name };
-              }
-            } else {
-              // Upsert mode (default)
-              if (identifierField === '_id' && rawRecipe._id && mongoose.Types.ObjectId.isValid(rawRecipe._id)) {
-                filter = { _id: new mongoose.Types.ObjectId(rawRecipe._id) };
-              } else {
-                filter = { name: transformed.name };
-              }
-            }
-
-            // Use upsert to prevent duplicates
-            const existingRecipe = await Recipe.findOne(filter, {}, { session: mongoSession });
-
-            if (existingRecipe) {
-              if (mode === 'create-only') {
-                result.stats.failed++;
-                result.errors.push({
-                  index: i,
-                  name: transformed.name,
-                  error: `Recipe "${transformed.name}" already exists (create-only mode)`
-                });
-                continue;
-              }
-
-              // Update using $set to avoid overwriting unintended fields
-              await Recipe.findByIdAndUpdate(
-                existingRecipe._id,
-                { $set: transformed },
-                { 
-                  session: mongoSession,
-                  new: true,
-                  runValidators: true
-                }
-              );
-
-              result.stats.updated++;
-            } else {
-              if (mode === 'update-only') {
-                result.stats.failed++;
-                result.errors.push({
-                  index: i,
-                  name: transformed.name,
-                  error: `Recipe "${transformed.name}" not found (update-only mode)`
-                });
-                continue;
-              }
-
-              // Create new recipe
-              const newRecipe = new Recipe(transformed);
-              await newRecipe.save({ session: mongoSession });
-              result.stats.created++;
-            }
-          } catch (error: any) {
-            result.stats.failed++;
-            result.errors.push({
-              index: i,
-              name: recipes[i]?.name || `Row ${i + 1}`,
-              error: error.message || 'Unknown error'
-            });
-          }
-        }
-      });
-
-      result.message = `Import completed: ${result.stats.created} created, ${result.stats.updated} updated, ${result.stats.failed} failed`;
-    } catch (error: any) {
-      console.error('Transaction error:', error);
-      result.success = false;
-      result.message = `Transaction failed: ${error.message}`;
-      result.stats.failed = recipes.length;
-      result.errors.push({
-        index: 0,
-        error: error.message || 'Transaction error'
-      });
-    } finally {
-      await mongoSession.endSession();
-    }
-
-    return NextResponse.json(result, {
-      status: result.success ? 200 : 400
-    });
-
-  } catch (error: any) {
-    console.error('Import error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Server error',
-        message: error.message,
-        stats: { total: 0, created: 0, updated: 0, failed: 0 },
-        errors: []
-      },
-      { status: 500 }
-    );
-  }
-}
+export async function POST(req:NextRequest){try{
+ const session=await getServerSession(authOptions);if(!session?.user?.id)throw new NativeStaffClientError('Unauthorized',401);const db=getNativeDatabase(),actor=await recipeActor(db,session.user.id,true);if(actor.get('role')!=='admin')throw new NativeStaffClientError('Admin access required',403);
+ const {recipes,mode='upsert',identifierField='name'}=await req.json();if(!Array.isArray(recipes)||!recipes.length||recipes.length>500||!['upsert','create-only','update-only'].includes(mode)||!['_id','name'].includes(identifierField))throw new NativeStaffClientError('Invalid recipe import');const stats={total:recipes.length,created:0,updated:0,failed:0},errors=[];
+ for(const [index,raw] of recipes.entries()){try{const data=transformRecipeData(raw);if(!data)throw new NativeStaffClientError('Invalid or incomplete recipe');let existing:FirebaseFirestore.DocumentSnapshot|undefined;
+  if(identifierField==='_id'&&raw._id){if(!/^[a-f0-9]{24}$/.test(raw._id))throw new NativeStaffClientError('Invalid recipe ID');existing=await db.collection('recipes').doc(raw._id).get();}else {const rows=await db.collection('recipes').where('name','==',data.name).limit(2).get();if(rows.size>1)throw new NativeStaffClientError('Ambiguous recipe name; supply _id',409);existing=rows.docs[0];}
+  if(existing?.exists&&mode==='create-only')throw new NativeStaffClientError('Recipe already exists',409);if(!existing?.exists&&mode==='update-only')throw new NativeStaffClientError('Recipe not found',404);
+  await saveStaffRecipe(db,session.user.id,{...data,...(existing?.exists?{_nativeExpectedUpdatedAt:existing.get('updatedAt')?.toDate?.().toISOString()??null}:{})},existing?.exists?existing.id:undefined);if(existing?.exists)stats.updated++;else stats.created++;
+ }catch(e){stats.failed++;errors.push({index,name:raw?.name||`Row ${index+1}`,error:e instanceof NativeStaffClientError?e.message:'Invalid recipe fields'});}}
+ return nativeResponseJson({success:!stats.failed,message:`Created ${stats.created}, updated ${stats.updated}, failed ${stats.failed}`,stats,errors},{status:stats.failed?207:200});
+ }catch(e){return nativeResponseJson({success:false,error:e instanceof NativeStaffClientError?e.message:'Unable to import recipes'},{status:e instanceof NativeStaffClientError?e.status:e instanceof SyntaxError?400:500});}}

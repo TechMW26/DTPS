@@ -1,16 +1,15 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {journalHistory,journalProgressEntries,journalProfile} from '@/lib/db/repository/native-journal';
+import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
+import {nativeJournalRoute} from '@/lib/api/native-journal-route';
+import {nativeJson} from '@/lib/db/repository/native-history';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import JournalTracking from '@/lib/db/models/JournalTracking';
-import User from '@/lib/db/models/User';
-import LifestyleInfo from '@/lib/db/models/LifestyleInfo';
-import ProgressEntry from '@/lib/db/models/ProgressEntry';
 import { format } from 'date-fns';
 import { UserRole } from '@/types';
-import mongoose from 'mongoose';
 import { logHistoryServer } from '@/lib/server/history';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { emitClientWeightUpdate } from '@/lib/realtime/weight-notify';
 
 interface ClientProfileData {
@@ -31,7 +30,7 @@ function calcBMI(weightKg: number, heightCm: number): number {
   return parseFloat((weightKg / (hm * hm)).toFixed(1));
 }
 
-// BMR calculation (Mifflin-St Jeor): 
+// BMR calculation (Mifflin-St Jeor):
 //   Male:   10*weight + 6.25*heightCm - 5*age + 5
 //   Female: 10*weight + 6.25*heightCm - 5*age - 161
 function calcBMR(weightKg: number, heightCm: number, age: number, gender: string): number {
@@ -59,11 +58,8 @@ function getAge(dob: Date | string | null): number {
 }
 
 // Fetch client profile data (height, gender, age, starting weight)
-async function getClientProfile(clientObjectId: mongoose.Types.ObjectId) {
-  const [userDocument, lifestyleDocument] = await Promise.all([
-    User.findById(clientObjectId).select('heightFeet heightInch heightCm weightKg weight gender dateOfBirth activityLevel').lean(),
-    LifestyleInfo.findOne({ userId: clientObjectId }).select('heightFeet heightInch heightCm weightKg activityLevel').lean()
-  ]);
+async function getClientProfile(clientObjectId: string) {
+  const {user:userDocument,lifestyle:lifestyleDocument}=await journalProfile(getNativeDatabase(),clientObjectId);
   const user = userDocument as unknown as ClientProfileData | null;
   const lifestyle = lifestyleDocument as unknown as ClientProfileData | null;
 
@@ -97,7 +93,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get user ID - handle different possible locations
@@ -105,38 +101,24 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId') || session.user.id;
+    await taskClientAccess(getNativeDatabase(),session.user.id,clientId);
     const dateParam = searchParams.get('date');
 
     if (!checkPermission(session, clientId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      return nativeResponseJson({ error: 'Access denied' }, { status: 403 });
     }
 
-    await connectDB();
+    const db=getNativeDatabase();
 
-    if (!clientId || !mongoose.Types.ObjectId.isValid(clientId)) {
-      return NextResponse.json({ error: 'Invalid client ID' }, { status: 400 });
+    if (!clientId || !/^[a-f0-9]{24}$/.test(clientId)) {
+      return nativeResponseJson({ error: 'Invalid client ID' }, { status: 400 });
     }
 
     // Convert clientId to ObjectId
-    const clientObjectId = new mongoose.Types.ObjectId(clientId);
+    const clientObjectId = clientId;
 
     // Fetch client profile, journal entries, and weight tracker entries in parallel
-    const [allJournals, clientProfile, weightEntries] = await Promise.all([
-      withCache(
-        `journal:progress:all:${clientId}`,
-        async () => await JournalTracking.find({
-          client: clientObjectId,
-          'progress.0': { $exists: true }
-        }).sort({ date: -1 }),
-        { ttl: 120000, tags: ['journal'] }
-      ),
-      getClientProfile(clientObjectId),
-      // Fetch weight entries from Weight Tracker (ProgressEntry model)
-      ProgressEntry.find({
-        user: clientObjectId,
-        type: 'weight'
-      }).sort({ recordedAt: -1 }).lean()
-    ]);
+    const [allJournals,clientProfile,weightEntries]=await Promise.all([journalHistory(db,clientId,'progress'),getClientProfile(clientId),journalProgressEntries(db,clientId,['weight'])]);
 
     // Pre-compute profile-based metrics for seeding
     const profileWeight = clientProfile.weightKg;
@@ -148,7 +130,7 @@ export async function GET(request: NextRequest) {
     allJournals.forEach(journal => {
       journal.progress.forEach((entry: any) => {
         allProgress.push({
-          ...entry.toObject(),
+          ...entry,
           journalDate: journal.date,
           source: 'journal'
         });
@@ -259,7 +241,7 @@ export async function GET(request: NextRequest) {
       bodyFat: parseFloat((currentlyAt.bodyFat - startedWith.bodyFat).toFixed(1))
     };
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       progress: mergedProgress,
       summary: {
@@ -280,7 +262,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Error fetching progress:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'Failed to fetch progress' },
       { status: 500 }
     );
@@ -288,258 +270,6 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/journal/progress - Add new progress entry
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { weight, bmi, bmr, bodyFat, dietPlan, notes, date, clientId } = body;
-    const userId = clientId || session.user.id;
-
-    if (!checkPermission(session, userId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    await connectDB();
-
-    // Use current timestamp for entries added today, otherwise use the provided date at noon
-    const now = new Date();
-    const inputDate = date ? new Date(date) : new Date();
-    const isToday = inputDate.toDateString() === now.toDateString();
-
-    // For today's entries, use current time. For past dates, use noon to avoid timezone issues.
-    const progressDate = isToday ? now : new Date(inputDate.setHours(12, 0, 0, 0));
-
-    // Convert userId to ObjectId
-    const clientObjectId = new mongoose.Types.ObjectId(userId);
-
-    // Auto-calculate BMI and BMR if weight provided but they aren't
-    let finalBmi = bmi || 0;
-    let finalBmr = bmr || 0;
-    const finalWeight = weight || 0;
-
-    if (finalWeight > 0 && (!finalBmi || !finalBmr)) {
-      const profile = await getClientProfile(clientObjectId);
-      if (profile.heightCm > 0) {
-        if (!finalBmi) finalBmi = calcBMI(finalWeight, profile.heightCm);
-        if (!finalBmr) finalBmr = calcBMR(finalWeight, profile.heightCm, profile.age, profile.gender);
-      }
-    }
-
-    // Find or create journal entry for this date
-    let journal = await JournalTracking.findOne({
-      client: clientObjectId,
-      date: progressDate
-    });
-
-    if (!journal) {
-      journal = new JournalTracking({
-        client: clientObjectId,
-        date: progressDate,
-        activities: [],
-        steps: [],
-        water: [],
-        sleep: [],
-        meals: [],
-        progress: [],
-        bca: [],
-        measurements: []
-      });
-    } else {
-      // Ensure arrays exist on existing documents
-      if (!journal.progress) journal.progress = [];
-      if (!journal.bca) journal.bca = [];
-      if (!journal.measurements) journal.measurements = [];
-    }
-
-    // Add new progress entry
-    const newProgress = {
-      weight: finalWeight,
-      bmi: finalBmi,
-      bmr: finalBmr,
-      bodyFat: bodyFat || 0,
-      dietPlan: dietPlan || '',
-      notes: notes || '',
-      date: progressDate,
-      createdAt: new Date()
-    };
-
-    journal.progress.push(newProgress);
-    await journal.save();
-
-    // Also add to ProgressEntry (Weight Tracker) if weight was provided
-    // This ensures it shows up in "Currently At" section and client-side weight tracker
-    if (finalWeight > 0) {
-      try {
-        await ProgressEntry.create({
-          user: clientObjectId,
-          type: 'weight',
-          value: finalWeight,
-          unit: 'kg',
-          notes: notes || 'Added via Progress Form',
-          recordedAt: progressDate,
-          metadata: {
-            bmi: finalBmi || 0,
-            bmr: finalBmr || 0,
-            bodyFat: bodyFat || 0,
-            source: 'progress_form',
-            addedBy: session.user.id
-          }
-        });
-
-        // Clear cache to ensure fresh data
-        clearCacheByTag('journal');
-        clearCacheByTag(`client-profile:${userId}`);
-        clearCacheByTag('weight');
-
-        // Emit real-time weight update to both client and staff dashboards
-        await emitClientWeightUpdate({
-          clientId: userId,
-          weightKg: finalWeight,
-          bmi: finalBmi,
-          source: 'staff_update'
-        });
-      } catch (weightError) {
-        console.error('Error adding weight to ProgressEntry:', weightError);
-        // Don't fail the request, just log the error
-      }
-    }
-
-    // Log history for progress entry
-    await logHistoryServer({
-      userId: userId,
-      action: 'create',
-      category: 'journal',
-      description: `Progress logged: Weight ${finalWeight || 0}kg, BMI ${finalBmi || 0}`,
-      performedById: session.user.id,
-      metadata: {
-        entryType: 'progress',
-        weight: finalWeight || 0,
-        bmi: finalBmi || 0,
-        bmr: finalBmr || 0,
-        bodyFat: bodyFat || 0,
-        date: format(progressDate, 'yyyy-MM-dd')
-      }
-    });
-
-    return NextResponse.json({
-      success: true,
-      progress: journal.progress[journal.progress.length - 1]
-    });
-
-  } catch (error: any) {
-    console.error('Error adding progress:', error?.message || error);
-    return NextResponse.json(
-      { error: 'Failed to add progress', details: error?.message },
-      { status: 500 }
-    );
-  }
-}
-
-// DELETE /api/journal/progress - Delete progress entry
-export async function DELETE(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const entryId = searchParams.get('entryId');
-    const clientId = searchParams.get('clientId') || session.user.id;
-
-    if (!checkPermission(session, clientId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    if (!entryId) {
-      return NextResponse.json({ error: 'Entry ID is required' }, { status: 400 });
-    }
-
-    await connectDB();
-
-    // Convert clientId to ObjectId
-    const clientObjectId = new mongoose.Types.ObjectId(clientId);
-
-    // Check if this is a weight tracker entry (ID starts with 'wt_')
-    if (entryId.startsWith('wt_')) {
-      // Extract the actual ProgressEntry ID
-      const progressEntryId = entryId.replace('wt_', '');
-
-      // Delete from ProgressEntry model
-      const deleted = await ProgressEntry.findOneAndDelete({
-        _id: progressEntryId,
-        user: clientObjectId
-      });
-
-      if (!deleted) {
-        return NextResponse.json({ error: 'Progress entry not found' }, { status: 404 });
-      }
-
-      // Clear caches
-      clearCacheByTag('journal');
-      clearCacheByTag(`client-profile:${clientId}`);
-      clearCacheByTag('weight');
-
-      return NextResponse.json({
-        success: true,
-        message: 'Weight entry deleted'
-      });
-    }
-
-    // Otherwise, delete from JournalTracking.progress
-    const sourceJournal = await JournalTracking.findOne(
-      { client: clientObjectId, 'progress._id': entryId },
-      { progress: 1 }
-    ).lean() as any;
-
-    const sourceProgress = sourceJournal?.progress?.find((p: any) => String(p?._id) === String(entryId));
-
-    const journal = await JournalTracking.findOneAndUpdate(
-      { client: clientObjectId, 'progress._id': entryId },
-      { $pull: { progress: { _id: entryId } } },
-      { new: true }
-    );
-
-    if (!journal) {
-      return NextResponse.json({ error: 'Progress entry not found' }, { status: 404 });
-    }
-
-    // Also delete the corresponding mirrored ProgressEntry (created from progress form)
-    try {
-      if (sourceProgress) {
-        const sourceDate = new Date(sourceProgress.date || sourceProgress.createdAt || new Date());
-        const startWindow = new Date(sourceDate.getTime() - 60_000);
-        const endWindow = new Date(sourceDate.getTime() + 60_000);
-        await ProgressEntry.deleteOne({
-          user: clientObjectId,
-          type: 'weight',
-          value: Number(sourceProgress.weight || 0),
-          'metadata.source': 'progress_form',
-          recordedAt: { $gte: startWindow, $lte: endWindow }
-        });
-      }
-    } catch (err) {
-      // Ignore errors - this is just cleanup
-    }
-
-    // Clear caches
-    clearCacheByTag('journal');
-    clearCacheByTag(`client-profile:${clientId}`);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Progress entry deleted'
-    });
-
-  } catch (error) {
-    console.error('Error deleting progress:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete progress' },
-      { status: 500 }
-    );
-  }
-}
+const mutation=nativeJournalRoute('progress');
+export const POST=mutation;
+export const DELETE=mutation;

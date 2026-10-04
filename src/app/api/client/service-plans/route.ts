@@ -1,13 +1,10 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { measureApi } from '@/lib/api/performance';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import dbConnect from '@/lib/db/connect';
-import { ServicePlan } from '@/lib/db/models/ServicePlan';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import User from '@/lib/db/models/User';
-import { withCache } from '@/lib/api/utils';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { nativeClientServices, nativeServiceCatalog } from '@/lib/db/repository/native-client-services';
 import { prioritizeClientDashboardPurchases } from '@/lib/client-plan-visibility';
 import { canonicalizePurchaseRecords } from '@/lib/payments/canonicalize-purchases';
 
@@ -17,56 +14,19 @@ async function getHandler(request: NextRequest) {
         const session = await getServerSession(authOptions);
 
         if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        await dbConnect();
+        const db = getNativeDatabase();
 
         const summaryOnly = new URL(request.url).searchParams.get('summary') === 'true';
 
-        // Fetch the client's primary dietitian from User model (not from payment)
-        const clientUserPromise = User.findById(session.user.id)
-            .select('assignedDietitian')
-            .populate('assignedDietitian', 'firstName lastName email phone avatar role')
-            .lean();
-
-        // Check if client has any purchases in UnifiedPayment collection (paid status)
-        const allPurchasesPromise = withCache(
-            `client:service-plans:${JSON.stringify({
-                client: session.user.id,
-                status: { $in: ['paid', 'completed', 'active'] },
-                paymentStatus: 'paid'
-            })}`,
-            async () => await UnifiedPayment.find({
-                client: session.user.id,
-                status: { $in: ['paid', 'completed', 'active'] },
-                paymentStatus: 'paid'
-            }).populate('dietitian', 'firstName lastName email phone avatar role').sort({ createdAt: -1 }).lean(),
-            { ttl: 120000, tags: ['client'] }
-        );
-
-        // Check if client has an active meal plan running (current date within plan dates)
+        const {primaryDietitian,allPurchases,mealPlans} = await nativeClientServices(db,session.user.id);
         const now = new Date();
-        const startOfToday = new Date(now);
-        startOfToday.setHours(0, 0, 0, 0);
-        const endOfToday = new Date(now);
-        endOfToday.setHours(23, 59, 59, 999);
-
-        const activeClientMealPlanPromise = ClientMealPlan.findOne({
-            clientId: session.user.id,
-            status: 'active',
-            isDeleted: { $ne: true },
-            startDate: { $lte: endOfToday },
-            endDate: { $gte: startOfToday }
-        })
-            .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
-            .select('name planName startDate endDate duration goal purchaseId')
-            .lean();
-
-        const [clientUser, allPurchases, activeClientMealPlan]: [any, any[], any] = await Promise.all([
-            clientUserPromise, allPurchasesPromise, activeClientMealPlanPromise,
-        ]);
-        const primaryDietitian = clientUser?.assignedDietitian;
+        const startOfToday = new Date(now); startOfToday.setHours(0,0,0,0);
+        const endOfToday = new Date(now); endOfToday.setHours(23,59,59,999);
+        const activeClientMealPlan = mealPlans.filter((plan:any)=>plan.status==='active'&&new Date(plan.startDate)<=endOfToday&&new Date(plan.endDate)>=startOfToday)
+          .sort((a:any,b:any)=>new Date(b.startDate).getTime()-new Date(a.startDate).getTime()||new Date(b.lastPublishedAt||b.createdAt).getTime()-new Date(a.lastPublishedAt||a.createdAt).getTime())[0]||null;
 
         const hasActiveMealPlan = !!activeClientMealPlan;
 
@@ -117,17 +77,8 @@ async function getHandler(request: NextRequest) {
             .map((purchase: any) => purchase?._id)
             .filter(Boolean);
 
-        const linkedMealPlans = purchaseIds.length > 0
-            ? await ClientMealPlan.find({
-                clientId: session.user.id,
-                purchaseId: { $in: purchaseIds },
-                status: { $in: ['active', 'paused', 'completed'] },
-                isDeleted: { $ne: true }
-            })
-                .select('purchaseId name startDate endDate duration goals status createdAt')
-                .sort({ createdAt: -1 })
-                .lean()
-            : [];
+        const linkedMealPlans = mealPlans.filter((plan:any)=>purchaseIds.includes(plan.purchaseId))
+            .sort((a:any,b:any)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
 
         const latestMealPlanByPurchaseId = new Map<string, any>();
         for (const plan of linkedMealPlans as any[]) {
@@ -155,19 +106,9 @@ async function getHandler(request: NextRequest) {
         const hasPendingDietitianAssignment = canonicalPurchases.some((p: any) => !p.dietitian);
 
         // Fetch service plans that are active and visible to clients
-        const plans = summaryOnly ? [] : await withCache(
-            `client:service-plans:${JSON.stringify({
-                isActive: true,
-                showToClients: true
-            })}`,
-            async () => await ServicePlan.find({
-                isActive: true,
-                showToClients: true
-            }).sort({ createdAt: -1 }),
-            { ttl: 120000, tags: ['client'] }
-        );
+        const plans = summaryOnly ? [] : await nativeServiceCatalog(db);
 
-        return NextResponse.json({
+        return nativeResponseJson({
             success: true,
             plans,
             hasActivePlan,
@@ -250,7 +191,7 @@ async function getHandler(request: NextRequest) {
         });
     } catch (error) {
         console.error('Error fetching service plans for client:', error);
-        return NextResponse.json({ error: 'Failed to fetch service plans' }, { status: 500 });
+        return nativeResponseJson({ error: 'Failed to fetch service plans' }, { status: 500 });
     }
 }
 

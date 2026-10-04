@@ -1,3 +1,6 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {requireNativeAuditAdmin} from '@/lib/db/repository/native-admin-audit';
 /**
  * API Route: Data Import - Upload and Parse
  * POST /api/admin/import/upload
@@ -15,8 +18,9 @@ export async function POST(request: NextRequest) {
   try {
     // Auth check - admin only
     const session = await getServerSession(authOptions);
+    if(session?.user)await requireNativeAuditAdmin(getNativeDatabase(),session.user.id);
     if (!session?.user || (session.user as any).role !== 'admin') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -28,7 +32,7 @@ export async function POST(request: NextRequest) {
     const forceModel = formData.get('forceModel') as string | null;
 
     if (!file) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'No file provided' },
         { status: 400 }
       );
@@ -36,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'File size exceeds 10MB limit' },
         { status: 400 }
       );
@@ -50,11 +54,11 @@ export async function POST(request: NextRequest) {
     const parseResult = await fileParser.parse(arrayBuffer, file.name);
 
     if (!parseResult.success) {
-      return NextResponse.json(
-        { 
-          success: false, 
+      return nativeResponseJson(
+        {
+          success: false,
           error: 'Failed to parse file',
-          details: parseResult.errors 
+          details: parseResult.errors
         },
         { status: 400 }
       );
@@ -97,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Import Upload] Session ${importSession.id} updated with validation, canSave: ${validationResult.canSave}`);
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       sessionId: importSession.id,
       fileName: file.name,
@@ -124,11 +128,11 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Import upload error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
+    return nativeResponseJson(
+      {
+        success: false,
         error: 'Server error',
-        message: error.message 
+        message: error.message
       },
       { status: 500 }
     );

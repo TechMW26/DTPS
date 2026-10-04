@@ -1,13 +1,14 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {journalHistory,journalProgressEntries,journalProfile} from '@/lib/db/repository/native-journal';
+import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
+import {nativeJournalRoute} from '@/lib/api/native-journal-route';
+import {nativeJson} from '@/lib/db/repository/native-history';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import JournalTracking from '@/lib/db/models/JournalTracking';
-import ProgressEntry from '@/lib/db/models/ProgressEntry';
 import { UserRole } from '@/types';
-import mongoose from 'mongoose';
 import { logHistoryServer } from '@/lib/server/history';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // Helper to check if user has permission to access client data
 const checkPermission = (session: any, clientId?: string): boolean => {
@@ -27,20 +28,21 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId') || session.user.id;
+    await taskClientAccess(getNativeDatabase(),session.user.id,clientId);
 
     if (!checkPermission(session, clientId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      return nativeResponseJson({ error: 'Access denied' }, { status: 403 });
     }
 
-    await connectDB();
+    const db=getNativeDatabase();
 
     // Convert clientId to ObjectId
-    const clientObjectId = new mongoose.Types.ObjectId(clientId);
+    const clientObjectId = clientId;
 
     // Measurement types in ProgressEntry model (client app)
     const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
@@ -48,28 +50,14 @@ export async function GET(request: NextRequest) {
     // Fetch from BOTH sources in parallel:
     // 1. JournalTracking.measurements (added by dietitian via journal)
     // 2. ProgressEntry (added by client via progress page)
-    const [allJournals, progressMeasurements] = await Promise.all([
-      withCache(
-        `journal:measurements:all:${clientId}`,
-        async () => await JournalTracking.find({
-          client: clientObjectId,
-          'measurements.0': { $exists: true }
-        }).sort({ date: -1 }),
-        { ttl: 120000, tags: ['journal'] }
-      ),
-      // Fetch measurements from ProgressEntry (client app)
-      ProgressEntry.find({
-        user: clientObjectId,
-        type: { $in: measurementTypes }
-      }).sort({ recordedAt: -1 }).lean()
-    ]);
+    const [allJournals,progressMeasurements]=await Promise.all([journalHistory(db,clientId,'measurements'),journalProgressEntries(db,clientId,measurementTypes)]);
 
     // Flatten all measurement entries from JournalTracking with their dates
     const allMeasurements: any[] = [];
     allJournals.forEach(journal => {
       journal.measurements.forEach((entry: any) => {
         allMeasurements.push({
-          ...entry.toObject(),
+          ...entry,
           journalDate: journal.date,
           source: 'journal'
         });
@@ -162,7 +150,7 @@ export async function GET(request: NextRequest) {
       thigh: currentlyAt.thigh - startedWith.thigh
     };
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       measurements: allMeasurements,
       summary: {
@@ -175,7 +163,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Error fetching measurements:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'Failed to fetch measurements' },
       { status: 500 }
     );
@@ -183,237 +171,6 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/journal/measurements - Add new measurement entry
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { arm, waist, abd, chest, hips, thigh, date, clientId } = body;
-    const userId = clientId || session.user.id;
-
-    if (!checkPermission(session, userId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    await connectDB();
-
-    const measurementDate = date ? new Date(date) : new Date();
-    measurementDate.setHours(0, 0, 0, 0);
-
-    // Convert userId to ObjectId
-    const clientObjectId = new mongoose.Types.ObjectId(userId);
-
-    // Add new measurement entry
-    const newMeasurement = {
-      arm: arm || 0,
-      waist: waist || 0,
-      abd: abd || 0,
-      chest: chest || 0,
-      hips: hips || 0,
-      thigh: thigh || 0,
-      date: measurementDate,
-      createdAt: new Date()
-    };
-
-    // Use atomic update so legacy invalid fields (e.g. old sleep enum values)
-    // do not block adding measurements.
-    const journal = await JournalTracking.findOneAndUpdate(
-      {
-        client: clientObjectId,
-        date: measurementDate,
-      },
-      {
-        $setOnInsert: {
-          client: clientObjectId,
-          date: measurementDate,
-          activities: [],
-          steps: [],
-          water: [],
-          sleep: [],
-          meals: [],
-          progress: [],
-          bca: [],
-        },
-        $push: {
-          measurements: newMeasurement,
-        },
-      },
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-        runValidators: false,
-      }
-    );
-
-    // Also save to ProgressEntry model so it shows on client app
-    // Map journal fields to ProgressEntry types
-    const measurementMapping = [
-      { field: 'arm', type: 'arms', value: arm },
-      { field: 'waist', type: 'waist', value: waist },
-      { field: 'abd', type: 'abdomen', value: abd },
-      { field: 'chest', type: 'chest', value: chest },
-      { field: 'hips', type: 'hips', value: hips },
-      { field: 'thigh', type: 'thighs', value: thigh }
-    ];
-
-    try {
-      for (const m of measurementMapping) {
-        if (m.value && m.value > 0) {
-          await ProgressEntry.create({
-            user: clientObjectId,
-            type: m.type,
-            value: m.value,
-            unit: 'cm',
-            notes: 'Added by dietitian',
-            recordedAt: measurementDate,
-            metadata: {
-              source: 'journal_measurements',
-              addedBy: session.user.id
-            }
-          });
-        }
-      }
-      // Clear caches to ensure fresh data on both sides
-      clearCacheByTag('journal');
-      clearCacheByTag('client');
-    } catch (progressError) {
-      console.error('Error saving to ProgressEntry:', progressError);
-      // Don't fail the request
-    }
-
-    await logHistoryServer({
-      userId,
-      action: 'create',
-      category: 'journal',
-      description: `${session.user.role} logged measurements for ${measurementDate.toDateString()}`,
-      performedById: session.user.id,
-      metadata: {
-        measurementDate,
-        arm: newMeasurement.arm,
-        waist: newMeasurement.waist,
-        abd: newMeasurement.abd,
-        chest: newMeasurement.chest,
-        hips: newMeasurement.hips,
-        thigh: newMeasurement.thigh,
-        clientId: userId,
-        journalId: journal._id,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      measurement: journal.measurements[journal.measurements.length - 1]
-    });
-
-  } catch (error: any) {
-    console.error('Error adding measurement:', error?.message || error);
-    return NextResponse.json(
-      { error: 'Failed to add measurement', details: error?.message },
-      { status: 500 }
-    );
-  }
-}
-
-// DELETE /api/journal/measurements - Delete measurement entry
-export async function DELETE(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const entryId = searchParams.get('entryId');
-    const clientId = searchParams.get('clientId') || session.user.id;
-
-    if (!checkPermission(session, clientId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    if (!entryId) {
-      return NextResponse.json({ error: 'Entry ID is required' }, { status: 400 });
-    }
-
-    await connectDB();
-
-    // Convert clientId to ObjectId
-    const clientObjectId = new mongoose.Types.ObjectId(clientId);
-
-    // Check if this is a ProgressEntry measurement (ID starts with 'pe_')
-    if (entryId.startsWith('pe_')) {
-      // Extract minute-bucket timestamp from ID (format: pe_<epoch_ms>)
-      const bucketMs = Number(entryId.replace('pe_', ''));
-      const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
-
-      if (!Number.isFinite(bucketMs)) {
-        return NextResponse.json({ error: 'Invalid measurement entry id' }, { status: 400 });
-      }
-
-      // Delete all ProgressEntry measurements in this minute-bucket
-      const startWindow = new Date(bucketMs);
-      const endWindow = new Date(bucketMs + 59_999);
-
-      const deleted = await ProgressEntry.deleteMany({
-        user: clientObjectId,
-        type: { $in: measurementTypes },
-        recordedAt: { $gte: startWindow, $lte: endWindow }
-      });
-
-      if (deleted.deletedCount === 0) {
-        return NextResponse.json({ error: 'Measurement entry not found' }, { status: 404 });
-      }
-
-      // Clear caches
-      clearCacheByTag('journal');
-      clearCacheByTag('client');
-
-      return NextResponse.json({
-        success: true,
-        message: 'Measurement entries deleted'
-      });
-    }
-
-    // Otherwise, delete from JournalTracking.measurements
-    const journal = await JournalTracking.findOneAndUpdate(
-      { client: clientObjectId, 'measurements._id': entryId },
-      { $pull: { measurements: { _id: entryId } } },
-      { new: true }
-    );
-
-    if (!journal) {
-      return NextResponse.json({ error: 'Measurement entry not found' }, { status: 404 });
-    }
-
-    // Also try to delete corresponding ProgressEntry measurements
-    try {
-      const measurementTypes = ['waist', 'abdomen', 'hips', 'chest', 'arms', 'thighs'];
-      await ProgressEntry.deleteMany({
-        user: clientObjectId,
-        type: { $in: measurementTypes },
-        'metadata.source': 'journal_measurements'
-      });
-    } catch (err) {
-      // Ignore errors - this is just cleanup
-    }
-
-    // Clear caches
-    clearCacheByTag('journal');
-    clearCacheByTag('client');
-
-    return NextResponse.json({
-      success: true,
-      message: 'Measurement entry deleted'
-    });
-
-  } catch (error) {
-    console.error('Error deleting measurement:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete measurement entry' },
-      { status: 500 }
-    );
-  }
-}
+const mutation=nativeJournalRoute('measurements');
+export const POST=mutation;
+export const DELETE=mutation;

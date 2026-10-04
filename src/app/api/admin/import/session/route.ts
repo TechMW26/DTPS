@@ -1,3 +1,6 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {requireNativeAuditAdmin} from '@/lib/db/repository/native-admin-audit';
 /**
  * API Route: Data Import - Session Management
  * GET/DELETE /api/admin/import/session
@@ -15,8 +18,9 @@ export async function GET(request: NextRequest) {
   try {
     // Auth check - admin only
     const session = await getServerSession(authOptions);
+    if(session?.user)await requireNativeAuditAdmin(getNativeDatabase(),session.user.id);
     if (!session?.user || (session.user as any).role !== 'admin') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -26,7 +30,7 @@ export async function GET(request: NextRequest) {
     const sessionId = searchParams.get('sessionId');
 
     if (!sessionId) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Session ID is required' },
         { status: 400 }
       );
@@ -34,24 +38,24 @@ export async function GET(request: NextRequest) {
 
     const importSession = dataImportService.getSession(sessionId);
     if (!importSession) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Session not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       session: importSession
     });
 
   } catch (error: any) {
     console.error('Import session get error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
+    return nativeResponseJson(
+      {
+        success: false,
         error: 'Server error',
-        message: error.message 
+        message: error.message
       },
       { status: 500 }
     );
@@ -63,8 +67,9 @@ export async function DELETE(request: NextRequest) {
   try {
     // Auth check - admin only
     const session = await getServerSession(authOptions);
+    if(session?.user)await requireNativeAuditAdmin(getNativeDatabase(),session.user.id);
     if (!session?.user || (session.user as any).role !== 'admin') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -75,7 +80,7 @@ export async function DELETE(request: NextRequest) {
     const action = searchParams.get('action') || 'delete'; // 'clear' or 'delete'
 
     if (!sessionId) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Session ID is required' },
         { status: 400 }
       );
@@ -89,24 +94,24 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (!success) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Session not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: action === 'clear' ? 'Session cleared' : 'Session deleted'
     });
 
   } catch (error: any) {
     console.error('Import session delete error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
+    return nativeResponseJson(
+      {
+        success: false,
         error: 'Server error',
-        message: error.message 
+        message: error.message
       },
       { status: 500 }
     );

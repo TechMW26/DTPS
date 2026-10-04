@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Keep isolated migration previews separate from an existing local development server.
+  distDir: process.env.DTPS_BUILD_CHECK === 'true' ? '.next/build-check' : process.env.DTPS_NATIVE_PREVIEW === 'true' ? '.next/native-preview' : '.next',
+  allowedDevOrigins: ['127.0.0.1'],
   // Vercel deployment — default output (not standalone/Docker)
 
   // Performance optimizations

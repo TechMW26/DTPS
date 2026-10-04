@@ -1,24 +1,26 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 /**
  * API Route: Bulk Update Recipes by _id
  * PUT /api/admin/recipes/bulk-update - Update recipes using _id identifier only
  * POST /api/admin/recipes/bulk-update - Upload CSV file for bulk updates using _id
- * 
+ *
  * IMPORTANT: _id is the ONLY accepted identifier for recipe lookups.
  * - Updates are identified strictly by _id
- * - Existing recipes are updated via $set operations
+ * - Existing recipes are updated via field replacement
  * - No new recipes are created during update operations
  * - Requests without valid _id are skipped with status 'cancelled'
  * - Arrays are replaced completely (not appended)
- * - All updates use MongoDB $set operator for consistency
+ * - All updates use native Firestore transactions
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import connectDB from '@/lib/db/connection';
-import Recipe from '@/lib/db/models/Recipe';
-import mongoose from 'mongoose';
-import { clearCacheByTag } from '@/lib/api/utils';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {saveStaffRecipe,readStaffRecipe,recipeActor} from '@/lib/db/repository/native-staff-recipes';
+
+
+import { clearCacheByTag } from '@/lib/cache/memoryCache';
 
 export const runtime = 'nodejs';
 
@@ -318,19 +320,19 @@ export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
     const userRole = ((session.user as any).role || '').toLowerCase();
     if (!['admin', 'dietitian', 'health_counselor'].includes(userRole)) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return nativeResponseJson({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
     const body = await request.json();
     const { records, reason } = body as { records: UpdateRecord[]; reason?: string };
 
-    if (!records || !Array.isArray(records) || records.length === 0) {
-      return NextResponse.json(
+    if (!records || !Array.isArray(records) || records.length === 0 || records.length > 500) {
+      return nativeResponseJson(
         { success: false, error: 'Records array is required and must not be empty' },
         { status: 400 }
       );
@@ -339,13 +341,13 @@ export async function PUT(request: NextRequest) {
     // Validate all records have _id
     const invalidRecords = records.filter(r => !r._id);
     if (invalidRecords.length > 0) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: `${invalidRecords.length} records missing required _id field` },
         { status: 400 }
       );
     }
 
-    await connectDB();
+    const db=getNativeDatabase();await recipeActor(db,session.user.id,true);
 
     const results: UpdateResult[] = [];
     let completedCount = 0;
@@ -358,7 +360,7 @@ export async function PUT(request: NextRequest) {
 
       try {
         // Find recipe by _id ONLY (single source of truth)
-        if (!_id || !mongoose.Types.ObjectId.isValid(recordId)) {
+        if (!_id || !/^[a-f0-9]{24}$/.test(recordId)) {
           results.push({
             _id: recordId,
             status: 'cancelled',
@@ -369,7 +371,7 @@ export async function PUT(request: NextRequest) {
           continue;
         }
 
-        const recipe = await Recipe.findById(recordId);
+        const recipe = await readStaffRecipe(db,session.user.id,recordId).catch((error:any)=>{if(error.status===404)return null;throw error;});
 
         if (!recipe) {
           results.push({
@@ -427,11 +429,7 @@ export async function PUT(request: NextRequest) {
         updatePayload.updatedAt = new Date();
 
         // Update recipe using $set (replaces fields completely, doesn't append)
-        const updated = await Recipe.findByIdAndUpdate(
-          recipe._id,
-          { $set: updatePayload },
-          { new: true, runValidators: true }
-        );
+        const updated = await saveStaffRecipe(db,session.user.id,{...updatePayload,_nativeExpectedUpdatedAt:recipe.updatedAt??null},recordId);
 
         results.push({
           _id: String(updated?._id || recordId),
@@ -457,7 +455,7 @@ export async function PUT(request: NextRequest) {
     // Clear recipe cache for immediate reflection
     clearCacheByTag('recipes');
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: 'Bulk update operation completed',
       summary: {
@@ -471,7 +469,7 @@ export async function PUT(request: NextRequest) {
 
   } catch (error: any) {
     console.error('[RecipeBulkUpdate] Error:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { success: false, error: error.message || 'Bulk update failed' },
       { status: 500 }
     );
@@ -483,12 +481,12 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
     const userRole = ((session.user as any).role || '').toLowerCase();
     if (!['admin', 'dietitian', 'health_counselor'].includes(userRole)) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return nativeResponseJson({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
     const formData = await request.formData();
@@ -496,7 +494,7 @@ export async function POST(request: NextRequest) {
     const reason = formData.get('reason') as string || 'Bulk update via CSV';
 
     if (!file) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'CSV file is required' },
         { status: 400 }
       );
@@ -504,7 +502,7 @@ export async function POST(request: NextRequest) {
 
     // Validate file type
     if (!file.name.endsWith('.csv')) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Only CSV files are accepted' },
         { status: 400 }
       );
@@ -517,20 +515,20 @@ export async function POST(request: NextRequest) {
     try {
       records = parseCSV(csvContent);
     } catch (parseError: any) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: `CSV parse error: ${parseError.message}` },
         { status: 400 }
       );
     }
 
-    if (records.length === 0) {
-      return NextResponse.json(
+    if (records.length === 0 || records.length > 500) {
+      return nativeResponseJson(
         { success: false, error: 'No valid records with _id found in CSV' },
         { status: 400 }
       );
     }
 
-    await connectDB();
+    const db=getNativeDatabase();await recipeActor(db,session.user.id,true);
 
     const results: UpdateResult[] = [];
     let completedCount = 0;
@@ -543,7 +541,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // Find recipe by _id ONLY (single source of truth)
-        if (!_id || !mongoose.Types.ObjectId.isValid(recordId)) {
+        if (!_id || !/^[a-f0-9]{24}$/.test(recordId)) {
           results.push({
             _id: recordId,
             status: 'cancelled',
@@ -554,7 +552,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const recipe = await Recipe.findById(recordId);
+        const recipe = await readStaffRecipe(db,session.user.id,recordId).catch((error:any)=>{if(error.status===404)return null;throw error;});
 
         if (!recipe) {
           results.push({
@@ -611,11 +609,7 @@ export async function POST(request: NextRequest) {
         updatePayload.updatedAt = new Date();
 
         // Update recipe using $set (replaces fields completely, doesn't append)
-        const updated = await Recipe.findByIdAndUpdate(
-          recipe._id,
-          { $set: updatePayload },
-          { new: true, runValidators: true }
-        );
+        const updated = await saveStaffRecipe(db,session.user.id,{...updatePayload,_nativeExpectedUpdatedAt:recipe.updatedAt??null},recordId);
 
         results.push({
           _id: String(updated?._id || recordId),
@@ -641,7 +635,7 @@ export async function POST(request: NextRequest) {
     // Clear recipe cache for immediate reflection
     clearCacheByTag('recipes');
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: 'CSV bulk update operation completed',
       fileName: file.name,
@@ -656,7 +650,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('[RecipeBulkUpdate CSV] Error:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { success: false, error: error.message || 'CSV bulk update failed' },
       { status: 500 }
     );
@@ -668,7 +662,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -688,13 +682,13 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       instructions: 'Upload a CSV file with an "_id" column to identify recipes for updating.',
-      requiredField: '_id (MongoDB ObjectId - used to locate recipes)',
+      requiredField: '_id (stable record ID - used to locate recipes)',
       identificationMethod: '_id is the ONLY accepted identifier for recipe lookups',
       updateMode: 'Updates only - no new recipes are created',
-      operationMode: '$set operations used to replace field values completely',
+      operationMode: 'field replacement used to replace field values completely',
       updatableFields: UPDATABLE_FIELDS,
       sampleCSV: {
         headers: ['_id', 'name', 'description', 'prepTime', 'cookTime', 'difficulty', 'isPublic', 'tags'],
@@ -709,7 +703,7 @@ export async function GET(request: NextRequest) {
         'Records without _id will be skipped and logged',
         'If _id does not match any recipe, that row is marked as "cancelled"',
         'Updates reflect immediately across all dashboards and APIs',
-        'Use $set operations - arrays are completely replaced (not appended)',
+        'Use field replacement - arrays are completely replaced (not appended)',
         'All updates include updatedAt timestamp'
       ],
       exampleRequests: {
@@ -741,7 +735,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('[RecipeBulkUpdate] GET Error:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { success: false, error: error.message || 'Failed to get template info' },
       { status: 500 }
     );

@@ -6,10 +6,10 @@
  * are notified within ~3 seconds of a payment status change.
  */
 
-import User from '@/lib/db/models/User';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
 import { UserRole } from '@/types';
 import { socketManager } from '@/lib/realtime/socket-manager';
-import { clearCacheByTag } from '@/lib/api/utils';
+import { clearCacheByTag } from '@/lib/cache/memoryCache';
 
 /**
  * Collect all user IDs that should be notified about a payment event.
@@ -20,8 +20,8 @@ export async function getPaymentNotifyUserIds(clientId?: string | null): Promise
 
     // 1. All admins
     try {
-        const admins = await User.find({ role: UserRole.ADMIN }).select('_id').lean();
-        admins.forEach((a: any) => notifyUserIds.add(String(a._id)));
+        const admins = await getNativeDatabase().collection('users').where('role','==',UserRole.ADMIN).select().get();
+        admins.docs.forEach(doc => notifyUserIds.add(doc.id));
     } catch (e) {
         console.warn('[PaymentNotify] Failed to fetch admins:', e);
     }
@@ -31,9 +31,7 @@ export async function getPaymentNotifyUserIds(clientId?: string | null): Promise
         notifyUserIds.add(String(clientId));
 
         try {
-            const client = await User.findById(clientId)
-                .select('assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors')
-                .lean() as any;
+            const client = (await getNativeDatabase().collection('users').doc(clientId).get()).data();
 
             if (client) {
                 // Assigned dietitian(s)
@@ -77,7 +75,7 @@ export async function emitPaymentUpdate(
         }
         // Deduplicate
         const uniqueIds = [...new Set(userIds)];
-        socketManager.sendToUsers(uniqueIds, 'payment_updated', {
+        await socketManager.sendToUsers(uniqueIds, 'payment_updated', {
             ...data,
             timestamp: Date.now(),
         });
@@ -102,7 +100,7 @@ export async function emitPaymentLinkUpdate(
             });
         }
         const uniqueIds = [...new Set(userIds)];
-        socketManager.sendToUsers(uniqueIds, 'payment_link_updated', {
+        await socketManager.sendToUsers(uniqueIds, 'payment_link_updated', {
             ...data,
             timestamp: Date.now(),
         });

@@ -1,6 +1,7 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeAccountByEmail,setNativeResetToken} from '@/lib/db/repository/native-account';
 import { sendEmail, getPasswordResetTemplate } from '@/lib/services/email';
 import { getBaseUrl } from '@/lib/config';
 import crypto from 'crypto';
@@ -10,21 +11,20 @@ export async function POST(request: NextRequest) {
   try {
     const { email, roleType } = await request.json();
 
-    if (!email) {
-      return NextResponse.json(
+    if (typeof email!=='string' || !email.trim()) {
+      return nativeResponseJson(
         { error: 'Email is required' },
         { status: 400 }
       );
     }
 
-    await connectDB();
 
     // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    const user = await nativeAccountByEmail(getNativeDatabase(),email);
 
     // Always return success message to prevent email enumeration
     if (!user) {
-      return NextResponse.json({
+      return nativeResponseJson({
         success: true,
         message: 'If an account exists with this email, you will receive a password reset link.'
       });
@@ -33,14 +33,14 @@ export async function POST(request: NextRequest) {
     // If roleType is specified, validate that the user has the correct role
     // This is used to show appropriate error on user/client page for non-client emails
     if (roleType === 'client' && user.role !== 'client') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'This email is not registered as a client. Please use the admin/staff portal to reset your password.' },
         { status: 400 }
       );
     }
-    
+
     if (roleType === 'staff' && user.role === 'client') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'This email is registered as a client. Please use the client login page to reset your password.' },
         { status: 400 }
       );
@@ -57,19 +57,17 @@ export async function POST(request: NextRequest) {
     const tokenExpiry = new Date(Date.now() + 60 * 60 * 1000);
 
     // Save hashed token and expiry to user
-    user.passwordResetToken = hashedToken;
-    user.passwordResetTokenExpiry = tokenExpiry;
-    await user.save({ validateBeforeSave: false });
+    await setNativeResetToken(getNativeDatabase(),user._id,hashedToken,tokenExpiry);
 
     // Determine the base URL for the reset link based on user role
     const baseUrl = getBaseUrl();
-    
+
     // Route to appropriate reset page based on user role
     let resetPath = '/auth/reset-password'; // Default for admin/dietitian/health_counselor
     if (user.role === 'client') {
       resetPath = '/user/reset-password';
     }
-    
+
     const resetLink = `${baseUrl}${resetPath}?token=${resetToken}&email=${encodeURIComponent(email)}`;
 
     // Send password reset email
@@ -89,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     if (!emailSent) {
       console.error(`[FORGOT-PASSWORD] Failed to send password reset email to: ${email} (role: ${user.role})`);
-      return NextResponse.json({
+      return nativeResponseJson({
         error: 'Failed to send password reset email',
         hint: 'Check SMTP configuration in .env (SMTP_HOST, SMTP_USER, SMTP_PASS)',
         debug: {
@@ -101,14 +99,14 @@ export async function POST(request: NextRequest) {
 
     console.log(`[FORGOT-PASSWORD] Password reset email sent successfully to: ${email} (role: ${user.role})`);
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: 'If an account exists with this email, you will receive a password reset link.'
     });
 
   } catch (error) {
     console.error('Error in forgot password:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'An error occurred. Please try again later.' },
       { status: 500 }
     );

@@ -1,9 +1,10 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getBaseUrl } from '@/lib/config';
-import connectDB from '@/lib/db/connection';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { nativeClientReceipt } from '@/lib/db/repository/native-client-payments';
 import nodemailer from 'nodemailer';
 
 interface PopulatedUserRef {
@@ -17,28 +18,22 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
     const { paymentId } = await request.json();
 
     if (!paymentId) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'Payment ID is required' },
         { status: 400 }
       );
     }
 
-    const payment = await UnifiedPayment.findOne({
-      _id: paymentId,
-      client: session.user.id
-    })
-      .populate('dietitian', 'firstName lastName')
-      .populate('client', 'firstName lastName email');
+    const payment = await nativeClientReceipt(getNativeDatabase(),session.user.id,{paymentId});
 
     if (!payment) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'Payment not found' },
         { status: 404 }
       );
@@ -50,11 +45,13 @@ export async function POST(request: NextRequest) {
     const clientName = payment.payerName || `${client?.firstName || ''} ${client?.lastName || ''}`.trim() || 'Valued Customer';
 
     if (!clientEmail) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'No email address found' },
         { status: 400 }
       );
     }
+
+    if(process.env.NODE_ENV!=='production')return nativeResponseJson({error:'Receipt email delivery is disabled during local migration testing',code:'LOCAL_DELIVERY_DISABLED'},{status:503});
 
     // Create email transporter
     const transporter = nodemailer.createTransport({
@@ -109,7 +106,7 @@ export async function POST(request: NextRequest) {
       <h1 style="color: white; margin: 0; font-size: 28px;">DTPS</h1>
       <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Payment Receipt</p>
     </div>
-    
+
     <!-- Content -->
     <div style="background: white; padding: 30px; border-radius: 0 0 16px 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
       <!-- Success Message -->
@@ -120,7 +117,7 @@ export async function POST(request: NextRequest) {
         <h2 style="color: #333; margin: 0 0 10px 0;">Payment Successful!</h2>
         <p style="color: #666; margin: 0;">Thank you for your purchase, ${clientName}!</p>
       </div>
-      
+
       <!-- Transaction Details -->
       <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
         <h3 style="color: #333; margin: 0 0 15px 0; font-size: 16px;">Transaction Details</h3>
@@ -143,7 +140,7 @@ export async function POST(request: NextRequest) {
           </tr>
         </table>
       </div>
-      
+
       <!-- Plan Details -->
       <div style="background: linear-gradient(135deg, #3AB1A0, #2d9488); padding: 20px; border-radius: 12px; color: white; margin-bottom: 20px;">
         <h3 style="margin: 0 0 15px 0; font-size: 16px;">Plan Details</h3>
@@ -162,21 +159,21 @@ export async function POST(request: NextRequest) {
           ` : ''}
         </table>
       </div>
-      
+
       <!-- Amount -->
       <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
         <p style="color: #666; margin: 0 0 5px 0; font-size: 14px;">Amount Paid</p>
         <p style="color: #E06A26; margin: 0; font-size: 32px; font-weight: bold;">₹${payment.amount.toLocaleString()}</p>
       </div>
-      
+
       <!-- CTA Button -->
       <div style="text-align: center; margin-bottom: 20px;">
-        <a href="${getBaseUrl()}/user/subscriptions" 
+        <a href="${getBaseUrl()}/user/subscriptions"
            style="display: inline-block; background: linear-gradient(135deg, #E06A26, #DB9C6E); color: white; padding: 14px 30px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 14px;">
           View My Subscriptions
         </a>
       </div>
-      
+
       <!-- Footer -->
       <div style="text-align: center; padding-top: 20px; border-top: 1px solid #eee;">
         <p style="color: #999; font-size: 12px; margin: 0 0 5px 0;">Thank you for choosing DTPS!</p>
@@ -196,11 +193,11 @@ export async function POST(request: NextRequest) {
       html: emailHtml
     });
 
-    return NextResponse.json({ success: true, message: 'Receipt sent successfully' });
+    return nativeResponseJson({ success: true, message: 'Receipt sent successfully' });
 
   } catch (error) {
     console.error('Error sending receipt email:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'Failed to send receipt email' },
       { status: 500 }
     );

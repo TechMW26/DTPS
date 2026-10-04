@@ -1,25 +1,26 @@
-import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import User from '@/lib/db/models/User';
-import { registerFCMToken } from '@/lib/firebase/firebaseNotification';
-jest.mock('@/lib/db/connection',()=>({__esModule:true,default:async()=>undefined}));
+import {randomBytes,createHash} from 'node:crypto';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {registerFCMToken,sendNotificationToUser} from '@/lib/firebase/firebaseNotification';
+import {getMessaging} from '@/lib/firebase/firebaseAdmin';
 jest.mock('@/lib/firebase/firebaseAdmin',()=>({getMessaging:jest.fn(),getNativeMessaging:jest.fn()}));
-let server:MongoMemoryServer;
-beforeAll(async()=>{server=await MongoMemoryServer.create();await mongoose.connect(server.getUri(),{autoIndex:false});});
-afterAll(async()=>{await mongoose.disconnect();await server.stop();});
-it('moves a token between accounts without rewriting unrelated user records',async()=>{
-  const [owner,previous,unrelated]=Array.from({length:3},()=>new mongoose.Types.ObjectId());
-  const unchangedAt=new Date('2025-01-01');
-  await User.collection.insertMany([
-    {_id:owner,fcmTokens:[],updatedAt:unchangedAt},
-    {_id:previous,fcmTokens:[{token:'synthetic-token'}],updatedAt:unchangedAt},
-    {_id:unrelated,fcmTokens:[{token:'other-token'}],updatedAt:unchangedAt},
-  ] as any);
-  expect((await registerFCMToken(String(owner),'synthetic-token')).success).toBe(true);
-  expect((await User.collection.findOne({_id:previous}))!.fcmTokens).toHaveLength(0);
-  expect((await User.collection.findOne({_id:owner}))!.fcmTokens).toHaveLength(1);
-  expect((await User.collection.findOne({_id:unrelated}))!.updatedAt).toEqual(unchangedAt);
-  await registerFCMToken(String(owner),'synthetic-token');
-  expect((await User.collection.findOne({_id:owner}))!.fcmTokens).toHaveLength(1);
-  expect((await User.collection.findOne({_id:unrelated}))!.updatedAt).toEqual(unchangedAt);
+const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+suite('FCM service on native Firestore',()=>{
+ let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ beforeAll(()=>{db=getNativeDatabase();});
+ afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
+ it('moves a token without rewriting unrelated users and never delivers pushes during local testing',async()=>{
+  const [owner,previous,unrelated]=Array.from({length:3},()=>db.collection('users').doc(randomBytes(12).toString('hex')));
+  refs.push(owner,previous,unrelated);
+  const token='synthetic-'+randomBytes(12).toString('hex'),unchangedAt=new Date('2025-01-01');
+  const index=db.collection('_nativeFcmTokens').doc(createHash('sha256').update(token).digest('hex'));
+  const marker=db.collection('_nativeMigrationState').doc('fcmTokens');refs.push(index,marker);
+  await Promise.all([owner.set({fcmTokens:[],updatedAt:unchangedAt}),previous.set({fcmTokens:[{token}],updatedAt:unchangedAt}),unrelated.set({fcmTokens:[{token:'other'}],updatedAt:unchangedAt}),index.set({ownerIds:[previous.id]}),marker.set({complete:true})]);
+  expect((await registerFCMToken(owner.id,token)).success).toBe(true);
+  expect((await previous.get()).get('fcmTokens')).toHaveLength(0);
+  expect((await owner.get()).get('fcmTokens')).toHaveLength(1);
+  expect((await unrelated.get()).get('updatedAt').toDate()).toEqual(unchangedAt);
+  await registerFCMToken(owner.id,token);expect((await owner.get()).get('fcmTokens')).toHaveLength(1);
+  expect((await sendNotificationToUser(owner.id,{title:'test',body:'test',saveToDb:false})).errorCode).toBe('LOCAL_DELIVERY_DISABLED');
+  expect(getMessaging).not.toHaveBeenCalled();
+ });
 });

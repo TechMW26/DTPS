@@ -1,23 +1,23 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {formatInTimeZone} from 'date-fns-tz';
+import {TASK_TIME_ZONE} from '@/lib/task-schedule';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {journalDay,journalLegacyPlan,journalProfile} from '@/lib/db/repository/native-journal';
+import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
+import {nativePlanForDate,nativeTemplateMeals} from '@/lib/db/repository/native-client-meals';
+import {nativeHabitDay} from '@/lib/db/repository/native-habits';
+import {nativeJournalRoute} from '@/lib/api/native-journal-route';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import JournalTracking from '@/lib/db/models/JournalTracking';
-import User from '@/lib/db/models/User';
-import MealPlan from '@/lib/db/models/MealPlan';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import DietTemplate from '@/lib/db/models/DietTemplate';
 import { format, differenceInDays } from 'date-fns';
 import { UserRole } from '@/types';
 import { logHistoryServer } from '@/lib/server/history';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 import { normalizeMealType, DEFAULT_MEAL_TYPES_LIST } from '@/lib/mealConfig';
 
 // Helper to get date without time
 const getDateOnly = (date: Date | string): Date => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return nativeHabitDay(formatInTimeZone(new Date(date),TASK_TIME_ZONE,'yyyy-MM-dd')).start;
 };
 
 // Helper to normalize meal type keys for consistent matching
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -58,20 +58,16 @@ export async function GET(request: NextRequest) {
 
     // Check permission
     if (!checkPermission(session, clientId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      return nativeResponseJson({ error: 'Access denied' }, { status: 403 });
     }
 
-    await connectDB();
+    const db=getNativeDatabase();
+    await taskClientAccess(db,session.user.id,clientId);
 
-    const date = dateParam ? getDateOnly(dateParam) : getDateOnly(new Date());
+    const day=nativeHabitDay(dateParam),date=day.start;
 
     // Fetch user's goals from the User database
-    const user = await withCache(
-      `journal:meals:${JSON.stringify(clientId)}`,
-      async () => await User.findById(clientId).select('goals firstName lastName'),
-      { ttl: 120000, tags: ['journal'] }
-    );
-    
+    const {user}=await journalProfile(db,clientId);
     // Fetch user's targets from their profile goals
     const userGoals = user?.goals || {};
     const targets = {
@@ -82,18 +78,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Get journal entries for tracking consumed meals
-    const journal = await withCache(
-      `journal:meals:${JSON.stringify({
-      client: clientId,
-      date: date
-    })}`,
-      async () => await JournalTracking.findOne({
-      client: clientId,
-      date: date
-    }),
-      { ttl: 120000, tags: ['journal'] }
-    );
-
+    const journal=await journalDay(db,clientId,day.key);
     // Create a map of consumed meals from journal (by mealPlanId)
     const journalMealsMap = new Map<string, any>();
     if (journal?.meals) {
@@ -109,39 +94,26 @@ export async function GET(request: NextRequest) {
 
     // Always check for assigned diet plans first
     // First check ClientMealPlan (assigned diet templates or direct meal plans)
-    const clientMealPlan = await withCache(
-      `journal:meals:${JSON.stringify({
-      clientId: clientId,
-      status: 'active',
-      startDate: { $lte: date },
-      endDate: { $gte: date }
-    })}`,
-      async () => await ClientMealPlan.findOne({
-      clientId: clientId,
-      status: 'active',
-      startDate: { $lte: date },
-      endDate: { $gte: date }
-    }).populate('templateId'),
-      { ttl: 120000, tags: ['journal'] }
-    );
+    const clientMealPlan=await nativePlanForDate(db,clientId,day.start,day.end);
+    if(clientMealPlan&&typeof clientMealPlan.templateId==='string')clientMealPlan.templateId=await nativeTemplateMeals(db,clientMealPlan.templateId);
 
     if (clientMealPlan) {
       // Calculate which day of the plan this is
       const dayIndex = differenceInDays(date, getDateOnly(clientMealPlan.startDate));
-      
+
       // Check if this date is frozen
-      const dateStr = format(date, 'yyyy-MM-dd');
+      const dateStr = day.key;
       const freezedDays = clientMealPlan.freezedDays || [];
       const isFrozen = freezedDays.some((fd: any) => {
-        const freezeDate = format(new Date(fd.date), 'yyyy-MM-dd');
+        const freezeDate = formatInTimeZone(new Date(fd.date),TASK_TIME_ZONE,'yyyy-MM-dd');
         return freezeDate === dateStr;
       });
-      
+
       // Get freeze info if frozen
-      const freezeInfo = isFrozen ? freezedDays.find((fd: any) => 
-        format(new Date(fd.date), 'yyyy-MM-dd') === dateStr
+      const freezeInfo = isFrozen ? freezedDays.find((fd: any) =>
+        formatInTimeZone(new Date(fd.date),TASK_TIME_ZONE,'yyyy-MM-dd') === dateStr
       ) : null;
-      
+
       // If frozen, return empty meals with frozen status
       if (isFrozen) {
         const summary = {
@@ -155,8 +127,8 @@ export async function GET(request: NextRequest) {
           targets,
           percentage: 0
         };
-        
-        return NextResponse.json({
+
+        return nativeResponseJson({
           success: true,
           meals: [],
           targets,
@@ -176,7 +148,7 @@ export async function GET(request: NextRequest) {
           user: user ? { firstName: user.firstName, lastName: user.lastName } : null
         });
       }
-      
+
       // Get meal completions for this date from ClientMealPlan
       const mealCompletionsMap = new Map<string, any>();
       if (clientMealPlan.mealCompletions && Array.isArray(clientMealPlan.mealCompletions)) {
@@ -189,9 +161,9 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-      
+
       // Get meal types from plan or template or use defaults
-      const mealTypes = clientMealPlan.mealTypes || 
+      const mealTypes = clientMealPlan.mealTypes ||
         (clientMealPlan.templateId as any)?.mealTypes || DEFAULT_MEAL_TYPES_LIST;
 
       // Check if meals are stored directly in clientMealPlan
@@ -206,24 +178,24 @@ export async function GET(request: NextRequest) {
           dayPlan = template.meals[dayIndex % template.meals.length];
         }
       }
-      
+
       if (dayPlan && dayPlan.meals) {
         // Extract meals from the day plan
         for (const mealType of mealTypes) {
           const mealData = dayPlan.meals[mealType.name];
           if (mealData && mealData.foodOptions && mealData.foodOptions.length > 0) {
-            for (const food of mealData.foodOptions) {
+            for (const [foodIndex,food] of mealData.foodOptions.entries()) {
               if (food.food) { // Only add if food name exists
-                const mealPlanId = `${clientMealPlan._id}-${dayIndex}-${mealType.name}-${food.id || Math.random()}`;
-                
+                const mealPlanId = `${clientMealPlan._id}-${dayIndex}-${mealType.name}-${food.id || foodIndex}`;
+
                 // Check if this meal was already tracked in journal
                 const journalMeal = journalMealsMap.get(mealPlanId);
-                
+
                 // Check meal completion from ClientMealPlan mealCompletions
                 // Use normalized key for consistent matching
                 const normalizedMealTypeKey = normalizeMealTypeKey(mealType.name);
                 const mealCompletion = mealCompletionsMap.get(normalizedMealTypeKey);
-                
+
                 meals.push({
                   _id: journalMeal?._id || mealPlanId,
                   name: food.food || food.label || 'Unnamed Food',
@@ -260,7 +232,7 @@ export async function GET(request: NextRequest) {
           const tc = (clientMealPlan.templateId as any).targetCalories;
           targets.calories = tc.max || tc.min || targets.calories;
         }
-        
+
         if (clientMealPlan.customizations?.targetMacros) {
           targets.protein = clientMealPlan.customizations.targetMacros.protein || targets.protein;
           targets.carbs = clientMealPlan.customizations.targetMacros.carbs || targets.carbs;
@@ -276,32 +248,13 @@ export async function GET(request: NextRequest) {
 
     // If still no meals, check legacy MealPlan model
     if (meals.length === 0) {
-      const activeMealPlan = await withCache(
-      `journal:meals:${JSON.stringify({
-        client: clientId,
-        isActive: true,
-        startDate: { $lte: date },
-        endDate: { $gte: date }
-      })}`,
-      async () => await MealPlan.findOne({
-        client: clientId,
-        isActive: true,
-        startDate: { $lte: date },
-        endDate: { $gte: date }
-      }).populate([
-        { path: 'meals.breakfast', model: 'Recipe', select: 'name calories protein carbs fat' },
-        { path: 'meals.lunch', model: 'Recipe', select: 'name calories protein carbs fat' },
-        { path: 'meals.dinner', model: 'Recipe', select: 'name calories protein carbs fat' },
-        { path: 'meals.snacks', model: 'Recipe', select: 'name calories protein carbs fat' }
-      ]),
-      { ttl: 120000, tags: ['journal'] }
-    );
+      const activeMealPlan=await journalLegacyPlan(db,clientId,day.start,day.end);
 
       if (activeMealPlan) {
         // Calculate which day of the meal plan this is
         const dayNumber = differenceInDays(date, getDateOnly(activeMealPlan.startDate)) % 7 + 1;
         const dayMeals = activeMealPlan.meals.find((m: any) => m.day === dayNumber);
-        
+
         if (dayMeals) {
           const mealTypes = [
             { type: 'Breakfast', items: dayMeals.breakfast, time: '09:00 AM' },
@@ -375,14 +328,14 @@ export async function GET(request: NextRequest) {
     }
 
     const consumedMeals = meals.filter((m: { consumed: boolean }) => m.consumed);
-    
+
     const totalCalories = meals.reduce((sum: number, m: { calories: number }) => sum + (m.calories || 0), 0);
     const consumedCalories = consumedMeals.reduce((sum: number, m: { calories: number }) => sum + (m.calories || 0), 0);
     const consumedProtein = consumedMeals.reduce((sum: number, m: { protein: number }) => sum + (m.protein || 0), 0);
     const consumedCarbs = consumedMeals.reduce((sum: number, m: { carbs: number }) => sum + (m.carbs || 0), 0);
     const consumedFat = consumedMeals.reduce((sum: number, m: { fat: number }) => sum + (m.fat || 0), 0);
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       meals,
       activeMealPlan: activePlanInfo,
@@ -405,7 +358,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Error fetching meals:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'Failed to fetch meals' },
       { status: 500 }
     );
@@ -413,293 +366,5 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/journal/meals - Add new meal entry
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { name, calories, protein, carbs, fat, type, time, consumed, date, clientId } = await request.json();
-    const userId = clientId || session.user.id;
-
-    // Check permission
-    if (!checkPermission(session, clientId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    await connectDB();
-
-    if (!name) {
-      return NextResponse.json({ error: 'Meal name is required' }, { status: 400 });
-    }
-
-    if (!type) {
-      return NextResponse.json({ error: 'Meal type is required' }, { status: 400 });
-    }
-
-    const journalDate = date ? getDateOnly(date) : getDateOnly(new Date());
-
-    // Find or create journal entry
-    let journal = await JournalTracking.findOne({
-      client: userId,
-      date: journalDate
-    });
-
-    if (!journal) {
-      journal = new JournalTracking({
-        client: userId,
-        date: journalDate,
-        activities: [],
-        steps: [],
-        water: [],
-        sleep: [],
-        meals: []
-      });
-    }
-
-    // Add new meal entry
-    const newMeal = {
-      name,
-      calories: calories || 0,
-      protein: protein || 0,
-      carbs: carbs || 0,
-      fat: fat || 0,
-      type,
-      time: time || format(new Date(), 'hh:mm a'),
-      consumed: consumed || false,
-      createdAt: new Date()
-    };
-
-    journal.meals.push(newMeal);
-    await journal.save();
-
-    // Log history for meal entry
-    await logHistoryServer({
-      userId: userId,
-      action: 'create',
-      category: 'journal',
-      description: `Meal logged: ${name} (${type}) - ${calories || 0} cal`,
-      performedById: session.user.id,
-      metadata: {
-        entryType: 'meal',
-        name,
-        type,
-        calories: calories || 0,
-        protein: protein || 0,
-        carbs: carbs || 0,
-        fat: fat || 0,
-        date: format(journalDate, 'yyyy-MM-dd')
-      }
-    });
-
-    return NextResponse.json({
-      success: true,
-      meal: journal.meals[journal.meals.length - 1],
-      meals: journal.meals
-    });
-
-  } catch (error) {
-    console.error('Error adding meal:', error);
-    return NextResponse.json(
-      { error: 'Failed to add meal' },
-      { status: 500 }
-    );
-  }
-}
-
-// PUT /api/journal/meals - Update meal (toggle consumed status, add photo, notes)
-export async function PUT(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { entryId, consumed, photo, notes, date, clientId, mealData } = await request.json();
-    const userId = clientId || session.user.id;
-
-    // Check permission
-    if (!checkPermission(session, clientId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    await connectDB();
-
-    if (!entryId) {
-      return NextResponse.json({ error: 'Entry ID is required' }, { status: 400 });
-    }
-
-    const journalDate = date ? getDateOnly(date) : getDateOnly(new Date());
-
-    // Check if this is a meal from a meal plan (synthetic ID)
-    const isFromMealPlan = entryId.includes('-') && !entryId.match(/^[0-9a-fA-F]{24}$/);
-
-    let journal = await JournalTracking.findOne({
-      client: userId,
-      date: journalDate
-    });
-
-    if (isFromMealPlan && mealData) {
-      // This is a meal plan meal - need to add/update it in the journal
-      if (!journal) {
-        journal = new JournalTracking({
-          client: userId,
-          date: journalDate,
-          activities: [],
-          steps: [],
-          water: [],
-          sleep: [],
-          meals: []
-        });
-      }
-
-      // Check if we already have this meal in the journal (by mealPlanId)
-      const existingMealIndex = journal.meals.findIndex(
-        (m: any) => m.mealPlanId === entryId
-      );
-
-      if (existingMealIndex >= 0) {
-        // Update existing meal
-        const updateFields: any = {};
-        if (consumed !== undefined) updateFields['meals.$.consumed'] = consumed;
-        if (photo !== undefined) updateFields['meals.$.photo'] = photo;
-        if (notes !== undefined) updateFields['meals.$.notes'] = notes;
-
-        journal = await JournalTracking.findOneAndUpdate(
-          { 
-            client: userId, 
-            date: journalDate,
-            'meals.mealPlanId': entryId 
-          },
-          { $set: updateFields },
-          { new: true }
-        );
-      } else {
-        // Add new meal from meal plan
-        const newMeal = {
-          name: mealData.name,
-          calories: mealData.calories || 0,
-          protein: mealData.protein || 0,
-          carbs: mealData.carbs || 0,
-          fat: mealData.fat || 0,
-          type: mealData.type,
-          time: mealData.time || format(new Date(), 'hh:mm a'),
-          consumed: consumed !== undefined ? consumed : true,
-          photo: photo || '',
-          notes: notes || '',
-          fromMealPlan: true,
-          mealPlanId: entryId,
-          unit: mealData.unit || '',
-          createdAt: new Date()
-        };
-
-        journal.meals.push(newMeal);
-        await journal.save();
-      }
-    } else {
-      // Regular journal meal - update directly
-      const updateFields: any = {};
-      if (consumed !== undefined) updateFields['meals.$.consumed'] = consumed;
-      if (photo !== undefined) updateFields['meals.$.photo'] = photo;
-      if (notes !== undefined) updateFields['meals.$.notes'] = notes;
-
-      journal = await JournalTracking.findOneAndUpdate(
-        { 
-          client: userId, 
-          date: journalDate,
-          'meals._id': entryId 
-        },
-        { $set: updateFields },
-        { new: true }
-      );
-
-      if (!journal) {
-        return NextResponse.json({ error: 'Meal not found' }, { status: 404 });
-      }
-    }
-
-    // Reload journal to get updated data
-    journal = await JournalTracking.findOne({
-      client: userId,
-      date: journalDate
-    });
-
-    // Calculate summary
-    const meals = journal?.meals || [];
-    const consumedMeals = meals.filter((m: { consumed: boolean }) => m.consumed);
-    const consumedCalories = consumedMeals.reduce((sum: number, m: { calories: number }) => sum + (m.calories || 0), 0);
-    const consumedProtein = consumedMeals.reduce((sum: number, m: { protein: number }) => sum + (m.protein || 0), 0);
-    const consumedCarbs = consumedMeals.reduce((sum: number, m: { carbs: number }) => sum + (m.carbs || 0), 0);
-    const consumedFat = consumedMeals.reduce((sum: number, m: { fat: number }) => sum + (m.fat || 0), 0);
-
-    return NextResponse.json({
-      success: true,
-      meals: journal?.meals || [],
-      summary: {
-        consumedMeals: consumedMeals.length,
-        consumedCalories,
-        consumedProtein,
-        consumedCarbs,
-        consumedFat
-      }
-    });
-
-  } catch (error) {
-    console.error('Error updating meal:', error);
-    return NextResponse.json(
-      { error: 'Failed to update meal' },
-      { status: 500 }
-    );
-  }
-}
-
-// DELETE /api/journal/meals - Delete meal entry
-export async function DELETE(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const entryId = searchParams.get('entryId');
-    const dateParam = searchParams.get('date');
-    const clientId = searchParams.get('clientId') || session.user.id;
-
-    // Check permission
-    if (!checkPermission(session, clientId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    await connectDB();
-
-    if (!entryId) {
-      return NextResponse.json({ error: 'Entry ID is required' }, { status: 400 });
-    }
-
-    const journalDate = dateParam ? getDateOnly(dateParam) : getDateOnly(new Date());
-
-    const journal = await JournalTracking.findOneAndUpdate(
-      { client: clientId, date: journalDate },
-      { $pull: { meals: { _id: entryId } } },
-      { new: true }
-    );
-
-    if (!journal) {
-      return NextResponse.json({ error: 'Journal entry not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      meals: journal.meals
-    });
-
-  } catch (error) {
-    console.error('Error deleting meal:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete meal' },
-      { status: 500 }
-    );
-  }
-}
+const mutation=nativeJournalRoute('meals');
+export const POST=mutation;export const PUT=mutation;export const DELETE=mutation;

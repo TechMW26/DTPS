@@ -1,6 +1,6 @@
-import ActivityLog, { IActivityLog } from '@/lib/db/models/ActivityLog';
-import SystemAlert, { ISystemAlert } from '@/lib/db/models/SystemAlert';
-import connectDB from '@/lib/db/connection';
+import type { IActivityLog, ISystemAlert } from '@/types/audit';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { createNativeAudit } from '@/lib/db/repository/native-audit';
 
 // Activity Log Types
 type ActivityActionType = IActivityLog['actionType'];
@@ -53,9 +53,7 @@ interface CreateSystemAlertParams {
  */
 export async function logActivity(params: LogActivityParams): Promise<IActivityLog | null> {
   try {
-    await connectDB();
-
-    const activity = await ActivityLog.create({
+    const activity = await createNativeAudit<IActivityLog>(getNativeDatabase(), 'activitylogs', {
       userId: params.userId,
       userRole: params.userRole,
       userName: params.userName,
@@ -98,9 +96,7 @@ export async function logActivity(params: LogActivityParams): Promise<IActivityL
  */
 export async function createSystemAlert(params: CreateSystemAlertParams): Promise<ISystemAlert | null> {
   try {
-    await connectDB();
-
-    const alert = await SystemAlert.create({
+    const alert = await createNativeAudit<ISystemAlert>(getNativeDatabase(), 'systemalerts', {
       type: params.type,
       source: params.source,
       message: params.message,

@@ -76,3 +76,8 @@ next-env.d.ts
 *.swp
 *.swo
 .env*.local
+
+# Local Firebase emulator diagnostics
+firestore-debug.log
+firebase-debug.log
+ui-debug.log

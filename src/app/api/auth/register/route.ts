@@ -1,12 +1,14 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeAccountByEmail} from '@/lib/db/repository/native-account';
+import {createNativeAccount,nativeContactExists,NativeDuplicateAccountError} from '@/lib/db/repository/native-registration';
 import { UserRole } from '@/types';
 import { z } from 'zod';
-import { clearCacheByTag } from '@/lib/api/utils';
-import { logActivity } from '@/lib/utils/activityLogger';
+import { clearCacheByTag } from '@/lib/cache/memoryCache';
+import {recordNativeLogin} from '@/lib/db/repository/native-auth';
 import crypto from 'crypto';
 import { validateOptionalEmail, validatePhoneNumber } from '@/lib/validations/contact';
 
@@ -55,13 +57,12 @@ export async function POST(request: NextRequest) {
     // - staff signup page must not create client accounts
     // - client signup page must not create staff accounts
     if (validatedData.signupContext === 'staff' && validatedData.role === UserRole.CLIENT) {
-      return NextResponse.json({ error: 'Registration failed' }, { status: 400 });
+      return nativeResponseJson({ error: 'Registration failed' }, { status: 400 });
     }
     if (validatedData.signupContext === 'client' && validatedData.role !== UserRole.CLIENT) {
-      return NextResponse.json({ error: 'Registration failed' }, { status: 400 });
+      return nativeResponseJson({ error: 'Registration failed' }, { status: 400 });
     }
 
-    await connectDB();
 
     // Get session to check if an authenticated user (dietitian/health counselor) is creating a client
     const session = await getServerSession(authOptions);
@@ -69,19 +70,17 @@ export async function POST(request: NextRequest) {
     // Check if user already exists by email (only if email is provided)
     const emailValidation = validateOptionalEmail(validatedData.email);
     if (!emailValidation.isValid) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: emailValidation.error || 'Invalid email address' },
         { status: 400 }
       );
     }
 
     if (emailValidation.normalized) {
-      const existingUser = await User.findOne({
-        email: emailValidation.normalized
-      });
+      const existingUser = await nativeAccountByEmail(getNativeDatabase(),emailValidation.normalized);
 
       if (existingUser) {
-        return NextResponse.json(
+        return nativeResponseJson(
           { error: 'User with this email already exists' },
           { status: 400 }
         );
@@ -91,32 +90,16 @@ export async function POST(request: NextRequest) {
     // Normalize phone number with country code
     const phoneValidation = validatePhoneNumber(validatedData.phone, '+91');
     if (!phoneValidation.isValid || !phoneValidation.normalized) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: phoneValidation.error || 'Invalid phone number' },
         { status: 400 }
       );
     }
     const normalizedPhone = phoneValidation.normalized;
 
-    // Extract raw 10-digit phone number for search
-    // DB stores phones in mixed formats (10-digit, +91, 91)
-    const rawPhone = normalizedPhone.replace(/^\+91/, '').replace(/^91/, '');
-
-    // Create phone variations to search (different formats in DB)
-    const phoneVariations = [
-      rawPhone,                           // 9876543210 (most common in DB)
-      normalizedPhone,                    // +919876543210
-      normalizedPhone.replace('+', ''),   // 919876543210
-      '+91' + rawPhone,                   // +919876543210
-    ];
-
-    // Check if phone number already exists (check all variations)
-    const existingPhone = await User.findOne({
-      phone: { $in: phoneVariations }
-    });
-
+    const existingPhone=await nativeContactExists(getNativeDatabase(),normalizedPhone);
     if (existingPhone) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'This phone number is already registered with another account' },
         { status: 409 }
       );
@@ -124,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     // Verify password confirmation if provided
     if (validatedData.confirmPassword && validatedData.password !== validatedData.confirmPassword) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'Passwords do not match' },
         { status: 400 }
       );
@@ -142,14 +125,14 @@ export async function POST(request: NextRequest) {
     } else {
       // Self-registration: password is required
       if (!validatedData.password) {
-        return NextResponse.json(
+        return nativeResponseJson(
           { error: 'Password is required' },
           { status: 400 }
         );
       }
       // Self-registration: email is required
       if (!emailValidation.normalized) {
-        return NextResponse.json(
+        return nativeResponseJson(
           { error: 'Email is required' },
           { status: 400 }
         );
@@ -177,19 +160,7 @@ export async function POST(request: NextRequest) {
       userData.bio = validatedData.bio;
       userData.consultationFee = validatedData.consultationFee;
     } else if (validatedData.role === UserRole.CLIENT) {
-      // Generate sequential clientId for clients using aggregation for proper numeric sorting
-      const result = await User.aggregate([
-        { $match: { role: UserRole.CLIENT, clientId: { $exists: true, $ne: null, $regex: /^C-\d+$/ } } },
-        { $project: { clientIdNum: { $toInt: { $substr: ['$clientId', 2, -1] } } } },
-        { $sort: { clientIdNum: -1 } },
-        { $limit: 1 }
-      ]);
-
-      let nextNumber = 1;
-      if (result.length > 0 && result[0].clientIdNum) {
-        nextNumber = result[0].clientIdNum + 1;
-      }
-      userData.clientId = `C-${nextNumber}`;
+      // Native registration allocates the client number atomically.
 
       if (validatedData.dateOfBirth) {
         userData.dateOfBirth = new Date(validatedData.dateOfBirth);
@@ -236,8 +207,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create user
-    const user = new User(userData);
-    await user.save();
+    const user = await createNativeAccount(getNativeDatabase(),userData);
 
     // Clear caches so admin portal and staff dashboards see new client immediately
     clearCacheByTag('users');
@@ -251,7 +221,7 @@ export async function POST(request: NextRequest) {
     const creatorName = session?.user?.name || `${validatedData.firstName} ${validatedData.lastName}`;
     const creatorEmail = session?.user?.email || validatedData.email || `${validatedData.phone}`;
 
-    logActivity({
+    recordNativeLogin(getNativeDatabase(),{
       userId: creatorId,
       userRole: (creatorRole === 'self' ? 'client' : creatorRole) as any,
       userName: creatorName,
@@ -272,10 +242,10 @@ export async function POST(request: NextRequest) {
     }).catch(console.error);
 
     // Return user without password
-    const userResponse = user.toJSON();
+    const userResponse = {...user};
     delete userResponse.password;
 
-    return NextResponse.json(
+    return nativeResponseJson(
       {
         message: 'User registered successfully',
         user: userResponse
@@ -287,7 +257,7 @@ export async function POST(request: NextRequest) {
     console.error('Registration error:', error);
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           error: 'Validation error',
           details: error.issues
@@ -296,14 +266,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (error instanceof Error && error.message.includes('E11000')) {
-      return NextResponse.json(
+    if (error instanceof NativeDuplicateAccountError) {
+      return nativeResponseJson(
         { error: 'User with this email already exists' },
         { status: 400 }
       );
     }
 
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'Internal server error' },
       { status: 500 }
     );

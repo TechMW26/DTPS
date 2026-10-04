@@ -1,117 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth/config";
-import connectDB from "@/lib/db/connection";
-import Message from "@/lib/db/models/Message";
-import GroupMessage from "@/lib/db/models/GroupMessage";
-import { File } from "@/lib/db/models/File";
-import { deleteMultipleFromBlob } from "@/lib/storage/blob-storage";
-import { socketManager } from "@/lib/realtime/socket-manager";
-
-// DELETE /api/messages/[messageId] - Delete a message (for all roles)
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ messageId: string }> },
-) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { messageId } = await params;
-
-    if (!messageId) {
-      return NextResponse.json(
-        { error: "Message ID is required" },
-        { status: 400 },
-      );
-    }
-
-    await connectDB();
-
-    // Find the message and verify ownership
-    const message = await Message.findById(messageId);
-
-    if (!message) {
-      return NextResponse.json({ error: "Message not found" }, { status: 404 });
-    }
-
-    // Only allow sender to delete their own messages
-    if (message.sender.toString() !== session.user.id) {
-      return NextResponse.json(
-        { error: "You can only delete your own messages" },
-        { status: 403 },
-      );
-    }
-
-    const attachmentQueries = (message.attachments || []).map(
-      (attachment: any) => ({
-        $or: [
-          ...(attachment.fileId ? [{ _id: attachment.fileId }] : []),
-          { imageKitUrl: attachment.url },
-          { localPath: attachment.url },
-        ],
-      }),
-    );
-    const fileRecords = attachmentQueries.length
-      ? await File.find({ $or: attachmentQueries })
-      : [];
-    const unreferencedFiles = (
-      await Promise.all(
-        fileRecords.map(async (file) => {
-          const attachmentMatch = {
-            $or: [
-              { "attachments.fileId": file._id },
-              ...(file.imageKitUrl
-                ? [{ "attachments.url": file.imageKitUrl }]
-                : []),
-            ],
-          };
-          const [directReference, groupReference] = await Promise.all([
-            Message.exists({ _id: { $ne: message._id }, ...attachmentMatch }),
-            GroupMessage.exists(attachmentMatch),
-          ]);
-          return directReference || groupReference ? null : file;
-        }),
-      )
-    ).filter(Boolean) as typeof fileRecords;
-
-    const urlsToDelete = unreferencedFiles.map((file: any) => file.imageKitUrl || file.imageKitFileId).filter(Boolean) as string[];
-    await deleteMultipleFromBlob(urlsToDelete);
-    if (unreferencedFiles.length) {
-      await File.deleteMany({
-        _id: { $in: unreferencedFiles.map((file) => file._id) },
-      });
-    }
-
-    // Delete the message
-    await Message.findByIdAndDelete(messageId);
-
-    // Notify the receiver about the deleted message via socket
-    const receiverId = message.receiver.toString();
-    socketManager.sendToUser(receiverId, "message_deleted", {
-      messageId,
-      conversationWith: session.user.id,
-      timestamp: Date.now(),
-    });
-
-    // Also notify the sender (for syncing across devices)
-    socketManager.sendToUser(session.user.id, "message_deleted", {
-      messageId,
-      conversationWith: receiverId,
-      timestamp: Date.now(),
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: "Message deleted successfully",
-    });
-  } catch (error) {
-    console.error("Error deleting message:", error);
-    return NextResponse.json(
-      { error: "Failed to delete message" },
-      { status: 500 },
-    );
-  }
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {NextRequest,NextResponse} from 'next/server';
+import {getServerSession} from 'next-auth';
+import {authOptions} from '@/lib/auth/config';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {deleteNativeClientMessage,NativeMessageError} from '@/lib/db/repository/native-messages';
+import {socketManager} from '@/lib/realtime/socket-manager';
+export async function DELETE(request:NextRequest,{params}:{params:Promise<{messageId:string}>}){
+ const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});
+ try{
+  const {messageId}=await params,result=await deleteNativeClientMessage(getNativeDatabase(),session.user.id,messageId);
+  await socketManager.sendToUsers([session.user.id,result.receiver],'message_deleted',{messageId,deletedBy:session.user.id,timestamp:Date.now()});
+  return nativeResponseJson({success:true,message:'Message deleted successfully'});
+ }catch(e){return nativeResponseJson({error:e instanceof NativeMessageError?e.message:'Message deletion failed'},{status:e instanceof NativeMessageError?e.status:503});}
 }

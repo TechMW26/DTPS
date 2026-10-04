@@ -1,49 +1,28 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import connectDB from '@/lib/db/connection';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { nativeClientReceipt } from '@/lib/db/repository/native-client-payments';
 
 // GET /api/client/payment-receipt - Get payment receipt details
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
 
     const { searchParams } = new URL(request.url);
     const paymentId = searchParams.get('payment_id') || searchParams.get('paymentId');
     const orderId = searchParams.get('order_id');
     const razorpayPaymentId = searchParams.get('razorpay_payment_id');
 
-    let query: any = { client: session.user.id };
-
-    if (paymentId) {
-      query._id = paymentId;
-    } else if (orderId) {
-      query.razorpayOrderId = orderId;
-    } else if (razorpayPaymentId) {
-      query.razorpayPaymentId = razorpayPaymentId;
-    } else {
-      // Get the most recent completed payment
-      query.status = { $in: ['completed', 'paid'] };
-    }
-
-    const payment = await withCache(
-      `client:payment-receipt:${JSON.stringify(query)}`,
-      async () => await UnifiedPayment.findOne(query)
-      .populate('dietitian', 'firstName lastName email')
-      .populate('client', 'firstName lastName email phone')
-      .sort({ createdAt: -1 }),
-      { ttl: 120000, tags: ['client'] }
-    );
+    const payment = await nativeClientReceipt(getNativeDatabase(),session.user.id,{paymentId,orderId,razorpayPaymentId});
 
     if (!payment) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: 'Payment not found' },
         { status: 404 }
       );
@@ -54,7 +33,7 @@ export async function GET(request: NextRequest) {
     const userName = `${client?.firstName || ''} ${client?.lastName || ''}`.trim() || payment.payerName || 'User';
     const userEmail = client?.email || payment.payerEmail || '';
 
-    return NextResponse.json({
+    return nativeResponseJson({
       receipt: {
         paymentId: payment._id.toString(),
         planName: payment.planName || payment.description || 'Service Plan',
@@ -101,7 +80,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Error fetching payment receipt:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'Failed to fetch payment details' },
       { status: 500 }
     );

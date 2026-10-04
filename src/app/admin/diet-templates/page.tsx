@@ -101,7 +101,8 @@ function AdminDietTemplatesPageContent() {
   const fetchAllTemplates = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/diet-templates?limit=10000');
+      const response = await fetch('/api/diet-templates?limit=10000&summary=true');
+      if (!response.ok) throw new Error('Unable to load templates');
       if (response.ok) {
         const data = await response.json();
         const allTemplates = data.templates || [];
@@ -110,13 +111,14 @@ function AdminDietTemplatesPageContent() {
         const grouped: GroupedTemplates = {};
 
         allTemplates.forEach((template: DietTemplate) => {
-          const creatorId = template.createdBy._id;
+          const creator = typeof template.createdBy === 'object' && template.createdBy ? template.createdBy : {_id:'unassigned',firstName:'Unassigned',lastName:'',role:'unknown'};
+          const creatorId = creator._id;
           if (!grouped[creatorId]) {
             grouped[creatorId] = {
               _id: creatorId,
-              firstName: template.createdBy.firstName,
-              lastName: template.createdBy.lastName,
-              role: template.createdBy.role || 'Unknown',
+              firstName: creator.firstName,
+              lastName: creator.lastName,
+              role: creator.role || 'Unknown',
               templateCount: 0,
               personalCount: 0,
               sharedCount: 0,
@@ -449,7 +451,7 @@ function AdminDietTemplatesPageContent() {
                             <div className="flex flex-wrap gap-2 text-xs text-gray-600">
                               <span>📅 {template.duration} days</span>
                               <span>🔥 {template.targetCalories.min}-{template.targetCalories.max} cal</span>
-                              <span>🍽️ {template.totalRecipes} recipes</span>
+                              {typeof template.totalRecipes === 'number' && <span>🍽️ {template.totalRecipes} recipes</span>}
                               {template.dietaryRestrictions.length > 0 && (
                                 <span>🌱 {template.dietaryRestrictions.length} restrictions</span>
                               )}

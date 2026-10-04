@@ -1,8 +1,9 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import EcommercePayment from '@/lib/db/models/EcommercePayment';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeCommerceAdmin,nativeCommerceWrite} from '@/lib/db/repository/native-staff-ecommerce';
 
 const isAdmin = (session: any) => session?.user?.role === 'admin';
 
@@ -10,16 +11,18 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!isAdmin(session)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const baseUrl = process.env.ECOMMERCE_API_BASE;
     const paymentsPath = process.env.ECOMMERCE_API_PAYMENTS_PATH || '/payments';
     if (!baseUrl) {
-      return NextResponse.json({ error: 'ECOMMERCE_API_BASE is not configured' }, { status: 400 });
+      return nativeResponseJson({ error: 'ECOMMERCE_API_BASE is not configured' }, { status: 400 });
     }
 
-    await connectDB();
+    const db=getNativeDatabase();
+    await nativeCommerceAdmin(db,session!.user.id);
+    if(process.env.NODE_ENV!=='production')return nativeResponseJson({error:'Live provider synchronization is disabled during local migration testing'},{status:409});
 
     const response = await fetch(`${baseUrl}${paymentsPath}`, {
       method: 'GET',
@@ -31,7 +34,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      return NextResponse.json({ error: `External API error: ${response.status}` }, { status: 502 });
+      return nativeResponseJson({ error: `External API error: ${response.status}` }, { status: 502 });
     }
 
     const payload = await response.json();
@@ -63,17 +66,13 @@ export async function POST(request: NextRequest) {
         raw: p
       };
 
-      const saved = await EcommercePayment.findOneAndUpdate(
-        { paymentId },
-        { $set: doc },
-        { upsert: true, new: true }
-      );
+      const saved = await nativeCommerceWrite(db,session!.user.id,'payments',doc,'upsert');
       upserted.push(saved);
     }
 
-    return NextResponse.json({ count: upserted.length });
+    return nativeResponseJson({ count: upserted.length });
   } catch (error) {
     console.error('Error syncing ecommerce payments:', error);
-    return NextResponse.json({ error: 'Failed to sync ecommerce payments' }, { status: 500 });
+    return nativeResponseJson({ error: 'Failed to sync ecommerce payments' }, { status: 500 });
   }
 }

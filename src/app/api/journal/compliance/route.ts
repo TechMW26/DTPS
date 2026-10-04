@@ -1,13 +1,14 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {journalHistory} from '@/lib/db/repository/native-journal';
+import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
+import {nativeDates} from '@/lib/db/repository/native-plan-editor';
+import {hydrateNativeDocument} from '@/lib/storage/native-document';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import JournalTracking from '@/lib/db/models/JournalTracking';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
 import { UserRole } from '@/types';
 import { subDays, format, differenceInDays } from 'date-fns';
-import mongoose from 'mongoose';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // Helper to check if user has permission to access client data
 const checkPermission = (session: any, clientId?: string): boolean => {
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -37,13 +38,14 @@ export async function GET(request: NextRequest) {
     const selectedDateParam = searchParams.get('selectedDate');
 
     if (!checkPermission(session, clientId)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      return nativeResponseJson({ error: 'Access denied' }, { status: 403 });
     }
 
-    await connectDB();
+    const db=getNativeDatabase();
+    await taskClientAccess(db,session.user.id,clientId);
 
     // Convert clientId to ObjectId
-    const clientObjectId = new mongoose.Types.ObjectId(clientId);
+    const clientObjectId = clientId;
 
     // Get date range - use selectedDate as end date if provided
     const endDate = selectedDateParam ? new Date(selectedDateParam) : new Date();
@@ -52,34 +54,11 @@ export async function GET(request: NextRequest) {
     startDate.setHours(0, 0, 0, 0);
 
     // Get all journal entries in the date range
-    const journals = await withCache(
-      `journal:compliance:${JSON.stringify({
-      client: clientObjectId,
-      date: { $gte: startDate, $lte: endDate }
-    })}`,
-      async () => await JournalTracking.find({
-      client: clientObjectId,
-      date: { $gte: startDate, $lte: endDate }
-    }).sort({ date: 1 }),
-      { ttl: 120000, tags: ['journal'] }
-    );
+    const journals=await journalHistory(db,clientId,undefined,startDate,endDate);
 
     // Get active meal plans for the date range to check mealCompletions
-    const mealPlans = await withCache(
-      `journal:compliance:${JSON.stringify({
-      clientId: clientObjectId,
-      status: 'active',
-      startDate: { $lte: endDate },
-      endDate: { $gte: startDate }
-    })}`,
-      async () => await ClientMealPlan.find({
-      clientId: clientObjectId,
-      status: 'active',
-      startDate: { $lte: endDate },
-      endDate: { $gte: startDate }
-    }),
-      { ttl: 120000, tags: ['journal'] }
-    );
+    const planRows=await db.collection('clientmealplans').where('clientId','==',clientId).where('status','in',['active','paused','completed']).where('startDate','<=',endDate).where('endDate','>=',startDate).get();
+    const mealPlans=await Promise.all(planRows.docs.filter(row=>!row.get('isDeleted')).map(async row=>nativeDates(await hydrateNativeDocument(row.data()))));
 
     // Build a map of meal completions from ClientMealPlan
     const mealCompletionsMap = new Map<string, any[]>();
@@ -106,7 +85,7 @@ export async function GET(request: NextRequest) {
       const currentDate = subDays(endDate, days - 1 - i);
       currentDate.setHours(0, 0, 0, 0);
       const dateKey = format(currentDate, 'yyyy-MM-dd');
-      
+
       const journal = journals.find(j => {
         const journalDate = new Date(j.date);
         journalDate.setHours(0, 0, 0, 0);
@@ -120,7 +99,7 @@ export async function GET(request: NextRequest) {
 
       // Also check journal meals
       let journalMeals = journal?.meals || [];
-      
+
       // Filter by meal type if specified
       if (mealType !== 'all') {
         journalMeals = journalMeals.filter((m: any) => m.type?.toLowerCase() === mealType.toLowerCase());
@@ -128,11 +107,11 @@ export async function GET(request: NextRequest) {
 
       const consumedFromJournal = journalMeals.filter((m: any) => m.consumed);
       const notConsumedFromJournal = journalMeals.filter((m: any) => !m.consumed);
-      
+
       // Combine completions - prefer plan completions, fallback to journal
       const totalCompleted = completedFromPlan.length > 0 ? completedFromPlan.length : consumedFromJournal.length;
       const totalPending = pendingFromPlan.length > 0 ? pendingFromPlan.length : notConsumedFromJournal.length;
-      
+
       // Calculate expected meals per day (6 by default for full meal plan)
       const expectedMeals = mealType === 'all' ? 6 : 1;
       const recordedMeals = totalCompleted + totalPending;
@@ -171,7 +150,7 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       dailyData,
       complianceSummary,
@@ -184,7 +163,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Error fetching compliance data:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'Failed to fetch compliance data' },
       { status: 500 }
     );

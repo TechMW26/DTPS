@@ -50,6 +50,12 @@ export interface EmailOptions {
 }
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
+  // Native migration testing must never contact real SMTP recipients.
+  if (process.env.NODE_ENV !== 'production') {
+    if (process.env.DTPS_EMAIL_TEST_TRANSPORT !== 'json') return false;
+    await nodemailer.createTransport({ jsonTransport: true }).sendMail(options);
+    return true;
+  }
   try {
     // Check if SMTP credentials are configured
     if (!isSmtpConfigured()) {
@@ -115,7 +121,7 @@ export function getPaymentReminderTemplate(data: {
               ` : ''}
             </td>
           </tr>
-          
+
           <!-- Content -->
           <tr>
             <td style="padding: 32px 24px;">
@@ -134,11 +140,11 @@ export function getPaymentReminderTemplate(data: {
                   </td>
                 </tr>
               </table>
-              
+
               <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0;">
                 This is a friendly reminder that you have a pending payment. Please complete your payment to continue with your nutrition program.
               </p>
-              
+
               <!-- Payment Details Card -->
               <table role="presentation" style="width: 100%; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 24px;">
                 <tr>
@@ -151,7 +157,7 @@ export function getPaymentReminderTemplate(data: {
                         </td>
                       </tr>
                     </table>
-                    
+
                     <table role="presentation" style="width: 100%; margin-top: 16px;">
                       ${data.planName ? `
                       <tr>
@@ -159,27 +165,27 @@ export function getPaymentReminderTemplate(data: {
                         <td style="color: #1f2937; font-size: 14px; font-weight: 500; text-align: right; padding: 8px 0; border-bottom: 1px solid #f3f4f6;">${data.planName}</td>
                       </tr>
                       ` : ''}
-                      
+
                       ${data.duration ? `
                       <tr>
                         <td style="color: #6b7280; font-size: 14px; padding: 8px 0; border-bottom: 1px solid #f3f4f6;">Duration</td>
                         <td style="color: #1f2937; font-size: 14px; font-weight: 500; text-align: right; padding: 8px 0; border-bottom: 1px solid #f3f4f6;">${data.duration}</td>
                       </tr>
                       ` : ''}
-                      
+
                       <tr>
                         <td style="color: #6b7280; font-size: 14px; padding: 8px 0; border-bottom: 1px dashed #e5e7eb;">Amount</td>
                         <td style="color: #1f2937; font-size: 14px; font-weight: 500; text-align: right; padding: 8px 0; border-bottom: 1px dashed #e5e7eb;">₹${data.finalAmount.toLocaleString('en-IN')}</td>
                       </tr>
                     </table>
-                    
+
                     <table role="presentation" style="width: 100%; margin-top: 12px;">
                       <tr>
                         <td style="color: #1f2937; font-size: 16px; font-weight: 700; padding: 8px 0;">Total Amount</td>
                         <td style="color: #3AB1A0; font-size: 22px; font-weight: 700; text-align: right; padding: 8px 0;">₹${data.finalAmount.toLocaleString('en-IN')}</td>
                       </tr>
                     </table>
-                    
+
                     ${data.expireDate ? `
                     <table role="presentation" style="width: 100%; margin-top: 16px;">
                       <tr>
@@ -194,7 +200,7 @@ export function getPaymentReminderTemplate(data: {
                   </td>
                 </tr>
               </table>
-              
+
               <!-- CTA Button -->
               <table role="presentation" style="width: 100%;">
                 <tr>
@@ -205,13 +211,13 @@ export function getPaymentReminderTemplate(data: {
                   </td>
                 </tr>
               </table>
-              
+
               <p style="color: #9ca3af; font-size: 12px; line-height: 1.6; margin: 0; text-align: center;">
                 Secure payment powered by DTPS
               </p>
             </td>
           </tr>
-          
+
           <!-- Footer with gradient line -->
           <tr>
             <td style="padding: 0;">
@@ -291,7 +297,7 @@ export function getInvoiceEmailTemplate(data: {
               <p style="color: rgba(255, 255, 255, 0.9); margin: 8px 0 0 0; font-size: 14px;">#${data.invoiceNumber}</p>
             </td>
           </tr>
-          
+
           <!-- Invoice Info -->
           <tr>
             <td style="padding: 30px;">
@@ -314,7 +320,7 @@ export function getInvoiceEmailTemplate(data: {
                   </td>
                 </tr>
               </table>
-              
+
               <!-- Services Table -->
               <table role="presentation" style="width: 100%; margin-top: 30px; border-collapse: collapse;">
                 <tr style="background-color: #f8fafc;">
@@ -332,7 +338,7 @@ export function getInvoiceEmailTemplate(data: {
                     ₹${data.amount.toLocaleString('en-IN')}
                   </td>
                 </tr>
-                
+
                 ${data.tax > 0 ? `
                 <tr>
                   <td style="padding: 10px 12px; text-align: right; font-size: 14px; color: #666666;">Tax (${data.tax}%)</td>
@@ -341,7 +347,7 @@ export function getInvoiceEmailTemplate(data: {
                   </td>
                 </tr>
                 ` : ''}
-                
+
                 ${data.discount > 0 ? `
                 <tr>
                   <td style="padding: 10px 12px; text-align: right; font-size: 14px; color: #10b981;">Discount (${data.discount}%)</td>
@@ -350,7 +356,7 @@ export function getInvoiceEmailTemplate(data: {
                   </td>
                 </tr>
                 ` : ''}
-                
+
                 <tr style="background-color: #f0fdf4;">
                   <td style="padding: 16px 12px; text-align: right; font-size: 16px; color: #333333; font-weight: 700;">Total Paid</td>
                   <td style="padding: 16px 12px; text-align: right; font-size: 20px; color: #10b981; font-weight: 700;">
@@ -358,7 +364,7 @@ export function getInvoiceEmailTemplate(data: {
                   </td>
                 </tr>
               </table>
-              
+
               <!-- Payment Status -->
               <table role="presentation" style="width: 100%; margin-top: 30px;">
                 <tr>
@@ -382,7 +388,7 @@ export function getInvoiceEmailTemplate(data: {
               </table>
             </td>
           </tr>
-          
+
           <!-- Footer -->
           <tr>
             <td style="background-color: #f8fafc; padding: 25px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
@@ -475,18 +481,18 @@ export function getPasswordResetTemplate(data: {
               <p style="color: rgba(255, 255, 255, 0.9); margin: 8px 0 0 0; font-size: 14px;">DTPS - Dietitian Practice System</p>
             </td>
           </tr>
-          
+
           <!-- Content -->
           <tr>
             <td style="padding: 32px 24px;">
               <p style="color: #1f2937; font-size: 16px; margin: 0 0 16px 0;">
                 Hello <strong>${data.userName}</strong>,
               </p>
-              
+
               <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0;">
                 We received a request to reset your password. Click the button below to create a new password.
               </p>
-              
+
               <!-- Reset Button -->
               <table role="presentation" style="width: 100%; margin-bottom: 24px;">
                 <tr>
@@ -497,7 +503,7 @@ export function getPasswordResetTemplate(data: {
                   </td>
                 </tr>
               </table>
-              
+
               <!-- Expiry Warning -->
               <table role="presentation" style="width: 100%; background-color: #fef3cd; border-radius: 12px; margin-bottom: 24px;">
                 <tr>
@@ -508,7 +514,7 @@ export function getPasswordResetTemplate(data: {
                   </td>
                 </tr>
               </table>
-              
+
               <!-- Alternative Link -->
               <p style="color: #6b7280; font-size: 13px; line-height: 1.6; margin: 0 0 16px 0;">
                 If the button doesn't work, copy and paste this link into your browser:
@@ -516,7 +522,7 @@ export function getPasswordResetTemplate(data: {
               <p style="color: #3AB1A0; font-size: 12px; word-break: break-all; margin: 0 0 24px 0; background-color: #f3f4f6; padding: 12px; border-radius: 8px;">
                 ${data.resetLink}
               </p>
-              
+
               <!-- Security Notice -->
               <table role="presentation" style="width: 100%; background-color: #fee2e2; border-radius: 12px;">
                 <tr>
@@ -529,7 +535,7 @@ export function getPasswordResetTemplate(data: {
               </table>
             </td>
           </tr>
-          
+
           <!-- Footer -->
           <tr>
             <td style="background-color: #f9fafb; padding: 24px; text-align: center; border-radius: 0 0 16px 16px;">

@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
-import Recipe from '../src/lib/db/models/Recipe';
+import {getNativeDatabase} from '../src/lib/db/firestore-native';
+import {hydrateNativeDocument,prepareNativePatch} from '../src/lib/storage/native-document';
+import {nativeDates} from '../src/lib/db/repository/native-plan-editor';
+import {nativeCommerceAdmin} from '../src/lib/db/repository/native-staff-ecommerce';
 import {
   getRecipePublicationIssues,
   getStrictRecipeFingerprint,
@@ -9,18 +11,14 @@ import {
 dotenv.config({ path: '.env', quiet: true });
 dotenv.config({ path: '.env.local', override: true, quiet: true });
 
-function requireMongoUri(): string {
-  const value = process.env.MONGODB_URI;
-  if (!value) throw new Error('MONGODB_URI is not configured');
-  return value;
-}
+const db=getNativeDatabase();
+async function loadRecipes(){const rows:Record<string,any>[]=[];let cursor:FirebaseFirestore.QueryDocumentSnapshot|undefined;while(true){let q=db.collection('recipes').orderBy('__name__').limit(100).select('name','uuid','ingredients','instructions','servings','servingSize','isActive','isPublic','mergedInto','image','images','videoUrl','usageCount','favoriteCount','createdAt','tags','_nativeExternalFields');if(cursor)q=q.startAfter(cursor);const snap=await q.get();if(snap.empty)break;for(const row of snap.docs)rows.push({_id:row.id,...nativeDates(await hydrateNativeDocument(row.data()))});cursor=snap.docs[snap.docs.length-1];}return rows;}
 
-const uri = requireMongoUri();
 
 async function main() {
-  await mongoose.connect(uri);
 
-  const recipes = await Recipe.find({}).lean();
+
+  const recipes = await loadRecipes();
   const saladRecipes = recipes.filter((recipe) => /^salad$/i.test(String(recipe.name || '').trim()));
   const blankRecipes = recipes.filter((recipe) => getRecipePublicationIssues(recipe).length > 0);
 
@@ -32,11 +30,7 @@ async function main() {
     fingerprintGroups.set(fingerprint, group);
   });
   const strictDuplicateGroups = [...fingerprintGroups.values()].filter((group) => group.length > 1);
-  const saladSearchResults = await Recipe.find({ $text: { $search: 'Salad' } })
-    .sort({ name: 1 })
-    .limit(25)
-    .select({ name: 1, ingredients: 1, instructions: 1 })
-    .lean();
+  const saladSearchResults = recipes.filter(r=>String(r.name||'').toLowerCase().includes('salad')).sort((a,b)=>String(a.name).localeCompare(String(b.name))).slice(0,25);
 
   console.log(JSON.stringify({
     totals: {
@@ -91,5 +85,5 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
-    await mongoose.disconnect();
+    await db.terminate();
   });

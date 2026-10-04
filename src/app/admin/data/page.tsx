@@ -1,8 +1,10 @@
 'use client';
 
+import {MigrationCorrectionNotice} from '@/components/ui/migration-correction-notice';
+
 /**
  * Data Management Dashboard - Admin Panel
- * 
+ *
  * Comprehensive data management with Import, Export, and Update sections
  * URL: /admin/data
  */
@@ -364,7 +366,7 @@ export default function DataManagementPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/data/export');
-      const data = await res.json();
+      const data: any = await res.json();
       if (data.success) {
         setModels(data.models);
       } else {
@@ -437,7 +439,7 @@ export default function DataManagementPage() {
         try {
           const res = await fetch(`/api/admin/data/export?model=${model.name}&format=json&download=true`);
           if (res.ok) {
-            const data = await res.json();
+            const data: any = await res.json();
             allData[model.name] = data;
             successCount++;
           } else {
@@ -479,25 +481,15 @@ export default function DataManagementPage() {
   const handleSyncPaymentStatus = async () => {
     setSyncing(true);
     try {
-      const res = await fetch('/api/admin/payments/sync-status', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        toast.success(`Synced ${data.result.updated} payment statuses to ClientPurchase records`);
-        if (data.result.failed > 0) {
-          toast.warning(`${data.result.failed} payments failed to sync`);
-        }
-        // Refresh models count if Payment model is visible
-        if (selectedExportModel === 'Payment') {
-          fetchModels();
-        }
-      } else {
-        toast.error(data.error || 'Sync failed');
-      }
+      let cursor: string | null = null, updated = 0;
+      do {
+        const res: Response = await fetch('/api/admin/payments/sync-status' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), {method: 'PUT'});
+        const data: any = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Sync failed');
+        updated += data.result.updated; cursor = data.result.nextCursor;
+      } while (cursor);
+      toast.success(`Normalized ${updated} payment statuses`);
+      if (selectedExportModel === 'Payment') fetchModels();
     } catch (error: any) {
       toast.error('Error syncing payment status');
     } finally {
@@ -539,7 +531,7 @@ export default function DataManagementPage() {
       const res = await fetch(`/api/admin/data/records?${params.toString()}`, {
         signal: searchAbortRef.current.signal
       });
-      const data = await res.json();
+      const data: any = await res.json();
 
       if (data.success) {
         setSearchResults(data.records);
@@ -594,7 +586,7 @@ export default function DataManagementPage() {
       const res = await fetch(`/api/admin/data/records?model=${modelName}&id=${recordId}`, {
         signal: detailsAbortRef.current.signal
       });
-      const data = await res.json();
+      const data: any = await res.json();
 
       if (data.success) {
         setSelectedRecord(data.record);
@@ -629,7 +621,7 @@ export default function DataManagementPage() {
         })
       });
 
-      const data = await res.json();
+      const data: any = await res.json();
 
       if (data.success) {
         toast.success('Record updated successfully!');
@@ -1017,7 +1009,7 @@ export default function DataManagementPage() {
         })
       });
 
-      const data = await res.json();
+      const data: any = await res.json();
 
       if (data.success) {
         const updatedCount = Number(data.updated ?? data.summary?.updated ?? 0);
@@ -1563,7 +1555,7 @@ export default function DataManagementPage() {
                       ? `${(selectedRecord as any).firstName} ${(selectedRecord as any).lastName || ''}`
                       : (selectedRecord as any).planName || (selectedRecord as any).name || (selectedRecord as any).email || selectedRecord._id}
                   </h2>
-                  <p className="text-sm text-gray-500">{selectedUpdateModel} • ID: {selectedRecord._id}</p>
+                  <MigrationCorrectionNotice issues={(selectedRecord as any)._nativeMigrationIssues} /><p className="text-sm text-gray-500">{selectedUpdateModel} • ID: {selectedRecord._id}</p>
                   {(selectedRecord as any).planName && !(selectedRecord as any).firstName && (
                     <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Plan: {(selectedRecord as any).planName}</p>
                   )}
@@ -2303,7 +2295,7 @@ export default function DataManagementPage() {
             {/* Help tip */}
             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                💡 <strong>Tip:</strong> For bulk updates, your file must include an <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">_id</code> column containing the MongoDB ObjectId of each record you want to update.
+                💡 <strong>Tip:</strong> For bulk updates, your file must include an <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">_id</code> column containing the record ID of each record you want to update.
               </p>
             </div>
           </div>

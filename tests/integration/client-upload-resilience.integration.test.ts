@@ -3,6 +3,9 @@ import { NextRequest } from "next/server";
 const handleUploadMock = jest.fn();
 const getTokenMock = jest.fn();
 const directUploadMock = jest.fn();
+const reserveUploadMock=jest.fn().mockResolvedValue(undefined);
+jest.mock("@/lib/db/firestore-native",()=>({getNativeDatabase:()=>({synthetic:true})}));
+jest.mock("@/lib/db/repository/native-files",()=>({reserveNativeUpload:(...args:unknown[])=>reserveUploadMock(...args),saveNativeUpload:jest.fn(),nativeUploadId:jest.fn()}));
 
 jest.mock("@vercel/blob/client", () => ({
   handleUpload: (...args: unknown[]) => handleUploadMock(...args),
@@ -18,7 +21,7 @@ describe("client Blob upload resilience", () => {
     jest.clearAllMocks();
   });
 
-  it("issues a direct-upload token from the signed JWT without using MongoDB", async () => {
+  it("binds a direct-upload token to the signed JWT and durable reservation", async () => {
     getTokenMock.mockResolvedValue({ sub: "507f1f77bcf86cd799439011" });
     handleUploadMock.mockImplementation(async ({ onBeforeGenerateToken }) => {
       const tokenOptions = await onBeforeGenerateToken(
@@ -42,6 +45,7 @@ describe("client Blob upload resilience", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(reserveUploadMock).toHaveBeenCalledWith({synthetic:true},"messages/voice.webm","507f1f77bcf86cd799439011",expect.any(String));
     expect(JSON.parse(body.tokenOptions.tokenPayload)).toMatchObject({
       userId: "507f1f77bcf86cd799439011",
       uploadType: "message",

@@ -1,0 +1,11 @@
+import {NextRequest} from 'next/server';
+const mockSession=jest.fn(),mockFile=jest.fn(),mockMedia=jest.fn(),mockResponse=jest.fn();
+jest.mock('next-auth',()=>({getServerSession:()=>mockSession()}));jest.mock('@/lib/auth',()=>({authOptions:{}}));jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:()=>({})}));
+jest.mock('@/lib/db/repository/native-media',()=>({lookupNativeFile:(...args:any[])=>mockFile(...args),lookupNativeMedia:(...args:any[])=>mockMedia(...args),nativeMediaHash:()=> 'a'.repeat(64)}));jest.mock('@/lib/api/native-media-response',()=>({nativeMediaResponse:(...args:any[])=>mockResponse(...args)}));
+import {handleMediaResolve} from '@/lib/media-response';
+describe('native media resolver',()=>{
+ beforeEach(()=>{jest.clearAllMocks();mockSession.mockResolvedValue({user:{id:'b'.repeat(24),role:'client'}});mockFile.mockResolvedValue(null);mockMedia.mockResolvedValue(null);mockResponse.mockResolvedValue(new Response('bytes'));});
+ it('resolves canonical IDs through current ownership checks',async()=>{mockFile.mockResolvedValue({blob:{},originalName:'meal.jpg'});const result=await handleMediaResolve(new NextRequest('http://localhost:3087/api/media/resolve?url=/api/files/'+ 'c'.repeat(24)));expect(result.status).toBe(200);expect(mockFile).toHaveBeenCalledWith({},'c'.repeat(24),{id:'b'.repeat(24),role:'client'});});
+ it('never guesses file ownership from a reused filename or fetches arbitrary network sources',async()=>{expect((await handleMediaResolve(new NextRequest('http://localhost:3087/api/media/resolve?url=/uploads/private.jpg'))).status).toBe(404);expect(mockFile).not.toHaveBeenCalled();expect((await handleMediaResolve(new NextRequest('http://localhost:3087/api/media/resolve?url=http://169.254.169.254/metadata'))).status).toBe(404);expect(mockResponse).not.toHaveBeenCalled();});
+ it('metadata returns authenticated app path rather than a private Blob URL',async()=>{mockMedia.mockResolvedValue({blob:{url:'private'},originalName:'report.pdf'});const response=await handleMediaResolve(new NextRequest('http://localhost:3087/api/media/resolve?metadata=1&url=https://ik.imagekit.io/example/report.pdf'));expect(await response.json()).toEqual({url:'/api/media/'+ 'a'.repeat(64),filename:'report.pdf',kind:'remote'});});
+});

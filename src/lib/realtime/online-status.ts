@@ -8,6 +8,7 @@ export class OnlineStatusManager {
     this.cleanupInterval = setInterval(() => {
       this.cleanupInactiveUsers();
     }, 5 * 60 * 1000);
+    this.cleanupInterval.unref?.();
   }
 
   static getInstance(): OnlineStatusManager {

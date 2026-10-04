@@ -1,10 +1,11 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/config";
 import { serverCache } from "@/lib/cache/memoryCache";
-import connectDB from "@/lib/db/connection";
-import SystemRefreshState from "@/lib/db/models/SystemRefreshState";
+import {getNativeDatabase} from "@/lib/db/firestore-native";
+import {nativeDates} from "@/lib/db/repository/native-plan-editor";
 import { SOCKET_EVENTS } from "@/lib/realtime/socket-events";
 import { socketManager } from "@/lib/realtime/socket-manager";
 import { logActivity } from "@/lib/utils/activityLogger";
@@ -15,7 +16,7 @@ const REFRESH_DELAY_MS = 1_500;
 const MIN_REQUEST_INTERVAL_MS = 15_000;
 
 function noStoreJson(body: unknown, status = 200) {
-  return NextResponse.json(body, {
+  return nativeResponseJson(body, {
     status,
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -30,10 +31,9 @@ export async function GET() {
     return noStoreJson({ error: "Unauthorized" }, 401);
   }
 
-  await connectDB();
-  const state = await SystemRefreshState.findOne({ key: GLOBAL_REFRESH_KEY })
-    .select("revision requestedAt notBefore reason")
-    .lean();
+  const rows=await getNativeDatabase().collection('systemrefreshstates').where('key','==',GLOBAL_REFRESH_KEY).limit(2).get();
+  if(rows.size>1)return noStoreJson({error:'Ambiguous refresh state'},503);
+  const state=rows.empty?null:nativeDates(rows.docs[0].data());
 
   return noStoreJson({
     revision: state?.revision || 0,
@@ -52,27 +52,7 @@ export async function POST(request: NextRequest) {
     return noStoreJson({ error: "Admin access required" }, 403);
   }
 
-  await connectDB();
-
-  const previousState = await SystemRefreshState.findOne({
-    key: GLOBAL_REFRESH_KEY,
-  })
-    .select("requestedAt")
-    .lean();
-  const now = new Date();
-  if (
-    previousState?.requestedAt &&
-    now.getTime() - previousState.requestedAt.getTime() <
-      MIN_REQUEST_INTERVAL_MS
-  ) {
-    return noStoreJson(
-      {
-        error: "A system refresh was requested moments ago. Please wait before trying again.",
-      },
-      429,
-    );
-  }
-
+  const db=getNativeDatabase(),now=new Date();
   const body = await request.json().catch(() => ({}));
   const reason =
     typeof body?.reason === "string" && body.reason.trim()
@@ -80,20 +60,18 @@ export async function POST(request: NextRequest) {
       : "Administrator requested a fresh application state";
   const notBefore = new Date(now.getTime() + REFRESH_DELAY_MS);
 
-  const state = await SystemRefreshState.findOneAndUpdate(
-    { key: GLOBAL_REFRESH_KEY },
-    {
-      $inc: { revision: 1 },
-      $set: {
-        requestedAt: now,
-        notBefore,
-        requestedBy: session.user.id,
-        reason,
-      },
-      $setOnInsert: { key: GLOBAL_REFRESH_KEY },
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
-  ).lean();
+  const state=await db.runTransaction(async tx=>{
+    const admin=await tx.get(db.collection('users').doc(session.user.id));
+    if(admin.get('role')!=='admin'||admin.get('status')==='inactive')return null;
+    const rows=await tx.get(db.collection('systemrefreshstates').where('key','==',GLOBAL_REFRESH_KEY).limit(2));
+    if(rows.size>1)throw new Error('Ambiguous refresh state');
+    const previous=rows.empty?null:nativeDates(rows.docs[0].data());
+    if(previous?.requestedAt&&now.getTime()-previous.requestedAt.getTime()<MIN_REQUEST_INTERVAL_MS)return null;
+    const ref=rows.empty?db.collection('systemrefreshstates').doc('native-global'):rows.docs[0].ref;
+    const value={key:GLOBAL_REFRESH_KEY,revision:Number(previous?.revision||0)+1,requestedAt:now,notBefore,requestedBy:session.user.id,reason};
+    tx.set(ref,value,{merge:true});return value;
+  });
+  if(!state)return noStoreJson({error:'Refresh unavailable or requested moments ago'},429);
 
   const payload = {
     revision: state.revision,
@@ -107,8 +85,9 @@ export async function POST(request: NextRequest) {
   // they receive the revision below.
   serverCache.clear();
   revalidatePath("/", "layout");
-  const connectedUsers = socketManager.getOnlineUsers().length;
-  socketManager.broadcast(SOCKET_EVENTS.SYSTEM_REFRESH, payload);
+  const online=await db.collection('_nativePresence').where('expiresAt','>',new Date()).count().get();
+  const connectedUsers=online.data().count;
+  await socketManager.broadcast(SOCKET_EVENTS.SYSTEM_REFRESH, payload);
 
   await logActivity({
     userId: session.user.id,

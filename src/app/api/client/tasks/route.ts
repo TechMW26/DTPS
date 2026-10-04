@@ -1,50 +1,33 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { nativeTaskJournal, completeNativeTask } from '@/lib/db/repository/native-client-tasks';
+import {nativeHabitDay} from '@/lib/db/repository/native-habits';
 import { taskDateError } from '@/lib/task-schedule';
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import dbConnect from "@/lib/db/connection";
-import JournalTracking from "@/lib/db/models/JournalTracking";
-import User from "@/lib/db/models/User";
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
 
 // GET - Get all assigned tasks for a date
 export async function GET(request: Request) {
     try {
-        // Run auth + DB connection in PARALLEL
-        const [session] = await Promise.all([
-            getServerSession(authOptions),
-            dbConnect()
-        ]);
+        const session = await getServerSession(authOptions);
 
         if (!session?.user?.id) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+            return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
         }
+
+        if (session.user.role !== 'client') return nativeResponseJson({error:'Forbidden'},{status:403});
 
         // Get date from query params
         const { searchParams } = new URL(request.url);
         const dateParam = searchParams.get('date');
 
         // Get date range
-        const targetDate = dateParam ? new Date(dateParam) : new Date();
-        targetDate.setHours(0, 0, 0, 0);
-        const nextDay = new Date(targetDate);
-        nextDay.setDate(nextDay.getDate() + 1);
+        let day;try{day=nativeHabitDay(dateParam);}catch{return nativeResponseJson({error:'Invalid date'},{status:400});}
+        const targetDate=day.start,nextDay=day.end;
 
         // Get today's journal
-        const journal = await withCache(
-      `client:tasks:${JSON.stringify({
-            client: session.user.id,
-            date: { $gte: targetDate, $lt: nextDay }
-        })}`,
-      async () => await JournalTracking.findOne({
-            client: session.user.id,
-            date: { $gte: targetDate, $lt: nextDay }
-        }),
-      { ttl: 60000, tags: ['client'] }
-    );
-
-        if (journal) {
-        }
+        const journal = await nativeTaskJournal(getNativeDatabase(),session.user.id,targetDate,nextDay);
 
         // Calculate current steps
         const currentSteps = journal?.steps?.reduce((sum: number, entry: any) => sum + entry.steps, 0) || 0;
@@ -85,9 +68,9 @@ export async function GET(request: Request) {
         })) || [];
 
         // Generate data hash for change detection (based on updatedAt)
-        const dataHash = journal?.updatedAt?.toISOString() || 'no-data';
+        const dataHash = journal?.updatedAt || 'no-data';
 
-        return NextResponse.json({
+        return nativeResponseJson({
             // Assigned Water
             water: journal?.assignedWater?.amount ? {
                 amount: journal.assignedWater.amount,
@@ -107,7 +90,7 @@ export async function GET(request: Request) {
             } : null,
 
             // Assigned Sleep
-            sleep: journal?.assignedSleep?.targetHours ? {
+            sleep: (journal?.assignedSleep?.targetHours || journal?.assignedSleep?.targetMinutes) ? {
                 targetHours: journal.assignedSleep.targetHours,
                 targetMinutes: journal.assignedSleep.targetMinutes || 0,
                 currentHours: currentSleepHours,
@@ -136,161 +119,26 @@ export async function GET(request: Request) {
         });
     } catch (error) {
         console.error("Error fetching tasks:", error);
-        return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
+        return nativeResponseJson({ error: "Failed to fetch tasks" }, { status: 500 });
     }
 }
 
-// PATCH - Complete a task
+// PATCH - Complete a task, using an atomic update for concurrent activity check-offs.
 export async function PATCH(request: Request) {
     try {
         const session = await getServerSession(authOptions);
-
-        if (!session?.user?.id) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        await dbConnect();
-        const data = await request.json();
-        const { taskType, taskIndex, date: dateParam, action } = data;
-
-        if (action !== 'complete') {
-            return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-        }
-
-        // Get date range
-        const dateError = taskDateError(dateParam);
-        if (dateError) return NextResponse.json({ error: dateError }, { status: 400 });
-        const targetDate = dateParam ? new Date(dateParam) : new Date();
-        targetDate.setHours(0, 0, 0, 0);
-        const nextDay = new Date(targetDate);
-        nextDay.setDate(nextDay.getDate() + 1);
-
-        let result;
-
-        switch (taskType) {
-            case 'water':
-                // Mark assigned water as completed
-                result = await JournalTracking.findOneAndUpdate(
-                    {
-                        client: session.user.id,
-                        date: { $gte: targetDate, $lt: nextDay },
-                        'assignedWater.amount': { $gt: 0 }
-                    },
-                    {
-                        $set: {
-                            'assignedWater.isCompleted': true,
-                            'assignedWater.completedAt': new Date()
-                        }
-                    },
-                    { new: true }
-                );
-
-                if (!result) {
-                    return NextResponse.json({ error: "No assigned water found" }, { status: 404 });
-                }
-                break;
-
-            case 'steps':
-                // Mark assigned steps as completed
-                result = await JournalTracking.findOneAndUpdate(
-                    {
-                        client: session.user.id,
-                        date: { $gte: targetDate, $lt: nextDay },
-                        'assignedSteps.target': { $gt: 0 }
-                    },
-                    {
-                        $set: {
-                            'assignedSteps.isCompleted': true,
-                            'assignedSteps.completedAt': new Date()
-                        }
-                    },
-                    { new: true }
-                );
-
-                if (!result) {
-                    return NextResponse.json({ error: "No assigned steps found" }, { status: 404 });
-                }
-                break;
-
-            case 'sleep':
-                // Mark assigned sleep as completed
-                result = await JournalTracking.findOneAndUpdate(
-                    {
-                        client: session.user.id,
-                        date: { $gte: targetDate, $lt: nextDay },
-                        'assignedSleep.targetHours': { $gt: 0 }
-                    },
-                    {
-                        $set: {
-                            'assignedSleep.isCompleted': true,
-                            'assignedSleep.completedAt': new Date()
-                        }
-                    },
-                    { new: true }
-                );
-
-                if (!result) {
-                    return NextResponse.json({ error: "No assigned sleep found" }, { status: 404 });
-                }
-                break;
-
-            case 'activity':
-                // Mark specific activity in assignedActivities as completed
-                // taskId is in format "activity-{index}"
-                const { taskId } = data;
-                let activityIndex = taskIndex;
-
-                // Extract index from taskId if provided
-                if (taskId && typeof taskId === 'string' && taskId.startsWith('activity-')) {
-                    activityIndex = parseInt(taskId.replace('activity-', ''));
-                }
-
-                if (activityIndex === undefined || activityIndex === null || isNaN(activityIndex)) {
-                    return NextResponse.json({ error: "Activity index required" }, { status: 400 });
-                }
-
-                // First get the journal to update the specific activity
-                const journal = await withCache(
-      `client:tasks:${JSON.stringify({
-                    client: session.user.id,
-                    date: { $gte: targetDate, $lt: nextDay }
-                })}`,
-      async () => await JournalTracking.findOne({
-                    client: session.user.id,
-                    date: { $gte: targetDate, $lt: nextDay }
-                }),
-      { ttl: 60000, tags: ['client'] }
-    );
-
-                if (!journal || !journal.assignedActivities?.activities?.[activityIndex]) {
-                    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
-                }
-
-                // Mark the specific activity as completed
-                journal.assignedActivities.activities[activityIndex].completed = true;
-                journal.assignedActivities.activities[activityIndex].completedAt = new Date();
-
-                // Check if all activities are completed
-                const allCompleted = journal.assignedActivities.activities.every((a: any) => a.completed);
-                if (allCompleted) {
-                    journal.assignedActivities.isCompleted = true;
-                    journal.assignedActivities.completedAt = new Date();
-                }
-
-                await journal.save();
-                result = journal;
-                break;
-
-            default:
-                return NextResponse.json({ error: "Invalid task type" }, { status: 400 });
-        }
-
-        return NextResponse.json({
-            success: true,
-            message: `${taskType} task marked as complete`
-        });
-    } catch (error) {
-        console.error("Error completing task:", error);
-        return NextResponse.json({ error: "Failed to complete task" }, { status: 500 });
-    }
+        if (!session?.user?.id) return nativeResponseJson({error:'Unauthorized'},{status:401});
+        if (session.user.role !== 'client') return nativeResponseJson({error:'Forbidden'},{status:403});
+        let data;try {data=await request.json();}catch{return nativeResponseJson({error:'Invalid request'},{status:400});}
+        if (!data || data.action !== 'complete') return nativeResponseJson({error:'Invalid action'},{status:400});
+        if (data.date !== undefined && typeof data.date !== 'string') return nativeResponseJson({error:'Invalid date'},{status:400});
+        const dateError=taskDateError(data.date);
+        if(dateError)return nativeResponseJson({error:dateError},{status:400});
+        if(!['water','steps','sleep','activity'].includes(data.taskType))return nativeResponseJson({error:'Invalid task type'},{status:400});
+        const index=typeof data.taskId==='string' && /^activity-\d+$/.test(data.taskId)?Number(data.taskId.slice(9)):data.taskIndex;
+        if(data.taskType==='activity'&&(!Number.isSafeInteger(index)||index<0))return nativeResponseJson({error:'Activity index required'},{status:400});
+        const completed=await completeNativeTask(getNativeDatabase(),session.user.id,data.date,data.taskType,index);
+        if(!completed)return nativeResponseJson({error:'Assigned task not found'},{status:404});
+        return nativeResponseJson({success:true,message:`${data.taskType} task marked as complete`});
+    }catch{return nativeResponseJson({error:'Failed to complete task'},{status:500});}
 }

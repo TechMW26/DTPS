@@ -1,5 +1,7 @@
 "use client";
 
+import { PlanDateCorrection } from "./PlanDateCorrection";
+import { planNeedsDateCorrection, validPlanDate } from "@/lib/meal-plan-date-validity";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -253,22 +255,10 @@ const hasMealContent = (meals: any[] | null | undefined): boolean => {
   });
 };
 
-// Fix malformed year values like "20206-03-30" -> "2026-03-30"
+// Never infer a replacement year from damaged imported data.
 const normalizeDateString = (value?: string): string | undefined => {
-  if (!value || typeof value !== "string") return value;
-
-  const match = value.match(/^(\d{5})(-.+)$/);
-  if (!match) return toISTDateKey(value) || value;
-
-  const [, year, rest] = match;
-
-  // Common bad format observed in data: extra 0 in year (e.g., 20206)
-  if (year.startsWith("20") && year[3] === "0") {
-    const repaired = `${year.slice(0, 3)}${year.slice(4)}${rest}`;
-    return toISTDateKey(repaired) || repaired;
-  }
-
-  return value;
+  if (!value || !validPlanDate(value)) return undefined;
+  return toISTDateKey(value) || value;
 };
 
 const normalizePlanDates = (plan: any) => ({
@@ -360,6 +350,7 @@ export default function PlanningSection({
   const [saving, setSaving] = useState(false);
   const [clientPlans, setClientPlans] = useState<any[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
+  const [plansError, setPlansError] = useState<string | null>(null);
   const plansRequestRef = useRef(0);
 
   // Edit mode states
@@ -1003,7 +994,8 @@ export default function PlanningSection({
   // Helper to parse a date string (YYYY-MM-DD) to a Date object
   // Handles timezone correctly by creating a local date (not UTC)
   const parseLocalDate = (dateStr: string): Date => {
-    const [year, month, day] = dateStr.split("-").map(Number);
+    if (!dateStr || !validPlanDate(dateStr)) return new Date(NaN);
+    const [year, month, day] = dateStr.slice(0, 10).split("-").map(Number);
     return new Date(year, month - 1, day, 0, 0, 0, 0); // Create local date at midnight
   };
 
@@ -1089,6 +1081,7 @@ export default function PlanningSection({
     const requestId = ++plansRequestRef.current;
     try {
       if (!silent) setLoadingPlans(true);
+      setPlansError(null);
       // PERMANENT FIX: Always fetch with status=all and a generous limit so
       // older/important plans cannot be hidden by default pagination/filter windows.
       const res = await fetch(
@@ -1096,11 +1089,11 @@ export default function PlanningSection({
         { cache: "no-store" },
       );
       if (!res.ok) {
-        console.error("Failed to fetch client plans with status:", res.status);
-        return;
+        throw new Error(`Unable to load diet plans (${res.status}). Please try again.`);
       }
       const data = await res.json();
-      if (data.success && requestId === plansRequestRef.current) {
+      if (!data.success || !Array.isArray(data.mealPlans)) throw new Error("Unable to load diet plans. Please try again.");
+      if (requestId === plansRequestRef.current) {
         setClientPlans(
           Array.isArray(data.mealPlans)
             ? data.mealPlans.map((plan: any) => normalizePlanDates(plan))
@@ -1109,6 +1102,7 @@ export default function PlanningSection({
       }
     } catch (error) {
       console.error("Error fetching client plans:", error);
+      if (requestId === plansRequestRef.current) setPlansError(error instanceof Error ? error.message : "Unable to load diet plans. Please try again.");
     } finally {
       if (requestId === plansRequestRef.current) setLoadingPlans(false);
     }
@@ -2147,6 +2141,7 @@ export default function PlanningSection({
 
   // View plan details
   const handleViewPlan = (plan: any) => {
+    if (planNeedsDateCorrection(plan)) { toast.error("Confirm this plan’s dates before opening it."); return; }
     // Log first day's meals for debugging
     if (plan.meals && plan.meals.length > 0) {
     }
@@ -2181,6 +2176,7 @@ export default function PlanningSection({
 
   // Edit plan
   const handleEditPlan = (plan: any) => {
+    if (planNeedsDateCorrection(plan)) { toast.error("An administrator must confirm this plan’s dates first."); return; }
     resetForm();
     // Log first day's meals for debugging
     if (plan.meals && plan.meals.length > 0) {
@@ -5973,6 +5969,13 @@ export default function PlanningSection({
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
             </div>
+          ) : plansError ? (
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <p>{plansError}</p>
+              <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => fetchClientPlans()}>
+                Retry loading plans
+              </Button>
+            </div>
           ) : clientPlans.length > 0 ? (
             <div className="space-y-4">
               {(() => {
@@ -6101,6 +6104,7 @@ export default function PlanningSection({
                               )}
                           </div>
 
+                          {planNeedsDateCorrection(plan) && <PlanDateCorrection planId={plan._id} canCorrect={session?.user?.role === "admin"} onCorrected={() => fetchClientPlans()} />}
                           {plan.templateId && (
                             <p className="text-sm text-gray-600 mb-2">
                               Template: {plan.templateId.name}
@@ -6111,16 +6115,13 @@ export default function PlanningSection({
                             <div>
                               <span className="text-gray-500">Start Date:</span>
                               <p className="font-medium">
-                                {format(
-                                  parseLocalDate(plan.startDate),
-                                  "MMM d, yyyy",
-                                )}
+                                {validPlanDate(plan.startDate) ? format(parseLocalDate(plan.startDate), "MMM d, yyyy") : "Needs confirmation"}
                               </p>
                             </div>
                             <div>
                               <span className="text-gray-500">End Date:</span>
                               <p className="font-medium">
-                                {format(parseLocalDate(plan.endDate), "MMM d, yyyy")}
+                                {validPlanDate(plan.endDate) ? format(parseLocalDate(plan.endDate), "MMM d, yyyy") : "Needs confirmation"}
                               </p>
                             </div>
                             <div>

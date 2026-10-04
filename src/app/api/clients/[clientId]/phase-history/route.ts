@@ -1,138 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import { UserRole } from '@/types';
-
-/**
- * GET /api/clients/[clientId]/phase-history
- * 
- * Returns the complete phase history for a client, including:
- * - All meal plans with their phase tags
- * - Associated payment information
- * - Timeline of phases
- * 
- * Access: Admin, Dietitian, Health Counselor (staff only)
- */
-export async function GET(
-    req: NextRequest,
-    { params }: { params: Promise<{ clientId: string }> }
-) {
-    try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        // Only staff can view phase history
-        const allowedRoles = [UserRole.ADMIN, UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR];
-        if (!allowedRoles.includes(session.user.role as UserRole)) {
-            return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-        }
-
-        await connectDB();
-
-        const { clientId } = await params;
-
-        if (!clientId) {
-            return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
-        }
-
-        // Fetch all meal plans for this client, sorted by phase/date
-        const mealPlans = await ClientMealPlan.find({
-            clientId,
-            status: { $in: ['active', 'completed', 'draft'] }
-        })
-            .sort({ phaseNumber: 1, startDate: 1, createdAt: 1 })
-            .populate('dietitianId', 'firstName lastName')
-            .populate('purchaseId', 'amount paymentType paidAt phaseTag phaseNumber')
-            .select('name status startDate endDate duration phaseNumber phaseTag previousPhaseId purchaseId createdAt')
-            .lean();
-
-        // Fetch associated payments
-        const payments = await UnifiedPayment.find({
-            client: clientId,
-            $or: [
-                { status: 'paid' },
-                { paymentStatus: 'paid' },
-                { status: 'completed' }
-            ]
-        })
-            .sort({ paidAt: -1, createdAt: -1 })
-            .select('amount paymentType status paidAt phaseTag phaseNumber linkedMealPlanIds createdAt')
-            .lean();
-
-        // Build phase timeline
-        const phaseTimeline = mealPlans.map((plan: any, index: number) => {
-            const linkedPayment = payments.find((p: any) =>
-                p.linkedMealPlanIds?.some((id: any) => String(id) === String(plan._id))
-            );
-
-            return {
-                phase: plan.phaseNumber || index + 1,
-                phaseTag: plan.phaseTag || `PHASE-${plan.phaseNumber || index + 1}`,
-                mealPlan: {
-                    id: plan._id,
-                    name: plan.name,
-                    status: plan.status,
-                    startDate: plan.startDate,
-                    endDate: plan.endDate,
-                    duration: plan.duration,
-                    dietitian: plan.dietitianId ? {
-                        id: (plan.dietitianId as any)._id,
-                        name: `${(plan.dietitianId as any).firstName} ${(plan.dietitianId as any).lastName}`
-                    } : null,
-                    createdAt: plan.createdAt
-                },
-                payment: linkedPayment ? {
-                    id: linkedPayment._id,
-                    amount: linkedPayment.amount,
-                    paymentType: linkedPayment.paymentType,
-                    status: linkedPayment.status,
-                    paidAt: linkedPayment.paidAt
-                } : null,
-                previousPhaseId: plan.previousPhaseId
-            };
-        });
-
-        // Calculate summary statistics
-        const completedPhases = mealPlans.filter((p: any) => p.status === 'completed').length;
-        const activePhases = mealPlans.filter((p: any) => p.status === 'active').length;
-        const draftPhases = mealPlans.filter((p: any) => p.status === 'draft').length;
-        const totalPayments = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-
-        return NextResponse.json({
-            success: true,
-            clientId,
-            summary: {
-                totalPhases: mealPlans.length,
-                completedPhases,
-                activePhases,
-                draftPhases,
-                currentPhase: activePhases > 0 ? phaseTimeline.find((p: any) => p.mealPlan.status === 'active')?.phase : null,
-                totalPaymentAmount: totalPayments,
-                totalPayments: payments.length
-            },
-            phases: phaseTimeline,
-            payments: payments.map((p: any) => ({
-                id: p._id,
-                amount: p.amount,
-                paymentType: p.paymentType,
-                status: p.status,
-                paidAt: p.paidAt,
-                phaseTag: p.phaseTag,
-                phaseNumber: p.phaseNumber,
-                linkedMealPlanCount: p.linkedMealPlanIds?.length || 0
-            }))
-        });
-
-    } catch (error) {
-        console.error('[PhaseHistory] Error fetching phase history:', error);
-        return NextResponse.json({
-            error: 'Failed to fetch phase history',
-            message: error instanceof Error ? error.message : 'Unknown error'
-        }, { status: 500 });
-    }
-}
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {NextRequest,NextResponse} from 'next/server';
+import {getServerSession} from 'next-auth';
+import {authOptions} from '@/lib/auth/config';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
+import {NativeStaffClientError} from '@/lib/db/repository/native-staff-client';
+import {nativeJson} from '@/lib/db/repository/native-history';
+export const dynamic='force-dynamic';
+export async function GET(req:NextRequest,{params}:{params:Promise<{clientId:string}>}){try{
+ const session=await getServerSession(authOptions);if(!session?.user?.id)throw new NativeStaffClientError('Unauthorized',401);const {clientId}=await params,db=getNativeDatabase(),{actor}=await taskClientAccess(db,session.user.id,clientId);if(actor.get('role')==='client')throw new NativeStaffClientError('Staff access required',403);
+ const [planRows,paymentRows]=await Promise.all([db.collection('clientmealplans').where('clientId','==',clientId).where('status','in',['active','completed','draft']).select('name','status','startDate','endDate','duration','phaseNumber','phaseTag','previousPhaseId','purchaseId','dietitianId','createdAt').get(),db.collection('unifiedpayments').where('client','==',clientId).select('amount','paymentType','status','paymentStatus','paidAt','phaseTag','phaseNumber','linkedMealPlanIds','createdAt').get()]);
+ const plans=planRows.docs.map(d=>({_id:d.id,...d.data()} as Record<string,any>)),payments=paymentRows.docs.map(d=>({_id:d.id,...d.data()} as Record<string,any>)).filter(d=>['paid','completed'].includes(d.status)||d.paymentStatus==='paid'),time=(d:any)=>d?.toMillis?.()||Date.parse(d)||0;
+ plans.sort((a,b)=>(a.phaseNumber||0)-(b.phaseNumber||0)||time(a.startDate)-time(b.startDate)||time(a.createdAt)-time(b.createdAt));payments.sort((a,b)=>time(b.paidAt)-time(a.paidAt)||time(b.createdAt)-time(a.createdAt));
+ const ids=[...new Set(plans.map(p=>p.dietitianId).filter(id=>typeof id==='string'&&/^[a-f0-9]{24}$/.test(id)))],staff=new Map();if(ids.length)for(const d of await db.getAll(...ids.map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName']}))if(d.exists)staff.set(d.id,{id:d.id,name:[d.get('firstName'),d.get('lastName')].filter(Boolean).join(' ')});
+ const phases=plans.map((p,index)=>{const pay=payments.find(pay=>(pay.linkedMealPlanIds||[]).includes(p._id)||pay._id===p.purchaseId);return {phase:p.phaseNumber||index+1,phaseTag:p.phaseTag||`PHASE-${p.phaseNumber||index+1}`,mealPlan:{id:p._id,name:p.name,status:p.status,startDate:p.startDate,endDate:p.endDate,duration:p.duration,dietitian:staff.get(p.dietitianId)||null,createdAt:p.createdAt},payment:pay?{id:pay._id,amount:pay.amount,paymentType:pay.paymentType,status:pay.status,paidAt:pay.paidAt}:null,previousPhaseId:p.previousPhaseId};});
+ return nativeResponseJson(nativeJson({success:true,clientId,summary:{totalPhases:plans.length,completedPhases:plans.filter(p=>p.status==='completed').length,activePhases:plans.filter(p=>p.status==='active').length,draftPhases:plans.filter(p=>p.status==='draft').length,currentPhase:phases.find(p=>p.mealPlan.status==='active')?.phase||null,totalPaymentAmount:payments.reduce((sum,p)=>sum+Number(p.amount||0),0),totalPayments:payments.length},phases,payments:payments.map(p=>({id:p._id,amount:p.amount,paymentType:p.paymentType,status:p.status,paidAt:p.paidAt,phaseTag:p.phaseTag,phaseNumber:p.phaseNumber,linkedMealPlanCount:p.linkedMealPlanIds?.length||0}))}));
+ }catch(e){return nativeResponseJson({error:e instanceof NativeStaffClientError?e.message:'Unable to fetch phase history'},{status:e instanceof NativeStaffClientError?e.status:500});}}

@@ -1,3 +1,6 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {requireNativeAuditAdmin} from '@/lib/db/repository/native-admin-audit';
 /**
  * API Route: Data Import - Export Files
  * GET /api/admin/import/export
@@ -7,15 +10,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { dataImportService } from '@/lib/import';
- 
+
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
     // Auth check - admin only
     const session = await getServerSession(authOptions);
+    if(session?.user)await requireNativeAuditAdmin(getNativeDatabase(),session.user.id);
     if (!session?.user || (session.user as any).role !== 'admin') {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
@@ -27,7 +31,7 @@ export async function GET(request: NextRequest) {
     const format = searchParams.get('format') || 'csv'; // 'csv' or 'json'
 
     if (!sessionId) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'Session ID is required' },
         { status: 400 }
       );
@@ -37,7 +41,7 @@ export async function GET(request: NextRequest) {
     const exports = dataImportService.generateExportFiles(sessionId);
 
     if (exports.length === 0) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: 'No data to export or session not found' },
         { status: 404 }
       );
@@ -47,7 +51,7 @@ export async function GET(request: NextRequest) {
     if (modelName) {
       const exportFile = exports.find(e => e.modelName === modelName);
       if (!exportFile) {
-        return NextResponse.json(
+        return nativeResponseJson(
           { success: false, error: 'Model data not found' },
           { status: 404 }
         );
@@ -66,7 +70,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Return list of available exports
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       exports: exports.map(e => ({
         modelName: e.modelName,
@@ -78,11 +82,11 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Import export error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
+    return nativeResponseJson(
+      {
+        success: false,
         error: 'Server error',
-        message: error.message 
+        message: error.message
       },
       { status: 500 }
     );

@@ -1,0 +1,14 @@
+import {randomBytes} from 'node:crypto';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeAdminStats} from '@/lib/db/repository/native-admin-stats';
+const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+suite('native dashboard aggregates',()=>{
+ let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
+ it('includes clients without commerce fields and keeps IST month boundaries',async()=>{
+  const baseline=await nativeAdminStats(db,new Date('2090-02-10T12:00:00Z'));
+  const client=db.collection('users').doc(randomBytes(12).toString('hex')),buyer=db.collection('users').doc(randomBytes(12).toString('hex'));refs.push(client,buyer);
+  await client.set({role:'client'});await buyer.set({role:'client',wooCommerceData:{totalSpent:500,totalOrders:2,lastOrderDate:new Date('2090-01-31T20:00:00Z')}});
+  const result=await nativeAdminStats(db,new Date('2090-02-10T12:00:00Z'));expect(result.totalClients-baseline.totalClients).toBe(2);expect(result.totalRevenue-baseline.totalRevenue).toBe(500);expect(result.monthlyRevenue-baseline.monthlyRevenue).toBe(500);expect(result.appointmentsByMonth.at(-1)?.revenue).toBe(500);
+ });
+});

@@ -1,10 +1,11 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import Recipe from '@/lib/db/models/Recipe';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {saveStaffRecipe,recipeActor} from '@/lib/db/repository/native-staff-recipes';
+
 import { UserRole } from '@/types';
-import { clearCacheByTag } from '@/lib/api/utils';
-import { batchFindDuplicates, findSimilarRecipes, compareIngredients, mergeRecipeData } from '@/lib/recipe-dedup';
+import {clearCacheByTag} from '@/lib/cache/memoryCache';
+import {nativeRecipeDuplicateMap,findNativeSimilarRecipes,compareIngredients,mergeNativeRecipe} from '@/lib/db/repository/native-staff-recipe-dedup';
 import OpenAI from 'openai';
 
 function getOpenAIClient() {
@@ -292,10 +293,10 @@ export async function POST(request: Request) {
       };
 
       try {
-        await connectDB();
+        const db=getNativeDatabase();await recipeActor(db,userId,true);
 
         // ── Pre-check: batch find all duplicates BEFORE calling AI ──
-        const duplicateMap = await batchFindDuplicates(names);
+        const duplicateMap = await nativeRecipeDuplicateMap(db,names);
         const namesToGenerate: string[] = [];
         const skippedResults: { index: number; name: string; existingName: string }[] = [];
 
@@ -343,13 +344,13 @@ export async function POST(request: Request) {
               const aiData = await generateRecipeWithRetry(recipeName);
 
               // ── Post-generation dedup: check if AI ingredients match an existing recipe ──
-              const similarRecipes = await findSimilarRecipes(recipeName, 3);
+              const similarRecipes = await findNativeSimilarRecipes(db,recipeName,3);
               let merged = false;
               for (const sim of similarRecipes) {
                 const cmp = compareIngredients(aiData.ingredients, sim.ingredients || []);
                 if (cmp.similar) {
                   // Merge into existing recipe instead of creating duplicate
-                  await mergeRecipeData(sim._id.toString(), {
+                  await mergeNativeRecipe(db,userId,sim._id.toString(), {
                     description: aiData.description,
                     prepTime: aiData.prepTime,
                     cookTime: aiData.cookTime,
@@ -400,8 +401,7 @@ export async function POST(request: Request) {
                 tags: [],
               };
 
-              const recipe = new Recipe(recipeDoc);
-              await recipe.save();
+              const recipe = await saveStaffRecipe(db,userId,recipeDoc);
 
               successCount++;
               processedCount++;

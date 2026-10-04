@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -100,6 +100,7 @@ export default function ClientPaymentsTab({ clientId, client }: ClientPaymentsTa
     }
   };
 
+  const creationAttempt = useRef<{body: string; key: string} | null>(null);
   const handleCreateSubscription = async () => {
     if (!selectedPlan) {
       alert('Please select a plan');
@@ -108,20 +109,17 @@ export default function ClientPaymentsTab({ clientId, client }: ClientPaymentsTa
 
     try {
       setCreating(true);
+      const body = JSON.stringify({clientId, planId: selectedPlan, paymentMethod, generatePaymentLink: paymentMethod === 'razorpay' && generateLink, notes});
+      if (creationAttempt.current?.body !== body) creationAttempt.current = {body, key: crypto.randomUUID()};
       const response = await fetch('/api/subscriptions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId,
-          planId: selectedPlan,
-          paymentMethod,
-          generatePaymentLink: paymentMethod === 'razorpay' && generateLink,
-          notes
-        })
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': creationAttempt.current.key },
+        body
       });
 
       if (response.ok) {
         const data = await response.json();
+        creationAttempt.current = null;
         setDialogOpen(false);
         fetchSubscriptions();
 

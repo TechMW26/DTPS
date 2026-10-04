@@ -1,7 +1,8 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/db/connection';
-import OTPRecord from '@/lib/db/models/OTPRecord';
-import { OTP_CONFIG, generateOTP } from '@/lib/auth/otpStore';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {issueNativeOtp,cancelNativeOtp} from '@/lib/db/repository/native-otp';
+import { OTP_CONFIG } from '@/lib/auth/otpStore';
 import {
     createPhoneAuthIntentToken,
     maskPhone,
@@ -38,25 +39,16 @@ function firebaseClientConfigAvailable(): boolean {
 
 async function sendWhatsappFallback(authIntent: string, fallbackReason: string) {
     if (!FIREBASE_FALLBACK_REASONS.has(fallbackReason)) {
-        return NextResponse.json(
+        return nativeResponseJson(
             { success: false, error: 'WhatsApp fallback is available only when SMS delivery is unavailable.' },
             { status: 400 },
         );
     }
 
     const intent = verifyPhoneAuthIntentToken(authIntent);
-    const oneHourAgo = new Date(Date.now() - 3_600_000);
-    const recentOtpCount = await OTPRecord.countDocuments({
-        phone: intent.phone,
-        createdAt: { $gte: oneHourAgo },
-    });
-    if (recentOtpCount >= OTP_CONFIG.MAX_REQUESTS_PER_HOUR) {
-        return NextResponse.json(
-            { success: false, error: 'Too many verification requests. Please try again in an hour.' },
-            { status: 429 },
-        );
+    if (process.env.NODE_ENV !== 'production') {
+        return nativeResponseJson({ success: false, error: 'WhatsApp delivery is disabled during local migration testing.' }, { status: 503 });
     }
-
     const isNativeIosPrimary = fallbackReason === 'ios-native-app';
     const unavailableMessage = isNativeIosPrimary
         ? 'WhatsApp verification is temporarily unavailable. Please try again later.'
@@ -64,28 +56,15 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
     const apiKey = process.env.AISENSY_API_KEY;
     const apiUrl = process.env.AISENSY_API_URL || 'https://backend.aisensy.com/campaign/t1/api/v2';
     if (!apiKey) {
-        return NextResponse.json(
+        return nativeResponseJson(
             { success: false, error: unavailableMessage },
             { status: 503 },
         );
     }
 
-    const otp = generateOTP();
-    const record = await OTPRecord.findOneAndUpdate(
-        { phone: intent.phone },
-        {
-            phone: intent.phone,
-            otp,
-            userId: intent.userId,
-            userName: intent.userName,
-            purpose: intent.mode,
-            signupPayload: intent.signupPayload,
-            attempts: 0,
-            expiresAt: new Date(Date.now() + OTP_CONFIG.EXPIRY_MS),
-            createdAt: new Date(),
-        },
-        { upsert: true, new: true },
-    );
+    const record=await issueNativeOtp(getNativeDatabase(),intent.phone,intent.mode);
+    if(!record)return nativeResponseJson({success:false,error:'Too many verification requests. Please try again in an hour.'},{status:429});
+    const otp=record.otp;
 
     try {
         const response = await fetch(apiUrl, {
@@ -106,25 +85,25 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
                 }],
             }),
         });
-        const responseData = await response.json().catch(() => ({}));
+        await response.body?.cancel();
         if (!response.ok) {
-            console.error('AISensy fallback error:', responseData);
-            await OTPRecord.deleteOne({ _id: record._id });
-            return NextResponse.json(
+            console.error('AISensy fallback delivery rejected');
+            await cancelNativeOtp(getNativeDatabase(),record.id,record.nonce);
+            return nativeResponseJson(
                 { success: false, error: unavailableMessage },
                 { status: 503 },
             );
         }
     } catch (error) {
-        console.error('AISensy fallback request failed:', error);
-        await OTPRecord.deleteOne({ _id: record._id });
-        return NextResponse.json(
+        console.error('AISensy fallback request failed');
+        await cancelNativeOtp(getNativeDatabase(),record.id,record.nonce);
+        return nativeResponseJson(
             { success: false, error: unavailableMessage },
             { status: 503 },
         );
     }
 
-    return NextResponse.json({
+    return nativeResponseJson({
         success: true,
         provider: 'whatsapp',
         deliveryChannel: 'WhatsApp',
@@ -141,11 +120,10 @@ async function sendWhatsappFallback(authIntent: string, fallbackReason: string) 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        await connectDB();
 
         if (body.channel === 'whatsapp-fallback') {
             if (typeof body.authIntent !== 'string' || typeof body.fallbackReason !== 'string') {
-                return NextResponse.json(
+                return nativeResponseJson(
                     { success: false, error: 'A valid fallback request is required.' },
                     { status: 400 },
                 );
@@ -154,7 +132,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (!body.phone || typeof body.phone !== 'string') {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Phone number is required.' },
                 { status: 400 },
             );
@@ -162,7 +140,7 @@ export async function POST(request: NextRequest) {
 
         const intent = await preparePhoneAuth(body);
         const authIntent = createPhoneAuthIntentToken(intent);
-        return NextResponse.json({
+        return nativeResponseJson({
             success: true,
             provider: 'firebase',
             deliveryChannel: 'SMS',
@@ -174,13 +152,13 @@ export async function POST(request: NextRequest) {
         });
     } catch (error) {
         if (error instanceof PhoneAuthError) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: error.message, code: error.code },
                 { status: error.status },
             );
         }
         console.error('Phone verification preparation failed:', error);
-        return NextResponse.json(
+        return nativeResponseJson(
             { success: false, error: 'Unable to start verification. Please try again.' },
             { status: 500 },
         );

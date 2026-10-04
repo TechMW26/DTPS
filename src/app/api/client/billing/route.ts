@@ -1,35 +1,22 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import connectDB from '@/lib/db/connection';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import User from '@/lib/db/models/User';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeClientPayments} from '@/lib/db/repository/native-client-payments';
+import {resolveEntitlementEndDate} from '@/lib/payments/entitlement-dates';
 
 // GET /api/client/billing - Get billing information for the client
 export async function GET(request: NextRequest) {
   try {
     // Run auth + DB connection in PARALLEL
-    const [session] = await Promise.all([
-      getServerSession(authOptions),
-      connectDB()
-    ]);
+    const session=await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get all payments for this client
-    const payments = await withCache(
-      `client-billing:${session.user.id}`,
-      async () => await UnifiedPayment.find({
-        client: session.user.id
-      })
-        .populate('dietitian', 'firstName lastName')
-        .sort({ createdAt: -1 })
-        .limit(50)
-        .lean(),
-      { ttl: 120000, tags: ['client'] }
-    );
+    const payments=await nativeClientPayments(getNativeDatabase(),session.user.id,50);
 
     // Find the most recent active subscription
     const activePayment = payments.find((p: any) => {
@@ -37,8 +24,8 @@ export async function GET(request: NextRequest) {
       if (!p.durationDays) return false;
 
       const startDate = p.paidAt || p.createdAt;
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + p.durationDays);
+      const endDate=resolveEntitlementEndDate({...p,expectedStartDate:p.expectedStartDate||p.startDate||startDate});
+      if(!endDate)return false;
 
       return new Date() < endDate;
     });
@@ -47,13 +34,12 @@ export async function GET(request: NextRequest) {
     let subscription = null;
     if (activePayment) {
       const startDate = (activePayment as any).paidAt || (activePayment as any).createdAt;
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + ((activePayment as any).durationDays || 30));
+      const endDate=resolveEntitlementEndDate({...activePayment,expectedStartDate:activePayment.expectedStartDate||activePayment.startDate||startDate});
 
       subscription = {
         id: (activePayment as any)._id.toString(),
         planName: (activePayment as any).planName || 'Subscription Plan',
-        price: (activePayment as any).amount,
+        price: activePayment.finalAmount ?? activePayment.amount ?? activePayment.baseAmount,
         billingCycle: (activePayment as any).durationDays >= 365 ? 'yearly' :
           (activePayment as any).durationDays >= 90 ? 'quarterly' : 'monthly',
         status: 'active',
@@ -85,14 +71,14 @@ export async function GET(request: NextRequest) {
       downloadUrl: `/api/invoices/${payment._id}`
     }));
 
-    return NextResponse.json({
+    return nativeResponseJson({
       subscription,
       invoices
     });
 
   } catch (error) {
     console.error('Error fetching billing data:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'Failed to fetch billing data' },
       { status: 500 }
     );

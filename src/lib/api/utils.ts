@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
 import crypto from 'crypto';
 import { logApiError } from '@/lib/utils/activityLogger';
 
@@ -10,10 +10,10 @@ export { serverCache, withCache, clearCacheByTag } from '@/lib/cache/memoryCache
 
 /**
  * API Stability Utilities
- * 
+ *
  * These utilities help ensure consistent API behavior, error handling,
  * and optional conditional caching for admin/internal APIs.
- * 
+ *
  * ⚠️ IMPORTANT: Conditional caching (ETag/304) should ONLY be used for
  * admin/internal APIs, NOT for user-facing routes (/user/**, /api/client/**)
  */
@@ -63,9 +63,9 @@ export function errorResponse(
 
 /**
  * Wrap an API handler with consistent error handling and DB connection
- * 
+ *
  * Optimized: runs auth check and DB connection in PARALLEL for ~50% faster cold starts.
- * 
+ *
  * @param handler - The actual API logic
  * @param options - Configuration options
  */
@@ -89,7 +89,7 @@ export async function withAPIHandler<T>(
       ? getServerSession(authOptions)
       : Promise.resolve(null);
 
-    const dbPromise = connectDB();
+    const dbPromise = Promise.resolve().then(() => getNativeDatabase());
     const timeoutPromise = new Promise<void>((_, reject) => {
       timeoutId = setTimeout(() => reject(new Error('Database connection timeout')), timeoutMs);
     });
@@ -236,9 +236,9 @@ export function checkETagMatch(request: Request, currentETag: string): boolean {
 
 /**
  * Create response with conditional caching headers
- * 
+ *
  * ⚠️ ONLY use for admin/internal APIs, NOT user-facing routes
- * 
+ *
  * @param data - Response data
  * @param request - Original request (to check If-None-Match)
  * @param options - Cache configuration

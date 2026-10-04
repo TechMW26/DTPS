@@ -28,7 +28,7 @@ export function UnreadCountProvider({ children }: UnreadCountProviderProps) {
   const [isConnected, setIsConnected] = useState(false);
   const unsubRef = useRef<(() => void) | null>(null);
 
-  // Subscribe to Socket.io unread-count events
+  // Subscribe to The native event stream unread-count events
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user) {
       return;

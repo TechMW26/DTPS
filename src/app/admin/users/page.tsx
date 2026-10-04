@@ -1,5 +1,7 @@
 "use client";
 
+import {MigrationCorrectionNotice} from '@/components/ui/migration-correction-notice';
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -715,7 +717,7 @@ export default function AdminUsersPage() {
                             </span>
                           </td>
                           <td className="p-3">
-                            <div className="font-medium">{u.firstName} {u.lastName}</div>
+                            <div className="font-medium">{u.firstName} {u.lastName}</div><MigrationCorrectionNotice issues={(u as any)._nativeMigrationIssues} compact />
                             <div className="text-xs text-gray-500">{u.phone || '-'}</div>
                           </td>
                           <td className="p-3 text-sm">{u.email}</td>
@@ -907,7 +909,7 @@ export default function AdminUsersPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium text-gray-700">First Name <span className="text-red-500">*</span></label>
-                    <Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Enter first name" />
+                    <MigrationCorrectionNotice issues={(editing as any)?._nativeMigrationIssues} /><Input value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} placeholder="Enter first name" />
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700">Last Name <span className="text-red-500">*</span></label>

@@ -1,7 +1,8 @@
-import connectDB from "@/lib/db/connection";
-import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
-import MealEngagementDispatch from "@/lib/db/models/MealEngagementDispatch";
-import User from "@/lib/db/models/User";
+import type {Firestore} from 'firebase-admin/firestore';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { hydrateNativeDocument } from '@/lib/storage/native-document';
+import { nativeDates } from '@/lib/db/repository/native-plan-editor';
+import { createHash } from 'node:crypto';
 import { sendNotificationToUser } from "@/lib/firebase/firebaseNotification";
 import { MEAL_TYPES, type MealTypeKey } from "@/lib/mealConfig";
 import { isValidMealTimeZone, completionMatchesMeal } from '@/lib/task-schedule';
@@ -267,29 +268,44 @@ function scheduledDateForEvent(now: Date, currentMinute: number, targetMinute: n
 }
 
 export async function runMealEngagementNotifications(now = new Date()) {
-  await connectDB();
+  // Local migration validation must never send real reminders or create delivery claims.
+  if (process.env.NODE_ENV !== 'production') {
+    return { plans: 0, due: 0, sent: 0, duplicates: 0, failed: 0, skipped: 'local_delivery_disabled' };
+  }
+  return runNativeMealEngagementNotifications(getNativeDatabase(),now,sendNotificationToUser);
+}
+
+/** Injectable provider boundary allows emulator regressions without outbound delivery. */
+export async function runNativeMealEngagementNotifications(db:Firestore,now:Date,deliver:typeof sendNotificationToUser){
   const lookbackMinutes = Math.max(
     1,
     Math.min(Number(process.env.MEAL_REMINDER_LOOKBACK_MINUTES || 4), 15),
   );
 
-  await MealEngagementDispatch.deleteMany({ expiresAt: { $lt: now } });
-
-  const plans = (await ClientMealPlan.find({
-    status: "active",
-    isDeleted: { $ne: true },
-    startDate: { $lte: new Date(now.getTime() + 86_400_000) },
-    endDate: { $gte: new Date(now.getTime() - 86_400_000) },
-    "reminders.mealReminders": { $ne: false },
-  })
-    .select("clientId startDate endDate meals mealTypes mealCompletions freezedDays reminders templateId")
-    .populate("templateId", "meals")
-    .lean()) as LooseRecord[];
-
-  const clientIds = [...new Set(plans.map((plan) => String(plan.clientId)).filter(Boolean))];
-  const users = (await User.find({ _id: { $in: clientIds } })
-    .select("settings.mealReminders settings.pushNotifications reminderPreferences.mealReminders notificationTimeZone holdStatus")
-    .lean()) as LooseRecord[];
+  const snapshot = await db.collection('clientmealplans')
+    .where('status', '==', 'active')
+    .where('startDate', '<=', new Date(now.getTime() + 86_400_000))
+    .where('endDate', '>=', new Date(now.getTime() - 86_400_000)).get();
+  const plans: LooseRecord[] = [];
+  // Hydrate large plan fields stored in Blob before calculating reminder schedules.
+  for (let offset = 0; offset < snapshot.size; offset += 10) {
+    await Promise.all(snapshot.docs.slice(offset, offset + 10).map(async doc => {
+      const plan = nativeDates(await hydrateNativeDocument(doc.data()));
+      if (plan.isDeleted || plan.reminders?.mealReminders === false) return;
+      if (!plan.meals?.length && typeof plan.templateId === 'string') {
+        const template = await db.collection('diettemplates').doc(plan.templateId).get();
+        if (template.exists) plan.templateId = nativeDates(await hydrateNativeDocument(template.data()!));
+      }
+      plans.push({ ...plan, _id: doc.id });
+    }));
+  }
+  const clientIds: string[] = [...new Set(plans.map(plan => String(plan.clientId)).filter(Boolean))];
+  const users: LooseRecord[] = [];
+  for (let offset = 0; offset < clientIds.length; offset += 100) {
+    const rows = await db.getAll(...clientIds.slice(offset, offset + 100).map(id => db.collection('users').doc(id)),
+      { fieldMask: ['settings', 'reminderPreferences', 'notificationTimeZone', 'holdStatus'] });
+    users.push(...rows.filter(row => row.exists).map(row => ({ ...row.data(), _id: row.id })));
+  }
   const preferencesByClient = new Map(
     users.map((user) => [String(user._id), user]),
   );
@@ -297,7 +313,7 @@ export async function runMealEngagementNotifications(now = new Date()) {
   const summary = { plans: plans.length, due: 0, sent: 0, duplicates: 0, failed: 0 };
   async function processPlan(plan: LooseRecord) {
     const user = preferencesByClient.get(String(plan.clientId));
-    if (!allowsMealEngagement(user) || user?.holdStatus?.isOnHold) return;
+    if (!user || !allowsMealEngagement(user) || user?.holdStatus?.isOnHold) return;
     const timeZone = isValidMealTimeZone(user?.notificationTimeZone) ? user.notificationTimeZone : MEAL_NOTIFICATION_TIMEZONE;
     const parts = zonedParts(now, timeZone);
     const mealDate = getZonedDateKey(now, timeZone);
@@ -315,8 +331,13 @@ export async function runMealEngagementNotifications(now = new Date()) {
       const dispatchId = `${planId}:${mealDate}:${event.mealId}:${event.eventType}`;
       const scheduledFor = scheduledDateForEvent(now, currentMinute, event.targetMinute);
 
+      const dispatch = db.collection('mealengagementdispatches').doc(createHash('sha256').update(dispatchId).digest('hex'));
       try {
-        await MealEngagementDispatch.create({
+        await db.runTransaction(async tx=>{
+          const existing=await tx.get(db.collection('mealengagementdispatches').where('_id','==',dispatchId).limit(1));
+          const current=await tx.get(dispatch);
+          if(!existing.empty||current.exists)throw Object.assign(new Error('Dispatch already claimed'),{code:6});
+          tx.create(dispatch,{
           _id: dispatchId,
           clientId,
           mealPlanId: planId,
@@ -326,12 +347,13 @@ export async function runMealEngagementNotifications(now = new Date()) {
           scheduledFor,
           status: "processing",
           expiresAt: new Date(now.getTime() + 45 * 86_400_000),
+          });
         });
       } catch (error) {
         const errorCode = error && typeof error === "object" && "code" in error
           ? (error as { code?: number }).code
           : undefined;
-        if (errorCode === 11000) {
+        if (errorCode === 6) {
           summary.duplicates++;
           continue;
         }
@@ -352,7 +374,7 @@ export async function runMealEngagementNotifications(now = new Date()) {
       const isPhotoPrompt = event.eventType === "photo_prompt";
 
       try {
-        const result = await sendNotificationToUser(clientId, {
+        const result = await deliver(clientId, {
           title: isPhotoPrompt
             ? `${event.label} time — show us your plate`
             : `${event.label} in 30 minutes`,
@@ -376,30 +398,23 @@ export async function runMealEngagementNotifications(now = new Date()) {
           clickAction,
         });
 
-        await MealEngagementDispatch.updateOne(
-          { _id: dispatchId },
-          {
-            $set: {
-              status: result.successCount > 0 ? "sent" : "failed",
-              result: {
-                successCount: result.successCount,
-                failureCount: result.failureCount,
-                errorCode: result.errorCode,
-                providerErrors: [...new Set(result.responses?.map(response => response.error).filter(Boolean))],
-                storedInApp: true,
-              },
-            },
+        await dispatch.update({
+          status: result.successCount > 0 ? 'sent' : 'failed',
+          result: {
+            successCount: result.successCount,
+            failureCount: result.failureCount,
+            errorCode: result.errorCode || null,
+            providerErrors: [...new Set(result.responses?.map(response => response.error).filter(Boolean))],
+            storedInApp: true,
           },
-        );
+          updatedAt: new Date(),
+        });
         if (result.successCount > 0) summary.sent++;
         else summary.failed++;
       } catch (error) {
         summary.failed++;
-        await MealEngagementDispatch.updateOne(
-          { _id: dispatchId },
-          { $set: { status: "failed", result: { error: String(error) } } },
-        );
-        console.error("[MealEngagement] Failed to send notification", error);
+        await dispatch.update({ status: 'failed', result: { error: 'DELIVERY_FAILED' }, updatedAt: new Date() });
+        console.error("[MealEngagement] Notification delivery was not confirmed");
       }
     }
   }

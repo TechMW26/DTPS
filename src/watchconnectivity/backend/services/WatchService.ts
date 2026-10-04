@@ -1,8 +1,9 @@
 // Watch Service - Handles all watch-related business logic
-import WatchConnection, { IWatchConnection } from '../models/WatchConnection';
-import WatchHealthData, { IWatchHealthData } from '../models/WatchHealthData';
+import type {IWatchConnection,IWatchHealthData} from '../watch-types';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeWatchConnection,nativeWatchHealth} from '@/lib/db/repository/native-admin-watch';
 import { getBaseUrl } from '@/lib/config';
-import mongoose from 'mongoose';
+
 
 export interface WatchSyncResult {
   success: boolean;
@@ -74,168 +75,28 @@ export const WATCH_PROVIDER_CONFIGS: Record<string, WatchProviderConfig> = {
 
 // Watch Service Class
 export class WatchService {
-  
-  // Get user's watch connection
-  static async getWatchConnection(userId: string): Promise<IWatchConnection | null> {
-    return await WatchConnection.findOne({ userId: new mongoose.Types.ObjectId(userId) });
-  }
-  
-  // Get user's watch connection with tokens (for sync operations)
-  static async getWatchConnectionWithTokens(userId: string): Promise<IWatchConnection | null> {
-    return await WatchConnection.findOne({ userId: new mongoose.Types.ObjectId(userId) })
-      .select('+watchAccessToken +watchRefreshToken');
-  }
-  
-  // Create new watch connection
-  static async connectWatch(
-    userId: string,
-    provider: string,
-    tokens?: { accessToken: string; refreshToken: string; expiry: Date }
-  ): Promise<IWatchConnection> {
-    const existingConnection = await WatchConnection.findOne({ 
-      userId: new mongoose.Types.ObjectId(userId) 
-    });
-    
-    if (existingConnection) {
-      // Update existing connection
-      existingConnection.watchProvider = provider as IWatchConnection['watchProvider'];
-      existingConnection.watchIsConnected = true;
-      existingConnection.watchLastSync = new Date();
-      
-      if (tokens) {
-        existingConnection.watchAccessToken = tokens.accessToken;
-        existingConnection.watchRefreshToken = tokens.refreshToken;
-        existingConnection.watchTokenExpiry = tokens.expiry;
-      }
-      
-      await existingConnection.save();
-      return existingConnection;
-    }
-    
-    // Create new connection
-    const watchConnection = new WatchConnection({
-      userId: new mongoose.Types.ObjectId(userId),
-      watchProvider: provider,
-      watchIsConnected: true,
-      watchLastSync: new Date(),
-      watchAccessToken: tokens?.accessToken,
-      watchRefreshToken: tokens?.refreshToken,
-      watchTokenExpiry: tokens?.expiry,
-    });
-    
-    await watchConnection.save();
-    return watchConnection;
-  }
-  
-  // Disconnect watch
-  static async disconnectWatch(userId: string): Promise<boolean> {
-    const result = await WatchConnection.findOneAndUpdate(
-      { userId: new mongoose.Types.ObjectId(userId) },
-      { 
-        watchIsConnected: false,
-        watchAccessToken: null,
-        watchRefreshToken: null,
-        watchTokenExpiry: null,
-      }
-    );
-    return !!result;
-  }
-  
-  // Get today's health data - optimized for fast response
-  static async getWatchHealthData(userId: string, date?: Date): Promise<IWatchHealthData | null> {
-    const targetDate = date || new Date();
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
 
-    // Fetch from DB instantly - use lean() for faster query
-    const data = await WatchHealthData.findOne({
-      userId: new mongoose.Types.ObjectId(userId),
-      date: { $gte: startOfDay, $lte: endOfDay },
-    }).lean<IWatchHealthData>();
-    
-    if (data) {
-      // Check if data is stale (older than 5 minutes) and trigger background sync
-      const dataWithTimestamp = data as IWatchHealthData & { updatedAt?: Date; createdAt?: Date };
-      const lastUpdate = new Date(dataWithTimestamp.updatedAt || dataWithTimestamp.createdAt || Date.now());
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      if (lastUpdate < fiveMinutesAgo) {
-        // Trigger background sync without waiting
-        setImmediate(() => {
-          this.syncWatchData(userId).catch(err => 
-            console.error('[Watch] Background sync error:', err)
-          );
-        });
-      }
-      return data;
-    }
+  static async getWatchConnection(userId:string):Promise<IWatchConnection|null>{return await nativeWatchConnection(getNativeDatabase(),userId) as IWatchConnection|null;}
+  static async getWatchConnectionWithTokens(userId:string):Promise<IWatchConnection|null>{return await nativeWatchConnection(getNativeDatabase(),userId,undefined,true) as IWatchConnection|null;}
+  static async connectWatch(userId:string,provider:string,tokens?:{accessToken:string;refreshToken:string;expiry:Date}):Promise<IWatchConnection>{return await nativeWatchConnection(getNativeDatabase(),userId,{watchProvider:provider,watchIsConnected:true,watchLastSync:new Date(),...(tokens?{watchAccessToken:tokens.accessToken,watchRefreshToken:tokens.refreshToken,watchTokenExpiry:tokens.expiry}:{})}) as IWatchConnection;}
+  static async disconnectWatch(userId:string){if(!await this.getWatchConnection(userId))return false;await nativeWatchConnection(getNativeDatabase(),userId,{watchIsConnected:false,watchAccessToken:null,watchRefreshToken:null,watchTokenExpiry:null});return true;}
+  static async getWatchHealthData(userId:string,date?:Date):Promise<IWatchHealthData|null>{return (await nativeWatchHealth(getNativeDatabase(),userId,date))[0] as IWatchHealthData||null;}
+  static async getWatchHealthDataRange(userId:string,start:Date,end:Date):Promise<IWatchHealthData[]>{return await nativeWatchHealth(getNativeDatabase(),userId,start,end) as IWatchHealthData[];}
+  static async saveWatchHealthData(userId:string,data:Partial<IWatchHealthData>):Promise<IWatchHealthData>{return (await nativeWatchHealth(getNativeDatabase(),userId,undefined,undefined,data))[0] as IWatchHealthData;}
 
-    // No data found - return null immediately for fast response
-    // The caller can trigger sync separately if needed
-    return null;
-  }
-  
-  // Get health data for date range
-  static async getWatchHealthDataRange(
-    userId: string,
-    startDate: Date,
-    endDate: Date
-  ): Promise<IWatchHealthData[]> {
-    return await WatchHealthData.find({
-      userId: new mongoose.Types.ObjectId(userId),
-      date: { $gte: startDate, $lte: endDate },
-    }).sort({ date: -1 });
-  }
-  
-  // Save/Update health data
-  static async saveWatchHealthData(
-    userId: string,
-    healthData: Partial<IWatchHealthData>
-  ): Promise<IWatchHealthData> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const endOfDay = new Date(today);
-    endOfDay.setHours(23, 59, 59, 999);
-    
-    // Find or create today's record
-    let existingData = await WatchHealthData.findOne({
-      userId: new mongoose.Types.ObjectId(userId),
-      date: { $gte: today, $lte: endOfDay },
-    });
-    
-    if (existingData) {
-      // Update existing record
-      Object.assign(existingData, healthData);
-      await existingData.save();
-      return existingData;
-    }
-    
-    // Create new record
-    const newData = new WatchHealthData({
-      userId: new mongoose.Types.ObjectId(userId),
-      date: today,
-      ...healthData,
-    });
-    
-    await newData.save();
-    return newData;
-  }
-  
   // Sync data from watch provider
   static async syncWatchData(userId: string): Promise<WatchSyncResult> {
     try {
       // Use getWatchConnectionWithTokens to include access token for API calls
       const connection = await this.getWatchConnectionWithTokens(userId);
-      
-      if (!connection || !connection.watchIsConnected) {
+
+      if (!connection || !connection.watchIsConnected || !connection.watchSyncEnabled) {
         return { success: false, error: 'Watch not connected' };
       }
-      
+
       // Get data based on provider
       let healthData: Partial<IWatchHealthData> = {};
-      
+
       switch (connection.watchProvider) {
         case 'google_fit':
           healthData = await this.syncFromGoogleFit(connection);
@@ -270,12 +131,12 @@ export class WatchService {
         default:
           return { success: false, error: 'Unsupported watch provider' };
       }
-      
+
       // Save the synced data
       const saved = await this.saveWatchHealthData(userId, healthData);
 
       // Update last sync time
-      await WatchConnection.findByIdAndUpdate(connection._id, {
+      await nativeWatchConnection(getNativeDatabase(),userId, {
         watchLastSync: new Date(),
       });
 
@@ -285,11 +146,11 @@ export class WatchService {
       return { success: false, error: 'Failed to sync watch data' };
     }
   }
-  
+
   // Sync from Google Fit - REAL API IMPLEMENTATION
   private static async syncFromGoogleFit(connection: IWatchConnection): Promise<Partial<IWatchHealthData>> {
     const accessToken = connection.watchAccessToken;
-    
+
     // Create default/sample data for when no real data is available
     const createDefaultData = (): Partial<IWatchHealthData> => ({
       watchSteps: {
@@ -351,21 +212,21 @@ export class WatchService {
         lastSyncTime: new Date(),
       },
     });
-    
+
     if (!accessToken) {
       return createDefaultData();
     }
-    
+
     try {
       const now = Date.now();
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
       const startTime = startOfDay.getTime() * 1000000; // nanoseconds
       const endTime = now * 1000000;
-      
+
       // Fetch sleep data (last 24 hours)
       const sleepStartTime = (now - 24 * 60 * 60 * 1000) * 1000000;
-      
+
       // Fetch all data in PARALLEL for faster response
       const [stepsData, heartRateData, caloriesData, sleepData] = await Promise.all([
         this.fetchGoogleFitData(accessToken, 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps', startTime, endTime),
@@ -373,13 +234,13 @@ export class WatchService {
         this.fetchGoogleFitData(accessToken, 'derived:com.google.calories.expended:com.google.android.gms:merge_calories_expended', startTime, endTime),
         this.fetchGoogleFitSleepData(accessToken, sleepStartTime, endTime),
       ]);
-      
+
       // Calculate totals
       let totalSteps = 0;
       let totalCalories = 0;
       let heartRates: number[] = [];
       let sleepMinutes = 0;
-      
+
       if (stepsData?.point) {
         stepsData.point.forEach((p: any) => {
           if (p.value?.[0]?.intVal) {
@@ -387,7 +248,7 @@ export class WatchService {
           }
         });
       }
-      
+
       if (caloriesData?.point) {
         caloriesData.point.forEach((p: any) => {
           if (p.value?.[0]?.fpVal) {
@@ -395,7 +256,7 @@ export class WatchService {
           }
         });
       }
-      
+
       if (heartRateData?.point) {
         heartRateData.point.forEach((p: any) => {
           if (p.value?.[0]?.fpVal) {
@@ -403,7 +264,7 @@ export class WatchService {
           }
         });
       }
-      
+
       if (sleepData?.session) {
         sleepData.session.forEach((s: any) => {
           if (s.activityType === 72) { // Sleep activity
@@ -412,11 +273,11 @@ export class WatchService {
           }
         });
       }
-      
-      const avgHeartRate = heartRates.length > 0 
+
+      const avgHeartRate = heartRates.length > 0
         ? Math.round(heartRates.reduce((a, b) => a + b, 0) / heartRates.length)
         : 0;
-      
+
       return {
         watchSteps: {
           count: totalSteps,
@@ -483,58 +344,58 @@ export class WatchService {
       return createDefaultData();
     }
   }
-  
+
   // Helper: Fetch data from Google Fit API
   private static async fetchGoogleFitData(accessToken: string, dataSourceId: string, startTime: number, endTime: number) {
     try {
       const url = `https://www.googleapis.com/fitness/v1/users/me/dataSources/${encodeURIComponent(dataSourceId)}/datasets/${startTime}-${endTime}`;
-      
+
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
       });
-      
+
       if (!response.ok) {
         console.error('Google Fit API error:', response.status, await response.text());
         return null;
       }
-      
+
       return await response.json();
     } catch (error) {
       console.error('Error fetching Google Fit data:', error);
       return null;
     }
   }
-  
+
   // Helper: Fetch sleep data from Google Fit
   private static async fetchGoogleFitSleepData(accessToken: string, startTime: number, endTime: number) {
     try {
       const url = `https://www.googleapis.com/fitness/v1/users/me/sessions?startTime=${new Date(startTime / 1000000).toISOString()}&endTime=${new Date(endTime / 1000000).toISOString()}&activityType=72`;
-      
+
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
       });
-      
+
       if (!response.ok) {
         return null;
       }
-      
+
       return await response.json();
     } catch (error) {
       console.error('Error fetching Google Fit sleep data:', error);
       return null;
     }
   }
-  
+
   // Sync from Fitbit
   private static async syncFromFitbit(connection: IWatchConnection): Promise<Partial<IWatchHealthData>> {
     // TODO: Implement actual Fitbit API integration
-    
+
     return {
       watchDevice: {
         name: connection.watchDeviceName || 'Fitbit Device',
@@ -544,7 +405,7 @@ export class WatchService {
       },
     };
   }
-  
+
   // Sync from Apple Watch (data pushed from iOS app)
   private static async syncFromAppleWatch(connection: IWatchConnection): Promise<Partial<IWatchHealthData>> {
     return {
@@ -556,7 +417,7 @@ export class WatchService {
       },
     };
   }
-  
+
   // Sync from NoiseFit - Uses manual entry or Google Fit sync
   private static async syncFromNoiseFit(connection: IWatchConnection): Promise<Partial<IWatchHealthData>> {
     // NoiseFit doesn't have public API
@@ -571,7 +432,7 @@ export class WatchService {
       },
     };
   }
-  
+
   // Sync from Samsung Health
   private static async syncFromSamsung(connection: IWatchConnection): Promise<Partial<IWatchHealthData>> {
     return {
@@ -583,7 +444,7 @@ export class WatchService {
       },
     };
   }
-  
+
   // Sync from Garmin
   private static async syncFromGarmin(connection: IWatchConnection): Promise<Partial<IWatchHealthData>> {
     return {
@@ -595,18 +456,18 @@ export class WatchService {
       },
     };
   }
-  
+
   // Get OAuth URL for provider
   static getWatchOAuthUrl(provider: string, state: string, customRedirectUri?: string): string {
     const config = WATCH_PROVIDER_CONFIGS[provider];
-    
+
     if (!config) {
       throw new Error('Invalid watch provider');
     }
-    
+
     // Use custom redirect URI if provided (for localhost testing)
     const redirectUri = customRedirectUri || config.redirectUri;
-    
+
     switch (provider) {
       case 'google_fit':
         return `https://accounts.google.com/o/oauth2/v2/auth?` +
@@ -617,7 +478,7 @@ export class WatchService {
           `state=${state}&` +
           `access_type=offline&` +
           `prompt=consent`;
-      
+
       case 'fitbit':
         return `https://www.fitbit.com/oauth2/authorize?` +
           `client_id=${config.clientId}&` +
@@ -625,22 +486,18 @@ export class WatchService {
           `response_type=code&` +
           `scope=${encodeURIComponent(config.scopes.join(' '))}&` +
           `state=${state}`;
-      
+
       default:
         throw new Error('Provider does not support OAuth');
     }
   }
-  
+
   // Update sync preferences
   static async updateWatchSyncPreferences(
     userId: string,
     preferences: IWatchConnection['watchSyncPreferences']
   ): Promise<IWatchConnection | null> {
-    return await WatchConnection.findOneAndUpdate(
-      { userId: new mongoose.Types.ObjectId(userId) },
-      { watchSyncPreferences: preferences },
-      { new: true }
-    );
+    return await nativeWatchConnection(getNativeDatabase(),userId,{watchSyncPreferences:preferences}) as IWatchConnection;
   }
 }
 

@@ -1,15 +1,16 @@
 /**
  * DATA IMPORT SERVICE - Transaction-safe data saving
- * 
- * Handles the actual saving of validated data to MongoDB
+ *
+ * Handles the actual saving of validated data to Firestore
  * with full transaction support for atomic operations.
  */
 
-import mongoose from 'mongoose';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {saveNativeAdminImport} from '@/lib/db/repository/native-admin-import-save';
 import { modelRegistry } from './modelRegistry';
 import { validationEngine, ValidationError, type FieldMappingInfo } from './validationEngine';
 import { FileGenerator } from './fileParser';
-import dbConnect from '@/lib/db/connection';
+
 
 // ============================================
 // TYPE DEFINITIONS
@@ -423,9 +424,9 @@ export class DataImportService {
   }
 
   /**
-   * Save all validated data using MongoDB transactions
+   * Save all validated data using Firestore transactions
    */
-  async saveAll(sessionId: string): Promise<SaveResult> {
+  async saveAll(sessionId: string, actorId: string): Promise<SaveResult> {
     const session = sessions.get(sessionId);
     if (!session) {
       return {
@@ -469,193 +470,9 @@ export class DataImportService {
       };
     }
 
-    // Connect to database
-    await dbConnect();
-
-    // Use MongoDB transaction
-    const mongoSession = await mongoose.startSession();
-    const savedCounts: Record<string, number> = {};
-    let totalSaved = 0;
-
+    let savedCounts:Record<string,number>={},totalSaved=0;
     try {
-      await mongoSession.withTransaction(async () => {
-        for (const group of validationResult.validatedGroups) {
-          const Model = modelRegistry.getMongooseModel(group.modelName);
-          if (!Model) {
-            throw new Error(`Model ${group.modelName} not found`);
-          }
-
-          // Check for duplicates and prepare rows for saving
-          let rowsToSave = group.rows;
-
-          if (group.modelName === 'User') {
-            const bcrypt = require('bcryptjs');
-            const DEFAULT_IMPORT_PASSWORD = '123456';
-
-            // Determine next clientId from latest persisted client record.
-            // This is needed because insertMany bypasses pre-save hooks that normally assign clientId.
-            let nextClientIdNumber = 1;
-            const latestClientIdAgg = await Model.aggregate([
-              {
-                $match: {
-                  role: 'client',
-                  clientId: { $exists: true, $ne: null, $regex: /^C-\d+$/ }
-                }
-              },
-              {
-                $project: {
-                  clientIdNum: { $toInt: { $substr: ['$clientId', 2, -1] } }
-                }
-              },
-              { $sort: { clientIdNum: -1 } },
-              { $limit: 1 }
-            ]).session(mongoSession);
-
-            if (latestClientIdAgg.length > 0 && latestClientIdAgg[0].clientIdNum) {
-              nextClientIdNumber = latestClientIdAgg[0].clientIdNum + 1;
-            }
-
-            // Check for duplicates by email/phone before inserting
-            const duplicateErrors = [];
-            const validRowsToSave = [];
-
-            for (const row of group.rows) {
-              // Always rely on backend timestamps for imported users.
-              const now = new Date();
-              let processedRow: Record<string, any> = {
-                ...row,
-                createdAt: now,
-                updatedAt: now
-              };
-
-              // Check if user with same email already exists
-              if (processedRow.email) {
-                const existingUser = await Model.findOne({ email: String(processedRow.email).toLowerCase() }, {}, { session: mongoSession });
-                if (existingUser) {
-                  duplicateErrors.push({
-                    row: rowsToSave.indexOf(row) + 2,
-                    modelName: 'User',
-                    field: 'email',
-                    message: `A user with email "${processedRow.email}" already exists in the database`,
-                    value: processedRow.email,
-                    errorType: 'duplicate' as const
-                  });
-                  continue;
-                }
-              }
-
-              // Check if user with same phone already exists
-              if (processedRow.phone) {
-                const existingUser = await Model.findOne({ phone: String(processedRow.phone) }, {}, { session: mongoSession });
-                if (existingUser) {
-                  duplicateErrors.push({
-                    row: rowsToSave.indexOf(row) + 2,
-                    modelName: 'User',
-                    field: 'phone',
-                    message: `A user with phone "${processedRow.phone}" already exists in the database`,
-                    value: processedRow.phone,
-                    errorType: 'duplicate' as const
-                  });
-                  continue;
-                }
-              }
-
-              // Ignore imported password and always set backend default password.
-              const salt = await bcrypt.genSalt(10);
-              const hashedPassword = await bcrypt.hash(DEFAULT_IMPORT_PASSWORD, salt);
-              processedRow = { ...processedRow, password: hashedPassword };
-
-              // Ensure sequential clientId for all client rows in import.
-              const roleValue = String(processedRow.role || 'client').toLowerCase();
-              if (roleValue === 'client') {
-                processedRow = {
-                  ...processedRow,
-                  clientId: `C-${nextClientIdNumber}`
-                };
-                nextClientIdNumber += 1;
-              }
-
-              validRowsToSave.push(processedRow);
-            }
-
-            if (duplicateErrors.length > 0) {
-              throw new Error(`User import validation failed: ${duplicateErrors.map(e => `${e.field}=${e.value}`).join(', ')}`);
-            }
-
-            rowsToSave = validRowsToSave;
-          }
-
-          // Special handling for MedicalInfo - use upsert to update existing records
-          // MedicalInfo has a unique constraint on userId, so we update if exists
-          if (group.modelName === 'MedicalInfo') {
-            const upsertResults = [];
-            for (const row of rowsToSave) {
-              if (!row.userId) {
-                throw new Error('MedicalInfo requires a userId field');
-              }
-
-              // Use findOneAndUpdate with upsert to create or update
-              const result = await Model.findOneAndUpdate(
-                { userId: row.userId },
-                { $set: row },
-                {
-                  session: mongoSession,
-                  upsert: true,
-                  new: true,
-                  runValidators: true
-                }
-              );
-              if (result) {
-                upsertResults.push(result);
-              }
-            }
-
-            savedCounts[group.modelName] = upsertResults.length;
-            totalSaved += upsertResults.length;
-            continue; // Skip the insertMany below
-          }
-
-          // Special handling for LifestyleInfo - use upsert (unique on userId)
-          if (group.modelName === 'LifestyleInfo') {
-            const upsertResults = [];
-            for (const row of rowsToSave) {
-              if (!row.userId) {
-                throw new Error('LifestyleInfo requires a userId field');
-              }
-
-              const result = await Model.findOneAndUpdate(
-                { userId: row.userId },
-                { $set: row },
-                {
-                  session: mongoSession,
-                  upsert: true,
-                  new: true,
-                  runValidators: true
-                }
-              );
-              if (result) {
-                upsertResults.push(result);
-              }
-            }
-
-            savedCounts[group.modelName] = upsertResults.length;
-            totalSaved += upsertResults.length;
-            continue; // Skip the insertMany below
-          }
-
-          // Insert all rows for this model
-          if (rowsToSave.length > 0) {
-            const result = await Model.insertMany(rowsToSave, {
-              session: mongoSession,
-              ordered: true // Stop on first error
-            });
-
-            savedCounts[group.modelName] = result.length;
-            totalSaved += result.length;
-          }
-        }
-      });
-
+      const saved=await saveNativeAdminImport(getNativeDatabase(),actorId,sessionId,validationResult.validatedGroups);savedCounts=saved.savedCounts;totalSaved=saved.totalSaved;
       // Update session status
       session.status = 'saved';
       session.savedAt = new Date();
@@ -689,8 +506,6 @@ export class DataImportService {
         message: `Transaction rolled back: ${error.message}`
       };
 
-    } finally {
-      await mongoSession.endSession();
     }
   }
 

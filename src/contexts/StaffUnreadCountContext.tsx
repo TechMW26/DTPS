@@ -30,7 +30,7 @@ export function StaffUnreadCountProvider({ children }: StaffUnreadCountProviderP
   const role = session?.user?.role;
   const isStaffRole = role === 'admin' || role === 'dietitian' || role === 'health_counselor';
 
-  // Subscribe to Socket.io staff unread-count events
+  // Subscribe to The native event stream staff unread-count events
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user || !isStaffRole) {
       unsubRef.current?.();

@@ -1,9 +1,11 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import dbConnect from "@/lib/db/connection";
-import LifestyleInfo from "@/lib/db/models/LifestyleInfo";
-import { clearCacheByTag } from '@/lib/api/utils';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {readNativeClientForm,writeNativeClientForm,listNativeRecalls} from '@/lib/db/repository/native-client-forms';
+import {ZodError} from 'zod';
+import { clearCacheByTag } from '@/lib/cache/memoryCache';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
 
@@ -24,16 +26,16 @@ export async function GET() {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await dbConnect();
+
 
     // Fetch directly from DB — never cache /api/client/** (multi-process safe)
-    const lifestyleInfo = await LifestyleInfo.findOne({ userId: session.user.id }).lean();
+    const lifestyleInfo = await readNativeClientForm(getNativeDatabase(),'lifestyleinfos',session.user.id);
 
     if (!lifestyleInfo) {
-      return NextResponse.json({
+      return nativeResponseJson({
         heightFeet: "",
         heightInch: "",
         heightCm: "",
@@ -63,10 +65,10 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json(lifestyleInfo);
+    return nativeResponseJson(lifestyleInfo);
   } catch (error) {
     console.error("Error fetching lifestyle info:", error);
-    return NextResponse.json({ error: "Failed to fetch lifestyle info" }, { status: 500 });
+    return nativeResponseJson({ error: "Failed to fetch lifestyle info" }, { status: 500 });
   }
 }
 
@@ -75,10 +77,10 @@ export async function POST(request: Request) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await dbConnect();
+
     const data = await request.json();
     const normalizedFoodPreference = normalizeFoodPreference(data.foodPreference);
 
@@ -92,26 +94,13 @@ export async function POST(request: Request) {
       }
     }
 
-    const lifestyleInfo = await LifestyleInfo.findOneAndUpdate(
-      { userId: session.user.id },
-      {
-        ...data,
-        foodPreference: normalizedFoodPreference,
-        bmi,
-        userId: session.user.id
-      },
-      {
-        upsert: true,
-        new: true,
-        runValidators: true
-      }
-    );
+    const lifestyleInfo=await writeNativeClientForm(getNativeDatabase(),'lifestyleinfos',session.user.id,{...data,...(data.foodPreference!==undefined?{foodPreference:normalizedFoodPreference}:{}),...(bmi!==undefined?{bmi}:{})});
 
     clearCacheByTag('client');
     clearCacheByTag(`client:lifestyle-info:${session.user.id}`);
 
     // Log activity
-    logActivity({
+    await logActivity({
       userId: session.user.id,
       userRole: 'client',
       userName: session.user.name || '',
@@ -139,10 +128,11 @@ export async function POST(request: Request) {
       console.error('Error sending lifestyle update notification:', notificationError);
     }
 
-    return NextResponse.json({ success: true, data: lifestyleInfo });
+    return nativeResponseJson({ success: true, data: lifestyleInfo });
   } catch (error) {
+    if(error instanceof ZodError)return nativeResponseJson({error:'Invalid lifestyle information',details:error.issues},{status:400});
     console.error("Error saving lifestyle info:", error);
-    return NextResponse.json({ error: "Failed to save lifestyle info" }, { status: 500 });
+    return nativeResponseJson({ error: "Failed to save lifestyle info" }, { status: 500 });
   }
 }
 

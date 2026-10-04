@@ -1,17 +1,15 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {nativeMediaJson} from '@/lib/api/native-media-json';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { nativePlanList, nativePlanForDate, nativeTemplateMeals, nativeMealRecipes } from '@/lib/db/repository/native-client-meals';
 import { withJsonCache } from '@/lib/cache/json-cache';
 import { completionMatchesMeal } from '@/lib/task-schedule';
 import { measureApi } from '@/lib/api/performance';
-import DietTemplate from '@/lib/db/models/DietTemplate';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import Recipe from '@/lib/db/models/Recipe';
-import User from '@/lib/db/models/User';
 import { UserRole } from '@/types';
 import { startOfDay, endOfDay, parseISO, format, isValid } from 'date-fns';
-import { withCache } from '@/lib/api/utils';
 import {
   MEAL_TYPES,
   MEAL_TYPE_KEYS,
@@ -75,23 +73,20 @@ function resolveRequestedDate(dateParam: string | null): Date | null {
 // GET /api/client/meal-plan - Get client's meal plan for a specific date
 async function getHandler(request: NextRequest) {
   try {
-    // Run auth + DB connection in PARALLEL
-    const [session] = await Promise.all([
-      getServerSession(authOptions),
-      connectDB()
-    ]);
+    const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     if (session.user.role !== UserRole.CLIENT) {
-      return NextResponse.json({ error: 'Only clients can access this endpoint' }, { status: 403 });
+      return nativeResponseJson({ error: 'Only clients can access this endpoint' }, { status: 403 });
     }
 
     // Check if client is on hold - if so, hide meal plans
-    const clientUser = await User.findById(session.user.id).select('holdStatus').lean() as any;
+    const db = getNativeDatabase();
+    const clientUser = (await db.collection('users').doc(session.user.id).get()).data();
     if (clientUser?.holdStatus?.isOnHold) {
-      return NextResponse.json({
+      return nativeResponseJson({
         success: true,
         hasPlan: false,
         isOnHold: true,
@@ -104,19 +99,13 @@ async function getHandler(request: NextRequest) {
     const listAll = searchParams.get('list') === 'true';
     const normalizedDate = resolveRequestedDate(dateParam);
     if (!normalizedDate && !listAll) {
-      return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+      return nativeResponseJson({ error: 'Invalid date' }, { status: 400 });
     }
 
     // If listing all plans, return all non-deleted plans for the client
     if (listAll) {
-      const allPlans = await ClientMealPlan.find({
-        clientId: session.user.id,
-        status: { $in: ['active', 'completed', 'paused'] },
-      })
-        .select('name status startDate endDate duration createdAt')
-        .sort({ createdAt: -1 })
-        .lean();
-      return NextResponse.json({ success: true, plans: allPlans });
+      const allPlans = await nativePlanList(db, session.user.id);
+      return nativeResponseJson(await nativeMediaJson(getNativeDatabase(),{ success: true, plans: allPlans }));
     }
 
     // At this point normalizedDate is guaranteed non-null since !listAll
@@ -124,20 +113,11 @@ async function getHandler(request: NextRequest) {
 
     const cacheKey = `client:meal-plan:${session.user.id}:${effectiveDate.toISOString().slice(0, 10)}`;
 
-    const data = await withCache(
+    const data = await withJsonCache(
       cacheKey,
       async () => {
         // Find active OR completed meal plan for the client on this date
-        const mealPlan = await ClientMealPlan.findOne({
-          clientId: session.user.id,
-          status: { $in: ['active', 'completed', 'paused'] },
-          isDeleted: { $ne: true },
-          startDate: { $lte: endOfDay(effectiveDate) },
-          endDate: { $gte: startOfDay(effectiveDate) }
-        })
-          .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
-          .select('clientId status startDate endDate meals mealTypes templateId mealCompletions freezedDays customizations goals name')
-          .lean() as any;
+        const mealPlan = await nativePlanForDate(db, session.user.id, startOfDay(effectiveDate), endOfDay(effectiveDate));
 
         if (!mealPlan) {
           return {
@@ -212,9 +192,7 @@ async function getHandler(request: NextRequest) {
           // Most plans already own their published meals. Load the template
           // only for the legacy fallback, instead of fetching every template
           // day on every current-day read and background prefetch.
-          const template = await DietTemplate.findById(mealPlan.templateId)
-            .select('meals')
-            .lean();
+          const template = await nativeTemplateMeals(db, String(mealPlan.templateId));
 
           if (template && template.meals && template.meals.length > 0) {
             const templateDay = template.meals[dayIndex % template.meals.length];
@@ -282,11 +260,11 @@ async function getHandler(request: NextRequest) {
       { ttl: 60000, tags: ['client'] }
     );
 
-    return NextResponse.json({ ...data, serverNow: new Date().toISOString() });
+    return nativeResponseJson(await nativeMediaJson(getNativeDatabase(),{ ...data, serverNow: new Date().toISOString() }));
 
   } catch (error) {
     console.error('Error fetching client meal plan:', error);
-    return NextResponse.json({
+    return nativeResponseJson({
       error: 'Internal server error',
       message: 'Failed to fetch meal plan'
     }, { status: 500 });
@@ -576,37 +554,11 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
   if (recipeIds.length === 0 && recipeUuids.length === 0 && recipeNames.length === 0) return meals;
 
   try {
-    // Fetch all recipes in one query (by ID or UUID)
-    const query: any = { $or: [] };
-    if (recipeIds.length > 0) {
-      query.$or.push({ _id: { $in: recipeIds } });
-    }
-    if (recipeUuids.length > 0) {
-      query.$or.push({ uuid: { $in: recipeUuids } });
-    }
-    if (recipeNames.length > 0) {
-      const exactNamePatterns = [...new Set(recipeNames.filter(Boolean))].map(
-        (name) => new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
-      );
-      query.$or.push({
-        $and: [
-          { name: { $in: exactNamePatterns } },
-          { isActive: { $ne: false } },
-          { 'ingredients.0': { $exists: true } },
-          { 'instructions.0': { $exists: true } },
-        ],
-      });
-    }
-
     const recipeCacheKey = JSON.stringify([
       [...new Set(recipeIds)].sort(), [...new Set(recipeUuids)].sort(), [...new Set(recipeNames)].sort(),
     ]);
     const recipes = await withJsonCache(`meal-recipes:${recipeCacheKey}`, async () => {
-      const records = await Recipe.find(query)
-        .select('name uuid ingredients instructions prepTime cookTime servings difficulty cuisine tips calories protein carbs fat image images video equipment storage tags dietaryRestrictions allergens')
-        .lean();
-      // Cache JSON only; no mutable Mongoose documents or client records.
-      return JSON.parse(JSON.stringify(records)) as any[];
+      return nativeMealRecipes(getNativeDatabase(), recipeIds, recipeUuids, recipeNames);
     }, { ttl: 30_000, tags: ['recipes'] });
 
     // Create maps for quick lookup by both ID and UUID

@@ -92,6 +92,7 @@ export default function PaymentsSection({
   const [paymentsState, setPaymentsState] = useState<PaymentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const paymentLinkRequest = useRef<{ body: string; key: string } | null>(null);
 
   // Column visibility
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
@@ -396,10 +397,7 @@ export default function PaymentsSection({
 
     setCreating(true);
     try {
-      const response = await fetch('/api/payment-links', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const requestBody = JSON.stringify({
           clientId: client._id,
           amount,
           tax: Number(tax) || 0,
@@ -415,12 +413,18 @@ export default function PaymentsSection({
           expireDate: expireDate || undefined,
           notes: notes || undefined,
           showToClient,
-        }),
+        });
+      if (paymentLinkRequest.current?.body !== requestBody) paymentLinkRequest.current = { body: requestBody, key: crypto.randomUUID() };
+      const response = await fetch('/api/payment-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': paymentLinkRequest.current.key },
+        body: requestBody,
       });
 
       const data = await response.json();
 
       if (data.success) {
+        paymentLinkRequest.current = null;
         toast.success("Payment link generated successfully!");
         resetModal();
         fetchPaymentLinks();

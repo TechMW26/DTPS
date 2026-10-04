@@ -111,7 +111,7 @@ export function computeClientStatusFromDocs(
  * NOTE: status is derived from the subscription Expected End Date — meal plan publication
  * state does NOT affect it.
  *
- * @param clientId - The client's MongoDB ObjectId as string
+ * @param clientId - The client's stable document ID
  * @returns The newly computed client status
  */
 export async function updateClientStatusFromMealPlan(clientId: string): Promise<ClientStatus> {
@@ -122,7 +122,7 @@ export async function updateClientStatusFromMealPlan(clientId: string): Promise<
  * Core: recompute a client's status from purchases + hold state and persist it.
  * When the status changes, an audit entry is appended to `clientStatusHistory`.
  *
- * @param clientId - The client's MongoDB ObjectId as string
+ * @param clientId - The client's stable document ID
  * @param meta - Optional audit metadata (trigger reason, who/what changed)
  * @returns The newly computed client status
  */
@@ -130,83 +130,28 @@ export async function recalculateAndPersistClientStatus(
   clientId: string,
   meta?: { trigger?: string; changedBy?: string; isManual?: boolean; relatedEvent?: string }
 ): Promise<ClientStatus> {
-  // Dynamic imports to avoid circular dependencies
-  const { default: UnifiedPayment } = await import('@/lib/db/models/UnifiedPayment');
-  const { default: User } = await import('@/lib/db/models/User');
-
-  // Fetch successful purchases (with the dates needed to determine ACTIVE/INACTIVE)
-  const payments = await UnifiedPayment.find(
-    {
-      client: clientId,
-      $or: [
-        { status: { $in: ['paid', 'completed', 'active'] } },
-        { paymentStatus: 'paid' }
-      ]
-    },
-    { status: 1, paymentStatus: 1, expectedEndDate: 1, endDate: 1 }
-  ).lean();
-
-  // Read current status + manual hold flag
-  const clientDoc = await User.findById(clientId).select('clientStatus holdStatus').lean() as any;
-  if (!clientDoc) {
-    // Client no longer exists; nothing to do
-    return ClientStatus.LEAD;
-  }
-  const isOnHold = !!clientDoc?.holdStatus?.isOnHold;
-
-  // Compute new status (date-based + hold)
-  const newStatus = computeClientStatusFromDocs(payments as any[], isOnHold);
-  const previousStatus = clientDoc.clientStatus as ClientStatus | undefined;
-
-  // Persist only when changed; append an audit trail entry
-  if (previousStatus !== newStatus) {
-    await User.findByIdAndUpdate(clientId, {
-      clientStatus: newStatus,
-      $push: {
-        clientStatusHistory: {
-          previousStatus: previousStatus || null,
-          newStatus,
-          changedBy: meta?.changedBy || null,
-          isManual: !!meta?.isManual,
-          trigger: meta?.trigger || 'auto',
-          relatedEvent: meta?.relatedEvent || null,
-          timestamp: new Date()
-        }
-      }
-    });
-    console.log(`[ClientStatus] ${clientId}: ${previousStatus || 'none'} → ${newStatus} (${meta?.trigger || 'auto'})`);
-  }
-
-  return newStatus;
+  const { getNativeDatabase } = await import('@/lib/db/firestore-native');
+  const { recalculateNativeClientStatus } = await import('@/lib/db/repository/native-client-status');
+  return recalculateNativeClientStatus(getNativeDatabase(), clientId, meta);
 }
 
 /**
  * Checks if a client has an active meal plan (plan status is 'active' AND endDate is in the future)
- * 
- * @param clientId - The client's MongoDB ObjectId as string
+ *
+ * @param clientId - The client's stable document ID
  * @returns Boolean indicating if client has a currently valid meal plan
  */
 export async function hasActiveMealPlan(clientId: string): Promise<boolean> {
-  const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Find any active plan with endDate in the future (including upcoming plans)
-  const activePlan = await ClientMealPlan.findOne({
-    clientId,
-    status: 'active',
-    endDate: { $gte: today }
-  });
-
-  return !!activePlan;
+  const { getNativeDatabase } = await import('@/lib/db/firestore-native');
+  const { findNativeActivePlan } = await import('@/lib/db/repository/native-client-status');
+  return !!(await findNativeActivePlan(getNativeDatabase(), clientId));
 }
 
 /**
  * Gets the client status (computed from subscription Expected End Date + hold state).
  * Use this when fetching client data to ensure status is always correct.
- * 
- * @param clientId - The client's MongoDB ObjectId as string
+ *
+ * @param clientId - The client's stable document ID
  * @returns Object with clientStatus, hasActivePlan, and subscription end date
  */
 export async function getClientStatusInfo(clientId: string): Promise<{
@@ -215,42 +160,7 @@ export async function getClientStatusInfo(clientId: string): Promise<{
   activePlanStartDate?: Date;
   activePlanEndDate?: Date;
 }> {
-  const { default: ClientMealPlan } = await import('@/lib/db/models/ClientMealPlan');
-  const { default: UnifiedPayment } = await import('@/lib/db/models/UnifiedPayment');
-  const { default: User } = await import('@/lib/db/models/User');
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Run queries in PARALLEL for faster response
-  const [activePlan, payments, clientDoc] = await Promise.all([
-    // Active plan dates are returned for display only (not used for status)
-    ClientMealPlan.findOne({
-      clientId,
-      status: 'active',
-      endDate: { $gte: today }
-    }).select('startDate endDate status').lean(),
-    // Successful purchases (with dates) drive ACTIVE/INACTIVE
-    UnifiedPayment.find({
-      client: clientId,
-      $or: [
-        { status: { $in: ['paid', 'completed', 'active'] } },
-        { paymentStatus: 'paid' }
-      ]
-    }).select('status paymentStatus expectedEndDate endDate').lean(),
-    // Manual hold flag
-    User.findById(clientId).select('holdStatus').lean()
-  ]);
-
-  const hasActivePlan = !!activePlan;
-  const isOnHold = !!(clientDoc as any)?.holdStatus?.isOnHold;
-  const clientStatus = computeClientStatusFromDocs(payments as any[], isOnHold);
-
-  return {
-    clientStatus,
-    hasActivePlan,
-    activePlanStartDate: (activePlan as any)?.startDate,
-    activePlanEndDate: (activePlan as any)?.endDate
-  };
+  const { getNativeDatabase } = await import('@/lib/db/firestore-native');
+  const { nativeClientStatusInfo } = await import('@/lib/db/repository/native-client-status');
+  return nativeClientStatusInfo(getNativeDatabase(), clientId);
 }
-

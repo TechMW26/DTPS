@@ -1,6 +1,5 @@
 import { google, calendar_v3 } from 'googleapis';
-import User from '@/lib/db/models/User';
-import { getBaseUrl } from '@/lib/config';
+import { getNativeGoogleCalendarClient, getNativeGoogleCalendarClientByEmail } from './native-google-calendar';
 
 /**
  * Google Calendar Service for managing calendar events
@@ -24,50 +23,6 @@ export interface AppointmentCalendarData {
 /**
  * Get OAuth2 client for a user
  */
-async function getOAuth2ClientForUser(userId: string) {
-  const user = await User.findById(userId);
-  
-  if (!user || !user.googleCalendarAccessToken) {
-    return null;
-  }
-
-  let baseUrl = getBaseUrl();
-  baseUrl = baseUrl.replace(/\/$/, '');
-
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    `${baseUrl}/api/auth/google-calendar/callback`
-  );
-
-  oauth2Client.setCredentials({
-    access_token: user.googleCalendarAccessToken,
-    refresh_token: user.googleCalendarRefreshToken,
-    expiry_date: user.googleCalendarTokenExpiry ? new Date(user.googleCalendarTokenExpiry).getTime() : undefined
-  });
-
-  // Try to refresh token if needed
-  try {
-    const { credentials } = await oauth2Client.refreshAccessToken();
-    if (credentials.access_token) {
-      oauth2Client.setCredentials(credentials);
-      // Update stored token
-      user.googleCalendarAccessToken = credentials.access_token;
-      if (credentials.refresh_token) {
-        user.googleCalendarRefreshToken = credentials.refresh_token;
-      }
-      if (credentials.expiry_date) {
-        user.googleCalendarTokenExpiry = new Date(credentials.expiry_date);
-      }
-      await user.save();
-    }
-  } catch (refreshError) {
-    console.warn('Token refresh failed for user:', userId, refreshError);
-  }
-
-  return oauth2Client;
-}
-
 /**
  * Create a calendar event for an appointment
  */
@@ -77,8 +32,8 @@ export async function createCalendarEvent(
   attendeeEmail?: string
 ): Promise<CalendarEventResult> {
   try {
-    const oauth2Client = await getOAuth2ClientForUser(userId);
-    
+    const oauth2Client = await getNativeGoogleCalendarClient(userId);
+
     if (!oauth2Client) {
       return { success: false, error: 'Google Calendar not connected' };
     }
@@ -140,10 +95,10 @@ export async function createCalendarEvent(
       eventId: response.data.id || undefined
     };
   } catch (error: any) {
-    console.error('Error creating calendar event:', error);
+    console.error('Calendar provider operation failed');
     return {
       success: false,
-      error: error.message || 'Failed to create calendar event'
+      error: 'Failed to create calendar event'
     };
   }
 }
@@ -156,8 +111,8 @@ export async function deleteCalendarEvent(
   eventId: string
 ): Promise<CalendarEventResult> {
   try {
-    const oauth2Client = await getOAuth2ClientForUser(userId);
-    
+    const oauth2Client = await getNativeGoogleCalendarClient(userId);
+
     if (!oauth2Client) {
       return { success: false, error: 'Google Calendar not connected' };
     }
@@ -172,14 +127,14 @@ export async function deleteCalendarEvent(
 
     return { success: true };
   } catch (error: any) {
-    console.error('Error deleting calendar event:', error);
+    console.error('Calendar provider operation failed');
     // If event not found, consider it a success (already deleted)
     if (error.code === 404 || error.code === 410) {
       return { success: true };
     }
     return {
       success: false,
-      error: error.message || 'Failed to delete calendar event'
+      error: 'Failed to delete calendar event'
     };
   }
 }
@@ -193,8 +148,8 @@ export async function updateCalendarEvent(
   appointmentData: Partial<AppointmentCalendarData>
 ): Promise<CalendarEventResult> {
   try {
-    const oauth2Client = await getOAuth2ClientForUser(userId);
-    
+    const oauth2Client = await getNativeGoogleCalendarClient(userId);
+
     if (!oauth2Client) {
       return { success: false, error: 'Google Calendar not connected' };
     }
@@ -216,7 +171,7 @@ export async function updateCalendarEvent(
         dateTime: appointmentData.scheduledAt.toISOString(),
         timeZone: 'Asia/Kolkata'
       };
-      
+
       if (appointmentData.duration) {
         const endTime = new Date(appointmentData.scheduledAt.getTime() + appointmentData.duration * 60 * 1000);
         event.end = {
@@ -235,10 +190,10 @@ export async function updateCalendarEvent(
 
     return { success: true, eventId };
   } catch (error: any) {
-    console.error('Error updating calendar event:', error);
+    console.error('Calendar provider operation failed');
     return {
       success: false,
-      error: error.message || 'Failed to update calendar event'
+      error: 'Failed to update calendar event'
     };
   }
 }

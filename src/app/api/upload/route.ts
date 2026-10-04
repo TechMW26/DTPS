@@ -1,45 +1,31 @@
-import { after, NextRequest, NextResponse } from "next/server";
+import {nativeResponseJson} from '@/lib/api/native-response';
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import mongoose from "mongoose";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { authOptions } from "@/lib/auth/config";
-import connectDB from "@/lib/db/connection";
-import { File as FileModel } from "@/lib/db/models/File";
-import { uploadToBlob, deleteFromBlob } from "@/lib/storage/blob-storage";
+import { getNativeDatabase } from "@/lib/db/firestore-native";
+import { saveNativeUpload, deleteNativeUpload, reserveNativeUpload } from "@/lib/db/repository/native-files";
+import { uploadToBlob } from "@/lib/storage/blob-storage";
 import { serverCompressionPresets } from "@/lib/imageCompressionServer";
-
-function scheduleAfterResponse(task: () => Promise<void>): Promise<void> | undefined {
-  try {
-    after(task);
-    return undefined;
-  } catch (error) {
-    // Direct route-handler tests do not create a Next.js request context.
-    // Execute inline there while preserving non-blocking production behavior.
-    if (error instanceof Error && error.message.includes("outside a request scope")) {
-      return task();
-    }
-    throw error;
-  }
-}
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
     const type = formData.get("type") as string;
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (!(file instanceof File)) {
+      return nativeResponseJson({ error: "No file provided" }, { status: 400 });
     }
 
     // Reject empty files
     if (!file.size || file.size === 0) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: "Empty file. Please re-record your audio or re-select the file." },
         { status: 400 }
       );
@@ -189,11 +175,11 @@ export async function POST(request: NextRequest) {
       !isDocumentTypeAllowedByExtension &&
       !allowedTypes[fileType]?.includes(normalizedMimeType)
     ) {
-      return NextResponse.json({ error: "Invalid file type" }, { status: 400 });
+      return nativeResponseJson({ error: "Invalid file type" }, { status: 400 });
     }
 
     if (file.size > maxSizes[fileType]) {
-      return NextResponse.json({ error: "File too large" }, { status: 400 });
+      return nativeResponseJson({ error: "File too large" }, { status: 400 });
     }
 
     // A stable operation key ensures a retried POST targets the same Blob and
@@ -201,7 +187,7 @@ export async function POST(request: NextRequest) {
     const rawOperationId = request.headers.get("x-idempotency-key")?.trim();
     const validOperationId = rawOperationId && /^[a-zA-Z0-9._:-]{8,128}$/.test(rawOperationId)
       ? rawOperationId
-      : `${Date.now()}-${new mongoose.Types.ObjectId().toHexString()}`;
+      : `${Date.now()}-${randomBytes(12).toString("hex")}`;
     const operationHash = createHash("sha256")
       .update(`${session.user.id}:${validOperationId}`)
       .digest("hex");
@@ -228,6 +214,9 @@ export async function POST(request: NextRequest) {
         ? serverCompressionPresets.avatar
         : { maxWidth: 1600, maxHeight: 1600, quality: 85, format: "webp" as const };
 
+    await reserveNativeUpload(getNativeDatabase(), `server/${operationHash}`, session.user.id,
+      createHash("sha256").update(buffer).update(`:${fileType}:${normalizedMimeType}:${fileName}`).digest("hex"));
+
     // Upload to Vercel Blob
     const blobResult = await uploadToBlob(buffer, {
       type: fileType as any,
@@ -239,7 +228,7 @@ export async function POST(request: NextRequest) {
 
     if (!blobResult) {
       console.error(`[Upload] Vercel Blob upload failed for ${fileType}/${fileName}`);
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: "Media service temporarily unavailable. Please try again shortly.", code: "MEDIA_SERVICE_DOWN", retryAfter: 60 },
         { status: 503 }
       );
@@ -248,37 +237,19 @@ export async function POST(request: NextRequest) {
     // Normalize MIME type: strip codec suffix
     const responseMimeType = blobResult.contentType.replace(/;.*$/, "").trim();
 
-    // Pre-allocate the stable file id, then persist metadata after the upload
-    // response. Blob availability must not depend on MongoDB availability.
-    const fileId = new mongoose.Types.ObjectId(operationHash.slice(0, 24));
-    const inlineMetadataTask = scheduleAfterResponse(async () => {
-      try {
-        await connectDB();
-        await FileModel.updateOne(
-          { _id: fileId },
-          {
-            $set: {
-              filename: fileName,
-              originalName: file.name,
-              mimeType: responseMimeType,
-              size: file.size,
-              type: fileType,
-              imageKitFileId: blobResult.pathname,
-              imageKitUrl: blobResult.url,
-              uploadedBy: session.user.id,
-            },
-          },
-          { upsert: true },
-        );
-      } catch (metadataError) {
-        console.error("[Upload] Blob uploaded but metadata persistence failed:", metadataError);
-      }
+    const fileId = operationHash.slice(0, 24);
+    await saveNativeUpload(getNativeDatabase(), fileId, {
+      filename: blobResult.filename,
+      originalName: file.name,
+      mimeType: responseMimeType,
+      size: blobResult.size,
+      type: fileType,
+      imageKitFileId: blobResult.pathname,
+      imageKitUrl: blobResult.url,
+      uploadedBy: session.user.id,
     });
-    if (inlineMetadataTask) await inlineMetadataTask;
 
-    console.log(`[Upload] ✅ Stored on Vercel Blob: ${blobResult.url} (${file.size} bytes, ${responseMimeType})`);
-
-    return NextResponse.json({
+    return nativeResponseJson({
       url: blobResult.url,
       canonicalUrl: `/api/files/${fileId}`,
       dbUrl: `/api/files/${fileId}`,
@@ -292,47 +263,32 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error uploading file:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to upload file";
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    const errorMessage = "Upload could not be completed. Please retry.";
+    return nativeResponseJson({ error: errorMessage }, { status: 500 });
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    await connectDB();
-
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
     const fileId = searchParams.get("fileId");
 
     if (!fileId) {
-      return NextResponse.json({ error: "No file ID provided" }, { status: 400 });
+      return nativeResponseJson({ error: "No file ID provided" }, { status: 400 });
     }
 
-    const fileRecord = await FileModel.findOne({
-      _id: fileId,
-      uploadedBy: session.user.id,
-    });
-
-    if (!fileRecord) {
-      return NextResponse.json({ error: "File not found or unauthorized" }, { status: 404 });
+    if (!await deleteNativeUpload(getNativeDatabase(), fileId, session.user.id)) {
+      return nativeResponseJson({ error: "File not found or unauthorized" }, { status: 404 });
     }
 
-    // Delete from Vercel Blob (use pathname or URL)
-    const blobRef = fileRecord.imageKitFileId || fileRecord.imageKitUrl;
-    if (blobRef) {
-      await deleteFromBlob(blobRef);
-    }
-
-    await FileModel.findByIdAndDelete(fileId);
-
-    return NextResponse.json({ success: true });
+    return nativeResponseJson({ success: true });
   } catch (error) {
     console.error("Error deleting file:", error);
-    return NextResponse.json({ error: "Failed to delete file" }, { status: 500 });
+    return nativeResponseJson({ error: "Failed to delete file" }, { status: 500 });
   }
 }

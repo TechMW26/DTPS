@@ -1,6 +1,6 @@
 import { sendNotificationToUser, sendNotificationToUsers } from '@/lib/firebase';
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { Filter } from 'firebase-admin/firestore';
 
 // Notification types
 export type NotificationType =
@@ -253,16 +253,15 @@ export async function sendNotificationToAllClients(
   }
 ) {
   try {
-    await connectDB();
-    const clients = await User.find({
-      $or: [
-        { assignedDietitian: dietitianId },
-        { assignedHealthCounselor: dietitianId },
-      ],
-      status: 'active',
-    }).select('_id');
-
-    const clientIds = clients.map(c => c._id.toString());
+    const clients = await getNativeDatabase().collection('users')
+      .where('role', '==', 'client').where('status', '==', 'active')
+      .where(Filter.or(
+        Filter.where('assignedDietitian', '==', dietitianId),
+        Filter.where('assignedDietitians', 'array-contains', dietitianId),
+        Filter.where('assignedHealthCounselor', '==', dietitianId),
+        Filter.where('assignedHealthCounselors', 'array-contains', dietitianId),
+      )).select().get();
+    const clientIds = clients.docs.map(client => client.id);
 
     if (clientIds.length === 0) {
       return { successCount: 0, failureCount: 0, invalidTokens: [], responses: [] };

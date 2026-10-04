@@ -1,28 +1,14 @@
+import {planNeedsDateCorrection} from '@/lib/meal-plan-date-validity';
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import dbConnect from '@/lib/db/connect';
-import ClientMealPlan from '@/lib/db/models/ClientMealPlan';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import ServicePlan, { ClientPurchase } from '@/lib/db/models/ServicePlan';
-import { clearCacheByTag } from '@/lib/api/utils';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { NativePlanEditor, nativePlanStaffAccess } from '@/lib/db/repository/native-plan-editor';
+import { clearCacheByTag } from '@/lib/cache/memoryCache';
 import { logHistoryServer } from '@/lib/server/history';
 import { addDays, format } from 'date-fns';
 import { recalculateAndPersistClientStatus } from '@/lib/status/computeClientStatus';
-
-const PURCHASE_TRACKING_FIELDS = [
-    '_id',
-    'paymentLink',
-    'planName',
-    'durationDays',
-    'durationLabel',
-    'selectedTier',
-    'extendedDaysUsed',
-    'expectedEndDate',
-    'endDate',
-    'updatedAt',
-    'createdAt'
-].join(' ');
 
 function toPositiveDurationDays(value: unknown): number {
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
@@ -115,25 +101,24 @@ function sortPhasesForCascade(a: any, b: any): number {
 }
 
 async function cascadeShiftLinkedPhases(
+    editor: NativePlanEditor,
+    clientId: string,
     purchaseId: string | null,
     anchorPlanId: string,
     deltaDays: number
-): Promise<void> {
-    if (!purchaseId || deltaDays === 0) return;
+): Promise<Array<{collection:string;id:string;patch:Record<string,any>}>> {
+    if (!purchaseId || deltaDays === 0) return [];
 
-    const linkedPlans: any[] = await ClientMealPlan.find({
-        purchaseId,
-        isDeleted: { $ne: true }
-    });
+    const linkedPlans=await editor.query('clientmealplans',[['purchaseId','==',purchaseId],['clientId','==',clientId]]);
+    const mutations:Array<{collection:string;id:string;patch:Record<string,any>}>=[];
+    if (linkedPlans.length <= 1) return mutations;
 
-    if (linkedPlans.length <= 1) return;
-
-    const orderedPlans = [...linkedPlans].sort(sortPhasesForCascade);
+    const orderedPlans = linkedPlans.filter(plan=>!plan.isDeleted).sort(sortPhasesForCascade);
     const anchorIndex = orderedPlans.findIndex((plan) => String(plan._id) === String(anchorPlanId));
-    if (anchorIndex < 0 || anchorIndex >= orderedPlans.length - 1) return;
+    if (anchorIndex < 0 || anchorIndex >= orderedPlans.length - 1) return mutations;
 
     for (let i = anchorIndex + 1; i < orderedPlans.length; i += 1) {
-        const plan = orderedPlans[i];
+        const plan = await editor.hydrate(orderedPlans[i]);
 
         const shiftedStartDate = shiftDateValue(plan.startDate, deltaDays);
         const shiftedEndDate = shiftDateValue(plan.endDate, deltaDays);
@@ -160,11 +145,12 @@ async function cascadeShiftLinkedPhases(
             }));
         }
 
-        await plan.save();
+        mutations.push({collection:'clientmealplans',id:plan._id,patch:{startDate:plan.startDate,endDate:plan.endDate,...(plan.meals?{meals:plan.meals}:{}),...(plan.freezedDays?{freezedDays:plan.freezedDays}:{})}});
     }
+    return mutations;
 }
 
-async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<{
+async function resolveLinkedPurchaseTargets(editor:NativePlanEditor, clientId:string, purchaseId: string | null): Promise<{
     unifiedTargets: any[];
     legacyTargets: any[];
     relatedPaymentLinkId: string | null;
@@ -182,16 +168,13 @@ async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<
 
     const registerTarget = (map: Map<string, any>, record: any) => {
         if (!record?._id) return;
+        if (String(record.client || record.clientId || '') !== clientId) throw new Error('Linked purchase ownership mismatch');
         map.set(String(record._id), record);
     };
 
     const [primaryUnifiedPurchase, primaryLegacyPurchase] = await Promise.all([
-        UnifiedPayment.findById(purchaseId)
-            .select(PURCHASE_TRACKING_FIELDS)
-            .lean(),
-        ClientPurchase.findById(purchaseId)
-            .select(PURCHASE_TRACKING_FIELDS)
-            .lean()
+        editor.document('unifiedpayments',purchaseId),
+        editor.document('clientpurchases',purchaseId)
     ]);
 
     registerTarget(unifiedTargetsMap, primaryUnifiedPurchase);
@@ -204,12 +187,8 @@ async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<
 
     if (relatedPaymentLinkId) {
         const [linkedUnifiedTargets, linkedLegacyTargets] = await Promise.all([
-            UnifiedPayment.find({ paymentLink: relatedPaymentLinkId })
-                .select(PURCHASE_TRACKING_FIELDS)
-                .lean(),
-            ClientPurchase.find({ paymentLink: relatedPaymentLinkId })
-                .select(PURCHASE_TRACKING_FIELDS)
-                .lean()
+            editor.query('unifiedpayments',[['paymentLink','==',relatedPaymentLinkId]]),
+            editor.query('clientpurchases',[['paymentLink','==',relatedPaymentLinkId]])
         ]);
 
         linkedUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
@@ -219,12 +198,8 @@ async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<
     // Backward compatibility: in older data, mealPlan.purchaseId may contain a paymentLink id.
     if (unifiedTargetsMap.size === 0 && legacyTargetsMap.size === 0) {
         const [fallbackUnifiedTargets, fallbackLegacyTargets] = await Promise.all([
-            UnifiedPayment.find({ paymentLink: purchaseId })
-                .select(PURCHASE_TRACKING_FIELDS)
-                .lean(),
-            ClientPurchase.find({ paymentLink: purchaseId })
-                .select(PURCHASE_TRACKING_FIELDS)
-                .lean()
+            editor.query('unifiedpayments',[['paymentLink','==',purchaseId]]),
+            editor.query('clientpurchases',[['paymentLink','==',purchaseId]])
         ]);
 
         fallbackUnifiedTargets.forEach((record: any) => registerTarget(unifiedTargetsMap, record));
@@ -246,27 +221,27 @@ async function resolveLinkedPurchaseTargets(purchaseId: string | null): Promise<
 // Checks: 1. ClientPurchase.selectedTier.extendDays
 //         2. UnifiedPayment → ServicePlan.pricingTiers (matching durationDays)
 //         3. Falls back to 0 (no extension allowed)
-async function getExtendDaysFromPurchase(purchaseId: string | null, durationDays: number): Promise<number> {
+async function getExtendDaysFromPurchase(editor:NativePlanEditor, clientId:string, purchaseId: string | null, durationDays: number): Promise<number> {
     if (!purchaseId) {
         return 0;
     }
 
     try {
         // First, try ClientPurchase model
-        const clientPurchase: any = await ClientPurchase.findById(purchaseId).lean();
+        const clientPurchase: any = await editor.document('clientpurchases',purchaseId);
+        if(clientPurchase && String(clientPurchase.client || clientPurchase.clientId || '')!==clientId)throw new Error('Linked purchase ownership mismatch');
         if (clientPurchase?.selectedTier?.extendDays && clientPurchase.selectedTier.extendDays > 0) {
             return clientPurchase.selectedTier.extendDays;
         }
 
         // Second, try UnifiedPayment model and fetch from ServicePlan
-        const unifiedPayment: any = await UnifiedPayment.findById(purchaseId)
-            .populate('servicePlan')
-            .lean();
+        const unifiedPayment: any = await editor.document('unifiedpayments',purchaseId);
 
+        if(unifiedPayment && String(unifiedPayment.client || '')!==clientId)throw new Error('Linked purchase ownership mismatch');
         if (unifiedPayment?.servicePlan) {
-            const servicePlan = unifiedPayment.servicePlan;
+            const servicePlan = await editor.document('serviceplans',String(unifiedPayment.servicePlan));
             // Find the matching pricing tier based on duration
-            const matchingTier = servicePlan.pricingTiers?.find(
+            const matchingTier = servicePlan?.pricingTiers?.find(
                 (tier: any) => tier.durationDays === (unifiedPayment.durationDays || durationDays) && tier.isActive
             );
 
@@ -277,7 +252,7 @@ async function getExtendDaysFromPurchase(purchaseId: string | null, durationDays
 
         // Third, if UnifiedPayment has servicePlan reference, try direct ServicePlan lookup
         if (!unifiedPayment && clientPurchase?.servicePlan) {
-            const servicePlan: any = await ServicePlan.findById(clientPurchase.servicePlan).lean();
+            const servicePlan: any = await editor.document('serviceplans',String(clientPurchase.servicePlan));
             if (servicePlan?.pricingTiers) {
                 const matchingTier = servicePlan.pricingTiers.find(
                     (tier: any) => tier.durationDays === durationDays && tier.isActive
@@ -303,29 +278,29 @@ export async function POST(
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Authentication required' },
                 { status: 401 }
             );
         }
 
-        await dbConnect();
+        const editor=new NativePlanEditor(getNativeDatabase());
 
         const { id } = await context.params;
         const body = await request.json();
         const { extendDays } = body;
 
-        if (!extendDays || extendDays <= 0) {
-            return NextResponse.json(
+        if (!Number.isSafeInteger(extendDays) || extendDays <= 0) {
+            return nativeResponseJson(
                 { success: false, error: 'Please specify valid number of days to extend' },
                 { status: 400 }
             );
         }
 
         // Fetch the meal plan
-        const mealPlan: any = await ClientMealPlan.findById(id);
+        const mealPlan: any = await editor.plan(id);
         if (!mealPlan) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Meal plan not found' },
                 { status: 404 }
             );
@@ -333,11 +308,14 @@ export async function POST(
 
         // Only allow extending active plans
         if (mealPlan.status !== 'active') {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Can only extend active meal plans' },
                 { status: 400 }
             );
         }
+
+        if(!await nativePlanStaffAccess(editor,mealPlan,session.user)) return nativeResponseJson({success:false,error:'Forbidden'},{status:403});
+    if(planNeedsDateCorrection(mealPlan))return nativeResponseJson({error:'An administrator must confirm missing plan dates first',code:'PLAN_DATES_NEED_CORRECTION'},{status:409});
 
         // Calculate duration days from meal plan
         const durationDays = mealPlan.durationDays ||
@@ -345,10 +323,10 @@ export async function POST(
 
         // Get max extend days from purchase
         const purchaseId = mealPlan.purchaseId?.toString() || null;
-        const maxExtendDays = await getExtendDaysFromPurchase(purchaseId, durationDays);
+        const maxExtendDays = await getExtendDaysFromPurchase(editor,String(mealPlan.clientId),purchaseId, durationDays);
 
         if (maxExtendDays <= 0) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Extension feature is not available for this plan' },
                 { status: 400 }
             );
@@ -357,12 +335,9 @@ export async function POST(
         // Track how many days have already been extended.
         // Priority: purchase-level tracked extension usage, with fallback to older extended-plan history.
         let alreadyExtended = 0;
-        const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(purchaseId);
+        const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(editor,String(mealPlan.clientId),purchaseId);
         if (purchaseId) {
-            const allLinkedPlans = await ClientMealPlan.find({
-                purchaseId: purchaseId,
-                isExtendedPlan: true
-            }).lean();
+            const allLinkedPlans = await editor.query('clientmealplans',[['purchaseId','==',purchaseId],['clientId','==',mealPlan.clientId],['isExtendedPlan','==',true]]);
             const legacyExtendedPlanUsed = allLinkedPlans.reduce((total: number, plan: any) => {
                 return total + (plan.durationDays || 0);
             }, 0);
@@ -381,7 +356,7 @@ export async function POST(
         const remainingExtendDays = Math.max(0, maxExtendDays - alreadyExtended);
 
         if (remainingExtendDays <= 0) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'No extend days remaining in this plan' },
                 { status: 400 }
             );
@@ -389,7 +364,7 @@ export async function POST(
 
         // Check if requested days exceed remaining
         if (extendDays > remainingExtendDays) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 {
                     success: false,
                     error: `Cannot extend by ${extendDays} days. Only ${remainingExtendDays} extend days remaining.`
@@ -404,18 +379,9 @@ export async function POST(
             Math.max(1, Math.ceil((new Date(mealPlan.endDate).getTime() - new Date(mealPlan.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
 
         const newMealPlanEndDate = addDays(previousMealPlanEndDate, extendDays);
-        mealPlan.endDate = newMealPlanEndDate;
-        await mealPlan.save();
+        const mutations=await cascadeShiftLinkedPhases(editor,String(mealPlan.clientId),purchaseId,String(mealPlan._id),extendDays);
+        mutations.push({collection:'clientmealplans',id:String(mealPlan._id),patch:{endDate:newMealPlanEndDate}});
 
-        await cascadeShiftLinkedPhases(purchaseId, String(mealPlan._id), extendDays);
-
-        console.log(`[EXTEND_DEBUG] Meal plan ${id}:`, {
-            mealPlanEndDate: format(previousMealPlanEndDate, 'yyyy-MM-dd'),
-            newMealPlanEndDate: format(newMealPlanEndDate, 'yyyy-MM-dd'),
-            mealPlanDuration: currentMealPlanDuration,
-            purchaseId: purchaseId,
-            extendDays: extendDays
-        });
 
         // ====== Update linked purchase allocation + expected end date (legacy and unified safe) ======
         let previousExpectedEndDate: Date | null = null;
@@ -439,7 +405,7 @@ export async function POST(
             const primaryRecord = purchaseRecords.length > 0 ? purchaseRecords[0] : null;
 
             if (!primaryRecord) {
-                return NextResponse.json(
+                return nativeResponseJson(
                     { success: false, error: 'Linked purchase not found for this meal plan' },
                     { status: 404 }
                 );
@@ -465,37 +431,10 @@ export async function POST(
                 purchaseUpdate.$set.endDate = newExpectedEndDate;
             }
 
-            const unifiedTargetIds = linkedPurchaseTargets.unifiedTargets.map((record: any) => String(record._id));
-            const legacyTargetIds = linkedPurchaseTargets.legacyTargets.map((record: any) => String(record._id));
-
-            const updateOps: Promise<any>[] = [];
-            if (unifiedTargetIds.length > 0) {
-                updateOps.push(
-                    UnifiedPayment.updateMany(
-                        { _id: { $in: unifiedTargetIds } },
-                        purchaseUpdate
-                    )
-                );
-            }
-
-            if (legacyTargetIds.length > 0) {
-                updateOps.push(
-                    ClientPurchase.updateMany(
-                        { _id: { $in: legacyTargetIds } },
-                        purchaseUpdate
-                    )
-                );
-            }
-
-            if (updateOps.length === 0) {
-                return NextResponse.json(
-                    { success: false, error: 'Linked purchase not found for this meal plan' },
-                    { status: 404 }
-                );
-            }
-
-            await Promise.all(updateOps);
+            for(const record of linkedPurchaseTargets.unifiedTargets) mutations.push({collection:'unifiedpayments',id:String(record._id),patch:purchaseUpdate.$set});
+            for(const record of linkedPurchaseTargets.legacyTargets) mutations.push({collection:'clientpurchases',id:String(record._id),patch:purchaseUpdate.$set});
         }
+        if(!await editor.commit(mutations))return nativeResponseJson({success:false,error:'The plan or purchase changed. Refresh and try again.'},{status:409});
 
         // Clear caches
         clearCacheByTag('client_meal_plans');
@@ -535,15 +474,8 @@ export async function POST(
             }
         });
 
-        console.log(`[EXTEND_RESULT] Purchase ${purchaseId}:`, {
-            previousExpectedEndDate: previousExpectedEndDate ? format(previousExpectedEndDate, 'yyyy-MM-dd') : null,
-            newExpectedEndDate: newExpectedEndDate ? format(newExpectedEndDate, 'yyyy-MM-dd') : null,
-            mealPlanEndDate: format(previousMealPlanEndDate, 'yyyy-MM-dd'),
-            newMealPlanEndDate: format(newMealPlanEndDate, 'yyyy-MM-dd'),
-            remainingExtendDaysLeft: remainingExtendDays - extendDays
-        });
 
-        return NextResponse.json({
+        return nativeResponseJson({
             success: true,
             message: newExpectedEndDate
                 ? `Extended plan by ${extendDays} days. New expected end: ${format(newExpectedEndDate, 'MMM d, yyyy')}`
@@ -569,7 +501,7 @@ export async function POST(
     } catch (error: any) {
         console.error('Error extending meal plan:', error);
         console.error('Error details:', error?.message, error?.errors);
-        return NextResponse.json(
+        return nativeResponseJson(
             {
                 success: false,
                 error: error?.message || 'Failed to extend meal plan',
@@ -588,24 +520,27 @@ export async function GET(
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Authentication required' },
                 { status: 401 }
             );
         }
 
-        await dbConnect();
+        const editor=new NativePlanEditor(getNativeDatabase());
 
         const { id } = await context.params;
 
         // Fetch the meal plan
-        const mealPlan: any = await ClientMealPlan.findById(id);
+        const mealPlan: any = await editor.plan(id);
         if (!mealPlan) {
-            return NextResponse.json(
+            return nativeResponseJson(
                 { success: false, error: 'Meal plan not found' },
                 { status: 404 }
             );
         }
+
+        if(!await nativePlanStaffAccess(editor,mealPlan,session.user)) return nativeResponseJson({success:false,error:'Forbidden'},{status:403});
+    if(planNeedsDateCorrection(mealPlan))return nativeResponseJson({error:'An administrator must confirm missing plan dates first',code:'PLAN_DATES_NEED_CORRECTION'},{status:409});
 
         // Calculate duration days from meal plan
         const durationDays = mealPlan.durationDays ||
@@ -613,17 +548,14 @@ export async function GET(
 
         // Get max extend days from purchase
         const purchaseId = mealPlan.purchaseId?.toString() || null;
-        const maxExtendDays = await getExtendDaysFromPurchase(purchaseId, durationDays);
+        const maxExtendDays = await getExtendDaysFromPurchase(editor,String(mealPlan.clientId),purchaseId, durationDays);
 
         // Calculate used extend days using purchase-level tracked usage,
         // with fallback to older extended-plan history.
         let usedExtendDays = 0;
-        const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(purchaseId);
+        const linkedPurchaseTargets = await resolveLinkedPurchaseTargets(editor,String(mealPlan.clientId),purchaseId);
         if (purchaseId) {
-            const extendedPlans = await ClientMealPlan.find({
-                purchaseId: purchaseId,
-                isExtendedPlan: true
-            }).lean();
+            const extendedPlans = await editor.query('clientmealplans',[['purchaseId','==',purchaseId],['clientId','==',mealPlan.clientId],['isExtendedPlan','==',true]]);
             const legacyExtendedPlanUsed = extendedPlans.reduce((total: number, plan: any) => {
                 return total + (plan.durationDays || 0);
             }, 0);
@@ -657,7 +589,7 @@ export async function GET(
             mealPlan?.endDate ? new Date(mealPlan.endDate) : null
         );
 
-        return NextResponse.json({
+        return nativeResponseJson({
             success: true,
             canExtend: remainingExtendDays > 0 && mealPlan.status === 'active',
             maxExtendDays,
@@ -674,7 +606,7 @@ export async function GET(
         });
     } catch (error) {
         console.error('Error getting extend info:', error);
-        return NextResponse.json(
+        return nativeResponseJson(
             { success: false, error: 'Failed to get extend info' },
             { status: 500 }
         );

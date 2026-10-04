@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send signal to target user via Socket.io
+    // Send signal to target user via The native event stream
     try {
       socketManager.sendToUser(toUserId, 'webrtc-signal', signalPayload);
     } catch (socketError) {

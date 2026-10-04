@@ -1,60 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-export const runtime = 'nodejs';
-import connectDB from '@/lib/db/connection';
-import { WatiContact } from '@/lib/db/models';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
-
-export async function GET(req: NextRequest) {
-  await connectDB();
-  const { searchParams } = new URL(req.url);
-  const q = searchParams.get('q') || '';
-  const limit = Math.max(1, Math.min(Number(searchParams.get('limit') || 10), 200));
-  const skip = Math.max(0, Number(searchParams.get('skip') || 0));
-
-  const query: any = {};
-  if (q) {
-    query.$or = [
-      { firstName: { $regex: q, $options: 'i' } },
-      { fullName: { $regex: q, $options: 'i' } },
-      { phone: { $regex: q, $options: 'i' } }
-    ];
-  }
-
-  const totalPromise = withCache(
-    `wati-contacts:count:${JSON.stringify(query)}`,
-    async () => await WatiContact.countDocuments(query),
-    { ttl: 120000, tags: ['wati_contacts'] }
-  );
-
-  // Sort and paginate in DB to avoid loading the whole collection in memory.
-  const itemsPromise = withCache(
-    `wati-contacts:list:${JSON.stringify(query)}:skip=${skip}:limit=${limit}`,
-    async () => {
-      const docs = await WatiContact.find(query)
-        .select('firstName fullName phone level')
-        .sort({ level: -1, _id: 1 })
-        .skip(skip)
-        .limit(limit)
-        .lean();
-
-      return docs.map((d: any) => ({ ...d, level: typeof d.level === 'number' ? d.level : 0 }));
-    },
-    { ttl: 120000, tags: ['wati_contacts'] }
-  );
-
-  const [total, items] = await Promise.all([totalPromise, itemsPromise]);
-
-  return NextResponse.json({ items, total });
-}
-
-export async function POST(req: NextRequest) {
-  // Import endpoint: reads JSON file from repo and upserts by phone/externalId
-  await connectDB();
-  try {
-    // Import JSON data directly (works on Vercel — bundled at build time)
-    const raw: any[] = await import('@/app/data/wati_contacts.contacts.json').then(m => m.default || m);
-
-    const ops = raw.map((r: any) => {
+import {nativeResponseJson} from '@/lib/api/native-response';
+import {NextRequest,NextResponse} from 'next/server';
+import {getServerSession} from 'next-auth';
+import {authOptions} from '@/lib/auth/config';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {NativeDirectoryError} from '@/lib/db/repository/native-client-directory';
+import {requireNativeAuditAdmin} from '@/lib/db/repository/native-admin-audit';
+import {listNativeWatiContacts,importNativeWatiContact} from '@/lib/db/repository/native-admin-wati';
+export const runtime='nodejs';
+export const maxDuration=300;
+export async function GET(r:NextRequest){try{const session=await getServerSession(authOptions);if(!session?.user)return nativeResponseJson({error:'Unauthorized'},{status:401});return nativeResponseJson(await listNativeWatiContacts(getNativeDatabase(),session.user.id,r.nextUrl.searchParams));}catch(e){return nativeResponseJson({error:e instanceof NativeDirectoryError?e.message:'Unable to fetch contacts'},{status:e instanceof NativeDirectoryError?e.status:500});}}
+export async function POST(){try{const session=await getServerSession(authOptions);if(!session?.user)return nativeResponseJson({error:'Unauthorized'},{status:401});const db=getNativeDatabase();await requireNativeAuditAdmin(db,session.user.id);const raw:any[]=await import('@/app/data/wati_contacts.contacts.json').then(m=>m.default||m);let imported=0,failed=0;for(const r of raw){
       const externalId = r.id || r._id?.$oid || undefined;
       const importedAt = r.importedAt?.$date ? String(r.importedAt.$date) : (typeof r.importedAt === 'string' ? r.importedAt : null);
       const lastUpdated = r.lastUpdated?.$date ? String(r.lastUpdated.$date) : (typeof r.lastUpdated === 'string' ? r.lastUpdated : null);
@@ -121,23 +76,5 @@ export async function POST(req: NextRequest) {
         city: r.city ?? null
       };
 
-      const filter: any = {};
-      if (doc.phone) filter.phone = doc.phone;
-      if (!doc.phone && doc.externalId) filter.externalId = doc.externalId;
-      if (Object.keys(filter).length === 0) filter._id = new (require('mongoose').Types.ObjectId)();
-
-      return { updateOne: { filter, update: { $set: doc }, upsert: true } };
-    });
-
-    if (ops.length === 0) {
-      return NextResponse.json({ imported: 0 }, { status: 200 });
-    }
-
-    const res = await WatiContact.bulkWrite(ops, { ordered: false });
-    const imported = (res.upsertedCount || 0) + (res.modifiedCount || 0) + (res.insertedCount || 0);
-    return NextResponse.json({ imported });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Import failed' }, { status: 500 });
-  }
-}
-
+try{await importNativeWatiContact(db,session.user.id,doc);imported++;}catch(e){if(e instanceof NativeDirectoryError&&e.status===403)throw e;failed++;}}
+return nativeResponseJson({imported,failed});}catch(e){return nativeResponseJson({error:e instanceof NativeDirectoryError?e.message:'Unable to import contacts'},{status:e instanceof NativeDirectoryError?e.status:500});}}

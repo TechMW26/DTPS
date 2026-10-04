@@ -1,8 +1,11 @@
+import {validateLoginPhone} from '@/lib/validations/login-phone';
 import crypto from 'crypto';
 import { sign, verify } from 'jsonwebtoken';
-import User from '@/lib/db/models/User';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativePhoneUser,nativeContactExists,createNativeAccount,NativeDuplicateAccountError} from '@/lib/db/repository/native-registration';
+import {nativeOtpLogin} from '@/lib/db/repository/native-auth';
 import { UserRole } from '@/types';
-import { validateOptionalEmail, validatePhoneNumber } from '@/lib/validations/contact';
+import { validateOptionalEmail, normalizePhoneNumber } from '@/lib/validations/contact';
 import { grantDietPlanAccessIfPublished } from '@/lib/auth/onboarding-access';
 
 export type PhoneAuthMode = 'login' | 'signup';
@@ -38,7 +41,8 @@ export async function preparePhoneAuth(input: {
     lastName?: unknown;
     email?: unknown;
 }): Promise<PhoneAuthIntent> {
-    const phoneValidation = validatePhoneNumber(input.phone, '+91');
+    const normalizedPhone = normalizePhoneNumber(input.phone, '+91');
+    const phoneValidation = normalizedPhone ? validateLoginPhone(normalizedPhone) : {isValid:false, error:'Phone number is required', normalized:undefined};
     if (!phoneValidation.isValid || !phoneValidation.normalized) {
         throw new PhoneAuthError(phoneValidation.error || 'Invalid phone number', 400);
     }
@@ -48,10 +52,7 @@ export async function preparePhoneAuth(input: {
     const phoneVariations = getPhoneVariations(phone);
 
     if (mode === 'login') {
-        const user = await User.findOne({
-            phone: { $in: phoneVariations },
-            role: UserRole.CLIENT,
-        }).select('_id firstName lastName status');
+        const user = await nativePhoneUser(getNativeDatabase(),phone,true);
 
         if (!user) {
             throw new PhoneAuthError(
@@ -85,19 +86,8 @@ export async function preparePhoneAuth(input: {
         throw new PhoneAuthError(emailValidation.error || 'Please enter a valid email address.', 400);
     }
 
-    const duplicateQueries: Record<string, unknown>[] = [
-        { phone: { $in: phoneVariations } },
-    ];
-    if (emailValidation.normalized) duplicateQueries.push({ email: emailValidation.normalized });
-    const existingUser = await User.findOne({ $or: duplicateQueries }).select('_id phone email');
-    if (existingUser) {
-        const isPhoneDuplicate = phoneVariations.includes(String(existingUser.phone || ''));
-        throw new PhoneAuthError(
-            isPhoneDuplicate
-                ? 'This phone number is already registered. Please sign in.'
-                : 'This email is already registered. Please use a different email or sign in.',
-            409,
-        );
+    if(await nativeContactExists(getNativeDatabase(),phone,emailValidation.normalized)) {
+        throw new PhoneAuthError('This phone number or email is already registered. Please sign in.',409);
     }
 
     const signupPayload: PhoneAuthSignupPayload = {
@@ -158,19 +148,7 @@ export async function completePhoneAuth(intent: PhoneAuthIntent) {
         if (!signup?.firstName || !signup.lastName) {
             throw new PhoneAuthError('Signup details are missing. Please start again.', 400);
         }
-        const duplicateQueries: Record<string, unknown>[] = [
-            { phone: { $in: getPhoneVariations(intent.phone) } },
-        ];
-        if (signup.email) duplicateQueries.push({ email: signup.email.toLowerCase() });
-        const existingUser = await User.findOne({ $or: duplicateQueries }).select('_id');
-        if (existingUser) {
-            throw new PhoneAuthError(
-                'This phone number or email is already registered. Please sign in instead.',
-                409,
-            );
-        }
-
-        user = new User({
+        try { user = await createNativeAccount(getNativeDatabase(),{
             firstName: signup.firstName,
             lastName: signup.lastName,
             ...(signup.email ? { email: signup.email.toLowerCase() } : {}),
@@ -183,24 +161,15 @@ export async function completePhoneAuth(intent: PhoneAuthIntent) {
             isNewUser: true,
             createdBy: { role: 'self' },
         });
-        await user.save();
+        }catch(error){if(error instanceof NativeDuplicateAccountError)throw new PhoneAuthError(error.message,409);throw error;}
         isNewUser = true;
     } else {
-        user = intent.userId
-            ? await User.findOne({
-                _id: intent.userId,
-                phone: { $in: getPhoneVariations(intent.phone) },
-                role: UserRole.CLIENT,
-            })
-            : await User.findOne({
-                phone: { $in: getPhoneVariations(intent.phone) },
-                role: UserRole.CLIENT,
-            });
+        user = await nativePhoneUser(getNativeDatabase(),intent.phone,true,intent.userId);
         if (!user) throw new PhoneAuthError('Client account not found. Please sign up first.', 404);
         if (user.status !== 'active') {
             throw new PhoneAuthError('Your account is not active. Please contact support.', 403);
         }
-        await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
+        if(!await nativeOtpLogin(getNativeDatabase(),user._id,'client'))throw new PhoneAuthError('Your account is not active. Please contact support.',403);
     }
 
     const canAccessAssignedPlan = !isNewUser && !user.onboardingCompleted

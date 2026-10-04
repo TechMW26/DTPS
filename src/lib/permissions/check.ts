@@ -1,10 +1,8 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import connectDB from '@/lib/db/connection';
-import Permission, { PermissionKey } from '@/lib/db/models/Permission';
-import { withCache } from '@/lib/api/utils';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {PermissionKey} from '@/types/permissions';
 import { UserRole } from '@/types';
-import { Types } from 'mongoose';
 
 export interface PermissionCheckResult {
     hasPermission: boolean;
@@ -14,7 +12,7 @@ export interface PermissionCheckResult {
 /**
  * Check if a user has a specific permission
  * Admin always has all permissions
- * 
+ *
  * @param userId - The user ID to check
  * @param userRole - The user's role
  * @param permissionKey - The permission to check
@@ -35,32 +33,26 @@ export async function checkPermission(
         return { hasPermission: false, reason: 'Clients do not have staff permissions' };
     }
 
-    await connectDB();
-
-    const permission = await withCache(
-        `permissions:key:${permissionKey}`,
-        async () => Permission.findOne({ key: permissionKey, isActive: true }).lean(),
-        { ttl: 30000, tags: ['permissions'] }
-    );
+    const matches=await getNativeDatabase().collection('permissions').where('key','==',permissionKey).where('isActive','==',true).limit(2).get();
+    const permission=matches.size===1?matches.docs[0].data():null;
 
     if (!permission) {
         return { hasPermission: false, reason: 'Permission not found or inactive' };
     }
 
-    const userObjectId = new Types.ObjectId(userId);
 
     // Check if user is explicitly denied
-    if (permission.deniedUsers.some((id: Types.ObjectId) => id.equals(userObjectId))) {
+    if ((permission.deniedUsers||[]).includes(userId)) {
         return { hasPermission: false, reason: 'User is explicitly denied this permission' };
     }
 
     // Check if user is explicitly allowed
-    if (permission.allowedUsers.some((id: Types.ObjectId) => id.equals(userObjectId))) {
+    if ((permission.allowedUsers||[]).includes(userId)) {
         return { hasPermission: true, reason: 'User is explicitly granted this permission' };
     }
 
     // Check if user's role is allowed
-    if (permission.allowedRoles.includes(userRole)) {
+    if ((permission.allowedRoles||[]).includes(userRole)) {
         return { hasPermission: true, reason: 'User role has this permission' };
     }
 
@@ -104,30 +96,11 @@ export async function getUserPermissions(
         return [];
     }
 
-    await connectDB();
+    const rows=await getNativeDatabase().collection('permissions').where('isActive','==',true).get();
+    const duplicateKeys=new Set<string>(),seen=new Set<string>();
+    for(const doc of rows.docs){const key=doc.get('key');if(seen.has(key))duplicateKeys.add(key);seen.add(key);}
+    return rows.docs.filter(doc=>!duplicateKeys.has(doc.get('key'))&&!(doc.get('deniedUsers')||[]).includes(userId)&&((doc.get('allowedUsers')||[]).includes(userId)||(doc.get('allowedRoles')||[]).includes(userRole))).map(doc=>doc.get('key') as PermissionKey);
 
-    return withCache(
-        `permissions:user:${userId}:role:${userRole}`,
-        async () => {
-            const userObjectId = new Types.ObjectId(userId);
-
-            // Find all permissions where:
-            // 1. User's role is in allowedRoles, OR
-            // 2. User is in allowedUsers
-            // AND user is NOT in deniedUsers
-            const permissions = await Permission.find({
-                isActive: true,
-                deniedUsers: { $ne: userObjectId },
-                $or: [
-                    { allowedRoles: userRole },
-                    { allowedUsers: userObjectId },
-                ],
-            }).select('key').lean();
-
-            return permissions.map((p) => p.key as PermissionKey);
-        },
-        { ttl: 30000, tags: ['permissions'] }
-    );
 }
 
 /**

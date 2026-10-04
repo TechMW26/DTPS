@@ -34,6 +34,7 @@ class MemoryCache {
     // Run cleanup every 2 minutes (was 60s — reduce overhead)
     if (typeof setInterval !== 'undefined') {
       this.cleanupInterval = setInterval(() => this.cleanup(), 120000);
+      this.cleanupInterval.unref?.();
     }
   }
 

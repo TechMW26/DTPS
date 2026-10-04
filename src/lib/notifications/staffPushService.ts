@@ -1,7 +1,5 @@
-import connectDB from '@/lib/db/connection';
-import User from '@/lib/db/models/User';
-import Notification from '@/lib/db/models/Notification';
-import NotificationDeliveryAudit from '@/lib/db/models/NotificationDeliveryAudit';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { createNativeAudit } from '@/lib/db/repository/native-audit';
 import { sendNotificationToUser } from '@/lib/firebase';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
@@ -155,15 +153,9 @@ function getChatPathForRole(role: string, conversationWithUserId: string): strin
 async function isDuplicateNotification(userId: string, dedupeKey?: string): Promise<boolean> {
     if (!dedupeKey) return false;
 
-    await connectDB();
-    const existing = await Notification.findOne({
-        userId,
-        'data.dedupeKey': dedupeKey,
-    })
-        .select('_id')
-        .lean();
 
-    return Boolean(existing);
+    const existing = await getNativeDatabase().collection('notifications').where('userId','==',userId).where('data.dedupeKey','==',dedupeKey).limit(1).get();
+    return !existing.empty;
 }
 
 async function logDeliveryAudit({
@@ -182,9 +174,9 @@ async function logDeliveryAudit({
     metadata = {},
 }: DeliveryAuditParams): Promise<void> {
     try {
-        await connectDB();
 
-        await NotificationDeliveryAudit.create({
+
+        await createNativeAudit(getNativeDatabase(), 'notificationdeliveryaudits', {
             recipientUserId,
             recipientRole: String(recipientRole || '').toLowerCase(),
             actionType,
@@ -325,11 +317,9 @@ export function buildAssignmentSnapshot(client: Record<string, unknown>): Assign
 }
 
 export async function getClientAssignments(clientId: string): Promise<ClientAssignments | null> {
-    await connectDB();
 
-    const client = await User.findById(clientId)
-        .select('firstName lastName assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors')
-        .lean() as Record<string, unknown> | null;
+
+    const client = (await getNativeDatabase().collection('users').doc(clientId).get()).data();
 
     if (!client) {
         return null;

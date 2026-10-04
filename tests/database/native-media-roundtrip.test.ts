@@ -1,0 +1,9 @@
+import {createHash} from 'node:crypto';
+import {prepareNativePatch} from '@/lib/storage/native-document';
+import {readNativeFile} from '@/lib/storage/migration-blob-storage';
+jest.mock('@/lib/storage/migration-blob-storage',()=>({readNativeFile:jest.fn(),storeNativeFile:jest.fn(()=>{throw new Error('Unexpected Blob upload');})}));
+const original='https://ik.imagekit.io/dtps/meal.jpg',proxy='/api/media/'+createHash('sha256').update(original).digest('hex');
+test('restores only same-field source references during editing',async()=>{const current={avatar:original,nested:{image:original},attachments:[{url:original}]};const patch=await prepareNativePatch(current,{avatar:proxy,nested:{image:proxy,newImage:proxy},attachments:[{url:proxy},{url:proxy}]});expect(patch).toMatchObject({avatar:original,nested:{image:original,newImage:proxy},attachments:[{url:original},{url:proxy}]});expect(current.avatar).toBe(original);expect(readNativeFile).not.toHaveBeenCalled();});
+test('hydrates only changed external fields and keeps unrelated references',async()=>{const file={provider:'vercel-blob'},other={path:['unrelated'],encoding:'utf8',file};(readNativeFile as jest.Mock).mockResolvedValue(Buffer.from(`<img src="${original}">`));const patch=await prepareNativePatch({html:null,unrelated:null,_nativeExternalFields:[{path:['html'],encoding:'utf8',file},other]},{html:`<img src="${proxy}">`});expect(patch.html).toBe(`<img src="${original}">`);expect(patch._nativeExternalFields).toEqual([other]);expect(readNativeFile).toHaveBeenCalledTimes(1);});
+
+test('preserves original legacy upload URL when its authenticated proxy is submitted',async()=>{const url='https://dtps.tech/uploads/message/example.jpg',mapped='/api/media/'+createHash('sha256').update(url).digest('hex');expect(await prepareNativePatch({attachment:url},{attachment:mapped})).toMatchObject({attachment:url});});

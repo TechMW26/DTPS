@@ -1,42 +1,29 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import connectDB from '@/lib/db/connection';
-import UnifiedPayment from '@/lib/db/models/UnifiedPayment';
-import { withCache, clearCacheByTag } from '@/lib/api/utils';
+import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {nativeClientPayments} from '@/lib/db/repository/native-client-payments';
+import {resolveEntitlementEndDate} from '@/lib/payments/entitlement-dates';
 import { isPaidOrCompleted, resolvePaymentStatus } from '@/lib/payments/payment-status';
 
 // GET /api/client/subscriptions - Get client's subscriptions
 export async function GET(request: NextRequest) {
   try {
     // Run auth + DB connection in PARALLEL
-    const [session] = await Promise.all([
-      getServerSession(authOptions),
-      connectDB()
-    ]);
+    const session=await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return nativeResponseJson({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get all payments for this client that are subscription-related
-    const payments = await withCache(
-      `client-subscriptions:${session.user.id}`,
-      async () => await UnifiedPayment.find({
-        client: session.user.id,
-        type: { $in: ['service_plan', 'subscription', 'consultation'] }
-      })
-        .populate('dietitian', 'firstName lastName')
-        .sort({ createdAt: -1 })
-        .lean(),
-      { ttl: 120000, tags: ['client'] }
-    );
+    const payments=(await nativeClientPayments(getNativeDatabase(),session.user.id)).filter(payment=>['service_plan','subscription','consultation'].includes(payment.paymentType||payment.type));
 
     // Transform payments to subscription format
     const subscriptions = payments.map((payment: any) => {
       const startDate = payment.paidAt || payment.createdAt;
       const durationDays = payment.durationDays || 30;
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + durationDays);
+      const endDate=resolveEntitlementEndDate({...payment,expectedStartDate:payment.expectedStartDate||payment.startDate||startDate,durationDays});
 
       const now = new Date();
       const paymentCompleted = isPaidOrCompleted({
@@ -61,7 +48,7 @@ export async function GET(request: NextRequest) {
         _id: payment._id.toString(),
         planName: payment.planName || payment.description || 'Subscription Plan',
         planCategory: payment.planCategory || 'general-wellness',
-        amount: payment.amount,
+        amount: payment.finalAmount ?? payment.amount ?? payment.baseAmount,
         currency: payment.currency || 'INR',
         status,
         startDate: paymentCompleted ? startDate : null,
@@ -79,11 +66,11 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ subscriptions });
+    return nativeResponseJson({ subscriptions });
 
   } catch (error) {
     console.error('Error fetching client subscriptions:', error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: 'Failed to fetch subscriptions' },
       { status: 500 }
     );

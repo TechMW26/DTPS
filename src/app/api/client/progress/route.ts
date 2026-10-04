@@ -1,19 +1,14 @@
-import { NextResponse } from "next/server";
+import {nativeResponseJson} from '@/lib/api/native-response';
+import { NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import dbConnect from "@/lib/db/connection";
-import User from "@/lib/db/models/User";
-import ProgressEntry from "@/lib/db/models/ProgressEntry";
-import FoodLog from "@/lib/db/models/FoodLog";
-import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
-import JournalTracking from "@/lib/db/models/JournalTracking";
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { nativeProgressHistory, saveNativeProgress, deleteNativeProgress, NativeProgressError } from '@/lib/db/repository/native-progress';
 import { startOfDay, endOfDay, parseISO } from "date-fns";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";
 import { logActivity } from "@/lib/utils/activityLogger";
 import { emitClientWeightUpdate } from "@/lib/realtime/weight-notify";
 import { notifyClientDataUpdate } from "@/lib/notifications/staffPushService";
-import mongoose from "mongoose";
-import { deleteFromBlob } from "@/lib/storage/blob-storage";
 import {
   addNutrition,
   buildDailyNutritionSummary,
@@ -60,103 +55,15 @@ export async function GET(request: Request) {
     // OPTIMIZATION: Run auth + DB connect in PARALLEL
     const [session] = await Promise.all([
       getServerSession(authOptions),
-      dbConnect(),
     ]);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
     const userId = session.user.id;
 
-    // Fetch each collection once. Today's food log is part of the history query,
-    // and today's plan is part of the completion-plan query, so separate reads
-    // only increase Mongo round-trips and payload duplication.
-    const [
-      user,
-      allProgressEntries,
-      allWeightEntriesRaw,
-      foodLogs,
-      relevantMealPlans,
-    ] = await Promise.all([
-      // User data - CACHED
-      withCache(
-        `client:progress:user:${userId}`,
-        () =>
-          User.findById(userId)
-            .select("weightKg firstWeight targetWeightKg heightCm goals dailyGoals")
-            .lean(),
-        { ttl: 120000, tags: ["client"] },
-      ),
-      // ALL progress entries (includes measurements) - single query instead of two
-      withCache(
-        `client:progress:all:${userId}:${range}`,
-        () =>
-          ProgressEntry.find({
-            user: userId,
-            recordedAt: { $gte: progressStartDate },
-          })
-            .sort({ recordedAt: -1 })
-            .lean(),
-        { ttl: 120000, tags: ["client"] },
-      ),
-      // All weights (only if specifically requested separately)
-      includeAllWeights
-        ? withCache(
-            `client:progress:weights:${userId}`,
-            () =>
-              ProgressEntry.find({ user: userId, type: "weight" })
-                .sort({ recordedAt: -1 })
-                .lean(),
-            { ttl: 120000, tags: ["client"] },
-          )
-        : Promise.resolve(null),
-      // One food-log query supplies both today's summary and history.
-      withCache(
-        `client:progress:foodlogs:${userId}:${range}`,
-        () =>
-          FoodLog.find({
-            client: userId,
-            date: { $gte: progressStartDate },
-          })
-            .select("date totalNutrition entries")
-            .sort({ date: -1 })
-            .lean(),
-        { ttl: 120000, tags: ["client"] },
-      ),
-      // One meal-plan query supplies today's applicable plan and historical
-      // completion nutrition. The date predicate prevents loading unrelated
-      // historical plans and their large meal arrays.
-      withCache(
-        `client:progress:plans:${userId}:${range}:${todayStr}`,
-        () =>
-          ClientMealPlan.find({
-            clientId: userId,
-            isDeleted: { $ne: true },
-            $or: [
-              {
-                status: { $in: ["active", "completed", "paused"] },
-                startDate: { $lte: todayEnd },
-                endDate: { $gte: today },
-              },
-              {
-                mealCompletions: {
-                  $elemMatch: {
-                    completed: true,
-                    date: { $gte: progressStartDate },
-                  },
-                },
-              },
-            ],
-          })
-            .select(
-              "startDate endDate status lastPublishedAt createdAt meals mealCompletions customizations",
-            )
-            .sort({ startDate: -1, lastPublishedAt: -1, createdAt: -1 })
-            .lean(),
-        { ttl: 120000, tags: ["client"] },
-      ),
-    ]);
+    const {user,allProgressEntries,allWeightEntriesRaw,foodLogs,relevantMealPlans} = await nativeProgressHistory(getNativeDatabase(),userId,progressStartDate,includeAllWeights);
 
     const todayFoodLog = (foodLogs as any[]).find(
       (log) => getNutritionDateKey(new Date(log.date)) === todayStr,
@@ -395,7 +302,7 @@ export async function GET(request: Request) {
         side: entry.unit || "front",
       }));
 
-    return NextResponse.json({
+    return nativeResponseJson({
       currentWeight: latestWeight,
       startWeight: startWeight,
       targetWeight: targetWeight || 0,
@@ -419,325 +326,27 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("Error fetching progress:", error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { error: "Failed to fetch progress" },
       { status: 500 },
     );
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    // OPTIMIZATION: Run auth + DB connection + body parsing in PARALLEL
-    const [session, , data] = await Promise.all([
-      getServerSession(authOptions),
-      dbConnect(),
-      request.json(),
-    ]);
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { type, value, measurements, notes, photoUrl, side } = data;
-
-    // Handle transformation photo
-    if (type === "photo" && photoUrl) {
-      const progressEntry = new ProgressEntry({
-        user: session.user.id,
-        type: "photo",
-        value: photoUrl,
-        unit: side || "front",
-        notes: notes || "",
-        recordedAt: new Date(),
-      });
-      await progressEntry.save();
-      clearCacheByTag("dietitian_panel");
-
-      // Log activity
-      logActivity({
-        userId: session.user.id,
-        userRole: "client",
-        userName: session.user.name || "",
-        userEmail: session.user.email || "",
-        action: "upload_progress_photo",
-        actionType: "create",
-        category: "fitness",
-        description: `Uploaded transformation photo (${side || "front"} view)`,
-        targetUserId: session.user.id,
-        targetUserName: session.user.name || "",
-        details: { side: side || "front" },
-      }).catch(console.error);
-
-      return NextResponse.json({ success: true, entry: progressEntry });
-    }
-
-    // Handle saving body measurements (multiple entries)
-    if (type === "measurements" && measurements) {
-      const measurementTypes = [
-        "waist",
-        "abdomen",
-        "hips",
-        "chest",
-        "arms",
-        "thighs",
-      ];
-      const savedEntries = [];
-      const today = startOfDay(new Date());
-
-      for (const measureType of measurementTypes) {
-        if (measurements[measureType] && measurements[measureType] > 0) {
-          const progressEntry = new ProgressEntry({
-            user: session.user.id,
-            type: measureType,
-            value: measurements[measureType],
-            unit: "cm",
-            notes: notes,
-            recordedAt: new Date(),
-          });
-          await progressEntry.save();
-          savedEntries.push(progressEntry);
-        }
-      }
-
-      // Also save to JournalTracking.measurements so it shows on dietitian's journal
-      try {
-        const clientObjectId = new mongoose.Types.ObjectId(session.user.id);
-
-        // Find or create journal entry for today
-        let journal = await JournalTracking.findOne({
-          client: clientObjectId,
-          date: today,
-        });
-
-        if (!journal) {
-          journal = new JournalTracking({
-            client: clientObjectId,
-            date: today,
-            activities: [],
-            steps: [],
-            water: [],
-            sleep: [],
-            meals: [],
-            progress: [],
-            bca: [],
-            measurements: [],
-          });
-        } else if (!journal.measurements) {
-          journal.measurements = [];
-        }
-
-        // Add measurement entry in journal format
-        const journalMeasurement = {
-          arm: measurements.arms || 0,
-          waist: measurements.waist || 0,
-          abd: measurements.abdomen || 0,
-          chest: measurements.chest || 0,
-          hips: measurements.hips || 0,
-          thigh: measurements.thighs || 0,
-          date: new Date(),
-          createdAt: new Date(),
-        };
-
-        journal.measurements.push(journalMeasurement);
-        await journal.save();
-
-        // Clear caches
-        clearCacheByTag("journal");
-        clearCacheByTag("client");
-      } catch (journalError) {
-        console.error("Error saving to JournalTracking:", journalError);
-        // Don't fail the request
-      }
-
-      // Log activity
-      if (savedEntries.length > 0) {
-        logActivity({
-          userId: session.user.id,
-          userRole: "client",
-          userName: session.user.name || "",
-          userEmail: session.user.email || "",
-          action: "log_body_measurements",
-          actionType: "create",
-          category: "fitness",
-          description: `Recorded body measurements: ${savedEntries.map((e) => e.type).join(", ")}`,
-          targetUserId: session.user.id,
-          targetUserName: session.user.name || "",
-          details: measurements,
-        }).catch(console.error);
-
-        try {
-          await notifyClientDataUpdate({
-            clientId: session.user.id,
-            updateType: "measurements",
-            eventKey: `measurements:${savedEntries[0]?._id || Date.now()}`,
-          });
-        } catch (notificationError) {
-          console.error(
-            "Error sending measurements update notification:",
-            notificationError,
-          );
-        }
-      }
-
-      return NextResponse.json({ success: true, entries: savedEntries });
-    }
-
-    // Handle single entry (weight, etc.) - ULTRA-AGGRESSIVELY OPTIMIZED
-    // Generate ObjectId upfront so we can return immediately
-    const entryId = new mongoose.Types.ObjectId();
-    const recordedAt = new Date();
-    const entryType = type || "weight";
-    const entryUnit = type === "weight" ? "kg" : "cm";
-
-    const progressData = {
-      _id: entryId,
-      user: session.user.id,
-      type: entryType,
-      value: value,
-      unit: entryUnit,
-      notes: notes || "",
-      recordedAt: recordedAt,
-    };
-
-    // ULTRA-FAST: Return IMMEDIATELY with pending entry, DB write is fire-and-forget
-    const pendingEntry = {
-      _id: entryId.toString(),
-      type: entryType,
-      value: value,
-      unit: entryUnit,
-      notes: notes || "",
-      recordedAt: recordedAt,
-    };
-
-    // FIRE-AND-FORGET: DB write happens in background
-    ProgressEntry.create(progressData).catch((err) => {
-      console.error("Background progress entry create failed:", err);
-    });
-
-    // ALL SIDE EFFECTS IN BACKGROUND (fire-and-forget)
-    if (type === "weight" && value) {
-      Promise.resolve().then(() => {
-        clearCacheByTag("client");
-
-        const numericWeight = Number(value);
-        if (Number.isFinite(numericWeight) && numericWeight > 0) {
-          emitClientWeightUpdate({
-            clientId: session.user.id,
-            weightKg: numericWeight,
-            source: "client_progress",
-          }).catch(() => {});
-        }
-
-        notifyClientDataUpdate({
-          clientId: session.user.id,
-          updateType: "weight_update",
-          eventKey: `progress-weight:${entryId}`,
-        }).catch(() => {});
-
-        logActivity({
-          userId: session.user.id,
-          userRole: "client",
-          userName: session.user.name || "",
-          userEmail: session.user.email || "",
-          action: "log_weight",
-          actionType: "create",
-          category: "fitness",
-          description: `Recorded weight: ${value} kg`,
-          targetUserId: session.user.id,
-          targetUserName: session.user.name || "",
-          details: { type: "weight", value, unit: "kg" },
-        }).catch(() => {});
-      });
-    } else {
-      // Non-weight entries - just log activity in background
-      logActivity({
-        userId: session.user.id,
-        userRole: "client",
-        userName: session.user.name || "",
-        userEmail: session.user.email || "",
-        action: "log_progress",
-        actionType: "create",
-        category: "fitness",
-        description: `Recorded ${type}: ${value} cm`,
-        targetUserId: session.user.id,
-        targetUserName: session.user.name || "",
-        details: { type, value, unit: "cm" },
-      }).catch(() => {});
-    }
-
-    // Return immediately with pending entry
-    return NextResponse.json({ success: true, entry: pendingEntry });
-  } catch (error) {
-    console.error("Error saving progress:", error);
-    return NextResponse.json(
-      { error: "Failed to save progress" },
-      { status: 500 },
-    );
-  }
+export async function POST(request:Request){
+ try{const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});
+ const data=await request.json(),result=await saveNativeProgress(getNativeDatabase(),session.user.id,data,request.headers.get('x-idempotency-key'));
+ if(result.created)after(async()=>{
+  await logActivity({userId:session.user.id,userRole:'client',userName:session.user.name||'',userEmail:session.user.email||'',action:'Logged progress',actionType:'create',category:'fitness',description:`Recorded ${data.type||'weight'} progress.`});
+  if(process.env.NODE_ENV==='production'&&['weight','measurements'].includes(data.type))await notifyClientDataUpdate({clientId:session.user.id,updateType:data.type==='weight'?'weight_update':'measurements',eventKey:`progress:${result.entries[0]._id}`});
+ });
+ return nativeResponseJson({success:true,...(data.type==='measurements'?{entries:result.entries}:{entry:result.entries[0]})});
+ }catch(error){return nativeResponseJson({error:error instanceof NativeProgressError?error.message:'Failed to save progress'},{status:error instanceof NativeProgressError?error.status:503});}
 }
-
-export async function DELETE(request: Request) {
-  try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    await dbConnect();
-
-    const { searchParams } = new URL(request.url);
-    const entryId = searchParams.get("id");
-    const deleteType = searchParams.get("type");
-    const deleteAll = searchParams.get("all") === "true";
-
-    // Bulk reset: delete all weight entries for current user
-    if (deleteType === "weight" && deleteAll) {
-      const result = await ProgressEntry.deleteMany({
-        user: session.user.id,
-        type: "weight",
-      });
-
-      clearCacheByTag("client");
-
-      return NextResponse.json({
-        success: true,
-        message: "All weight entries deleted successfully",
-        deletedCount: result.deletedCount || 0,
-      });
-    }
-
-    if (!entryId) {
-      return NextResponse.json(
-        { error: "Entry ID is required" },
-        { status: 400 },
-      );
-    }
-
-    const entry = await ProgressEntry.findOne({
-      _id: entryId,
-      user: session.user.id,
-    });
-
-    if (!entry) {
-      return NextResponse.json({ error: "Entry not found" }, { status: 404 });
-    }
-
-    if (entry.type === "photo") {
-      await deleteFromBlob(entry.metadata?.imageKitFileId || (typeof entry.value === "string" ? entry.value : undefined));
-    }
-    await ProgressEntry.deleteOne({ _id: entry._id });
-
-    return NextResponse.json({
-      success: true,
-      message: "Entry deleted successfully",
-    });
-  } catch (error) {
-    console.error("Error deleting progress entry:", error);
-    return NextResponse.json(
-      { error: "Failed to delete entry" },
-      { status: 500 },
-    );
-  }
+export async function DELETE(request:Request){
+ try{const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});
+ const params=new URL(request.url).searchParams;
+ const deletedCount=await deleteNativeProgress(getNativeDatabase(),session.user.id,params.get('id'),params.get('type')==='weight'&&params.get('all')==='true');
+ return nativeResponseJson({success:true,deletedCount,message:'Progress entries deleted successfully'});
+ }catch(error){return nativeResponseJson({error:error instanceof NativeProgressError?error.message:'Failed to delete progress'},{status:error instanceof NativeProgressError?error.status:503});}
 }

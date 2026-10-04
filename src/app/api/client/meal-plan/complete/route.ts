@@ -1,13 +1,13 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { nativeTemplateMeals } from '@/lib/db/repository/native-client-meals';
+import { readNativeCompletionPlan, saveNativeMealCompletion, createNativeMealMessage } from '@/lib/db/repository/native-meal-completion';
+import { nativeUnreadCounts } from '@/lib/db/repository/native-notifications';
+import { clearCacheByTag } from '@/lib/cache/memoryCache';
 import { mealScheduleError, mealIdentity, completionMatchesMeal, isValidMealTimeZone } from '@/lib/task-schedule';
-import DietTemplate from '@/lib/db/models/DietTemplate';
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
-import connectDB from "@/lib/db/connection";
-import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
-import Message from "@/lib/db/models/Message";
-import User from "@/lib/db/models/User";
-import { Notification } from "@/lib/db/models";
 import { UserRole } from "@/types";
 import { parseISO, startOfDay, isValid, format } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
@@ -19,7 +19,6 @@ import {
   broadcastUnreadCounts,
   broadcastStaffUnreadCounts,
 } from "@/lib/realtime/broadcast-counts";
-import { clearCacheByTag } from "@/lib/api/utils";
 import { logActivity } from "@/lib/utils/activityLogger";
 import { isPublicMediaUrl } from "@/lib/media";
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
@@ -88,8 +87,7 @@ type MealCompletionSideEffectArgs = {
 function queueMealCompletionSideEffects(
   args: MealCompletionSideEffectArgs,
 ): void {
-  setImmediate(() => {
-    void (async () => {
+  after(async () => {
       try {
         const {
           clientId,
@@ -126,9 +124,7 @@ function queueMealCompletionSideEffects(
 
         let resolvedDietitianId = primaryDietitianId;
         if (imagePath && !resolvedDietitianId) {
-          const currentUser = await User.findById(clientId)
-            .select("assignedDietitian")
-            .lean();
+          const currentUser = (await getNativeDatabase().collection('users').doc(clientId).get()).data();
           resolvedDietitianId =
             (currentUser as any)?.assignedDietitian?.toString() || null;
         }
@@ -151,7 +147,7 @@ function queueMealCompletionSideEffects(
                 .digest('hex')
                 .slice(0, 24)
             : undefined;
-          const mealPictureMessage = new Message({
+          const mealPictureMessage = {
             ...(deterministicMessageId ? { _id: deterministicMessageId } : {}),
             sender: clientId,
             receiver: resolvedDietitianId,
@@ -168,28 +164,19 @@ function queueMealCompletionSideEffects(
             status: "sent",
             isRead: false,
             sourceOperationId: operationId || undefined,
-          });
+          };
 
+          let msgJson;
           try {
-            await mealPictureMessage.save();
+            msgJson = await createNativeMealMessage(getNativeDatabase(), mealPictureMessage, deterministicMessageId);
           } catch (error) {
             // A timed-out client request can be replayed while the first
             // server invocation is still finishing. The deterministic ID and
             // unique operation key make the chat mirror exactly-once.
-            if ((error as { code?: number })?.code === 11000) return;
+            if ((error as { code?: number })?.code === 6) return;
             throw error;
           }
           clearCacheByTag("messages");
-          await mealPictureMessage.populate(
-            "sender",
-            "firstName lastName avatar role",
-          );
-          await mealPictureMessage.populate(
-            "receiver",
-            "firstName lastName avatar role",
-          );
-
-          const msgJson = mealPictureMessage.toJSON();
           const ts = Date.now();
 
           socketManager.sendToUser(resolvedDietitianId, "new_message", {
@@ -204,30 +191,16 @@ function queueMealCompletionSideEffects(
             timestamp: ts,
           });
 
-          const [
-            clientNotificationCount,
-            clientMessageCount,
-            staffMessageCount,
-          ] = await Promise.all([
-            Notification.countDocuments({ userId: clientId, read: false }),
-            Message.countDocuments({ receiver: clientId, isRead: false }),
-            Message.countDocuments({
-              receiver: resolvedDietitianId,
-              isRead: false,
-            }),
+          const [clientCounts, staffCounts] = await Promise.all([
+            nativeUnreadCounts(getNativeDatabase(), clientId),
+            nativeUnreadCounts(getNativeDatabase(), resolvedDietitianId),
           ]);
+          broadcastUnreadCounts(clientId, clientCounts);
+          broadcastStaffUnreadCounts(resolvedDietitianId, {messages:staffCounts.messages});
 
-          broadcastUnreadCounts(clientId, {
-            notifications: clientNotificationCount,
-            messages: clientMessageCount,
-          });
-
-          broadcastStaffUnreadCounts(resolvedDietitianId, {
-            messages: staffMessageCount,
-          });
         }
 
-        logActivity({
+        await logActivity({
           userId: clientId,
           userRole: "client",
           userName,
@@ -250,29 +223,25 @@ function queueMealCompletionSideEffects(
       } catch (error) {
         console.error("Error in meal completion side effects:", error);
       }
-    })();
   });
 }
 
 // POST /api/client/meal-plan/complete - Mark a meal as completed with image
 export async function POST(request: NextRequest) {
   try {
-    const [session] = await Promise.all([
-      getServerSession(authOptions),
-      connectDB(),
-    ]);
+    const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
     if (session.user.role !== UserRole.CLIENT) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { error: "Only clients can complete meals" },
         { status: 403 },
       );
     }
 
-    await connectDB();
+    const db = getNativeDatabase();
 
     // Handle both FormData and JSON requests
     const contentType = request.headers.get("content-type") || "";
@@ -309,17 +278,24 @@ export async function POST(request: NextRequest) {
       clientTimeZone = body.timeZone || "Asia/Kolkata";
     }
 
+    if ([mealId, date, mealType, notes, imageUrl, imagePathname, operationId, clientTimeZone].some(value => typeof value !== 'string') || notes.length > 10000 || imageUrl.length > 4096) {
+      return nativeResponseJson({error:'Invalid meal submission'},{status:400});
+    }
+    if (imageFile && (!(imageFile instanceof File) || !imageFile.type.startsWith('image/') || imageFile.size > 10 * 1024 * 1024)) {
+      return nativeResponseJson({error:'Upload an image smaller than 10 MB'},{status:400});
+    }
+
     // Parse the meal ID to extract plan ID and meal info
     // Format: planId-dayIndex-mealIndex
     const [planId] = mealId.split("-");
     const requestedDate = date ? parseISO(date) : new Date();
 
     if (!isValid(requestedDate)) {
-      return NextResponse.json({ error: "Invalid date" }, { status: 400 });
+      return nativeResponseJson({ error: "Invalid date" }, { status: 400 });
     }
 
     if (!isValidMealTimeZone(clientTimeZone)) {
-      return NextResponse.json({ error: 'Invalid timezone. Please refresh your plan and try again.' }, { status: 400 });
+      return nativeResponseJson({ error: 'Invalid timezone. Please refresh your plan and try again.' }, { status: 400 });
     }
 
     operationId = operationId.trim().slice(0, 120);
@@ -329,7 +305,7 @@ export async function POST(request: NextRequest) {
     const requestedDateKey = date || formatInTimeZone(requestedDate, clientTimeZone, "yyyy-MM-dd");
     const clientTodayKey = formatInTimeZone(new Date(), clientTimeZone, "yyyy-MM-dd");
     if (requestedDateKey !== clientTodayKey) {
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           error:
             "You can only mark meals as complete for today's plan. Past and future meals cannot be modified.",
@@ -339,17 +315,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the active meal plan
-    const mealPlan = (await ClientMealPlan.findOne({
-      _id: planId,
-      clientId: session.user.id,
-      status: "active",
-      isDeleted: { $ne: true },
-    })
-      .select("mealCompletions analytics name startDate meals mealTypes templateId")
-      .lean()) as any;
+    const loaded = await readNativeCompletionPlan(db, planId, session.user.id);
+    const mealPlan = loaded?.plan;
 
     if (!mealPlan) {
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           error: "Meal plan not found or not active",
         },
@@ -363,7 +333,7 @@ export async function POST(request: NextRequest) {
     // Keep the public ID's day index consistent with the meal-plan GET route.
     const dayIndex = Math.floor((startOfDay(requestedDate).getTime() - startOfDay(new Date(mealPlan.startDate)).getTime()) / 86400000);
     if (!idMatch || Number(idMatch[2]) !== dayIndex || dayIndex < 0) {
-      return NextResponse.json({ error: 'Meal does not belong to the selected day.' }, { status: 400 });
+      return nativeResponseJson({ error: 'Meal does not belong to the selected day.' }, { status: 400 });
     }
     const mealIndex = Number(idMatch[3]);
     // Match the GET route's calendar-date lookup, including sparse legacy days.
@@ -372,7 +342,7 @@ export async function POST(request: NextRequest) {
       return entryDate && isValid(entryDate) && format(entryDate, 'yyyy-MM-dd') === requestedDateKey;
     }) || mealPlan.meals?.[dayIndex];
     if (!day?.meals && !mealPlan.mealTypes?.length && mealPlan.templateId) {
-      const template = await DietTemplate.findById(mealPlan.templateId).select('meals').lean();
+      const template = await nativeTemplateMeals(db, String(mealPlan.templateId));
       if (template?.meals?.length) {
         const templateDay = template.meals[dayIndex % template.meals.length];
         day = { meals: templateDay.meals || templateDay };
@@ -386,7 +356,7 @@ export async function POST(request: NextRequest) {
           (m.foods || m.items || m.foodOptions || resolveBuiltInMealTypeKey(key)));
     const scheduledMeal = entries[mealIndex];
     if (!scheduledMeal || (mealType && mealIdentity(mealType) !== mealIdentity(scheduledMeal[0]))) {
-      return NextResponse.json({ error: 'Meal does not match the published plan. Please refresh your plan.' }, { status: 400 });
+      return nativeResponseJson({ error: 'Meal does not match the published plan. Please refresh your plan.' }, { status: 400 });
     }
     const requestedMealTypeRaw = scheduledMeal[0];
     const builtInRequestedType = resolveBuiltInMealTypeKey(requestedMealTypeRaw);
@@ -395,7 +365,7 @@ export async function POST(request: NextRequest) {
     const scheduledTime = scheduledMeal[1].time || (builtInRequestedType ? MEAL_TYPES[builtInRequestedType].time12h : '12:00 PM');
     const scheduleError = mealScheduleError(requestedDateKey, scheduledTime, Date.now(), clientTimeZone);
     if (scheduleError) {
-      return NextResponse.json({ error: scheduleError, code: 'MEAL_NOT_AVAILABLE' }, { status: 400 });
+      return nativeResponseJson({ error: scheduleError, code: 'MEAL_NOT_AVAILABLE' }, { status: 400 });
     }
 
     const mealCompletions = Array.isArray(mealPlan.mealCompletions)
@@ -443,7 +413,7 @@ export async function POST(request: NextRequest) {
         });
 
         if (!uploadResult) {
-          return NextResponse.json(
+          return nativeResponseJson(
             { error: "Media service temporarily unavailable. Please try again shortly.", code: "MEDIA_SERVICE_DOWN" },
             { status: 503 }
           );
@@ -453,7 +423,7 @@ export async function POST(request: NextRequest) {
         imageKitFileId = uploadResult.pathname;
       } catch (uploadError) {
         console.error("Error uploading meal image:", uploadError);
-        return NextResponse.json(
+        return nativeResponseJson(
           {
             error: "Failed to upload meal image",
           },
@@ -536,15 +506,12 @@ export async function POST(request: NextRequest) {
     analytics.averageAdherence =
       totalMeals > 0 ? Math.round((completedMeals / totalMeals) * 100) : 0;
 
-    await ClientMealPlan.updateOne(
-      { _id: mealPlan._id, clientId: session.user.id, status: "active" },
-      {
-        $set: {
-          mealCompletions,
-          analytics,
-        },
-      },
-    );
+    try {
+      await saveNativeMealCompletion(db, planId, loaded!.version, mealCompletions, analytics);
+    } catch (error) {
+      if ((error as {code?:number}).code === 9) return nativeResponseJson({error:'Your plan changed while saving. Refresh and try again.',code:'PLAN_CHANGED'},{status:409});
+      throw error;
+    }
 
     clearCacheByTag("dietitian_panel");
     clearCacheByTag("client");
@@ -567,7 +534,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: "Meal marked as completed",
       completion: {
@@ -581,7 +548,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error completing meal:", error);
-    return NextResponse.json(
+    return nativeResponseJson(
       {
         error: "Internal server error",
         message: "Failed to complete meal",

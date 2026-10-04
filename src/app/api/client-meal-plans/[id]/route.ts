@@ -1,10 +1,10 @@
+import {nativeResponseJson} from '@/lib/api/native-response';
+import { validPlanDate, planNeedsDateCorrection } from '@/lib/meal-plan-date-validity';
+import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { NativePlanEditor, nativePlanStaffAccess, appendNativePlanAudit } from '@/lib/db/repository/native-plan-editor';
+import { deleteNativeMealPlan, NativePlanDeletionConflict } from '@/lib/db/repository/native-meal-plans';
+import { clearCacheByTag } from '@/lib/cache/memoryCache';
 import { NextRequest, NextResponse } from "next/server";
-import { deleteMealPlanWithAllocation, PlanDeletionConflict } from "@/lib/meal-plan-deletion";
-import connectDB from "@/lib/db/connection";
-import ClientMealPlan from "@/lib/db/models/ClientMealPlan";
-import UnifiedPayment from "@/lib/db/models/UnifiedPayment";
-import User from "@/lib/db/models/User";
-import { withCache, clearCacheByTag } from "@/lib/api/utils";
 import { updateClientStatusFromMealPlan } from "@/lib/status/computeClientStatus";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -255,37 +255,22 @@ const sortPhasesForCascade = (a: any, b: any): number => {
   return aCreated - bCreated;
 };
 
-const buildPhaseScopeQuery = (anchorPlan: any) => {
-  const baseQuery: Record<string, any> = {
-    _id: { $ne: anchorPlan._id },
-    isDeleted: { $ne: true },
-    status: { $ne: "draft" },
-  };
-
-  if (anchorPlan?.purchaseId) {
-    baseQuery.purchaseId = anchorPlan.purchaseId;
-  } else {
-    baseQuery.clientId = anchorPlan.clientId;
-  }
-
-  return baseQuery;
-};
-
 const cascadeShiftLinkedPhases = async (
+  editor: NativePlanEditor,
   anchorPlan: any,
   deltaDays: number,
-): Promise<void> => {
-  if (!anchorPlan || deltaDays === 0) return;
+): Promise<Array<{plan:any;patch:any}>> => {
+  const mutations:Array<{plan:any;patch:any}>=[];
+  if (!anchorPlan || deltaDays === 0) return mutations;
 
-  const scopeQuery = buildPhaseScopeQuery(anchorPlan);
-  const siblingPlans: any[] = await ClientMealPlan.find(scopeQuery);
-  if (siblingPlans.length === 0) return;
+  const siblingPlans = await Promise.all((await editor.siblings(anchorPlan)).filter(plan=>plan.status!=='draft').map(plan=>editor.hydrate(plan)));
+  if (siblingPlans.length === 0) return mutations;
 
   const orderedPlans = [anchorPlan, ...siblingPlans].sort(sortPhasesForCascade);
   const anchorIndex = orderedPlans.findIndex(
     (plan) => String(plan._id) === String(anchorPlan._id),
   );
-  if (anchorIndex < 0 || anchorIndex >= orderedPlans.length - 1) return;
+  if (anchorIndex < 0 || anchorIndex >= orderedPlans.length - 1) return mutations;
 
   for (let i = anchorIndex + 1; i < orderedPlans.length; i += 1) {
     const plan = orderedPlans[i];
@@ -317,8 +302,9 @@ const cascadeShiftLinkedPhases = async (
       }));
     }
 
-    await plan.save();
+    mutations.push({plan,patch:{startDate:plan.startDate,endDate:plan.endDate,meals:plan.meals,freezedDays:plan.freezedDays,updatedAt:new Date()}});
   }
+  return mutations;
 };
 
 const getNormalizedRole = (role: unknown): string =>
@@ -337,12 +323,9 @@ const isSessionUserAssignedToClient = async (
   sessionUserId: string,
   clientId: string,
   role: string,
+  editor: NativePlanEditor,
 ): Promise<boolean> => {
-  const client = (await User.findById(clientId)
-    .select(
-      "assignedDietitian assignedDietitians assignedHealthCounselor assignedHealthCounselors",
-    )
-    .lean()) as any;
+  const client = await editor.document('users', clientId);
 
   if (!client) return false;
 
@@ -370,32 +353,15 @@ const isSessionUserAssignedToClient = async (
 const canAccessMealPlan = async (
   session: any,
   mealPlan: any,
+  editor: NativePlanEditor,
 ): Promise<boolean> => {
-  const role = getNormalizedRole(session?.user?.role);
-  const sessionUserId = String(session?.user?.id || "");
-  if (!sessionUserId) return false;
-
-  if (role === UserRole.ADMIN) return true;
-  if (role === UserRole.CLIENT)
-    return mealPlan.clientId?.toString() === sessionUserId;
-
-  const isOwner = mealPlan.dietitianId?.toString() === sessionUserId;
-  if (isOwner) return true;
-
-  if (
-    role === UserRole.DIETITIAN ||
-    role === "dietician" ||
-    role === UserRole.HEALTH_COUNSELOR ||
-    role === "health_counselor"
-  ) {
-    return isSessionUserAssignedToClient(
-      sessionUserId,
-      mealPlan.clientId?.toString(),
-      role,
-    );
-  }
-
-  return false;
+  const actorId=String(session?.user?.id||'');
+  if(!actorId)return false;
+  const actor=await editor.document('users',actorId);
+  if(!actor||actor.isActive===false||['inactive','suspended'].includes(actor.status))return false;
+  session.user.role=actor.role;
+  if(actor.role==='client')return mealPlan.clientId===actorId;
+  return nativePlanStaffAccess(editor,mealPlan,session.user);
 };
 
 const getRequestMeta = (request: NextRequest) => ({
@@ -442,17 +408,7 @@ const appendLifecycleAudit = async (
   },
 ) => {
   try {
-    await ClientMealPlan.updateOne(
-      { _id: planId },
-      {
-        $push: {
-          lifecycleAudit: {
-            ...entry,
-            at: new Date(),
-          },
-        },
-      },
-    );
+    await appendNativePlanAudit(getNativeDatabase(), String(planId), entry);
   } catch (err) {
     console.error("Failed to append lifecycleAudit entry:", err);
   }
@@ -464,51 +420,40 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const [session, , { id }] = await Promise.all([
-      getServerSession(authOptions),
-      connectDB(),
-      context.params,
-    ]);
+    const [session, { id }] = await Promise.all([getServerSession(authOptions), context.params]);
+    const editor = new NativePlanEditor(getNativeDatabase());
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const mealPlan = await withCache(
-      `client-meal-plans:id:${JSON.stringify(id)}`,
-      async () =>
-        await ClientMealPlan.findOne({
-          _id: id,
-          isDeleted: { $ne: true },
-        }).populate("templateId", "name category duration"),
-      { ttl: 120000, tags: ["client_meal_plans"] },
-    );
+    const mealPlan = await editor.plan(id);
 
     if (!mealPlan) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: "Meal plan not found" },
         { status: 404 },
       );
     }
 
-    const hasAccess = await canAccessMealPlan(session, mealPlan);
+    const hasAccess = await canAccessMealPlan(session, mealPlan, editor);
     if (!hasAccess) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: "Forbidden" },
         { status: 403 },
       );
     }
 
     const planWithFrozenMeals = applyFrozenFlagsFromFreezedDays(
-      mealPlan.toObject ? mealPlan.toObject() : mealPlan,
+      await editor.populateTemplate(await editor.hydrate(mealPlan)),
     );
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       mealPlan: planWithFrozenMeals,
     });
   } catch (error) {
     console.error("Error fetching meal plan:", error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { success: false, error: "Failed to fetch meal plan" },
       { status: 500 },
     );
@@ -523,16 +468,18 @@ export async function PUT(
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: "Authentication required" },
         { status: 401 },
       );
     }
 
-    await connectDB();
+    const editor = new NativePlanEditor(getNativeDatabase());
+    if (!['admin','dietitian','dietician','health_counselor'].includes(String(session.user.role))) return nativeResponseJson({error:'Forbidden'},{status:403});
 
     const { id } = await context.params;
     const body = await request.json();
+    if (!body || typeof body!=='object' || Array.isArray(body)) return nativeResponseJson({error:'Invalid plan data'},{status:400});
 
     const {
       name,
@@ -549,12 +496,20 @@ export async function PUT(
       statusReason,
     } = body;
 
+    if ((name !== undefined && (typeof name !== 'string' || !name.trim())) ||
+        (description !== undefined && typeof description !== 'string') ||
+        (duration !== undefined && (!Number.isSafeInteger(Number(duration)) || Number(duration) < 1)) ||
+        (meals !== undefined && !Array.isArray(meals)) || (mealTypes !== undefined && !Array.isArray(mealTypes)) ||
+        [startDate,endDate].some(value=>value!==undefined&&!validPlanDate(value))) {
+      return nativeResponseJson({error:'Invalid plan fields'},{status:400});
+    }
+
     // Validate date range
     if (startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
       if (start > end) {
-        return NextResponse.json(
+        return nativeResponseJson(
           { success: false, error: "Start date cannot be after end date" },
           { status: 400 },
         );
@@ -562,24 +517,28 @@ export async function PUT(
     }
 
     // Fetch existing plan first to allow partial/merge updates
-    const existingPlan = await ClientMealPlan.findOne({
-      _id: id,
-      isDeleted: { $ne: true },
-    });
+    let existingPlan = await editor.plan(id);
     if (!existingPlan) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: "Meal plan not found" },
         { status: 404 },
       );
     }
 
-    const hasAccess = await canAccessMealPlan(session, existingPlan);
+    const hasAccess = await canAccessMealPlan(session, existingPlan, editor);
     if (!hasAccess) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: "Forbidden" },
         { status: 403 },
       );
     }
+
+    if (!['admin','dietitian','dietician','health_counselor'].includes(String(session.user.role))) return nativeResponseJson({error:'Forbidden'},{status:403});
+    existingPlan = await editor.hydrate(existingPlan);
+    if (planNeedsDateCorrection(existingPlan)) {
+      return nativeResponseJson({success:false,code:'PLAN_DATES_NEED_CORRECTION',error:'An administrator must confirm the missing plan dates before this plan can be edited or published.'},{status:409});
+    }
+    const scopedPlans = await editor.siblings(existingPlan);
 
     const rawOperationId = request.headers.get("x-idempotency-key")?.trim();
     const operationId =
@@ -587,14 +546,14 @@ export async function PUT(
         ? rawOperationId
         : undefined;
     if (operationId && existingPlan.lastOperationId === operationId) {
-      await existingPlan.populate("templateId", "name category duration");
-      return NextResponse.json({
+      const replayPlan = await editor.populateTemplate(existingPlan);
+      return nativeResponseJson({
         success: true,
         message:
           existingPlan.status === "draft"
             ? "Draft already saved"
             : "Meal plan update already applied",
-        mealPlan: applyFrozenFlagsFromFreezedDays(existingPlan.toObject()),
+        mealPlan: applyFrozenFlagsFromFreezedDays(replayPlan),
         replayed: true,
       });
     }
@@ -619,7 +578,7 @@ export async function PUT(
     // Moving its start date removes the client's historical coverage. Timeline
     // shifts from explicit freeze/extension actions use their own endpoints.
     if (existingPlan.status !== "draft" && startDateChanged) {
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           code: "PUBLISHED_START_DATE_LOCKED",
@@ -633,11 +592,10 @@ export async function PUT(
     // HOLD STATUS CHECK: Block publishing meal plans to clients on hold
     // ------------------------------------------------------------------
     if (isPublishing) {
-      const clientUser = (await User.findById(existingPlan.clientId)
-        .select("holdStatus firstName lastName")
-        .lean()) as any;
-      if (clientUser?.holdStatus?.isOnHold) {
-        return NextResponse.json(
+      const clientUser = await editor.document('users', String(existingPlan.clientId));
+      if (!clientUser) return nativeResponseJson({error:"Client not found"},{status:404});
+      if (clientUser.holdStatus?.isOnHold) {
+        return nativeResponseJson(
           {
             success: false,
             code: "CLIENT_ON_HOLD",
@@ -684,7 +642,7 @@ export async function PUT(
         ...getRequestMeta(request),
       }).catch(() => null);
 
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           code: "FORBIDDEN_STATE_TRANSITION",
@@ -704,7 +662,7 @@ export async function PUT(
         toStatus: status,
         blocked: true,
       });
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           code: "FORBIDDEN_STATE_TRANSITION",
@@ -751,7 +709,7 @@ export async function PUT(
         ...getRequestMeta(request),
       }).catch(() => null);
 
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           code: "TITLE_LOCKED_AFTER_PUBLISH",
@@ -784,7 +742,7 @@ export async function PUT(
       resultingStatus === "active" &&
       !hasPublishableMealData(resultingMeals)
     ) {
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           error:
@@ -809,7 +767,7 @@ export async function PUT(
       if (!isDraftPlan && existingDuration && existingDuration > 0) {
         updateData.duration = existingDuration;
       } else {
-        updateData.duration = duration;
+        updateData.duration = Number(duration);
       }
     }
 
@@ -859,14 +817,10 @@ export async function PUT(
       existingPlan.purchaseId &&
       (isPublishing || startDateChanged || endDateChanged)
     ) {
-      const purchase = (await UnifiedPayment.findById(existingPlan.purchaseId)
-        .select(
-          "expectedStartDate expectedEndDate startDate endDate durationLabel",
-        )
-        .lean()) as any;
+      const purchase = await editor.document('unifiedpayments', String(existingPlan.purchaseId));
 
-      if (!purchase) {
-        return NextResponse.json(
+      if (!purchase || purchase.client !== existingPlan.clientId) {
+        return nativeResponseJson(
           { success: false, error: "Linked purchase could not be found" },
           { status: 400 },
         );
@@ -902,7 +856,7 @@ export async function PUT(
       ].every((date) => !Number.isNaN(date.getTime()));
 
       if (!datesAreValid) {
-        return NextResponse.json(
+        return nativeResponseJson(
           {
             success: false,
             error:
@@ -913,7 +867,7 @@ export async function PUT(
       }
 
       if (proposedStart < expectedStart || proposedEnd > expectedEnd) {
-        return NextResponse.json(
+        return nativeResponseJson(
           {
             success: false,
             error:
@@ -933,34 +887,13 @@ export async function PUT(
       );
       let previousPlan: any = null;
 
+      const publishedSiblings = scopedPlans.filter(plan=>['active','completed','paused'].includes(plan.status));
       if (existingPlan.previousPhaseId) {
-        previousPlan = await ClientMealPlan.findOne({
-          _id: existingPlan.previousPhaseId,
-          purchaseId: existingPlan.purchaseId,
-          status: { $in: ["active", "completed", "paused"] },
-          isDeleted: { $ne: true },
-        })
-          .select("_id name phaseTag endDate")
-          .lean();
+        previousPlan = publishedSiblings.find(plan=>plan._id===existingPlan.previousPhaseId) || null;
       } else {
-        const previousPhaseQuery: Record<string, any> = {
-          _id: { $ne: existingPlan._id },
-          clientId: existingPlan.clientId,
-          purchaseId: existingPlan.purchaseId,
-          status: { $in: ["active", "completed", "paused"] },
-          isDeleted: { $ne: true },
-        };
-
-        if (existingPlan.phaseNumber && existingPlan.phaseNumber > 1) {
-          previousPhaseQuery.phaseNumber = { $lt: existingPlan.phaseNumber };
-        } else if (!isPublishing) {
-          previousPhaseQuery.endDate = { $lt: proposedStart };
-        }
-
-        previousPlan = await ClientMealPlan.findOne(previousPhaseQuery)
-          .sort({ phaseNumber: -1, endDate: -1, createdAt: -1 })
-          .select("_id name phaseTag endDate")
-          .lean();
+        previousPlan = publishedSiblings.filter(plan=>existingPlan.phaseNumber>1
+          ? plan.phaseNumber<existingPlan.phaseNumber : isPublishing || new Date(plan.endDate)<proposedStart)
+          .sort((a,b)=>(b.phaseNumber||0)-(a.phaseNumber||0)||new Date(b.endDate).getTime()-new Date(a.endDate).getTime()||new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime())[0] || null;
       }
 
       if (previousPlan?.endDate) {
@@ -969,7 +902,7 @@ export async function PUT(
           previousPlan.endDate,
         );
         if (continuity && !continuity.allowed) {
-          return NextResponse.json(
+          return nativeResponseJson(
             {
               success: false,
               error: "Phase start date is too early",
@@ -1000,7 +933,7 @@ export async function PUT(
       const reasonText =
         typeof statusReason === "string" ? statusReason.trim() : "";
       if (!reasonText) {
-        return NextResponse.json(
+        return nativeResponseJson(
           {
             success: false,
             error: "Cancellation reason required",
@@ -1014,20 +947,11 @@ export async function PUT(
 
     // Ensure draft->active publish always receives correct phase numbering.
     if (isPublishing) {
-      const phaseScopeQuery: Record<string, any> = {
-        clientId: existingPlan.clientId,
-        status: { $in: ["active", "completed"] },
-        _id: { $ne: existingPlan._id },
-        isDeleted: { $ne: true },
-      };
-
-      if (existingPlan.purchaseId) {
-        phaseScopeQuery.purchaseId = existingPlan.purchaseId;
-      }
+      const publishedPhases = scopedPlans.filter(plan=>['active','completed'].includes(plan.status));
 
       if (!existingPlan.phaseNumber) {
         const previousPlansCount =
-          await ClientMealPlan.countDocuments(phaseScopeQuery);
+          publishedPhases.length;
 
         updateData.phaseNumber = previousPlansCount + 1;
       }
@@ -1041,10 +965,7 @@ export async function PUT(
       }
 
       if (!existingPlan.previousPhaseId) {
-        const previousPlan = (await ClientMealPlan.findOne(phaseScopeQuery)
-          .sort({ endDate: -1, createdAt: -1 })
-          .select("_id")
-          .lean()) as any;
+        const previousPlan = [...publishedPhases].sort((a,b)=>new Date(b.endDate).getTime()-new Date(a.endDate).getTime()||new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime())[0];
 
         if (previousPlan?._id) {
           updateData.previousPhaseId = previousPlan._id;
@@ -1059,15 +980,9 @@ export async function PUT(
       updateData.lastPublishedAt = nowDate;
     }
 
-    const mongoUpdate: Record<string, unknown> = {
-      $set: updateData,
-      $inc: { __v: 1 },
-    };
-
     // Track lifecycle audit + publish counters on relevant transitions.
     const auditEntries: Array<Record<string, unknown>> = [];
     if (isPublishing) {
-      mongoUpdate.$inc = { __v: 1, republishCount: 1 };
       auditEntries.push({
         action: existingPlan.firstPublishedAt ? "republish" : "publish",
         at: new Date(),
@@ -1086,26 +1001,14 @@ export async function PUT(
           typeof statusReason === "string" ? statusReason.trim() : undefined,
       });
     }
-    if (auditEntries.length > 0) {
-      mongoUpdate.$push = { lifecycleAudit: { $each: auditEntries } };
-    }
-
-    // Validation was based on this snapshot. A delayed autosave must never
-    // overwrite a plan published (or edited/frozen) while validation ran.
-    const updatedPlan = await ClientMealPlan.findOneAndUpdate(
-      {
-        _id: id,
-        isDeleted: { $ne: true },
-        status: existingPlan.status,
-        updatedAt: existingPlan.updatedAt ?? null,
-        __v: existingPlan.__v ?? null,
-      },
-      mongoUpdate,
-      { new: true, runValidators: true },
-    ).populate("templateId", "name category duration");
+    const previousEnd = startOfDay(new Date(existingPlan.endDate));
+    const nextEnd = startOfDay(new Date(updateData.endDate || existingPlan.endDate));
+    const cascade = await cascadeShiftLinkedPhases(editor, {...existingPlan,...updateData}, differenceInDays(nextEnd,previousEnd));
+    const savedPlan = await editor.save(existingPlan,updateData,auditEntries,isPublishing,cascade);
+    const updatedPlan = savedPlan ? await editor.populateTemplate(savedPlan) : null;
 
     if (!updatedPlan) {
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           code: "PLAN_WRITE_CONFLICT",
@@ -1152,22 +1055,6 @@ export async function PUT(
     if (updatedPlan.status === "active") {
       const clientId = updatedPlan.clientId?.toString();
       if (clientId) await grantDietPlanAccess(clientId);
-    }
-
-    // Keep linked phases contiguous when a plan's end-date boundary changes.
-    const previousEndDate = existingPlan?.endDate
-      ? startOfDay(new Date(existingPlan.endDate))
-      : null;
-    const updatedEndDate = updatedPlan?.endDate
-      ? startOfDay(new Date(updatedPlan.endDate))
-      : null;
-    const deltaDays =
-      previousEndDate && updatedEndDate
-        ? differenceInDays(updatedEndDate, previousEndDate)
-        : 0;
-
-    if (deltaDays !== 0) {
-      await cascadeShiftLinkedPhases(updatedPlan, deltaDays);
     }
 
     // Clear cached responses so subsequent GETs return fresh data
@@ -1239,10 +1126,10 @@ export async function PUT(
     }
 
     const updatedPlanWithFrozenMeals = applyFrozenFlagsFromFreezedDays(
-      updatedPlan.toObject ? updatedPlan.toObject() : updatedPlan,
+      updatedPlan,
     );
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: isPublishing
         ? "Meal plan published successfully"
@@ -1257,7 +1144,7 @@ export async function PUT(
       (error.name === "ValidationError" ||
         error.message.toLowerCase().includes("validation"))
     ) {
-      return NextResponse.json(
+      return nativeResponseJson(
         {
           success: false,
           error: "Invalid data provided. Please check your inputs.",
@@ -1265,7 +1152,7 @@ export async function PUT(
         { status: 400 },
       );
     }
-    return NextResponse.json(
+    return nativeResponseJson(
       { success: false, error: "Failed to update meal plan" },
       { status: 500 },
     );
@@ -1278,23 +1165,17 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const [session, , { id }] = await Promise.all([
-      getServerSession(authOptions),
-      connectDB(),
-      context.params,
-    ]);
+    const [session, { id }] = await Promise.all([getServerSession(authOptions), context.params]);
+    const editor = new NativePlanEditor(getNativeDatabase());
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return nativeResponseJson({ error: "Unauthorized" }, { status: 401 });
     }
 
     // First, fetch plan for authorization and safe soft-delete behavior
-    const mealPlan = await ClientMealPlan.findOne({
-      _id: id,
-      isDeleted: { $ne: true },
-    });
+    const mealPlan = await editor.plan(id);
 
     if (!mealPlan) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: "Meal plan not found" },
         { status: 404 },
       );
@@ -1305,7 +1186,7 @@ export async function DELETE(
     const isStaff = [UserRole.DIETITIAN, UserRole.HEALTH_COUNSELOR, "dietician"].includes(role);
     const canDelete = isAdmin || (
       isStaff && mealPlan.status === "draft" && !mealPlan.firstPublishedAt &&
-      await canAccessMealPlan(session, mealPlan)
+      await canAccessMealPlan(session, mealPlan, editor)
     );
     if (!canDelete) {
       await logActivity({
@@ -1333,7 +1214,7 @@ export async function DELETE(
         userAgent: request.headers.get("user-agent") || undefined,
       }).catch(() => null);
 
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: "Forbidden" },
         { status: 403 },
       );
@@ -1342,12 +1223,10 @@ export async function DELETE(
     const clientId = mealPlan.clientId?.toString();
     const deletionReason = isAdmin ? "admin-requested-plan-delete" : "staff-requested-draft-delete";
 
-    const { deletedPlan, restoredDays } = await deleteMealPlanWithAllocation(
-      id, session.user.id, Boolean(mealPlan.purchaseId), !isAdmin,
-    );
+    const { deletedPlan, restoredDays } = await deleteNativeMealPlan(getNativeDatabase(), id, {id:session.user.id,role:toActivityRole(role) as 'admin'|'dietitian'|'health_counselor'});
 
     if (!deletedPlan) {
-      return NextResponse.json(
+      return nativeResponseJson(
         { success: false, error: "Meal plan not found" },
         { status: 404 },
       );
@@ -1420,17 +1299,17 @@ export async function DELETE(
       }
     }
 
-    return NextResponse.json({
+    return nativeResponseJson({
       success: true,
       message: "Meal plan deleted successfully",
       restoredDays,
     });
   } catch (error) {
-    if (error instanceof PlanDeletionConflict) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 409 });
+    if (error instanceof NativePlanDeletionConflict) {
+      return nativeResponseJson({ success: false, error: error.message }, { status: 409 });
     }
     console.error("Error deleting meal plan:", error);
-    return NextResponse.json(
+    return nativeResponseJson(
       { success: false, error: "Failed to delete meal plan" },
       { status: 500 },
     );

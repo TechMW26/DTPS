@@ -1,0 +1,17 @@
+import {Filter,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {nativeDates} from './native-plan-editor';
+import {NativeDirectoryError} from './native-client-directory';
+const fields='firstName lastName email phone avatar role status bio experience consultationFee specializations credentials createdAt'.split(' ');
+export async function nativeUserProfessionals(db:Firestore,actorId:string,kind:'dietitians'|'health-counselors'|'dietitian'|'available',params:URLSearchParams){
+ const actor=await db.collection('users').doc(actorId).get();if(!actor.exists||actor.get('status')!=='active')throw new NativeDirectoryError('Access denied',403);const role=actor.get('role'),assigned=actor.get('assignedDietitian');
+ if(kind==='dietitian'){if(role!=='client')throw new NativeDirectoryError('Client access required',403);if(!assigned)return {dietitian:null,message:'No dietitian assigned yet'};const [doc]=await db.getAll(db.collection('users').doc(assigned),{fieldMask:fields});return {dietitian:doc.exists?{_id:doc.id,...nativeDates(doc.data())}:null};}
+ let query:FirebaseFirestore.Query=db.collection('users');let projection=fields;
+ if(kind==='available'){
+  projection=['firstName','lastName','avatar','role','consultationFee','specializations'];query=query.where('status','==','active');
+  if(role==='client')query=query.where('role','==','dietitian').limit(11);else if(role==='dietitian'||role==='health_counselor'){const primary=role==='dietitian'?'assignedDietitian':'assignedHealthCounselor',secondary=role==='dietitian'?'assignedDietitians':'assignedHealthCounselors';query=query.where('role','==','client').where(Filter.or(Filter.where(primary,'==',actorId),Filter.where(secondary,'array-contains',actorId)));}else if(role==='admin')query=query.limit(51);else throw new NativeDirectoryError('Access denied',403);
+ }else if(kind==='health-counselors')query=query.where('role','==','health_counselor').where('status','==','active');else if(role==='client'&&assigned)query=query.where('__name__','==',assigned);else{query=query.where('role','in',params.get('excludeHealthCounselors')==='true'?['dietitian']:['dietitian','health_counselor']);if(role!=='admin')query=query.where('status','==','active');}
+ if(params.get('includeAvailability')==='true')projection=[...projection,'availability'];if(params.get('specialization'))query=query.where('specializations','array-contains',params.get('specialization'));
+ const rows=await query.select(...projection).get();let people:DocumentData[]=rows.docs.map(d=>({_id:d.id,...nativeDates(d.data())}));const search=(params.get('search')||'').trim().toLowerCase();if(search)people=people.filter(d=>[d.firstName,d.lastName,d.email,...(d.specializations||[])].some(v=>String(v||'').toLowerCase().includes(search)));people.sort((a,b)=>`${a.firstName||''} ${a.lastName||''}`.localeCompare(`${b.firstName||''} ${b.lastName||''}`));
+ if(kind==='available'){people=people.filter(d=>d._id!==actorId);if(role==='client'){people=people.filter(d=>d._id!==assigned).slice(0,10).map(d=>({...d,isAssigned:false}));if(assigned){const [doc]=await db.getAll(db.collection('users').doc(assigned),{fieldMask:projection});if(doc.exists)people.unshift({_id:doc.id,...nativeDates(doc.data()),isAssigned:true});}}return {users:people.slice(0,role==='admin'?50:people.length)};}
+ return kind==='health-counselors'?{success:true,healthCounselors:people,count:people.length}:{dietitians:people,total:people.length};
+}
