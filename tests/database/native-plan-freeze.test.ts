@@ -22,15 +22,22 @@ suite('native plan freeze transactions',()=>{
  }
  const request=(method:string,body:unknown)=>new NextRequest('http://localhost/api/freeze',{method,headers:{'content-type':'application/json'},body:JSON.stringify(body)});
  beforeEach(async()=>{const actor=await put('users',{role:'admin',status:'active'});(getServerSession as jest.Mock).mockResolvedValue({user:{id:actor.id,role:'admin',name:'Test staff'}});});
- it('freezes and restores meals, phase dates and allowance without losing original meals',async()=>{
+ it.each([undefined, null, '', 'Client vacation'])('freezes and restores meals, phase dates and allowance with reason %p',async(reason)=>{
   const {plan,next,purchase}=await fixture();const context={params:Promise.resolve({id:plan.id})};
-  expect((await POST(request('POST',{freezeDates:['2099-10-10','2099-10-10']}),context)).status).toBe(200);
+  expect((await POST(request('POST',{freezeDates:['2099-10-10','2099-10-10'],reason}),context)).status).toBe(200);
+  expect((await plan.get()).get('freezedDays')[0].reason).toBe(reason || null);
   expect((await plan.get()).get('totalFreezeCount')).toBe(1);expect((await plan.get()).get('meals')).toHaveLength(2);
   expect((await next.get()).get('startDate').toDate()).toEqual(new Date('2099-10-12T00:00:00+05:30'));
   expect((await DELETE(request('DELETE',{unfreezeDates:['2099-10-10']}),context)).status).toBe(200);
   const restored=await plan.get();expect(restored.get('totalFreezeCount')).toBe(0);expect(restored.get('meals')).toEqual([{date:'2099-10-10',items:['original']}]);
   expect((await next.get()).get('startDate').toDate()).toEqual(new Date('2099-10-11T00:00:00+05:30'));
   expect((await purchase.get()).get('expectedEndDate').toDate()).toEqual(new Date('2099-12-31T00:00:00+05:30'));
+ });
+ it.each([42, {}, [], true, 'x'.repeat(2001)])('rejects invalid reason %# without modifying the plan',async(reason)=>{
+  const {plan}=await fixture();
+  const response=await POST(request('POST',{freezeDates:['2099-10-10'],reason}),{params:Promise.resolve({id:plan.id})});
+  expect(response.status).toBe(400);
+  expect((await plan.get()).get('freezedDays')).toEqual([]);
  });
  it('does not exceed a shared freeze allowance under concurrent requests',async()=>{
   const {plan,next}=await fixture();const responses=await Promise.all([

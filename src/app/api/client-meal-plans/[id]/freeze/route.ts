@@ -404,7 +404,13 @@ export async function POST(
       return nativeResponseJson({ error: 'freezeDates array is required' }, { status: 400 });
     }
 
-    if(freezeDates.length>366 || (reason!==undefined && (typeof reason!=='string'||reason.length>2000)))return nativeResponseJson({error:'Invalid freeze request'},{status:400});
+    if (freezeDates.length > 366) {
+      return nativeResponseJson({ error: 'Select no more than 366 freeze dates' }, { status: 400 });
+    }
+    // The shared planning dialog sends null when the optional reason is blank.
+    if (reason != null && (typeof reason !== 'string' || reason.length > 2000)) {
+      return nativeResponseJson({ error: 'Freeze reason must be text of no more than 2000 characters' }, { status: 400 });
+    }
 
     // Get the user name for frozenBy field
     const frozenBy = session.user.name || session.user.email || 'Unknown';
