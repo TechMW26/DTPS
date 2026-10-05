@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -81,6 +81,11 @@ export function DietPlanExport({
     "html" | "csv" | "pdf" | "print"
   >("pdf");
   const [isExporting, setIsExporting] = useState(false);
+  const [preparedPdf, setPreparedPdf] = useState<{ url: string; filename: string } | null>(null);
+  useEffect(() => {
+    return () => { if (preparedPdf) URL.revokeObjectURL(preparedPdf.url); };
+  }, [preparedPdf]);
+  useEffect(() => { if (!open) setPreparedPdf(null); }, [open]);
 
   // Helper function to format date properly
   const formatDateProper = (dateStr: string): string => {
@@ -885,14 +890,14 @@ export function DietPlanExport({
       const blobUrl = URL.createObjectURL(pdf.output("blob"));
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = dietPlanPdfFilename(clientName, exportFor, new Date());
+      const filename = dietPlanPdfFilename(clientName, exportFor, new Date());
+      link.download = filename;
+      setPreparedPdf({ url: blobUrl, filename });
       link.rel = "noopener";
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
-      toast.success("PDF downloaded successfully");
-      setOpen(false);
+      toast.success("PDF ready. Your download has started.");
     } catch (error) {
       console.error("PDF export failed:", error);
       toast.error("PDF generation failed. Please try again.");
@@ -1041,6 +1046,16 @@ export function DietPlanExport({
             </div>
           </div>
 
+          {preparedPdf && (
+            <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+              <p className="font-medium">Your PDF is ready</p>
+              <p className="mt-1">If the download did not start, use either link below.</p>
+              <div className="mt-3 flex flex-wrap gap-4">
+                <a href={preparedPdf.url} download={preparedPdf.filename} className="font-semibold underline">Download PDF again</a>
+                <a href={preparedPdf.url} target="_blank" rel="noopener noreferrer" className="font-semibold underline">Open PDF</a>
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
