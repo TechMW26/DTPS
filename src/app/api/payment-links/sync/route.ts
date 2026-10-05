@@ -20,5 +20,5 @@ export async function POST(request:NextRequest){try{
   if(current.get('status')==='paid')throw new NativeCheckoutError('Payment status conflict requires review',409);
   tx.update(ref,{status:proof.status==='created'||proof.status==='partially_paid'?'pending':proof.status,updatedAt:new Date()});
  });else throw new NativeCheckoutError('Unrecognized payment provider state',409);
- return nativeResponseJson({success:true,paymentLink:await nativeAuthorizedPaymentLink(db,session.user.id,paymentLinkId,true),message:'Payment status synchronized'},{headers:{'Cache-Control':'no-store'}});
+ return nativeResponseJson({success:true,razorpayStatus:proof.status,paymentLink:await nativeAuthorizedPaymentLink(db,session.user.id,paymentLinkId,true),message:'Payment status synchronized'},{headers:{'Cache-Control':'no-store'}});
  }catch(error){return nativeResponseJson({error:error instanceof NativeCheckoutError?error.message:'Unable to synchronize payment'},{status:error instanceof NativeCheckoutError?error.status:error instanceof SyntaxError?400:503});}}

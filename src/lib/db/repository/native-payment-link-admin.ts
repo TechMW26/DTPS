@@ -5,7 +5,9 @@ import {NativeCheckoutError} from './native-checkout';
 import {nativeHabitDay} from './native-habits';
 import {nativeDates} from './native-plan-editor';
 import {nativeFinanceActor,nativeFinanceClient,nativeFinanceClientIds,nativeFinancePeople} from './native-finance-access';
+import {verifyNativePaymentLink} from './native-payment-link';
 export interface NativeLinkProvider {create(data:DocumentData):Promise<DocumentData>;find(reference:string):Promise<DocumentData[]>;cancel(id:string):Promise<DocumentData>}
+export type NativePaymentLinkStatusProvider = (id:string)=>Promise<DocumentData>;
 const schema=z.object({clientId:z.string().regex(/^[a-f0-9]{24}$/i),amount:z.number().finite().positive().max(1e8),tax:z.number().min(0).max(100).default(0),discount:z.number().min(0).max(100).default(0),finalAmount:z.number().finite().positive().max(1e8),planCategory:z.string().max(100).optional(),planName:z.string().max(200).optional(),duration:z.string().max(100).optional(),durationDays:z.number().int().min(1).max(36500),servicePlanId:z.string().regex(/^[a-f0-9]{24}$/i).optional(),pricingTierId:z.string().max(100).optional(),catalogue:z.string().max(200).optional(),expireDate:z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/),z.string().datetime({offset:true})]).optional(),notes:z.string().max(1000).optional(),showToClient:z.boolean().default(true)});
 const clean=(row:DocumentData)=>Object.fromEntries(Object.entries(row).filter(([,value])=>value!==undefined));
 const exposed=(row:DocumentData)=>Object.fromEntries(Object.entries(row).filter(([key])=>!key.startsWith('_native')&&key!=='razorpaySignature'));
@@ -41,7 +43,31 @@ export async function createNativeStaffPaymentLink(db:Firestore,actorId:string,i
  await db.runTransaction(async tx=>{const [current,actorNow,clientNow]=await tx.getAll(ref,db.collection('users').doc(actorId),db.collection('users').doc(data.clientId));const roleNow=actorNow.get('role'),assignedNow=roleNow==='dietitian'?[clientNow.get('assignedDietitian'),...(clientNow.get('assignedDietitians')||[])]:roleNow==='health_counselor'?[clientNow.get('assignedHealthCounselor'),...(clientNow.get('assignedHealthCounselors')||[])]:[];if(!actorNow.exists||!clientNow.exists||clientNow.get('role')!=='client'||actorNow.get('status')!=='active'||roleNow!=='admin'&&!assignedNow.includes(actorId))throw new NativeCheckoutError('Client access changed',403);if(!current.exists||current.get('_nativeRequestIdentity')!==identity||['paid','cancelled'].includes(current.get('status')))throw new NativeCheckoutError('Payment link changed',409);if(current.get('razorpayPaymentLinkId')&&current.get('razorpayPaymentLinkId')!==link.id)throw new NativeCheckoutError('Payment link identity conflict',409);tx.update(ref,patch);tx.set(db.collection('_nativeOutbox').doc('payment-link-created-'+id),{type:'payment-link-created',paymentLinkId:id,clientId:data.clientId,status:'pending',createdAt:new Date()});});
  return exposed({...prepared.data,...patch});
 }
-export async function listNativeStaffPaymentLinks(db:Firestore,actorId:string,params:URLSearchParams){
+async function reconcileListedPaymentLinks(db:Firestore,page:FirebaseFirestore.DocumentSnapshot[],fetchLink:NativePaymentLinkStatusProvider){
+ // Keep list loads bounded: reconcile the visible first 20 unresolved links in parallel.
+ // Older rows remain available through the explicit Sync action and webhook processing.
+ const candidates=page.filter(row=>['pending','created','partially_paid'].includes(String(row.get('status')||''))&&typeof row.get('razorpayPaymentLinkId')==='string').slice(0,20);
+ await Promise.all(candidates.map(async row=>{
+  const providerId=row.get('razorpayPaymentLinkId') as string;
+  try{
+   const proof=await Promise.race([fetchLink(providerId),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error('provider timeout')),2500))]);
+   if(proof.id!==providerId)return;
+   if(proof.status==='paid'){
+    await verifyNativePaymentLink(db,row.get('client'),providerId,async()=>proof);
+    return;
+   }
+   if(!['created','partially_paid','expired','cancelled'].includes(proof.status))return;
+   await db.runTransaction(async tx=>{
+    const current=await tx.get(row.ref);
+    if(!current.exists||current.get('razorpayPaymentLinkId')!==providerId||current.get('status')==='paid')return;
+    tx.update(row.ref,{status:proof.status==='created'||proof.status==='partially_paid'?'pending':proof.status,updatedAt:new Date()});
+   });
+  }catch{
+   // Provider outages must not make the payment list fail; the cached state remains visible.
+  }
+ }));
+}
+export async function listNativeStaffPaymentLinks(db:Firestore,actorId:string,params:URLSearchParams,fetchLink?:NativePaymentLinkStatusProvider){
  const actor=await nativeFinanceActor(db,actorId),clientId=params.get('clientId'),limit=Number(params.get('limit')||50),skip=Number(params.get('skip')||0),status=params.get('status');
  if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(skip)||skip<0||skip>100000)throw new NativeCheckoutError('Invalid pagination',400);
  let query:Query=db.collection('paymentlinks');
@@ -52,6 +78,8 @@ export async function listNativeStaffPaymentLinks(db:Firestore,actorId:string,pa
   // Project only routing fields for assignment visibility; retrieve full records for this page only.
   const [rows,ids]=await Promise.all([query.select('client','dietitian','createdAt').orderBy('createdAt','desc').get(),nativeFinanceClientIds(db,actor)]),allowed=new Set(ids||[]),selected=rows.docs.filter(row=>row.get('dietitian')===actorId||allowed.has(row.get('client')));total=selected.length;const slice=selected.slice(skip,skip+limit);page=slice.length?await db.getAll(...slice.map(row=>row.ref)):[];
  }else{const [rows,count]=await Promise.all([query.orderBy('createdAt','desc').offset(skip).limit(limit).get(),query.count().get()]);page=rows.docs;total=count.data().count;}
+ if(fetchLink)await reconcileListedPaymentLinks(db,page,fetchLink);
+ if(fetchLink&&page.length)page=await db.getAll(...page.map(row=>row.ref));
  return {success:true,paymentLinks:await nativeFinancePeople(db,page.map(row=>exposed({...nativeDates(row.data()!),_id:row.id}))),total,limit,skip};
 }
 export async function cancelNativeStaffPaymentLink(db:Firestore,actorId:string,id:string,provider:NativeLinkProvider){

@@ -24,6 +24,15 @@ suite('native staff payment links',()=>{
   await expect(cancelNativeStaffPaymentLink(db,client,link,provider)).rejects.toMatchObject({status:403});expect(provider.cancel).not.toHaveBeenCalled();
   await expect(cancelNativeStaffPaymentLink(db,actor,link,provider)).rejects.toMatchObject({status:409});expect((await ref.get()).get('status')).toBe('pending');
  });
+ it('reconciles a paid provider link while loading the staff list',async()=>{
+  const actor=id(),client=id(),linkId=id(),providerId='plink_'+id();await add('users',actor,{role:'admin',status:'active'});await add('users',client,{role:'client',status:'active',firstName:'Paid'});
+  const ref=await add('paymentlinks',linkId,{client,dietitian:actor,status:'pending',razorpayPaymentLinkId:providerId,amount:100,durationDays:30,finalAmount:100,currency:'INR',createdAt:new Date()});
+  const provider=jest.fn(async()=>({id:providerId,status:'paid',amount:10000,amount_paid:10000,currency:'INR'}));
+  const listing=await listNativeStaffPaymentLinks(db,actor,new URLSearchParams(`clientId=${client}`),provider);
+  expect(provider).toHaveBeenCalledWith(providerId);expect(listing.paymentLinks[0].status).toBe('paid');expect((await ref.get()).get('status')).toBe('paid');
+  const payments=await db.collection('unifiedpayments').where('razorpayPaymentLinkId','==',providerId).get();expect(payments.size).toBe(1);
+  refs.push(payments.docs[0].ref,db.collection('_nativeRazorpayLinks').doc(providerId),db.collection('_nativeOutbox').doc('payment-paid-'+payments.docs[0].id));
+ });
  it('reconciles an edited final amount without bypassing the exact plan discount limit',async()=>{
   const actor=id(),client=id(),plan=id(),tier=id();await add('users',actor,{role:'admin',status:'active'});await add('users',client,{role:'client',status:'active'});
   const planRef=await add('serviceplans',plan,{isActive:true,pricingTiers:[{_id:tier,isActive:true,amount:6000,durationDays:90,maxDiscount:10}]});
