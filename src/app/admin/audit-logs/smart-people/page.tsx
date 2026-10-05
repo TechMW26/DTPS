@@ -509,7 +509,7 @@ export default function SmartPeopleAuditLogsPage() {
                 )}
 
                 {/* ---- Table ---- */}
-                <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
+                <div data-table-shell="true" className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>

@@ -893,7 +893,7 @@ export default function DataImportPage() {
     const visibleHeaders = headers.filter(h => !isSensitiveField(h));
 
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div data-table-shell="true" className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         {/* Table controls */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-4">
@@ -1049,7 +1049,7 @@ export default function DataImportPage() {
 
     return (
       <div className="space-y-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-yellow-200 dark:border-yellow-800 overflow-hidden">
+        <div data-table-shell="true" className="bg-white dark:bg-gray-800 rounded-xl border border-yellow-200 dark:border-yellow-800 overflow-hidden">
           <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
             <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
               <AlertTriangle className="w-5 h-5" />
@@ -1567,7 +1567,7 @@ export default function DataImportPage() {
                     </div>
 
                     {/* Errors Table */}
-                    <div className="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <div data-table-shell="true" className="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
                       <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
                         <table data-slot="table" className="w-full text-sm">
                           <thead className="bg-red-100 dark:bg-red-900/50 sticky top-0">

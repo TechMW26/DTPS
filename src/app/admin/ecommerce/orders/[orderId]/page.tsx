@@ -155,7 +155,7 @@ export default function AdminEcommerceOrderDetailPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card data-table-shell="true">
               <CardHeader>
                 <CardTitle className="text-base">Items</CardTitle>
               </CardHeader>
@@ -189,7 +189,7 @@ export default function AdminEcommerceOrderDetailPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card data-table-shell="true">
               <CardHeader>
                 <CardTitle className="text-base">Ecommerce Payment Details</CardTitle>
               </CardHeader>

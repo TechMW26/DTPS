@@ -218,7 +218,7 @@ export default function HealthCounselorPlanTemplatesPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card>
+              <Card data-table-shell="true">
                 <CardContent className="p-0">
                   <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
                     <table data-slot="table" className="w-full">
@@ -342,7 +342,7 @@ export default function HealthCounselorPlanTemplatesPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card>
+              <Card data-table-shell="true">
                 <CardContent className="p-0">
                   <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
                     <table data-slot="table" className="w-full">

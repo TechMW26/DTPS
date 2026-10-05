@@ -122,7 +122,7 @@ export default function AdminLeadsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle className="text-base">Leads</CardTitle>
           </CardHeader>

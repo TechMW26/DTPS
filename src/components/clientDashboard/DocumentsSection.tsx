@@ -198,7 +198,7 @@ export default function DocumentsSection({
 
   return (
     <div className="mt-6">
-      <Card>
+      <Card data-table-shell="true">
         <CardHeader>
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">

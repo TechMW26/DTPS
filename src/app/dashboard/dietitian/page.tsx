@@ -893,7 +893,7 @@ export default function DietitianDashboard() {
 
         {/* Recent Payments */}
         <div className="grid grid-cols-1 gap-6">
-          <Card>
+          <Card data-table-shell="true">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <DollarSign className="h-5 w-5 text-green-600" />

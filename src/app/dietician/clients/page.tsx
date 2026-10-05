@@ -568,7 +568,7 @@ export default function DieticianClientsPage() {
 
 
         {/* Table */}
-        <Card>
+        <Card data-table-shell="true">
           <CardContent className="p-0">
             {loading ? (
               <TableSkeleton rows={9} columns={7} />

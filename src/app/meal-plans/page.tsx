@@ -366,7 +366,7 @@ function MealPlansPageContent() {
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card data-table-shell="true">
               <CardContent className="p-0">
                 <div className="border-b px-6 py-5 bg-linear-to-r from-slate-50 to-white flex items-center justify-between">
                   <div>
@@ -435,7 +435,7 @@ function MealPlansPageContent() {
             </Card>
           )
         ) : (
-          <Card>
+          <Card data-table-shell="true">
             <CardContent className="p-0">
               <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
                 <table data-slot="table" className="w-full">

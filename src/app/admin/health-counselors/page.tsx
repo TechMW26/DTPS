@@ -207,7 +207,7 @@ export default function AdminHealthCounselorsPage() {
           <Button onClick={openCreate}>New Health Counselor</Button>
         </div>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle>Health Counselors ({filtered.length})</CardTitle>
           </CardHeader>

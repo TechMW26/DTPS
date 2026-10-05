@@ -549,7 +549,7 @@ export default function AdminHealthCounselorDetailPage() {
 
           {/* Clients Tab */}
           <TabsContent value="clients">
-            <Card>
+            <Card data-table-shell="true">
               <CardHeader>
                 <CardTitle>Assigned Clients & Progress</CardTitle>
               </CardHeader>

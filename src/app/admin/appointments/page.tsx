@@ -245,7 +245,7 @@ export default function AdminAppointmentsPage() {
           {total} appointments total
         </div>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />

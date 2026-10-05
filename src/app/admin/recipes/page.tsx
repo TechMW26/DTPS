@@ -231,7 +231,7 @@ export default function AdminRecipesPage() {
         </Card>
 
         {/* Recipes Table */}
-        <Card>
+        <Card data-table-shell="true">
 
           <CardContent>
             {loading ? (

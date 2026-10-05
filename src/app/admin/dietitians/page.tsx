@@ -215,7 +215,7 @@ export default function AdminDietitiansPage() {
           </div>
         </div>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle>All Dietitians</CardTitle>
           </CardHeader>

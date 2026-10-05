@@ -802,7 +802,7 @@ export default function AdminDietitianDetailPage() {
 
           {/* Clients Tab */}
           <TabsContent value="clients">
-            <Card>
+            <Card data-table-shell="true">
               <CardHeader>
                 <CardTitle>Assigned Clients & Progress</CardTitle>
               </CardHeader>
@@ -895,7 +895,7 @@ export default function AdminDietitianDetailPage() {
 
           {/* Appointments Tab */}
           <TabsContent value="appointments">
-            <Card>
+            <Card data-table-shell="true">
               <CardHeader>
                 <CardTitle>Appointments</CardTitle>
               </CardHeader>
@@ -961,7 +961,7 @@ export default function AdminDietitianDetailPage() {
 
           {/* Meal Plans Tab */}
           <TabsContent value="mealplans">
-            <Card>
+            <Card data-table-shell="true">
               <CardHeader>
                 <CardTitle>Meal Plans Created</CardTitle>
               </CardHeader>
@@ -1032,7 +1032,7 @@ export default function AdminDietitianDetailPage() {
 
           {/* Tasks Tab */}
           <TabsContent value="tasks">
-            <Card>
+            <Card data-table-shell="true">
               <CardHeader>
                 <CardTitle>Tasks</CardTitle>
               </CardHeader>
@@ -1162,7 +1162,7 @@ export default function AdminDietitianDetailPage() {
 
           {/* Payments Tab */}
           <TabsContent value="payments">
-            <Card>
+            <Card data-table-shell="true">
               <CardHeader>
                 <CardTitle>Payments</CardTitle>
               </CardHeader>

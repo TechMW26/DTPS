@@ -234,7 +234,7 @@ export default function HealthCounselorPendingPlansPage() {
         ) : (
           <>
             {/* One responsive list for all viewport sizes */}
-            <Card>
+            <Card data-table-shell="true">
               <CardContent className="p-0">
                 <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
                   <table role="table" data-slot="table" data-responsive-table="cards" aria-label="Pending plans" className="w-full text-sm">

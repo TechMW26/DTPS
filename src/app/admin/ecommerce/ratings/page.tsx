@@ -116,7 +116,7 @@ export default function AdminEcommerceRatingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle className="text-base">Ratings</CardTitle>
           </CardHeader>

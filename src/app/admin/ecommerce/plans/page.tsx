@@ -117,7 +117,7 @@ export default function AdminEcommercePlansPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle className="text-base">Plans</CardTitle>
           </CardHeader>

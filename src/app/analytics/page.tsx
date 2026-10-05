@@ -752,7 +752,7 @@ export default function AnalyticsPage() {
           )}
 
           {/* Clients Table */}
-          <Card className="mb-6">
+          <Card data-table-shell="true" className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Users className="h-5 w-5" />
@@ -893,7 +893,7 @@ export default function AnalyticsPage() {
           </Card>
 
           {/* Orders Table */}
-          <Card>
+          <Card data-table-shell="true">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">

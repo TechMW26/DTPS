@@ -226,7 +226,7 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
       </Card>
 
       {/* Measurement History */}
-      <Card>
+      <Card data-table-shell="true">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />

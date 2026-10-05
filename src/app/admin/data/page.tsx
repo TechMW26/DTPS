@@ -1710,7 +1710,7 @@ export default function DataManagementPage() {
 
               {/* Recent Payments */}
               {relatedData.recentPayments && relatedData.recentPayments.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+                <div data-table-shell="true" className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                     <CreditCard className="w-5 h-5 text-green-600" />
                     Recent Payments ({relatedData.recentPayments.length})
@@ -1742,7 +1742,7 @@ export default function DataManagementPage() {
 
               {/* Recent Appointments */}
               {relatedData.recentAppointments && relatedData.recentAppointments.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+                <div data-table-shell="true" className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                     <Calendar className="w-5 h-5 text-purple-600" />
                     Recent Appointments ({relatedData.recentAppointments.length})
@@ -1902,7 +1902,7 @@ export default function DataManagementPage() {
               </button>
             </div>
           ) : (
-            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
+            <div data-table-shell="true" className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
               <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
                 <table data-slot="table" className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
@@ -2129,7 +2129,7 @@ export default function DataManagementPage() {
             )}
 
             {/* Preview Table */}
-            <div className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+            <div data-table-shell="true" className="border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
               <div className="bg-gray-50 dark:bg-gray-700 px-4 py-3 border-b border-gray-200 dark:border-gray-600">
                 <p className="font-semibold text-gray-900 dark:text-white">
                   📋 Data Preview (showing first {Math.min(bulkUpdatePreview.length, 10)} of {bulkUpdatePreview.length} records)

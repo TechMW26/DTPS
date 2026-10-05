@@ -116,7 +116,7 @@ export default function AdminEcommerceBlogsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle className="text-base">Blogs</CardTitle>
           </CardHeader>

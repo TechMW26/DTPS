@@ -486,7 +486,7 @@ export default function RevenueReportPage() {
             </div>
 
             {/* Recent Transactions */}
-            <Card>
+            <Card data-table-shell="true">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div><CardTitle>Recent Transactions</CardTitle><CardDescription>Latest payment activities</CardDescription></div>

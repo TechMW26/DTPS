@@ -1283,7 +1283,7 @@ export default function PaymentsSection({
   };
 
   return (
-    <Card>
+    <Card data-table-shell="true">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Payments</CardTitle>
 
@@ -2120,7 +2120,7 @@ export default function PaymentsSection({
 
       {/* Other Platform Payments Table */}
       {otherPlatformPayments.length > 0 && (
-        <Card className="mt-6">
+        <Card data-table-shell="true" className="mt-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Wallet className="h-5 w-5 text-purple-600" />

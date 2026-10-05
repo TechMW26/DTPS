@@ -131,7 +131,7 @@ export default function AdminEcommercePaymentsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle className="text-base">Payments</CardTitle>
           </CardHeader>

@@ -348,7 +348,7 @@ export default function AdminClientsPage() {
           </div>
         </div>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle>All Clients</CardTitle>
           </CardHeader>

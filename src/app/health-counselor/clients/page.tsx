@@ -590,7 +590,7 @@ export default function HealthCounselorClientsPage() {
         </div>
 
         {/* Table */}
-        <Card>
+        <Card data-table-shell="true">
           <CardContent className="p-0">
             {loading ? (
               <div className="flex items-center justify-center h-64">

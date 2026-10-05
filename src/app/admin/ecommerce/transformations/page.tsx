@@ -115,7 +115,7 @@ export default function AdminEcommerceTransformationsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle className="text-base">Transformations</CardTitle>
           </CardHeader>

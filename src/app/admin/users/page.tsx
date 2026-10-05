@@ -642,7 +642,7 @@ export default function AdminUsersPage() {
         <div className="text-sm text-gray-600">Page {page} of {pages} · {total} users total</div>
 
 
-        <Card>
+        <Card data-table-shell="true">
           <CardHeader>
             <CardTitle>All Users</CardTitle>
           </CardHeader>

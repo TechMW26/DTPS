@@ -407,7 +407,7 @@ export default function OtherPlatformPaymentsPage() {
                     <p>No payments found</p>
                   </div>
                 ) : (
-                  <div className="rounded-md border overflow-x-auto">
+                  <div data-table-shell="true" className="rounded-md border overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>

@@ -472,7 +472,7 @@ export default function AdminPaymentsPage() {
           </div>
 
           {/* Payments Table */}
-          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div data-table-shell="true" className="bg-white rounded-xl shadow-sm border overflow-hidden">
             <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
               <table data-slot="table" className="w-full">
                 <thead className="bg-gray-50 border-b">
