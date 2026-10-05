@@ -14,14 +14,21 @@ export async function createNativeStaffPaymentLink(db:Firestore,actorId:string,i
  const actor=await nativeFinanceActor(db,actorId),client=await nativeFinanceClient(db,actor,data.clientId,true);
  if(expiry&&expiry.getTime()<=Date.now())throw new NativeCheckoutError('Expiry must be in the future',400);
  const expected=Math.round(data.amount*(1+(data.tax-data.discount)/100)*100),actual=Math.round(data.finalAmount*100);
- if(Math.abs(expected-actual)>1)throw new NativeCheckoutError('Final amount does not match tax and discount',400);
+ // The editable final amount is in paise; its displayed percentage is rounded to
+ // two decimals. Reconcile only that rounding interval, then enforce the exact
+ // effective discount against the plan limit below (never the rounded display).
+ const effectiveDiscount=(data.amount*(1+data.tax/100)-actual/100)*100/data.amount;
+ if(Math.abs(expected-actual)>1&&Math.abs(effectiveDiscount-data.discount)>0.005+1e-9)throw new NativeCheckoutError('Final amount does not match tax and discount',400);
+ if(actual>Math.round(data.amount*(1+data.tax/100)*100)||actual<Math.round(data.amount*data.tax))throw new NativeCheckoutError('Invalid final amount',400);
+ data.discount=Math.max(0,Math.min(100,effectiveDiscount));
+ data.finalAmount=actual/100;
 
  if(!key||!/^[\w.:-]{8,128}$/.test(key))throw new NativeCheckoutError('Idempotency key required',400);const operation=key,id=createHash('sha256').update(actorId+'\0'+operation).digest('hex').slice(0,24),ref=db.collection('paymentlinks').doc(id),identity=createHash('sha256').update(JSON.stringify(data)).digest('hex');
  const prepared=await db.runTransaction(async tx=>{
   const [current,account,user]=await tx.getAll(ref,db.collection('users').doc(actorId),db.collection('users').doc(data.clientId));
   const role=account.get('role'),assigned=role==='dietitian'?[user.get('assignedDietitian'),...(user.get('assignedDietitians')||[])]:role==='health_counselor'?[user.get('assignedHealthCounselor'),...(user.get('assignedHealthCounselors')||[])]:[];
   if(!account.exists||!user.exists||user.get('role')!=='client'||account.get('status')!=='active'||role!=='admin'&&!assigned.includes(actorId))throw new NativeCheckoutError('Client access changed',403);
-   if(data.servicePlanId){const plan=await tx.get(db.collection('serviceplans').doc(data.servicePlanId)),tier=(plan.get('pricingTiers')||[]).find((row:DocumentData)=>row._id===data.pricingTierId);if(!plan.exists||!plan.get('isActive')||!tier?.isActive||Math.round(tier.amount*100)!==Math.round(data.amount*100)||tier.durationDays!==data.durationDays||data.discount>Number(tier.maxDiscount??plan.get('maxDiscountPercent')??0))throw new NativeCheckoutError('Plan pricing or discount is no longer valid',409);}
+   if(data.servicePlanId){const plan=await tx.get(db.collection('serviceplans').doc(data.servicePlanId)),tier=(plan.get('pricingTiers')||[]).find((row:DocumentData)=>row._id===data.pricingTierId);if(!plan.exists||!plan.get('isActive')||!tier?.isActive||Math.round(tier.amount*100)!==Math.round(data.amount*100)||tier.durationDays!==data.durationDays||actual<Math.round(data.amount*(1+(data.tax-Number(tier.maxDiscount??plan.get('maxDiscountPercent')??0))/100)*100))throw new NativeCheckoutError('Plan pricing or discount is no longer valid',409);}
   if(current.exists){if(current.get('_nativeRequestIdentity')!==identity)throw new NativeCheckoutError('Payment link retry conflict',409);return {created:false,data:nativeDates(current.data()!)};}
   const now=new Date(),{clientId,...rest}=data,row=clean({...rest,_id:id,client:clientId,dietitian:actorId,currency:'INR',status:'pending',expireDate:expiry,createdAt:now,updatedAt:now,_nativeRequestIdentity:identity,_nativeProviderState:'creating'});tx.create(ref,row);return {created:true,data:row};
  });

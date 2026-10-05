@@ -127,14 +127,14 @@ export default function AdminEcommercePlansPage() {
             ) : plans.length === 0 ? (
               <div className="text-sm text-gray-500">No plans found.</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
+              <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                <table data-slot="table" className="min-w-full text-sm">
                   <thead>
                     <tr className="text-left border-b">
-                      <th className="py-2 pr-4">Name</th>
-                      <th className="py-2 pr-4">Price</th>
-                      <th className="py-2 pr-4">Status</th>
-                      <th className="py-2 pr-4 text-right">Actions</th>
+                      <th scope="col" className="py-2 pr-4">Name</th>
+                      <th scope="col" className="py-2 pr-4">Price</th>
+                      <th scope="col" className="py-2 pr-4">Status</th>
+                      <th data-table-actions="true" scope="col" className="py-2 pr-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>

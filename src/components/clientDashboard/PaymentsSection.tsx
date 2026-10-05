@@ -1343,25 +1343,25 @@ export default function PaymentsSection({
           }
 
           return (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
+            <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+              <table data-slot="table" className="w-full text-sm border-collapse">
                 <thead className="bg-gray-50">
                   <tr className="text-left">
-                    {visibleColumns.created && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Created</th>}
-                    {visibleColumns.customerName && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Customer</th>}
-                    {visibleColumns.phone && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Phone</th>}
-                    {visibleColumns.email && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Email</th>}
-                    {visibleColumns.catalogue && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Catalogue</th>}
-                    {visibleColumns.duration && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Duration</th>}
-                    {visibleColumns.expireDate && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Expire</th>}
-                    {visibleColumns.plan && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Plan</th>}
-                    {visibleColumns.amount && <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Amount</th>}
-                    {visibleColumns.final && <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Final</th>}
-                    {visibleColumns.status && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Status</th>}
-                    {visibleColumns.transactionId && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Transaction ID</th>}
-                    {visibleColumns.expectedDates && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Expected Dates</th>}
-                    {visibleColumns.link && <th className="p-3 font-medium text-gray-700 whitespace-nowrap">Link</th>}
-                    <th className="p-3 font-medium text-gray-700 whitespace-nowrap text-center">Actions</th>
+                    {visibleColumns.created && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Created</th>}
+                    {visibleColumns.customerName && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Customer</th>}
+                    {visibleColumns.phone && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Phone</th>}
+                    {visibleColumns.email && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Email</th>}
+                    {visibleColumns.catalogue && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Catalogue</th>}
+                    {visibleColumns.duration && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Duration</th>}
+                    {visibleColumns.expireDate && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Expire</th>}
+                    {visibleColumns.plan && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Plan</th>}
+                    {visibleColumns.amount && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Amount</th>}
+                    {visibleColumns.final && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap text-right">Final</th>}
+                    {visibleColumns.status && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Status</th>}
+                    {visibleColumns.transactionId && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Transaction ID</th>}
+                    {visibleColumns.expectedDates && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Expected Dates</th>}
+                    {visibleColumns.link && <th scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap">Link</th>}
+                    <th data-table-actions="true" scope="col" className="p-3 font-medium text-gray-700 whitespace-nowrap text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2128,17 +2128,17 @@ export default function PaymentsSection({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+              <table data-slot="table" className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-gray-50">
-                    <th className="text-left p-3 font-medium text-gray-700">Plan Name</th>
-                    <th className="text-left p-3 font-medium text-gray-700">Platform</th>
-                    <th className="text-left p-3 font-medium text-gray-700">Amount</th>
-                    <th className="text-left p-3 font-medium text-gray-700">Transaction ID</th>
-                    <th className="text-left p-3 font-medium text-gray-700">Date</th>
-                    <th className="text-left p-3 font-medium text-gray-700">Status</th>
-                    <th className="text-left p-3 font-medium text-gray-700">Receipt</th>
+                    <th scope="col" className="text-left p-3 font-medium text-gray-700">Plan Name</th>
+                    <th scope="col" className="text-left p-3 font-medium text-gray-700">Platform</th>
+                    <th scope="col" className="text-left p-3 font-medium text-gray-700">Amount</th>
+                    <th scope="col" className="text-left p-3 font-medium text-gray-700">Transaction ID</th>
+                    <th scope="col" className="text-left p-3 font-medium text-gray-700">Date</th>
+                    <th scope="col" className="text-left p-3 font-medium text-gray-700">Status</th>
+                    <th scope="col" className="text-left p-3 font-medium text-gray-700">Receipt</th>
                   </tr>
                 </thead>
                 <tbody>

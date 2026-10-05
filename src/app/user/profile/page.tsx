@@ -509,13 +509,13 @@ export default function ProfilePage() {
 
               <InfoCard title="Medical Reports" icon={FileText} color="blue">
                 {medicalData?.reports && medicalData.reports.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className={isDarkMode ? "w-full text-sm" : "w-full text-sm"}>
+                  <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                    <table data-slot="table" className={isDarkMode ? "w-full text-sm" : "w-full text-sm"}>
                       <thead>
                         <tr className={isDarkMode ? "border-b border-[#2a2a2a]" : "border-b border-gray-200"}>
-                          <th className={isDarkMode ? "text-left py-2 px-2 text-gray-400 font-medium" : "text-left py-2 px-2 text-gray-500 font-medium"}>Date</th>
-                          <th className={isDarkMode ? "text-left py-2 px-2 text-gray-400 font-medium" : "text-left py-2 px-2 text-gray-500 font-medium"}>Report Name</th>
-                          <th className={isDarkMode ? "text-center py-2 px-2 text-gray-400 font-medium" : "text-center py-2 px-2 text-gray-500 font-medium"}>View</th>
+                          <th scope="col" className={isDarkMode ? "text-left py-2 px-2 text-gray-400 font-medium" : "text-left py-2 px-2 text-gray-500 font-medium"}>Date</th>
+                          <th scope="col" className={isDarkMode ? "text-left py-2 px-2 text-gray-400 font-medium" : "text-left py-2 px-2 text-gray-500 font-medium"}>Report Name</th>
+                          <th scope="col" className={isDarkMode ? "text-center py-2 px-2 text-gray-400 font-medium" : "text-center py-2 px-2 text-gray-500 font-medium"}>View</th>
                         </tr>
                       </thead>
                       <tbody>

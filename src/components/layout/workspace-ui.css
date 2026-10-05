@@ -1,0 +1,37 @@
+/* Shared staff workspace: neutral surfaces, readable controls, clear focus.
+   Status colors and page-specific content retain their existing meaning. */
+.dtps-workspace {
+  --workspace-surface: #fff;
+  --workspace-border: #dfe7e3;
+  --workspace-ink: #243b33;
+  --workspace-muted: #56675f;
+  --workspace-hover: #f2f7f4;
+  --workspace-accent: #216b59;
+  background: #f6f8f7;
+  color: var(--workspace-ink);
+}
+.dark .dtps-workspace {
+  --workspace-surface: #111c19;
+  --workspace-border: #34463e;
+  --workspace-ink: #edf5f0;
+  --workspace-muted: #b1c4b9;
+  --workspace-hover: #20372c;
+  --workspace-accent: #8bd7be;
+  background: #0c1511;
+}
+.dtps-workspace main { scroll-padding-block: 5rem; }
+.dtps-workspace h1 { letter-spacing: -.025em; line-height: 1.2; }
+.dtps-workspace [data-slot="card"] { border-radius: 16px; box-shadow: 0 2px 6px #183d2b06; }
+.dtps-workspace [data-slot="button"] { border-radius: 9px; min-height: 36px; font-weight: 600; transition: background-color .15s, border-color .15s, box-shadow .15s; }
+.dtps-workspace :is(a,button,input,select,textarea,[role="combobox"]):focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 3px; }
+.dtps-workspace nav[aria-label="Main navigation"] { gap: 4px; padding: 14px 12px; }
+.dtps-workspace nav[aria-label="Main navigation"] > a { min-height: 42px; border-radius: 10px; }
+.dtps-workspace nav[aria-label="Main navigation"] a[aria-current="page"] { background: var(--workspace-hover); color: var(--workspace-accent); border-color: var(--workspace-border); box-shadow: inset 3px 0 var(--workspace-accent); }
+.dtps-workspace [data-slot="table"] { font-size: 14px; line-height: 1.5; }
+.dtps-workspace [data-slot="table"] th { color: var(--workspace-muted); font-weight: 650; font-size: 12px; }
+.dtps-workspace [data-slot="table"] td { border-color: var(--workspace-border); }
+.dtps-workspace [data-slot="table"] tbody tr:focus-within { background: var(--workspace-hover); }
+.workspace-skip-link { position: fixed; left: 16px; top: -100px; z-index: 100; border-radius: 8px; padding: 12px 20px; background: var(--workspace-surface); color: var(--workspace-ink); box-shadow: 0 4px 20px #0002; }
+.workspace-skip-link:focus { top: 12px; }
+@media (pointer: coarse) { .dtps-workspace [data-slot="button"] { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .dtps-workspace [data-slot="button"] { transition: none; } }

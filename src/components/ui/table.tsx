@@ -6,8 +6,9 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  <div data-slot="table-container" role="region" aria-label={props["aria-label"] || "Scrollable table"} tabIndex={0} className="relative w-full overflow-auto">
     <table
+      data-slot="table"
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
       {...props}
@@ -71,6 +72,8 @@ const TableHead = React.forwardRef<
   React.ThHTMLAttributes<HTMLTableCellElement>
 >(({ className, ...props }, ref) => (
   <th
+    scope="col"
+    data-table-actions={typeof props.children === "string" && /^actions?$/i.test(props.children.trim()) ? "true" : undefined}
     ref={ref}
     className={cn(
       "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",

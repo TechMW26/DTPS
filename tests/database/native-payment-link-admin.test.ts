@@ -24,4 +24,18 @@ suite('native staff payment links',()=>{
   await expect(cancelNativeStaffPaymentLink(db,client,link,provider)).rejects.toMatchObject({status:403});expect(provider.cancel).not.toHaveBeenCalled();
   await expect(cancelNativeStaffPaymentLink(db,actor,link,provider)).rejects.toMatchObject({status:409});expect((await ref.get()).get('status')).toBe('pending');
  });
+ it('reconciles an edited final amount without bypassing the exact plan discount limit',async()=>{
+  const actor=id(),client=id(),plan=id(),tier=id();await add('users',actor,{role:'admin',status:'active'});await add('users',client,{role:'client',status:'active'});
+  const planRef=await add('serviceplans',plan,{isActive:true,pricingTiers:[{_id:tier,isActive:true,amount:6000,durationDays:90,maxDiscount:10}]});
+  const provider={create:jest.fn(async(data:any)=>({...data,id:'plink_'+id(),short_url:'https://rzp.io/test'})),find:jest.fn(),cancel:jest.fn()};
+  const input={clientId:client,amount:6000,tax:0,discount:8.33,finalAmount:5500,durationDays:90,servicePlanId:plan,pricingTierId:tier};
+  const result=await createNativeStaffPaymentLink(db,actor,input,id(),provider,'https://example.invalid');
+  refs.push(db.collection('paymentlinks').doc(result._id),db.collection('_nativeOutbox').doc('payment-link-created-'+result._id));
+  expect(result.finalAmount).toBe(5500);expect(result.discount).toBeCloseTo(8.33333333);expect(provider.create.mock.calls[0][0].amount).toBe(550000);
+  await expect(createNativeStaffPaymentLink(db,actor,{...input,finalAmount:5499},id(),provider,'https://example.invalid')).rejects.toMatchObject({status:400});
+  await planRef.update({pricingTiers:[{_id:tier,isActive:true,amount:6000,durationDays:90,maxDiscount:8.33}]});
+  await expect(createNativeStaffPaymentLink(db,actor,input,id(),provider,'https://example.invalid')).rejects.toMatchObject({status:409});
+  expect(provider.create).toHaveBeenCalledTimes(1);
+ });
+
 });

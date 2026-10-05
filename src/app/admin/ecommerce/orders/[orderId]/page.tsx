@@ -161,14 +161,14 @@ export default function AdminEcommerceOrderDetailPage() {
               </CardHeader>
               <CardContent>
                 {order.items && order.items.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
+                  <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                    <table data-slot="table" className="min-w-full text-sm">
                       <thead>
                         <tr className="text-left border-b">
-                          <th className="py-2 pr-4">Item</th>
-                          <th className="py-2 pr-4">Qty</th>
-                          <th className="py-2 pr-4">Price</th>
-                          <th className="py-2 pr-4">Total</th>
+                          <th scope="col" className="py-2 pr-4">Item</th>
+                          <th scope="col" className="py-2 pr-4">Qty</th>
+                          <th scope="col" className="py-2 pr-4">Price</th>
+                          <th scope="col" className="py-2 pr-4">Total</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -197,17 +197,17 @@ export default function AdminEcommerceOrderDetailPage() {
                 {payments.length === 0 ? (
                   <div className="text-sm text-gray-500">No payments linked to this order.</div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
+                  <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                    <table data-slot="table" className="min-w-full text-sm">
                       <thead>
                         <tr className="text-left border-b">
-                          <th className="py-2 pr-4">Payment ID</th>
-                          <th className="py-2 pr-4">Status</th>
-                          <th className="py-2 pr-4">Type</th>
-                          <th className="py-2 pr-4">Method</th>
-                          <th className="py-2 pr-4">Amount</th>
-                          <th className="py-2 pr-4">Date</th>
-                          <th className="py-2 pr-4">Action</th>
+                          <th scope="col" className="py-2 pr-4">Payment ID</th>
+                          <th scope="col" className="py-2 pr-4">Status</th>
+                          <th scope="col" className="py-2 pr-4">Type</th>
+                          <th scope="col" className="py-2 pr-4">Method</th>
+                          <th scope="col" className="py-2 pr-4">Amount</th>
+                          <th scope="col" className="py-2 pr-4">Date</th>
+                          <th data-table-actions="true" scope="col" className="py-2 pr-4">Action</th>
                         </tr>
                       </thead>
                       <tbody>

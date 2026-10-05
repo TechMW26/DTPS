@@ -494,16 +494,16 @@ export default function RevenueReportPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                  <table data-slot="table" className="w-full">
                     <thead className="bg-gray-50 dark:bg-gray-800">
                       <tr>
-                        <th className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Order ID</th>
-                        <th className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Client</th>
-                        <th className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Amount</th>
-                        <th className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Date</th>
-                        <th className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Status</th>
-                        <th className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Payment Method</th>
+                        <th scope="col" className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Order ID</th>
+                        <th scope="col" className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Client</th>
+                        <th scope="col" className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Amount</th>
+                        <th scope="col" className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Date</th>
+                        <th scope="col" className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Status</th>
+                        <th scope="col" className="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Payment Method</th>
                       </tr>
                     </thead>
                     <tbody>

@@ -7,6 +7,8 @@ import {getNativeDatabase,nativeDatabaseSettings} from '@/lib/db/firestore-nativ
 // large meal-plan document reads. Directory payment status fields also fetch
 // primary records, as noted below.
 const specs={
+ pendingPlans:{collection:'clientmealplans',index:'CICAgJjmiJEJ',relation:'clientId',fields:['clientId','name','startDate','endDate','status','isDeleted']},
+ pendingPurchases:{collection:'unifiedpayments',index:'CICAgLiT6MEI',relation:'client',fields:'client planName durationDays durationLabel startDate endDate expectedStartDate expectedEndDate mealPlanCreated daysUsed remainingDays linkedMealPlanIds parentPaymentId status paymentStatus finalAmount amount paymentLink otherPlatformPayment razorpayOrderId razorpayPaymentId razorpayPaymentLinkId transactionId stripePaymentIntentId createdAt updatedAt'.split(' ')},
  plans:{collection:'clientmealplans',index:'CICAgJjmiJEJ',relation:'clientId',fields:['clientId','status','name','startDate','endDate','isDeleted']},
  // Directory status fields require primary-record reads; batching still avoids
  // hundreds of small RPCs without scanning payments outside the authorized IDs.
@@ -40,17 +42,17 @@ export async function hydrateDashboardClientDetails(clients:FirebaseFirestore.Do
  const db=getNativeDatabase();let next=0;
  await Promise.all(Array.from({length:Math.min(4,Math.ceil(unique.length/100))},async()=>{
   for(;;){const i=next++*100;if(i>=unique.length)return;
-   const rows=await db.getAll(...unique.slice(i,i+100).map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName','email','phone','avatar','clientId']});
+   const rows=await db.getAll(...unique.slice(i,i+100).map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName','email','phone','avatar','clientId','assignedDietitian']});
    for(const row of rows)if(row.exists)Object.assign(byId.get(row.id)!,row.data());
   }
  }));
 }
 
-export async function indexedDashboardScope(staff:string|null|undefined,health:boolean,includeHealth:boolean){
+export async function indexedDashboardScope(staff:string|null|undefined,health:boolean,includeHealth:boolean,includeCreated=true){
  const db=pipelineDatabase();
  const indexes:Record<string,string>={assignedDietitian:'CICAgLjyrJEK',assignedDietitians:'CICAgLjRnZMJ',assignedHealthCounselor:'CICAgPig2YMJ',assignedHealthCounselors:'CICAgJjFvYoJ','createdBy.userId':'CICAgNjpgYIJ'};
  const fields=health?['assignedHealthCounselor','assignedHealthCounselors']:['assignedDietitian','assignedDietitians',...(includeHealth?['assignedHealthCounselor','assignedHealthCounselors']:[])];
- fields.push('createdBy.userId');
+ if(includeCreated)fields.push('createdBy.userId');
  const results=await Promise.all((staff?fields:['role']).map(async field=>{
   // Enterprise does not allow forcing a multikey (array-contains) index.
   // Query that branch separately through Core; do not turn the whole OR into
@@ -71,6 +73,8 @@ export async function indexedDashboardRows(kind:keyof typeof specs,clientIds:str
  const db=pipelineDatabase(),spec=specs[kind],batchSize=300;
  const source=()=>{
   let query=(db as Firestore & {pipeline():Pipelines.PipelineSource}).pipeline().collection({collection:spec.collection,forceIndex:spec.index});
+  if(kind==='pendingPlans')query=query.where(Pipelines.field('status').equalAny(['active','paused','completed']));
+  if(kind==='pendingPurchases')query=query.where(Pipelines.field('status').equalAny(['active','paid','completed']));
   if(kind==='plans'&&planNameTerms.length){
    const name=Pipelines.field('name'),isString=name.type().equal('string');
    const lower=Pipelines.toLower(Pipelines.conditional(isString,name,Pipelines.constant('')));
@@ -83,7 +87,7 @@ export async function indexedDashboardRows(kind:keyof typeof specs,clientIds:str
  };
  const project=(query:Pipelines.Pipeline)=>query.select(spec.fields[0],...spec.fields.slice(1),Pipelines.field('__name__').documentId().as('_id'));
  const decode=(row:Pipelines.PipelineResult)=>Object.fromEntries(Object.entries(row.data()).map(([key,value])=>[key,value instanceof Timestamp?value.toDate():value]));
- if(kind!=='directoryPayments'&&allowDenseScan&&ids.length>=3000&&ids.length<=10000){
+ if((kind==='plans'||kind==='payments'||kind==='pendingPlans')&&allowDenseScan&&ids.length>=3000&&ids.length<=10000){
   // For accounts owning most clients, one bounded covering-index read avoids
   // thousands of index seeks. Only projected index fields are fetched. Enforce
   // the fresh authorized scope before returning anything to the caller.
@@ -93,8 +97,8 @@ export async function indexedDashboardRows(kind:keyof typeof specs,clientIds:str
   // Never truncate metrics as the database grows. Fall back to scoped queries.
  }
  const batches:FirebaseFirestore.DocumentData[][]=[];let next=0;
- // Keep membership well below Pipeline's 3,000-element limit; smaller batches
- // and at most three RPCs in flight even as staff assignments grow.
+ // Keep membership below Pipeline's 3,000-element limit and at most three
+ // RPCs in flight even as staff assignments grow.
  await Promise.all(Array.from({length:Math.min(3,Math.ceil(ids.length/batchSize))},async()=>{
   for(;;){const slot=next++,batch=ids.slice(slot*batchSize,(slot+1)*batchSize);if(!batch.length)return;
    // firebase-admin also declares the older Firestore ambient class. The

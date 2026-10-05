@@ -716,15 +716,15 @@ export default function MedicalInfoPage() {
             {data.reports.length > 0 && (
               <div className="space-y-3">
                 <p className={isDarkMode ? "text-sm font-medium text-gray-300" : "text-sm font-medium text-gray-600"}>Uploaded Reports ({data.reports.length})</p>
-                <div className="overflow-x-auto -mx-1">
-                  <table className="w-full text-sm">
+                <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto -mx-1">
+                  <table data-slot="table" className="w-full text-sm">
                     <thead>
                       <tr className={isDarkMode ? "border-b border-[#2a2a2a] bg-[#111]" : "border-b border-gray-200 bg-gray-50"}>
-                        <th className={isDarkMode ? "text-left py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-left py-2.5 px-3 text-gray-600 font-semibold text-xs"}>S.No</th>
-                        <th className={isDarkMode ? "text-left py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-left py-2.5 px-3 text-gray-600 font-semibold text-xs"}>Name</th>
-                        <th className={isDarkMode ? "text-left py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-left py-2.5 px-3 text-gray-600 font-semibold text-xs"}>Category</th>
-                        <th className={isDarkMode ? "text-left py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-left py-2.5 px-3 text-gray-600 font-semibold text-xs"}>Date</th>
-                        <th className={isDarkMode ? "text-center py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-center py-2.5 px-3 text-gray-600 font-semibold text-xs"}>Actions</th>
+                        <th scope="col" className={isDarkMode ? "text-left py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-left py-2.5 px-3 text-gray-600 font-semibold text-xs"}>S.No</th>
+                        <th scope="col" className={isDarkMode ? "text-left py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-left py-2.5 px-3 text-gray-600 font-semibold text-xs"}>Name</th>
+                        <th scope="col" className={isDarkMode ? "text-left py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-left py-2.5 px-3 text-gray-600 font-semibold text-xs"}>Category</th>
+                        <th scope="col" className={isDarkMode ? "text-left py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-left py-2.5 px-3 text-gray-600 font-semibold text-xs"}>Date</th>
+                        <th data-table-actions="true" scope="col" className={isDarkMode ? "text-center py-2.5 px-3 text-gray-300 font-semibold text-xs" : "text-center py-2.5 px-3 text-gray-600 font-semibold text-xs"}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>

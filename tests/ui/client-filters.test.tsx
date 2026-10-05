@@ -71,3 +71,20 @@ test('applies status on the server, preserves other drafts on chip removal, and 
  expect(screen.getByRole('searchbox')).toHaveValue('');
  expect(clientUrls().at(-1)).not.toMatch(/search=|status=|planName=/);
 });
+
+test('directory retains all tags and full contact details with profile actions for non-assigning staff',async()=>{
+ const client={_id:'client-one',clientId:'C-123',firstName:'Alex',lastName:'Sample',email:'alex.long.address@example.com',phone:'+919999999999',tags:[{_id:'1',name:'Tag one'},{_id:'2',name:'Tag two'},{_id:'3',name:'Tag three'}],createdAt:'2026-10-01'};
+ global.fetch=jest.fn(async(url:any)=>({ok:true,json:async()=>String(url).startsWith('/api/users/clients?')?{clients:[client],pagination:{total:1,pages:1}}:{dietitians:[],tags:[]}})) as any;
+ render(<ClientsPage/>);
+ expect(await screen.findByRole('link',{name:'Open profile for Alex Sample'})).toHaveAttribute('href','/dietician/clients/client-one');
+ expect(screen.getByText('Tag three')).toBeVisible();
+ expect(screen.getByText(client.email)).toBeVisible();
+ expect(screen.queryByRole('button',{name:/Assign care team/})).not.toBeInTheDocument();
+ expect(screen.getByRole('table',{name:'Client directory'})).toBeInTheDocument();
+ const select=screen.getByRole('checkbox',{name:'Select Alex Sample'});
+ fireEvent.click(select);
+ expect(screen.getByText('1 selected')).toBeVisible();
+ expect(screen.getByRole('checkbox',{name:'Select all clients on this page'})).toBeChecked();
+ fireEvent.click(screen.getByRole('button',{name:'Clear selection'}));
+ expect(select).not.toBeChecked();
+});

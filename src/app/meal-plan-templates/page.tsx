@@ -119,6 +119,7 @@ function MealPlanTemplatesPageContent() {
       setPlanLoading(true);
       const params = new URLSearchParams();
       params.append('templateType', 'plan');
+      params.append('summary', 'true');
       params.append('limit', '1000');
       params.append('_t', Date.now().toString()); // Cache-bust
       if (planSearch) params.append('search', planSearch);
@@ -501,14 +502,14 @@ function MealPlanTemplatesPageContent() {
               // Only show Name, Category, Cal Range, Actions (NO duration or description)
               <Card>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
+                  <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                    <table data-slot="table" className="w-full">
                       <thead className="bg-gray-50 border-b">
                         <tr>
-                          <th className="text-left p-4 font-medium text-gray-900">Template Name</th>
-                          <th className="text-left p-4 font-medium text-gray-900">Category</th>
-                          <th className="text-left p-4 font-medium text-gray-900">Cal Range</th>
-                          <th className="text-left p-4 font-medium text-gray-900">Actions</th>
+                          <th scope="col" className="text-left p-4 font-medium text-gray-900">Template Name</th>
+                          <th scope="col" className="text-left p-4 font-medium text-gray-900">Category</th>
+                          <th scope="col" className="text-left p-4 font-medium text-gray-900">Cal Range</th>
+                          <th data-table-actions="true" scope="col" className="text-left p-4 font-medium text-gray-900">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -663,15 +664,15 @@ function MealPlanTemplatesPageContent() {
             ) : (
               <Card>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
+                  <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                    <table data-slot="table" className="w-full">
                       <thead className="bg-gray-50 border-b">
                         <tr>
-                          <th className="text-left p-4 font-medium text-gray-900">Template Name</th>
-                          <th className="text-left p-4 font-medium text-gray-900">Category</th>
-                          <th className="text-left p-4 font-medium text-gray-900">Duration</th>
-                          <th className="text-left p-4 font-medium text-gray-900">Restrictions</th>
-                          <th className="text-left p-4 font-medium text-gray-900">Actions</th>
+                          <th scope="col" className="text-left p-4 font-medium text-gray-900">Template Name</th>
+                          <th scope="col" className="text-left p-4 font-medium text-gray-900">Category</th>
+                          <th scope="col" className="text-left p-4 font-medium text-gray-900">Duration</th>
+                          <th scope="col" className="text-left p-4 font-medium text-gray-900">Restrictions</th>
+                          <th data-table-actions="true" scope="col" className="text-left p-4 font-medium text-gray-900">Actions</th>
                         </tr>
                       </thead>
                       <tbody>

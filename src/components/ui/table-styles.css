@@ -1,0 +1,39 @@
+/* Shared by native tables and the Table primitive; semantic status colors stay intact. */
+[data-slot="table"] {
+  --table-surface: var(--background, #fff);
+  --table-border: #dfe7e3;
+  --table-heading: #f2f6f3;
+  --table-ink: #334b40;
+  width: 100%; font-size: 14px; line-height: 1.5; border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.dark [data-slot="table"] { --table-surface: #111c19; --table-border: #34463e; --table-heading: #20372c; --table-ink: #e2ede7; }
+[data-slot="table"] > thead > tr > th { background: var(--table-heading); color: var(--table-ink); font-size: 12px; font-weight: 650; padding: 14px 16px; border-bottom: 1px solid var(--table-border); white-space: nowrap; }
+[data-slot="table"] > tbody > tr > td { padding: 14px 16px; vertical-align: middle; border-bottom: 1px solid var(--table-border); }
+[data-slot="table"] > tbody > tr:last-child > td { border-bottom: 0; }
+[data-slot="table"] > tbody > tr:focus-within { outline: 2px solid #37816a; outline-offset: -2px; }
+[data-slot="table"] :is(button,a):focus-visible { outline: 2px solid #37816a; outline-offset: 3px; }
+[data-slot="table-container"], [data-table-scroll] { border-radius: 12px; scrollbar-width: thin; }
+[data-slot="table-container"]:focus-visible, [data-table-scroll]:focus-visible { outline: 2px solid #37816a; outline-offset: 2px; }
+@media (min-width: 769px) {
+ [data-slot="table-container"], [data-table-scroll] { max-height: 72vh; overflow: auto; }
+ [data-slot="table"] > thead > tr > th { position: sticky; top: 0; z-index: 3; }
+ [data-slot="table"] > thead > tr > th[data-table-actions] { right: 0; z-index: 5; }
+ [data-slot="table"]:has(> thead > tr > th:last-child[data-table-actions]) > tbody > tr > td:last-child:not([colspan]) { position: sticky; right: 0; z-index: 2; background: var(--table-surface); border-left: 1px solid var(--table-border); box-shadow: -5px 0 10px #153d2608; }
+}
+/* One semantic table changes presentation on small screens, never a second map. */
+@media (max-width: 768px) {
+ [data-responsive-table="cards"] { display: block; }
+ [data-responsive-table="cards"] > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+ [data-responsive-table="cards"] > tbody { display: grid; gap: 14px; padding: 12px; }
+ [data-responsive-table="cards"] > tbody > tr { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); border: 1px solid var(--table-border); border-radius: 12px; overflow: hidden; }
+ [data-responsive-table="cards"] > tbody > tr > td { display: block; min-width: 0; padding: 12px; text-align: left; overflow-wrap: anywhere; }
+ [data-responsive-table="cards"] > tbody > tr > td::before { content: attr(data-label); display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--table-ink); }
+ [data-responsive-table="cards"] > tbody > tr > td:last-child { grid-column: 1 / -1; }
+ [data-responsive-table="cards"] [data-label="Action"] :is(button,a) { min-height: 44px; }
+ [data-responsive-table="cards"] :is(.truncate,[class*="max-w-"]) { max-width: 100%; white-space: normal; }
+}
+@media print {
+ [data-slot="table-container"], [data-table-scroll] { max-height: none; overflow: visible; }
+ [data-slot="table"] :is(th,td) { position: static !important; box-shadow: none !important; }
+}

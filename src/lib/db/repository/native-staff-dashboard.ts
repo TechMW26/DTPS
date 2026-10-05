@@ -5,18 +5,18 @@ import {NativeStaffClientError} from './native-staff-client';
 import {differenceInDays} from 'date-fns';
 import {canonicalizePurchaseRecords} from '@/lib/payments/canonicalize-purchases';
 import {resolveEntitlementEndDate} from '@/lib/payments/entitlement-dates';
-import {hydrateDashboardClientDetails,indexedDashboardScope,indexedDashboardClients,indexedDashboardPaymentSummary,indexedDashboardPlanSummary,summarizeDashboardPayments} from './native-dashboard-indexed';
+import {indexedDashboardRows,hydrateDashboardClientDetails,indexedDashboardScope,indexedDashboardClients,indexedDashboardPaymentSummary,indexedDashboardPlanSummary,summarizeDashboardPayments} from './native-dashboard-indexed';
 export async function dashboardClients(db:Firestore,actorId:string,kind:'dietitian'|'health_counselor'|'pending',dietitianId?:string|null){
  const actor=await nativeAppointmentActor(db,actorId),role=actor.get('role');if(role==='client'||kind==='health_counselor'&&!['admin','health_counselor'].includes(role))throw new NativeStaffClientError('Forbidden',403);
  let query:Query=db.collection('users').where('role','==','client');const staff=role==='admin'?dietitianId:actorId;
  if(staff){const conditions=kind==='health_counselor'?[Filter.where('assignedHealthCounselor','==',staff),Filter.where('assignedHealthCounselors','array-contains',staff)]:[Filter.where('assignedDietitian','==',staff),Filter.where('assignedDietitians','array-contains',staff)];if(role==='health_counselor'&&kind!=='health_counselor')conditions.push(Filter.where('assignedHealthCounselor','==',staff),Filter.where('assignedHealthCounselors','array-contains',staff));if(kind!=='pending')conditions.push(Filter.where('createdBy.userId','==',staff));query=query.where(Filter.or(...conditions));}
  let denseScope=false;
- if(kind!=='pending'&&process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST){
-  const scope=await indexedDashboardScope(staff,kind==='health_counselor',role==='health_counselor'&&kind!=='health_counselor');
+ if(process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST){
+  const scope=await indexedDashboardScope(staff,kind==='health_counselor',role==='health_counselor'&&kind!=='health_counselor',kind!=='pending');
   denseScope=scope.length>=3000&&scope.length*2>=(await db.collection('users').where('role','==','client').count().get()).data().count;
   if(denseScope){
    const clients=await indexedDashboardClients(scope);
-   if(clients)return {role,clients:clients.sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime()),summaryOnly:true,denseScope};
+   if(clients)return {role,clients:clients.filter(c=>kind!=='pending'||c.status!=='suspended').sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime()),summaryOnly:true,denseScope};
   }
  }
  const rows=await query.select('firstName','lastName','email','phone','avatar','clientId','clientStatus','status','createdAt','dateOfBirth','anniversary','holdStatus.isOnHold','assignedDietitian','assignedDietitians').get();
@@ -41,10 +41,11 @@ export async function dashboardRelated(db:Firestore,collection:string,field:stri
  return rows;
 }
 export async function nativePendingPlans(db:Firestore,actorId:string,params:URLSearchParams){
- const {clients}=await dashboardClients(db,actorId,'pending',params.get('dietitianId')),clientIds=clients.map(c=>c._id);const today=new Date();today.setHours(0,0,0,0);
+ const {clients,summaryOnly,denseScope}=await dashboardClients(db,actorId,'pending',params.get('dietitianId')),clientIds=clients.map(c=>c._id);const today=new Date();today.setHours(0,0,0,0);
+ const useIndexed=process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST;
  const [rawPlans,purchases]=await Promise.all([
- dashboardRelated(db,'clientmealplans','clientId',clientIds,['clientId','name','startDate','endDate','duration','status','purchaseId','isDeleted'],q=>q.where('status','in',['active','paused','completed']),10),
- dashboardRelated(db,'unifiedpayments','client',clientIds,'client planName durationDays durationLabel startDate endDate expectedStartDate expectedEndDate mealPlanCreated daysUsed remainingDays linkedMealPlanIds parentPaymentId status paymentStatus finalAmount amount paymentLink otherPlatformPayment razorpayOrderId razorpayPaymentId razorpayPaymentLinkId transactionId stripePaymentIntentId createdAt updatedAt'.split(' '),q=>q.where('status','in',['active','paid','completed']),10)]);
+ useIndexed?indexedDashboardRows('pendingPlans',clientIds,denseScope):dashboardRelated(db,'clientmealplans','clientId',clientIds,['clientId','name','startDate','endDate','duration','status','purchaseId','isDeleted'],q=>q.where('status','in',['active','paused','completed']),10),
+ useIndexed?indexedDashboardRows('pendingPurchases',clientIds):dashboardRelated(db,'unifiedpayments','client',clientIds,'client planName durationDays durationLabel startDate endDate expectedStartDate expectedEndDate mealPlanCreated daysUsed remainingDays linkedMealPlanIds parentPaymentId status paymentStatus finalAmount amount paymentLink otherPlatformPayment razorpayOrderId razorpayPaymentId razorpayPaymentLinkId transactionId stripePaymentIntentId createdAt updatedAt'.split(' '),q=>q.where('status','in',['active','paid','completed']),10)]);
  const mealPlans=rawPlans.filter(p=>p.isDeleted!==true);purchases.sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime());
     // Group meal plans by client
     const mealPlansByClient: Record<string, any[]> = {};
@@ -418,6 +419,15 @@ export async function nativePendingPlans(db:Firestore,actorId:string,params:URLS
       }
     }
 
+    // Only clients with actionable allocations need their contact details loaded.
+    if(summaryOnly){
+      await hydrateDashboardClientDetails(clients,pendingPlans.map(plan=>plan.clientId));
+      const byId=new Map(clients.map(client=>[client._id,client]));
+      for(const plan of pendingPlans){const client=byId.get(plan.clientId)!;Object.assign(plan,{
+        displayClientId:client.clientId||null,assignedDietitianId:client.assignedDietitian?.toString()||null,
+        clientName:`${client.firstName} ${client.lastName}`,phone:client.phone||'N/A',email:client.email,
+      });}
+    }
     // Sort by urgency (critical first) and then by pending days
     pendingPlans.sort((a, b) => {
       const urgencyOrder: Record<string, number> = {

@@ -366,16 +366,16 @@ export default function DocumentsSection({
           )}
 
           {hasDocuments && (
-            <div className="mt-4 overflow-x-auto rounded border">
-              <table className="min-w-full text-sm">
+            <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="mt-4 overflow-x-auto rounded border">
+              <table data-slot="table" className="min-w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr className="text-left">
-                    <th className="px-3 py-2">S.No</th>
-                    <th className="px-3 py-2">Type</th>
-                    <th className="px-3 py-2">Tag</th>
-                    <th className="px-3 py-2">File name</th>
-                    <th className="px-3 py-2">Uploaded on</th>
-                    <th className="px-3 py-2 text-right">Action</th>
+                    <th scope="col" className="px-3 py-2">S.No</th>
+                    <th scope="col" className="px-3 py-2">Type</th>
+                    <th scope="col" className="px-3 py-2">Tag</th>
+                    <th scope="col" className="px-3 py-2">File name</th>
+                    <th scope="col" className="px-3 py-2">Uploaded on</th>
+                    <th data-table-actions="true" scope="col" className="px-3 py-2 text-right">Action</th>
                   </tr>
                 </thead>
 

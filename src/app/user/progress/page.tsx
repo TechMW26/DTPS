@@ -1303,17 +1303,17 @@ export default function UserProgressPage() {
             <div className={`p-4 shadow-sm rounded-2xl ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
               <h3 className={`mb-3 font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Measurement History</h3>
               {filteredMeasurementHistory.length > 0 ? (
-                <div className="px-4 -mx-4 overflow-x-auto">
-                  <table className={`w-full text-sm ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+                <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="px-4 -mx-4 overflow-x-auto">
+                  <table data-slot="table" className={`w-full text-sm ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
                     <thead>
                       <tr className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                        <th className={`px-1 py-2 text-xs font-medium text-left ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Date</th>
-                        <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Waist</th>
-                        <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Abdomen</th>
-                        <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Hips</th>
-                        <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Chest</th>
-                        <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Arms</th>
-                        <th className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Thighs</th>
+                        <th scope="col" className={`px-1 py-2 text-xs font-medium text-left ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Date</th>
+                        <th scope="col" className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Waist</th>
+                        <th scope="col" className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Abdomen</th>
+                        <th scope="col" className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Hips</th>
+                        <th scope="col" className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Chest</th>
+                        <th scope="col" className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Arms</th>
+                        <th scope="col" className={`px-1 py-2 text-xs font-medium text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Thighs</th>
                       </tr>
                     </thead>
                     <tbody>

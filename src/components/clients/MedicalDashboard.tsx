@@ -132,14 +132,14 @@ export default function MedicalDashboard({ data, onEdit, clientGender }: Medical
         {data.diseaseHistory?.length > 0 && (
           <div>
             <SectionLabel>Disease History</SectionLabel>
-            <div className="border rounded-lg overflow-x-auto">
-              <table className="w-full text-xs">
+            <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="border rounded-lg overflow-x-auto">
+              <table data-slot="table" className="w-full text-xs">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-left p-2 font-medium text-gray-600">Disease</th>
-                    <th className="text-left p-2 font-medium text-gray-600">Since</th>
-                    <th className="text-left p-2 font-medium text-gray-600">Severity</th>
-                    <th className="text-left p-2 font-medium text-gray-600">Action</th>
+                    <th scope="col" className="text-left p-2 font-medium text-gray-600">Disease</th>
+                    <th scope="col" className="text-left p-2 font-medium text-gray-600">Since</th>
+                    <th scope="col" className="text-left p-2 font-medium text-gray-600">Severity</th>
+                    <th data-table-actions="true" scope="col" className="text-left p-2 font-medium text-gray-600">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -202,13 +202,13 @@ export default function MedicalDashboard({ data, onEdit, clientGender }: Medical
           <div>
             <SectionLabel>Uploaded Documents</SectionLabel>
             <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-xs">
+              <table data-slot="table" className="w-full text-xs">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-left p-2 font-medium text-gray-600">File Name</th>
-                    <th className="text-left p-2 font-medium text-gray-600">Category</th>
-                    <th className="text-left p-2 font-medium text-gray-600">Uploaded</th>
-                    <th className="text-left p-2 font-medium text-gray-600">Action</th>
+                    <th scope="col" className="text-left p-2 font-medium text-gray-600">File Name</th>
+                    <th scope="col" className="text-left p-2 font-medium text-gray-600">Category</th>
+                    <th scope="col" className="text-left p-2 font-medium text-gray-600">Uploaded</th>
+                    <th data-table-actions="true" scope="col" className="text-left p-2 font-medium text-gray-600">Action</th>
                   </tr>
                 </thead>
                 <tbody>

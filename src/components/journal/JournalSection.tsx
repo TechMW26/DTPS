@@ -702,18 +702,18 @@ function ProgressTab({ showAddProgress, setShowAddProgress, clientId, selectedDa
           <h3 className="font-medium">Progress History</h3>
           <Badge variant="outline">{progressHistory.length} {progressHistory.length === 1 ? 'entry' : 'entries'}</Badge>
         </div>
-        <div className="border rounded-lg overflow-x-auto">
-          <table className="w-full min-w-175">
+        <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="border rounded-lg overflow-x-auto">
+          <table data-slot="table" className="w-full min-w-175">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Date</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Weight (kg)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">BMI</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">BMR (cal)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Body Fat (%)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Diet Plan</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Notes</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Actions</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Date</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Weight (kg)</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">BMI</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">BMR (cal)</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Body Fat (%)</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Diet Plan</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Notes</th>
+                <th data-table-actions="true" scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1201,15 +1201,15 @@ function BCATab({ clientId, selectedDate }: { clientId: string; selectedDate: Da
       {bcaHistory.length > 0 && (
         <div className="mt-6">
           <h3 className="font-medium mb-3">BCA History ({bcaHistory.length} entries)</h3>
-          <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full min-w-150">
+          <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="border rounded-lg overflow-x-auto">
+            <table data-slot="table" className="w-full min-w-150">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="text-left px-4 py-2 text-sm font-medium text-gray-600">Date</th>
-                  <th className="text-left px-4 py-2 text-sm font-medium text-gray-600">Type</th>
-                  <th className="text-left px-4 py-2 text-sm font-medium text-gray-600">Weight</th>
-                  <th className="text-left px-4 py-2 text-sm font-medium text-gray-600">BMI</th>
-                  <th className="text-left px-4 py-2 text-sm font-medium text-gray-600">Fat %</th>
+                  <th scope="col" className="text-left px-4 py-2 text-sm font-medium text-gray-600">Date</th>
+                  <th scope="col" className="text-left px-4 py-2 text-sm font-medium text-gray-600">Type</th>
+                  <th scope="col" className="text-left px-4 py-2 text-sm font-medium text-gray-600">Weight</th>
+                  <th scope="col" className="text-left px-4 py-2 text-sm font-medium text-gray-600">BMI</th>
+                  <th scope="col" className="text-left px-4 py-2 text-sm font-medium text-gray-600">Fat %</th>
                 </tr>
               </thead>
               <tbody>
@@ -1694,18 +1694,18 @@ function MeasurementsTab({ showAddMeasurement, setShowAddMeasurement, clientId, 
           <h3 className="font-medium">Measurement History</h3>
           <Badge variant="outline">{measurementHistory.length} {measurementHistory.length === 1 ? 'entry' : 'entries'}</Badge>
         </div>
-        <div className="border rounded-lg overflow-x-auto">
-          <table className="w-full min-w-175">
+        <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="border rounded-lg overflow-x-auto">
+          <table data-slot="table" className="w-full min-w-175">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Date</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Arm (cm)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Waist (cm)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Abdomen (cm)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Chest (cm)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Hips (cm)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Thigh (cm)</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Actions</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Date</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Arm (cm)</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Waist (cm)</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Abdomen (cm)</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Chest (cm)</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Hips (cm)</th>
+                <th scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Thigh (cm)</th>
+                <th data-table-actions="true" scope="col" className="text-left px-4 py-3 text-sm font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
             <tbody>

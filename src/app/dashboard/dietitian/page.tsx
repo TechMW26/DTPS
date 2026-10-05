@@ -910,71 +910,23 @@ export default function DietitianDashboard() {
                   </div>
                 ) : recentThreeDayPayments.length > 0 ? (
                   <>
-                    {/* Mobile */}
-                    <div className="dietitian-dashboard-payments-mobile md:hidden space-y-3">
-                      {recentThreeDayPayments.map((payment: any) => (
-                        <div key={`mobile-${payment.id}`} className="rounded-lg border border-gray-200 bg-white p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-gray-900">{payment.clientName}</p>
-                                {payment.clientId && (
-                                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
-                                    {getClientId(payment.clientId)}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-600">{payment.clientEmail}</p>
-                            </div>
-                            <Badge className={
-                              payment.status === 'completed' ? 'bg-green-100 text-green-800'
-                              : payment.status === 'pending'   ? 'bg-yellow-100 text-yellow-800'
-                              : payment.status === 'failed'    ? 'bg-red-100 text-red-800'
-                              : 'bg-gray-100 text-gray-800'
-                            }>{payment.status}</Badge>
-                          </div>
-                          <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
-                            <div>
-                              <p className="text-gray-500">Plan</p>
-                              <p className="text-gray-900 font-medium">{payment.planName}</p>
-                              {payment.planCategory && (
-                                <Badge variant="outline" className="mt-1 text-xs">{payment.planCategory}</Badge>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-gray-500">Duration</p>
-                              <p className="text-gray-900">{payment.durationLabel || (payment.durationDays ? `${payment.durationDays} days` : 'N/A')}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500">Amount</p>
-                              <p className="text-gray-900 font-semibold">{payment.currency} {payment.amount?.toLocaleString()}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500">Date</p>
-                              <p className="text-gray-700">{payment.createdAt ? formatDateIST(payment.createdAt) : 'N/A'}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Desktop table */}
-                    <div className="hidden md:block overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-3 py-2 text-left font-medium text-gray-600">Client</th>
-                            <th className="px-3 py-2 text-left font-medium text-gray-600">Plan</th>
-                            <th className="px-3 py-2 text-left font-medium text-gray-600">Duration</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-600">Amount</th>
-                            <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
-                            <th className="px-3 py-2 text-left font-medium text-gray-600">Date</th>
+                    {/* One payment row per record, responsive at every width */}
+                    <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                      <table role="table" data-slot="table" data-responsive-table="cards" aria-label="Recent payments" className="w-full text-sm">
+                        <thead role="rowgroup" className="bg-gray-50">
+                          <tr role="row">
+                            <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Client</th>
+                            <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Plan</th>
+                            <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Duration</th>
+                            <th scope="col" className="px-3 py-2 text-right font-medium text-gray-600">Amount</th>
+                            <th scope="col" className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
+                            <th scope="col" className="px-3 py-2 text-left font-medium text-gray-600">Date</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody role="rowgroup" className="divide-y divide-gray-100">
                           {recentThreeDayPayments.map((payment: any) => (
-                            <tr key={payment.id} className="hover:bg-gray-50">
-                              <td className="px-3 py-3">
+                            <tr role="row" key={payment.id} className="hover:bg-gray-50">
+                              <td role="cell" data-label="Client" className="px-3 py-3">
                                 <div className="flex items-center gap-2">
                                   <p className="font-medium text-gray-900">{payment.clientName}</p>
                                   {payment.clientId && (
@@ -985,23 +937,23 @@ export default function DietitianDashboard() {
                                 </div>
                                 <p className="text-xs text-gray-500">{payment.clientEmail}</p>
                               </td>
-                              <td className="px-3 py-3">
+                              <td role="cell" data-label="Plan" className="px-3 py-3">
                                 <p className="font-medium text-gray-800">{payment.planName}</p>
                                 {payment.planCategory && (
                                   <Badge variant="outline" className="text-xs mt-1">{payment.planCategory}</Badge>
                                 )}
                               </td>
-                              <td className="px-3 py-3">
+                              <td role="cell" data-label="Duration" className="px-3 py-3">
                                 <span className="text-gray-600">
                                   {payment.durationLabel || (payment.durationDays ? `${payment.durationDays} days` : 'N/A')}
                                 </span>
                               </td>
-                              <td className="px-3 py-3 text-right">
+                              <td role="cell" data-label="Amount" className="px-3 py-3 text-right">
                                 <span className="font-semibold text-gray-900">
                                   {payment.currency} {payment.amount?.toLocaleString()}
                                 </span>
                               </td>
-                              <td className="px-3 py-3 text-center">
+                              <td role="cell" data-label="Status" className="px-3 py-3 text-center">
                                 <Badge className={
                                   payment.status === 'completed' ? 'bg-green-100 text-green-800'
                                   : payment.status === 'pending'   ? 'bg-yellow-100 text-yellow-800'
@@ -1009,7 +961,7 @@ export default function DietitianDashboard() {
                                   : 'bg-gray-100 text-gray-800'
                                 }>{payment.status}</Badge>
                               </td>
-                              <td className="px-3 py-3">
+                              <td role="cell" data-label="Date" className="px-3 py-3">
                                 <span className="text-gray-600 text-xs">
                                   {payment.createdAt ? formatDateIST(payment.createdAt) : 'N/A'}
                                 </span>

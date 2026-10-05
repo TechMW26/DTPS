@@ -502,7 +502,7 @@ export default function Sidebar({ className, isDarkMode = false }: SidebarProps)
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto p-4 space-y-2 flex flex-col gap-1">
+      <nav aria-label="Main navigation" className="flex-1 overflow-y-auto p-4 space-y-2 flex flex-col gap-1">
         {filteredNavItems.map((item: any) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
@@ -578,6 +578,7 @@ export default function Sidebar({ className, isDarkMode = false }: SidebarProps)
             <Link
               key={item.href}
               href={item.href}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
                 "flex items-center justify-between space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors relative",
                 isActive

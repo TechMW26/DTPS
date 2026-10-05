@@ -6,20 +6,21 @@ let mockActive=0,mockPeak=0,mockReject=false;
 let mockDenseIds:string[]=[];
 const mockLimits:number[]=[];
 let mockActiveFilters=0;
+const mockStatuses:string[][]=[];
 jest.mock('@/lib/db/firestore-native',()=>({nativeDatabaseSettings:()=>({projectId:'test',databaseId:'test',clientEmail:'test',privateKey:'test'})}));
 jest.mock('@google-cloud/firestore',()=>{
  const actual=jest.requireActual('@google-cloud/firestore');
  return {...actual,Firestore:class{
   pipeline(){return {collection:()=>{
    let ids:string[]=[];
-   const query:any={where:(condition:any)=>{if(condition.ids)ids=condition.ids;if(condition.equals==='active')mockActiveFilters++;return query;},select:()=>query,limit:(n:number)=>{mockLimits.push(n);return query;},execute:async()=>{
+   const query:any={where:(condition:any)=>{if(condition.ids)ids=condition.ids;if(condition.statuses)mockStatuses.push(condition.statuses);if(condition.equals==='active')mockActiveFilters++;return query;},select:()=>query,limit:(n:number)=>{mockLimits.push(n);return query;},execute:async()=>{
     mockBatches.push(ids);mockActive++;mockPeak=Math.max(mockPeak,mockActive);
     try{await new Promise(r=>setTimeout(r,2));if(mockReject)throw new Error('index unavailable');return {results:(ids.length?ids:mockDenseIds).map(id=>({get:()=>id,data:()=>({_id:`plan-${id}`,clientId:id,endDate:actual.Timestamp.fromDate(new Date('2026-10-04T00:00:00Z'))})}))};}finally{mockActive--;}
    }};return query;
   }};}
- },Pipelines:{field:()=>({equalAny:(ids:string[])=>({ids}),equal:(value:string)=>({equals:value}),documentId:()=>({as:()=>({})})})}};
+ },Pipelines:{field:(name:string)=>({equalAny:(ids:string[])=>name==='status'?{statuses:ids}:{ids},equal:(value:string)=>({equals:value}),documentId:()=>({as:()=>({})})})}};
 });
-beforeEach(()=>{mockActiveFilters=0;mockBatches.length=0;mockLimits.length=0;mockDenseIds=[];mockActive=0;mockPeak=0;mockReject=false;});
+beforeEach(()=>{mockStatuses.length=0;mockActiveFilters=0;mockBatches.length=0;mockLimits.length=0;mockDenseIds=[];mockActive=0;mockPeak=0;mockReject=false;});
 
 test('indexed dashboard requests only authorized IDs, deduplicates, and retains IDs and dates',async()=>{
  const ids=Array.from({length:1901},(_,i)=>`client-${i}`);
@@ -82,4 +83,19 @@ test('directory payment batching preserves the full authorized scope and does no
  expect(mockActiveFilters).toBe(0);
  expect(mockLimits).toEqual([]);
  expect(mockPeak).toBe(3);
+});
+
+test('pending plans preserve completed and paused history while enforcing scope on dense reads',async()=>{
+ const ids=Array.from({length:3000},(_,i)=>`client-${i}`);
+ mockDenseIds=[ids[0],'outside-scope',ids[1]];
+ const rows=await indexedDashboardRows('pendingPlans',ids,true);
+ expect(rows.map(row=>row.clientId)).toEqual(ids.slice(0,2));
+ expect(mockStatuses).toEqual([['active','paused','completed']]);
+});
+test('pending purchases use bounded scoped reads even when dense mode is requested',async()=>{
+ const ids=Array.from({length:3001},(_,i)=>`client-${i}`);
+ await indexedDashboardRows('pendingPurchases',ids,true);
+ expect(mockBatches.flat()).toEqual(ids);
+ expect(mockLimits).toEqual([]);
+ expect(mockStatuses.every(values=>values.join(',')==='active,paid,completed')).toBe(true);
 });

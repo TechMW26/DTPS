@@ -2038,12 +2038,12 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
           <table className="w-full border-collapse relative">
             <thead className="sticky top-0 bg-white shadow-sm" style={{ zIndex: 10 }}>
               <tr>
-                <th className="border-r border-b-2 border-gray-300 p-6 bg-slate-100 w-48 min-w-48">
+                <th scope="col" className="border-r border-b-2 border-gray-300 p-6 bg-slate-100 w-48 min-w-48">
                   <div className="text-slate-800 font-semibold tracking-wide uppercase text-sm">Day</div>
                 </th>
                 {displayMealTypes.map((mealType, index) => (
                   <React.Fragment key={mealType}>
-                    <th className="border-r border-b-2 border-gray-300 p-5 bg-slate-50 min-w-70">
+                    <th scope="col" className="border-r border-b-2 border-gray-300 p-5 bg-slate-50 min-w-70">
                       <div className="flex items-center justify-between gap-2">
                         <div>
                           <div className="text-slate-800 font-semibold tracking-wide uppercase text-xs">{mealType}</div>
@@ -2068,7 +2068,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                   </React.Fragment>
                 ))}
                 {/* Add Meal Type Column at the end */}
-                <th className="border-l border-b-2 border-gray-300 p-5 bg-slate-50 min-w-70">
+                <th scope="col" className="border-l border-b-2 border-gray-300 p-5 bg-slate-50 min-w-70">
                   <div className="space-y-2.5">
                     <div className="text-slate-800 font-semibold tracking-wide uppercase text-xs flex items-center justify-center gap-2">
                       <Plus className="w-3.5 h-3.5" />

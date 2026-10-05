@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import '@/components/admin/user-filters.css';
+import '@/components/clients/client-filters.css';
 import { DashboardContentSkeleton } from '@/components/ui/skeleton';
 
 interface PendingPlan {
@@ -83,6 +85,7 @@ export default function PendingPlansPage() {
   const [mediumCount, setMediumCount] = useState(0);
 
   // Filter state
+  const [page, setPage] = useState(1);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [urgencyFilter, setUrgencyFilter] = useState('');
   const [reasonFilter, setReasonFilter] = useState('');
@@ -164,13 +167,13 @@ export default function PendingPlansPage() {
   }, []);
 
   // Filter plans based on search + filters
-  const filteredPlans = pendingPlans.filter(plan => {
+  const filteredPlans = useMemo(() => pendingPlans.filter(plan => {
     // Text search
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const matchesSearch = plan.clientName.toLowerCase().includes(q) ||
-        plan.email.toLowerCase().includes(q) ||
-        plan.phone.includes(searchQuery);
+        (plan.email || '').toLowerCase().includes(q) ||
+        (plan.phone || '').includes(searchQuery) || (plan.displayClientId || '').toLowerCase().includes(q);
       if (!matchesSearch) return false;
     }
 
@@ -226,7 +229,11 @@ export default function PendingPlansPage() {
     }
 
     return true;
-  });
+  }), [pendingPlans, searchQuery, urgencyFilter, reasonFilter, planNameFilter, remainingDaysFilter, pendingDaysFilter, dietitianFilter, planDateFrom, planDateTo]);
+  useEffect(() => { setPage(1); }, [searchQuery, urgencyFilter, reasonFilter, planNameFilter, remainingDaysFilter, pendingDaysFilter, dietitianFilter, planDateFrom, planDateTo]);
+  const pageCount = Math.max(1, Math.ceil(filteredPlans.length / 50));
+  const currentPage = Math.min(page, pageCount);
+  const visiblePlans = filteredPlans.slice((currentPage - 1) * 50, currentPage * 50);
 
   if (loading) {
     return (
@@ -312,49 +319,14 @@ export default function PendingPlansPage() {
           </Card>
         </div>
 
-        {/* Search + Filter Toggle */}
-        <div className="dietitian-pending-plans-search-row flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search clients by name or email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-10"
-            />
-          </div>
-          <Button
-            size="sm"
-            variant={filtersOpen ? 'default' : 'outline'}
-            onClick={() => setFiltersOpen(!filtersOpen)}
-            className="h-10 gap-1.5 shrink-0"
-          >
-            <Filter className="h-4 w-4" />
-            Filters
-            {activeFilterCount > 0 && (
-              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1 flex items-center justify-center text-xs rounded-full">
-                {activeFilterCount}
-              </Badge>
-            )}
-            {filtersOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </Button>
-          {activeFilterCount > 0 && (
-            <Button size="sm" variant="ghost" onClick={clearFilters} className="h-10 text-red-600 hover:text-red-700 gap-1 shrink-0">
-              <X className="h-3.5 w-3.5" /> Clear
-            </Button>
-          )}
-        </div>
-
-        {/* Advanced Filters Panel */}
-        {filtersOpen && (
-          <Card className="border-gray-200">
-            <CardContent className="px-4 py-3 space-y-3">
-              {/* Row 1 */}
-              <div className="pending-plans-filters-grid-1 grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-500">Urgency</label>
+        <section className="user-filters client-filters" aria-labelledby="pending-filter-title">
+          <div className="user-filter-heading"><div><h2 id="pending-filter-title"><Filter size={16} aria-hidden="true" /> Find pending plans</h2><p>Find clients who need a plan, or narrow the list by priority and dates.</p></div><button type="button" className="user-filter-reset" disabled={!searchQuery && !activeFilterCount} onClick={() => {setSearchQuery('');clearFilters();}}>Clear all</button></div>
+          <div className="user-filter-primary client-filter-primary">
+            <div className="user-filter-field user-filter-search"><label htmlFor="pending-search">Search clients</label><div className="user-filter-search-box"><Search size={18} aria-hidden="true" /><Input id="pending-search" type="search" className="user-filter-control" placeholder="Name, email, phone or ID" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div></div>
+                <div className="user-filter-field">
+                  <label htmlFor="pending-urgency">Urgency</label>
                   <Select value={urgencyFilter} onValueChange={(v) => setUrgencyFilter(v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-8 text-sm">
+                    <SelectTrigger id="pending-urgency" className="user-filter-control">
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
                     <SelectContent>
@@ -364,11 +336,10 @@ export default function PendingPlansPage() {
                       <SelectItem value="medium">Medium</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-500">Reason</label>
+                </div>                <div className="user-filter-field">
+                  <label htmlFor="pending-reason">Reason</label>
                   <Select value={reasonFilter} onValueChange={(v) => setReasonFilter(v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-8 text-sm">
+                    <SelectTrigger id="pending-reason" className="user-filter-control">
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
                     <SelectContent>
@@ -380,42 +351,14 @@ export default function PendingPlansPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-500">Remaining Days</label>
-                  <Select value={remainingDaysFilter} onValueChange={(v) => setRemainingDaysFilter(v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Any" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all">Any</SelectItem>
-                      <SelectItem value="expired">Expired</SelectItem>
-                      <SelectItem value="0-3">0–3 days</SelectItem>
-                      <SelectItem value="4+">4+ days</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-500">Pending Meal Days</label>
-                  <Select value={pendingDaysFilter} onValueChange={(v) => setPendingDaysFilter(v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Any" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all">Any</SelectItem>
-                      <SelectItem value="high">High (14+)</SelectItem>
-                      <SelectItem value="medium">Medium (8–14)</SelectItem>
-                      <SelectItem value="low">Low (1–7)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Row 2 */}
-              <div className="pending-plans-filters-grid-2 grid grid-cols-2 md:grid-cols-5 gap-x-3 gap-y-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-500">Dietitian</label>
+            <button type="button" className="user-filter-more" aria-expanded={filtersOpen} aria-controls="pending-advanced" onClick={() => setFiltersOpen(!filtersOpen)}>More filters {activeFilterCount > 0 && <span className="user-filter-count">{activeFilterCount}</span>}<ChevronDown size={16} aria-hidden="true" /></button>
+          </div>
+          <div id="pending-advanced" className="client-filter-advanced" hidden={!filtersOpen}>
+            <section className="client-filter-group"><h3>Meal plan & care team</h3><div className="client-filter-plan">
+                <div className="user-filter-field">
+                  <label htmlFor="pending-dietitian">Dietitian</label>
                   <Select value={dietitianFilter} onValueChange={(v) => setDietitianFilter(v === '_all' ? '' : v)}>
-                    <SelectTrigger className="h-8 text-sm">
+                    <SelectTrigger id="pending-dietitian" className="user-filter-control">
                       <SelectValue placeholder="All Dietitians" />
                     </SelectTrigger>
                     <SelectContent>
@@ -427,33 +370,49 @@ export default function PendingPlansPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>                <div className="user-filter-field">
+                  <label htmlFor="pending-plan-name">Plan Name</label>
+                  <Input id="pending-plan-name" className="user-filter-control" placeholder="Search plan..." value={planNameFilter} onChange={(e) => setPlanNameFilter(e.target.value)} />
+                </div>                <div className="user-filter-field">
+                  <label htmlFor="pending-remaining-days">Remaining Days</label>
+                  <Select value={remainingDaysFilter} onValueChange={(v) => setRemainingDaysFilter(v === '_all' ? '' : v)}>
+                    <SelectTrigger id="pending-remaining-days" className="user-filter-control">
+                      <SelectValue placeholder="Any" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all">Any</SelectItem>
+                      <SelectItem value="expired">Expired</SelectItem>
+                      <SelectItem value="0-3">0–3 days</SelectItem>
+                      <SelectItem value="4+">4+ days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>                <div className="user-filter-field">
+                  <label htmlFor="pending-pending-meal-days">Pending Meal Days</label>
+                  <Select value={pendingDaysFilter} onValueChange={(v) => setPendingDaysFilter(v === '_all' ? '' : v)}>
+                    <SelectTrigger id="pending-pending-meal-days" className="user-filter-control">
+                      <SelectValue placeholder="Any" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all">Any</SelectItem>
+                      <SelectItem value="high">High (14+)</SelectItem>
+                      <SelectItem value="medium">Medium (8–14)</SelectItem>
+                      <SelectItem value="low">Low (1–7)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-500">Plan Name</label>
-                  <Input className="h-8 text-sm" placeholder="Search plan..." value={planNameFilter} onChange={(e) => setPlanNameFilter(e.target.value)} />
+            </div></section>
+            <section className="client-filter-group"><h3>Plan dates</h3><div className="client-filter-columns">
+                <div className="user-filter-field">
+                  <label htmlFor="pending-plan-start-from">Plan Start From</label>
+                  <Input id="pending-plan-start-from" type="date" className="user-filter-control" value={planDateFrom} onChange={(e) => setPlanDateFrom(e.target.value)} />
+                </div>                <div className="user-filter-field">
+                  <label htmlFor="pending-plan-end-to">Plan End To</label>
+                  <Input id="pending-plan-end-to" type="date" className="user-filter-control" value={planDateTo} onChange={(e) => setPlanDateTo(e.target.value)} />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-500">Plan Start From</label>
-                  <Input type="date" className="h-8 text-sm" value={planDateFrom} onChange={(e) => setPlanDateFrom(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-500">Plan End To</label>
-                  <Input type="date" className="h-8 text-sm" value={planDateTo} onChange={(e) => setPlanDateTo(e.target.value)} />
-                </div>
-                <div className="flex items-end">
-                  <div className="flex items-center gap-2 w-full">
-                    <Button size="sm" variant="outline" onClick={clearFilters} className="h-8 text-xs">
-                      Reset
-                    </Button>
-                    <span className="text-xs text-gray-400 whitespace-nowrap">
-                      {filteredPlans.length} / {pendingPlans.length}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+            </div></section>
+          </div>
+          <div className="user-filter-summary"><p role="status">{filteredPlans.length.toLocaleString()} clients{activeFilterCount || searchQuery ? ' matching your filters' : ' requiring attention'}. Filters update automatically.</p></div>
+        </section>
 
         {/* Pending Plans - Responsive */}
         {filteredPlans.length === 0 ? (
@@ -470,159 +429,56 @@ export default function PendingPlansPage() {
           </Card>
         ) : (
           <>
-            {/* Mobile Cards View */}
-            <div className="lg:hidden space-y-4">
-              {filteredPlans.map((plan) => (
-                <Card
-                  key={plan.clientId}
-                  className={`${plan.urgency === 'critical' ? 'border-red-300 bg-red-50/50' :
-                    plan.urgency === 'high' ? 'border-amber-300 bg-amber-50/50' :
-                      'border-gray-200'
-                    }`}
-                >
-                  <CardContent className="p-4">
-                    {/* Header with ID and Priority Badge */}
-                    <div className="flex items-center justify-between mb-3">
-                      <Link
-                        href={`/dietician/clients/${plan.clientId}`}
-                        className="text-blue-600 hover:underline font-medium text-sm"
-                      >
-                        {plan.displayClientId || `C-${plan.clientId.toString().slice(-4).toUpperCase()}`}
-                      </Link>
-                      <Badge className={`text-xs font-semibold ${plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0
-                        ? 'bg-red-600 text-white border border-red-700' :
-                        plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
-                          ? 'bg-orange-500 text-white border border-orange-600' :
-                          'bg-yellow-500 text-gray-900 border border-yellow-600'
-                        }`}>
-                        {plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0
-                          ? '🔴 Critical' :
-                          plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
-                            ? '🟠 High Priority' :
-                            '🟡 Medium Priority'}
-                      </Badge>
-                    </div>
-
-                    {/* Client Info */}
-                    <div className="mb-3">
-                      <p className="font-semibold text-gray-900">{plan.clientName}</p>
-                      <p className="text-xs text-gray-500">{plan.email}</p>
-                      <div className="flex items-center gap-1 text-gray-600 mt-1">
-                        <Phone className="h-3 w-3" />
-                        <span className="text-xs">{plan.phone}</span>
-                      </div>
-                    </div>
-
-                    {/* Plan Info Grid */}
-                    <div className="grid grid-cols-2 gap-3 text-xs mb-3">
-                      <div>
-                        <p className="text-gray-500 font-medium">Current Plan</p>
-                        <p className="text-gray-900 truncate">
-                          {plan.currentPlanName || plan.upcomingPlanName || plan.purchasedPlanName || 'NA'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 font-medium">Previous Plan</p>
-                        <p className="text-gray-900 truncate">{plan.previousPlanName || 'NA'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 font-medium">Remaining</p>
-                        <Badge className={`text-xs font-semibold ${plan.currentPlanRemainingDays <= 0 ? 'bg-red-600 text-white' :
-                          plan.currentPlanRemainingDays <= 3 ? 'bg-orange-500 text-white' :
-                            'bg-yellow-500 text-gray-900'
-                          }`}>
-                          {plan.currentPlanRemainingDays <= 0 ? 'Expired' : `${plan.currentPlanRemainingDays} days`}
-                        </Badge>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 font-medium">Pending Days</p>
-                        <Badge className={`text-xs ${plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
-                          plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
-                            'bg-teal-500 text-white'
-                          }`}>
-                          {plan.pendingDaysToCreate} days
-                        </Badge>
-                      </div>
-                    </div>
-
-                    {/* Expected Dates */}
-                    {plan.expectedStartDate && plan.expectedEndDate && (
-                      <div className="text-xs text-amber-600 mb-3">
-                        <span className="text-gray-500">Expected: </span>
-                        {format(new Date(plan.expectedStartDate), 'dd MMM')} - {format(new Date(plan.expectedEndDate), 'dd MMM yyyy')}
-                      </div>
-                    )}
-
-                    {/* Progress */}
-                    <div className="text-xs text-gray-500 mb-3">
-                      {plan.totalMealPlanDays} of {plan.totalPurchasedDays} days created
-                    </div>
-
-                    {/* Action Button */}
-                    <Button
-                      size="sm"
-                      className="w-full text-xs bg-green-600 hover:bg-green-700 text-white"
-                      asChild
-                    >
-                      <Link href={`/dietician/clients/${plan.clientId}`}>
-                        <ExternalLink className="h-3 w-3 mr-1" />
-                        {plan.reason === 'no_meal_plan' ? 'Create Plan' : 'Create Phase'}
-                      </Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Desktop Table View */}
-            <Card className="hidden lg:block">
+            {/* One responsive list for all viewport sizes */}
+            <Card>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Client ID</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Phone</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Previous Plan</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Current Plan</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Plan Dates</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Expected Dates</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Remaining Days</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Pending Meal Days</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Action</th>
+                <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                  <table role="table" data-slot="table" data-responsive-table="cards" aria-label="Pending plans" className="w-full text-sm">
+                    <thead role="rowgroup" className="bg-gray-100">
+                      <tr role="row">
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Client ID</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Phone</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Previous Plan</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Current Plan</th>
+                        <th scope="col" className="px-4 py-3 text-center font-semibold text-gray-700">Plan Dates</th>
+                        <th scope="col" className="px-4 py-3 text-center font-semibold text-gray-700">Expected Dates</th>
+                        <th scope="col" className="px-4 py-3 text-center font-semibold text-gray-700">Remaining Days</th>
+                        <th scope="col" className="px-4 py-3 text-center font-semibold text-gray-700">Pending Meal Days</th>
+                        <th data-table-actions="true" scope="col" className="px-4 py-3 text-center font-semibold text-gray-700">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {filteredPlans.map((plan) => (
-                        <tr
+                    <tbody role="rowgroup" className="divide-y divide-gray-100">
+                      {visiblePlans.map((plan) => (
+                        <tr role="row"
                           key={plan.clientId}
                           className={`hover:bg-gray-50 transition-colors ${plan.urgency === 'critical' ? 'bg-red-50/50' :
                             plan.urgency === 'high' ? 'bg-amber-50/50' : ''
                             }`}
                         >
-                          <td className="px-4 py-3">
+                          <td role="cell" data-label="Client ID" className="px-4 py-3">
                             <Link
-                              href={`/dietician/clients/${plan.clientId}`}
+                              prefetch={false}
+                        href={`/dietician/clients/${plan.clientId}`}
                               className="text-blue-600 hover:underline font-medium text-xs"
                             >
                               {plan.displayClientId || `C-${plan.clientId.toString().slice(-4).toUpperCase()}`}
                             </Link>
                           </td>
-                          <td className="px-4 py-3">
+                          <td role="cell" data-label="Client" className="px-4 py-3">
                             <div>
                               <p className="font-medium text-gray-900">{plan.clientName}</p>
                               <p className="text-xs text-gray-500">{plan.email}</p>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td role="cell" data-label="Phone" className="px-4 py-3">
                             <div className="flex items-center gap-1 text-gray-600">
                               <Phone className="h-3 w-3" />
                               <span className="text-xs">{plan.phone}</span>
                             </div>
                           </td>
                           {/* Previous Plan */}
-                          <td className="px-4 py-3">
+                          <td role="cell" data-label="Previous Plan" className="px-4 py-3">
                             {plan.previousPlanName ? (
                               <div>
                                 <p className="font-medium text-gray-700 text-xs truncate max-w-30">
@@ -639,7 +495,7 @@ export default function PendingPlansPage() {
                             )}
                           </td>
                           {/* Current Plan */}
-                          <td className="px-4 py-3">
+                          <td role="cell" data-label="Current Plan" className="px-4 py-3">
                             {plan.currentPlanName ? (
                               <div>
                                 <p className="font-medium text-gray-800 truncate max-w-35">
@@ -665,7 +521,7 @@ export default function PendingPlansPage() {
                             )}
                           </td>
                           {/* Plan Dates */}
-                          <td className="px-4 py-3 text-center">
+                          <td role="cell" data-label="Plan Dates" className="px-4 py-3 text-center">
                             {plan.currentPlanStartDate && plan.currentPlanEndDate ? (
                               <div className="text-xs">
                                 <p className="text-gray-600 font-medium">
@@ -692,7 +548,7 @@ export default function PendingPlansPage() {
                             )}
                           </td>
                           {/* Expected Dates */}
-                          <td className="px-4 py-3 text-center">
+                          <td role="cell" data-label="Expected Dates" className="px-4 py-3 text-center">
                             {plan.expectedStartDate && plan.expectedEndDate ? (
                               <div className="text-xs">
                                 <p className="text-amber-600 font-medium">
@@ -708,7 +564,7 @@ export default function PendingPlansPage() {
                             )}
                           </td>
                           {/* Remaining Days */}
-                          <td className="px-4 py-3 text-center">
+                          <td role="cell" data-label="Remaining Days" className="px-4 py-3 text-center">
                             <Badge className={`font-semibold ${plan.currentPlanRemainingDays <= 0
                               ? 'bg-red-600 text-white border border-red-700' :
                               plan.currentPlanRemainingDays <= 3
@@ -723,7 +579,7 @@ export default function PendingPlansPage() {
                             </Badge>
                           </td>
                           {/* Pending Meal Days */}
-                          <td className="px-4 py-3 text-center">
+                          <td role="cell" data-label="Pending Meal Days" className="px-4 py-3 text-center">
                             <div>
                               <Badge className={`${plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
                                 plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
@@ -736,13 +592,14 @@ export default function PendingPlansPage() {
                               </p>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td role="cell" data-label="Action" className="px-4 py-3 text-center">
                             <Button
                               size="sm"
                               className="text-xs bg-green-600 hover:bg-green-700 text-white"
                               asChild
                             >
-                              <Link href={`/dietician/clients/${plan.clientId}`}>
+                              <Link prefetch={false}
+                        href={`/dietician/clients/${plan.clientId}`}>
                                 <ExternalLink className="h-3 w-3 mr-1" />
                                 {plan.reason === 'no_meal_plan' ? 'Create Plan' : 'Create Phase'}
                               </Link>
@@ -758,6 +615,10 @@ export default function PendingPlansPage() {
           </>
         )}
 
+        {filteredPlans.length > 0 && <nav aria-label="Pending plans pagination" className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-gray-600">Showing {(currentPage - 1) * 50 + 1}–{Math.min(currentPage * 50, filteredPlans.length)} of {filteredPlans.length.toLocaleString()} clients</p>
+          <div className="flex items-center gap-3"><Button variant="outline" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><span className="text-sm">Page {currentPage} of {pageCount}</span><Button variant="outline" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next</Button></div>
+        </nav>}
         <style jsx global>{`
           @media (max-width: 768px) {
             /* mobile only — max-width: 768px */

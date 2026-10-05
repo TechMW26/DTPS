@@ -183,7 +183,7 @@ export default function HealthCounselorClientsPage() {
   const [selectedHealthCounselorId, setSelectedHealthCounselorId] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [assignMode, setAssignMode] = useState<'add' | 'replace'>('add');
-  const [primaryDietitianOnly, setPrimaryDietitianOnly] = useState(false);
+  const [primaryDietitianOnly, setPrimaryDietitianOnly] = useState(true);
   const [assignmentMessage, setAssignmentMessage] = useState('');
 
   // Primary/Secondary dietitian selection state (like admin)
@@ -256,14 +256,16 @@ export default function HealthCounselorClientsPage() {
 
       // Build payload with primary/secondary assignments (same as admin)
       const payload: any = {
-        primaryDietitianId: primaryDietitianId || null,
-        secondaryDietitianIds: filteredSecondaryIds.length > 0 ? filteredSecondaryIds : [],
+        ...(canAssignDietitians ? {
+          primaryDietitianId: primaryDietitianId || null,
+          ...(!primaryDietitianOnly ? { secondaryDietitianIds: filteredSecondaryIds } : {}),
+        } : {}),
         mode: 'primary_secondary'
       };
 
       // Add health counselor if selected
       if (selectedHealthCounselorId && canAssignHealthCounselors) {
-        payload.healthCounselorId = selectedHealthCounselorId;
+        payload.primaryHealthCounselorId = selectedHealthCounselorId;
       }
 
       const response = await fetch(`/api/clients/${selectedClientForAssign._id}/assign`, {
@@ -1071,8 +1073,8 @@ export default function HealthCounselorClientsPage() {
                         )}
                       </div>
 
-                      {/* Secondary Dietitians */}
-                      <div className="space-y-2">
+                      {/* Secondary assignments are editable only when permitted by the API. */}
+                      {!primaryDietitianOnly && <div className="space-y-2">
                         <label className="text-sm font-medium flex items-center gap-2">
                           <span className="px-2 py-0.5 text-xs font-bold rounded bg-gray-400 text-white">SECONDARY</span>
                           Select Secondary Dietitians
@@ -1184,7 +1186,7 @@ export default function HealthCounselorClientsPage() {
                               })}
                           </div>
                         )}
-                      </div>
+                      </div>}
                     </div>
                   )}
                 </div>

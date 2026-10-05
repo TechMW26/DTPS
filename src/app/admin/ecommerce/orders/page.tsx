@@ -177,17 +177,17 @@ export default function AdminEcommerceOrdersPage() {
             ) : orders.length === 0 ? (
               <div className="text-sm text-gray-500">No orders found.</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
+              <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                <table data-slot="table" className="min-w-full text-sm">
                   <thead>
                     <tr className="text-left border-b">
-                      <th className="py-2 pr-4">Order ID</th>
-                      <th className="py-2 pr-4">Date</th>
-                      <th className="py-2 pr-4">Status</th>
-                      <th className="py-2 pr-4">Payment</th>
-                      <th className="py-2 pr-4">Total</th>
-                      <th className="py-2 pr-4">Customer</th>
-                      <th className="py-2 pr-4">Actions</th>
+                      <th scope="col" className="py-2 pr-4">Order ID</th>
+                      <th scope="col" className="py-2 pr-4">Date</th>
+                      <th scope="col" className="py-2 pr-4">Status</th>
+                      <th scope="col" className="py-2 pr-4">Payment</th>
+                      <th scope="col" className="py-2 pr-4">Total</th>
+                      <th scope="col" className="py-2 pr-4">Customer</th>
+                      <th data-table-actions="true" scope="col" className="py-2 pr-4">Actions</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -423,23 +423,23 @@ export function FoodDatabasePanel({
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider w-8"></th>
-                    <th className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider w-8"></th>
+                    <th scope="col" className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Menu
                     </th>
-                    <th className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Amount
                     </th>
-                    <th className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Cals
                     </th>
-                    <th className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Carbs
                     </th>
-                    <th className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Protein
                     </th>
-                    <th className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="text-left p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Fats
                     </th>
                   </tr>

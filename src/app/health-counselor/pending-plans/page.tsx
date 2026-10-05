@@ -233,125 +233,33 @@ export default function HealthCounselorPendingPlansPage() {
           </Card>
         ) : (
           <>
-            {/* Mobile Cards View */}
-            <div className="lg:hidden space-y-4">
-              {filteredPlans.map((plan) => (
-                <Card 
-                  key={plan.clientId}
-                  className={`${
-                    plan.urgency === 'critical' ? 'border-red-300 bg-red-50/50' : 
-                    plan.urgency === 'high' ? 'border-amber-300 bg-amber-50/50' : 
-                    'border-gray-200'
-                  }`}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <Link 
-                        href={`/health-counselor/clients/${plan.clientId}`}
-                        className="text-blue-600 hover:underline font-medium text-sm"
-                      >
-                        P-{plan.clientId.toString().slice(-4).toUpperCase()}
-                      </Link>
-                      <Badge className={`text-xs font-semibold ${
-                        plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0 
-                          ? 'bg-red-600 text-white border border-red-700' :
-                        plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
-                          ? 'bg-orange-500 text-white border border-orange-600' :
-                          'bg-yellow-500 text-gray-900 border border-yellow-600'
-                      }`}>
-                        {plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0 
-                          ? '🔴 Critical' :
-                        plan.urgency === 'high' || (plan.currentPlanRemainingDays >= 1 && plan.currentPlanRemainingDays <= 3)
-                          ? '🟠 High Priority' :
-                          '🟡 Medium Priority'}
-                      </Badge>
-                    </div>
-
-                    <div className="mb-3">
-                      <p className="font-semibold text-gray-900">{plan.clientName}</p>
-                      <p className="text-xs text-gray-500">{plan.email}</p>
-                      <div className="flex items-center gap-1 text-gray-600 mt-1">
-                        <Phone className="h-3 w-3" />
-                        <span className="text-xs">{plan.phone}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 text-xs mb-3">
-                      <div>
-                        <p className="text-gray-500 font-medium">Current Plan</p>
-                        <p className="text-gray-900 truncate">
-                          {plan.currentPlanName || plan.upcomingPlanName || plan.purchasedPlanName || 'NA'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 font-medium">Remaining</p>
-                        <Badge className={`text-xs font-semibold ${
-                          plan.currentPlanRemainingDays <= 0 ? 'bg-red-600 text-white' :
-                          plan.currentPlanRemainingDays <= 3 ? 'bg-orange-500 text-white' :
-                          'bg-yellow-500 text-gray-900'
-                        }`}>
-                          {plan.currentPlanRemainingDays <= 0 ? 'Expired' : `${plan.currentPlanRemainingDays} days`}
-                        </Badge>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 font-medium">Pending Days</p>
-                        <Badge className={`text-xs ${
-                          plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
-                          plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
-                          'bg-teal-500 text-white'
-                        }`}>
-                          {plan.pendingDaysToCreate} days
-                        </Badge>
-                      </div>
-                      <div>
-                        <p className="text-gray-500 font-medium">Progress</p>
-                        <p className="text-gray-700">{plan.totalMealPlanDays}/{plan.totalPurchasedDays}</p>
-                      </div>
-                    </div>
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full text-xs"
-                      asChild
-                    >
-                      <Link href={`/health-counselor/clients/${plan.clientId}`}>
-                        <Eye className="h-3 w-3 mr-1" />
-                        View Client
-                      </Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Desktop Table View */}
-            <Card className="hidden lg:block">
+            {/* One responsive list for all viewport sizes */}
+            <Card>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Client ID</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Phone</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Current Plan</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Remaining Days</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Pending Days</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Urgency</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Action</th>
+                <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                  <table role="table" data-slot="table" data-responsive-table="cards" aria-label="Pending plans" className="w-full text-sm">
+                    <thead role="rowgroup" className="bg-gray-100">
+                      <tr role="row">
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Client ID</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Phone</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Current Plan</th>
+                        <th scope="col" className="px-4 py-3 text-center font-semibold text-gray-700">Remaining Days</th>
+                        <th scope="col" className="px-4 py-3 text-center font-semibold text-gray-700">Pending Days</th>
+                        <th scope="col" className="px-4 py-3 text-center font-semibold text-gray-700">Urgency</th>
+                        <th data-table-actions="true" scope="col" className="px-4 py-3 text-center font-semibold text-gray-700">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody role="rowgroup" className="divide-y divide-gray-100">
                       {filteredPlans.map((plan) => (
-                        <tr 
+                        <tr role="row"
                           key={plan.clientId} 
                           className={`hover:bg-gray-50 transition-colors ${
                             plan.urgency === 'critical' ? 'bg-red-50/50' : 
                             plan.urgency === 'high' ? 'bg-amber-50/50' : ''
                           }`}
                         >
-                          <td className="px-4 py-3">
+                          <td role="cell" data-label="Client ID" className="px-4 py-3">
                             <Link 
                               href={`/health-counselor/clients/${plan.clientId}`}
                               className="text-blue-600 hover:underline font-medium text-xs"
@@ -359,24 +267,24 @@ export default function HealthCounselorPendingPlansPage() {
                               P-{plan.clientId.toString().slice(-4).toUpperCase()}
                             </Link>
                           </td>
-                          <td className="px-4 py-3">
+                          <td role="cell" data-label="Client" className="px-4 py-3">
                             <div>
                               <p className="font-medium text-gray-900">{plan.clientName}</p>
                               <p className="text-xs text-gray-500">{plan.email}</p>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td role="cell" data-label="Phone" className="px-4 py-3">
                             <div className="flex items-center gap-1 text-gray-600">
                               <Phone className="h-3 w-3" />
                               <span className="text-xs">{plan.phone}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td role="cell" data-label="Current Plan" className="px-4 py-3">
                             <p className="font-medium text-gray-800 truncate max-w-35">
                               {plan.currentPlanName || plan.upcomingPlanName || plan.purchasedPlanName || 'NA'}
                             </p>
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td role="cell" data-label="Remaining Days" className="px-4 py-3 text-center">
                             <Badge className={`font-semibold ${
                               plan.currentPlanRemainingDays <= 0 
                                 ? 'bg-red-600 text-white border border-red-700' :
@@ -391,7 +299,7 @@ export default function HealthCounselorPendingPlansPage() {
                                   : `🟡 ${plan.currentPlanRemainingDays} days`}
                             </Badge>
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td role="cell" data-label="Pending Days" className="px-4 py-3 text-center">
                             <Badge className={`${
                               plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
                               plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
@@ -399,8 +307,9 @@ export default function HealthCounselorPendingPlansPage() {
                             }`}>
                               {plan.pendingDaysToCreate} days
                             </Badge>
+                            <p className="text-xs text-gray-500 mt-1">{plan.totalMealPlanDays} of {plan.totalPurchasedDays} days created</p>
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td role="cell" data-label="Urgency" className="px-4 py-3 text-center">
                             <Badge className={`text-xs font-semibold ${
                               plan.urgency === 'critical' || plan.currentPlanRemainingDays <= 0 
                                 ? 'bg-red-600 text-white border border-red-700' :
@@ -415,7 +324,7 @@ export default function HealthCounselorPendingPlansPage() {
                                 '🟡 Medium'}
                             </Badge>
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td role="cell" data-label="Action" className="px-4 py-3 text-center">
                             <Button
                               size="sm"
                               variant="outline"

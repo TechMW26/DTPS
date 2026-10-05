@@ -235,19 +235,19 @@ export default function BodyMeasurements({ clientId, onUpdate }: BodyMeasurement
         </CardHeader>
         <CardContent>
           {measurements.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+              <table data-slot="table" className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-2 px-2 font-medium text-gray-600">Date</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-600">Arm (cm)</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-600">Waist (cm)</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-600">Abdomen (cm)</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-600">Chest (cm)</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-600">Hips (cm)</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-600">Thigh (cm)</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-600">Added By</th>
-                    <th className="text-center py-2 px-2"></th>
+                    <th scope="col" className="text-left py-2 px-2 font-medium text-gray-600">Date</th>
+                    <th scope="col" className="text-center py-2 px-2 font-medium text-gray-600">Arm (cm)</th>
+                    <th scope="col" className="text-center py-2 px-2 font-medium text-gray-600">Waist (cm)</th>
+                    <th scope="col" className="text-center py-2 px-2 font-medium text-gray-600">Abdomen (cm)</th>
+                    <th scope="col" className="text-center py-2 px-2 font-medium text-gray-600">Chest (cm)</th>
+                    <th scope="col" className="text-center py-2 px-2 font-medium text-gray-600">Hips (cm)</th>
+                    <th scope="col" className="text-center py-2 px-2 font-medium text-gray-600">Thigh (cm)</th>
+                    <th scope="col" className="text-center py-2 px-2 font-medium text-gray-600">Added By</th>
+                    <th scope="col" className="text-center py-2 px-2"></th>
                   </tr>
                 </thead>
                 <tbody>

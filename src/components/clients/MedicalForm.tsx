@@ -389,17 +389,17 @@ export function MedicalForm({ medicalConditions, allergies, dietaryRestrictions,
             <Label>Disease History</Label>
             <Button type="button" variant="outline" size="sm" onClick={addDiseaseRow}>Add</Button>
           </div>
-          <div className="overflow-auto border rounded-md">
-            <table className="min-w-full text-xs">
+          <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-auto border rounded-md">
+            <table data-slot="table" className="min-w-full text-xs">
               <thead className="bg-gray-50">
                 <tr className="text-left">
-                  <th className="p-2">Disease</th>
-                  <th className="p-2">Since</th>
-                  <th className="p-2">Frequency</th>
-                  <th className="p-2">Severity</th>
-                  <th className="p-2">Grading</th>
-                  <th className="p-2">Action</th>
-                  <th className="p-2"></th>
+                  <th scope="col" className="p-2">Disease</th>
+                  <th scope="col" className="p-2">Since</th>
+                  <th scope="col" className="p-2">Frequency</th>
+                  <th scope="col" className="p-2">Severity</th>
+                  <th scope="col" className="p-2">Grading</th>
+                  <th data-table-actions="true" scope="col" className="p-2">Action</th>
+                  <th scope="col" className="p-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -537,14 +537,14 @@ export function MedicalForm({ medicalConditions, allergies, dietaryRestrictions,
           </div>
 
           <div className="border rounded-md overflow-hidden">
-            <table className="min-w-full text-xs">
+            <table data-slot="table" className="min-w-full text-xs">
               <thead className="bg-gray-50">
                 <tr className="text-left">
-                  <th className="p-2">File Name</th>
-                  <th className="p-2">Category</th>
-                  <th className="p-2">Uploaded On</th>
-                  <th className="p-2">File Type</th>
-                  <th className="p-2">Action</th>
+                  <th scope="col" className="p-2">File Name</th>
+                  <th scope="col" className="p-2">Category</th>
+                  <th scope="col" className="p-2">Uploaded On</th>
+                  <th scope="col" className="p-2">File Type</th>
+                  <th data-table-actions="true" scope="col" className="p-2">Action</th>
                 </tr>
               </thead>
               <tbody>

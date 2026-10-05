@@ -1715,13 +1715,13 @@ export default function DataManagementPage() {
                     <CreditCard className="w-5 h-5 text-green-600" />
                     Recent Payments ({relatedData.recentPayments.length})
                   </h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                    <table data-slot="table" className="w-full text-sm">
                       <thead className="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                          <th className="px-4 py-2 text-left">Amount</th>
-                          <th className="px-4 py-2 text-left">Status</th>
-                          <th className="px-4 py-2 text-left">Date</th>
+                          <th scope="col" className="px-4 py-2 text-left">Amount</th>
+                          <th scope="col" className="px-4 py-2 text-left">Status</th>
+                          <th scope="col" className="px-4 py-2 text-left">Date</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1747,13 +1747,13 @@ export default function DataManagementPage() {
                     <Calendar className="w-5 h-5 text-purple-600" />
                     Recent Appointments ({relatedData.recentAppointments.length})
                   </h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                    <table data-slot="table" className="w-full text-sm">
                       <thead className="bg-gray-50 dark:bg-gray-700">
                         <tr>
-                          <th className="px-4 py-2 text-left">Title</th>
-                          <th className="px-4 py-2 text-left">Status</th>
-                          <th className="px-4 py-2 text-left">Date</th>
+                          <th scope="col" className="px-4 py-2 text-left">Title</th>
+                          <th scope="col" className="px-4 py-2 text-left">Status</th>
+                          <th scope="col" className="px-4 py-2 text-left">Date</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1903,11 +1903,11 @@ export default function DataManagementPage() {
             </div>
           ) : (
             <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                <table data-slot="table" className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300 w-12">S/No</th>
+                      <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300 w-12">S/No</th>
                       {(isUnifiedPaymentModel ? unifiedPaymentTableColumns : visibleRecordFields.slice(0, 5).map((f) => f.path)).map((fieldPath) => {
                         const displayLabel = fieldPath === 'clientDisplayId'
                           ? 'cId'
@@ -1921,7 +1921,7 @@ export default function DataManagementPage() {
 
                         if (!isSortableUnifiedField) {
                           return (
-                            <th key={fieldPath} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
+                            <th scope="col" key={fieldPath} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
                               {displayLabel}
                             </th>
                           );
@@ -1929,7 +1929,7 @@ export default function DataManagementPage() {
 
                         const isActiveSort = sortBy === fieldPath;
                         return (
-                          <th key={fieldPath} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
+                          <th scope="col" key={fieldPath} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
                             <button
                               type="button"
                               onClick={() => handleUnifiedPaymentSort(fieldPath as 'daysUsed' | 'remainingDays')}
@@ -1943,7 +1943,7 @@ export default function DataManagementPage() {
                           </th>
                         );
                       })}
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Actions</th>
+                      <th data-table-actions="true" scope="col" className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -2135,17 +2135,17 @@ export default function DataManagementPage() {
                   📋 Data Preview (showing first {Math.min(bulkUpdatePreview.length, 10)} of {bulkUpdatePreview.length} records)
                 </p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                <table data-slot="table" className="w-full text-sm">
                   <thead className="bg-gray-100 dark:bg-gray-800">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">#</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">_id</th>
+                      <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">#</th>
+                      <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">_id</th>
                       {bulkUpdatePreview[0] && Object.keys(bulkUpdatePreview[0])
                         .filter(key => key !== '_id' && key !== 'id' && key !== 'ID')
                         .slice(0, 5)
                         .map(key => (
-                          <th key={key} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
+                          <th scope="col" key={key} className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">
                             {key}
                           </th>
                         ))}

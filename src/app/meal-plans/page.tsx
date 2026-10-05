@@ -380,18 +380,18 @@ function MealPlansPageContent() {
                     </Link>
                   </Button>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                  <table data-slot="table" className="w-full">
                     <thead className="bg-gray-50 border-b">
                       <tr>
-                        <th className="text-left p-4 font-medium text-gray-900">Client Name</th>
-                        <th className="text-left p-4 font-medium text-gray-900">Client ID</th>
-                        <th className="text-left p-4 font-medium text-gray-900">Phone</th>
-                        <th className="text-left p-4 font-medium text-gray-900">Email</th>
-                        <th className="text-left p-4 font-medium text-gray-900">Type</th>
-                        <th className="text-left p-4 font-medium text-gray-900">Program Start</th>
-                        <th className="text-left p-4 font-medium text-gray-900">Program End</th>
-                        <th className="text-left p-4 font-medium text-gray-900">Date Joined</th>
+                        <th scope="col" className="text-left p-4 font-medium text-gray-900">Client Name</th>
+                        <th scope="col" className="text-left p-4 font-medium text-gray-900">Client ID</th>
+                        <th scope="col" className="text-left p-4 font-medium text-gray-900">Phone</th>
+                        <th scope="col" className="text-left p-4 font-medium text-gray-900">Email</th>
+                        <th scope="col" className="text-left p-4 font-medium text-gray-900">Type</th>
+                        <th scope="col" className="text-left p-4 font-medium text-gray-900">Program Start</th>
+                        <th scope="col" className="text-left p-4 font-medium text-gray-900">Program End</th>
+                        <th scope="col" className="text-left p-4 font-medium text-gray-900">Date Joined</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -437,16 +437,16 @@ function MealPlansPageContent() {
         ) : (
           <Card>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                <table data-slot="table" className="w-full">
                   <thead className="bg-gray-50 border-b">
                     <tr>
-                      <th className="text-left p-4 font-medium text-gray-900">Plan Name</th>
-                      <th className="text-left p-4 font-medium text-gray-900">Client</th>
-                      <th className="text-left p-4 font-medium text-gray-900">Duration</th>
-                      <th className="text-left p-4 font-medium text-gray-900">Calories</th>
-                      <th className="text-left p-4 font-medium text-gray-900">Status</th>
-                      <th className="text-left p-4 font-medium text-gray-900">Actions</th>
+                      <th scope="col" className="text-left p-4 font-medium text-gray-900">Plan Name</th>
+                      <th scope="col" className="text-left p-4 font-medium text-gray-900">Client</th>
+                      <th scope="col" className="text-left p-4 font-medium text-gray-900">Duration</th>
+                      <th scope="col" className="text-left p-4 font-medium text-gray-900">Calories</th>
+                      <th scope="col" className="text-left p-4 font-medium text-gray-900">Status</th>
+                      <th data-table-actions="true" scope="col" className="text-left p-4 font-medium text-gray-900">Actions</th>
                     </tr>
                   </thead>
                   <tbody>

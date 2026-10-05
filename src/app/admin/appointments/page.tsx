@@ -269,17 +269,17 @@ export default function AdminAppointmentsPage() {
                 </Button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                <table data-slot="table" className="w-full">
                   <thead className="bg-gray-50 border-b">
                     <tr>
-                      <th className="text-left p-3">Date & Time</th>
-                      <th className="text-left p-3">Dietitian</th>
-                      <th className="text-left p-3">Client</th>
-                      <th className="text-left p-3">Type</th>
-                      <th className="text-left p-3">Duration</th>
-                      <th className="text-left p-3">Status</th>
-                      <th className="text-left p-3">Notes</th>
+                      <th scope="col" className="text-left p-3">Date & Time</th>
+                      <th scope="col" className="text-left p-3">Dietitian</th>
+                      <th scope="col" className="text-left p-3">Client</th>
+                      <th scope="col" className="text-left p-3">Type</th>
+                      <th scope="col" className="text-left p-3">Duration</th>
+                      <th scope="col" className="text-left p-3">Status</th>
+                      <th scope="col" className="text-left p-3">Notes</th>
                     </tr>
                   </thead>
                   <tbody>

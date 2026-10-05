@@ -55,13 +55,13 @@ export default async function WatiContactsPage({ searchParams }: { searchParams:
         <button className="px-8 sm:px-4 md:mt-0 mt-3 flex mx-auto md:mx-0 w-full md:w-fit   justify-center md:justify-start py-1.5 bg-blue-600 text-white rounded text-sm " type="submit">Search</button>
       </form>
       <h2 className="text-xl sm:text-2xl font-semibold text-center my-4 sm:my-6">Leader Board (Top 10 players)</h2>
-      <div className="overflow-x-auto border rounded mx-auto max-w-full md:max-w-3xl mb-4 sm:mb-6">
-        <table className="min-w-full table-fixed text-xs sm:text-sm">
+      <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto border rounded mx-auto max-w-full md:max-w-3xl mb-4 sm:mb-6">
+        <table data-slot="table" className="min-w-full table-fixed text-xs sm:text-sm">
           <thead className="bg-gray-50 text-xs sm:text-sm">
             <tr>
-              <th className="text-left px-2 py-2 w-12 sm:w-20 whitespace-nowrap">Rank</th>
-              <th className="text-left px-2 py-2 whitespace-nowrap">Name</th>
-              <th className="text-left px-2 py-2 w-12 sm:w-20 whitespace-nowrap">Level</th>
+              <th scope="col" className="text-left px-2 py-2 w-12 sm:w-20 whitespace-nowrap">Rank</th>
+              <th scope="col" className="text-left px-2 py-2 whitespace-nowrap">Name</th>
+              <th scope="col" className="text-left px-2 py-2 w-12 sm:w-20 whitespace-nowrap">Level</th>
             </tr>
           </thead>
           <tbody>

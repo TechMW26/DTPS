@@ -282,7 +282,7 @@ interface WebTableProps {
 export function WebTable({ children, className }: WebTableProps) {
   return (
     <div className={cn('overflow-x-auto', className)}>
-      <table className="w-full">
+      <table data-slot="table" className="w-full">
         {children}
       </table>
     </div>

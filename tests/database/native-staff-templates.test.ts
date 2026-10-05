@@ -33,4 +33,15 @@ suite('native staff templates',()=>{
   }finally{reads.mockRestore();}
  });
 
+ it('restores the shared staff plan library, including legacy types, without exposing it to clients',async()=>{
+  const owner=id(),reader=id(),legacy=id();for(const uid of [owner,reader])await db.collection('users').doc(uid).set({role:'dietitian',status:'active'});
+  const template=await mutateStaffTemplate(db,'mealplantemplates',owner,{name:id(),category:'custom',duration:10,isPublic:false});
+  await db.collection('mealplantemplates').doc(legacy).set({name:'Legacy',createdBy:owner,isActive:true,isPublic:false});
+  const params=new URLSearchParams({templateType:'plan',limit:'1000',summary:'true'});
+  const result=await listStaffTemplates(db,'mealplantemplates',{id:reader,role:'dietitian'},params);
+  expect(result.templates.map(t=>t._id)).toEqual(expect.arrayContaining([template._id,legacy]));
+  expect((await listStaffTemplates(db,'mealplantemplates',null,params)).templates.map(t=>t._id)).not.toEqual(expect.arrayContaining([template._id,legacy]));
+  await expect(mutateStaffTemplate(db,'mealplantemplates',reader,{name:'Denied'},template._id)).rejects.toMatchObject({status:403});
+ });
+
 });

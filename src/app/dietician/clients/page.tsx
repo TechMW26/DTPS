@@ -33,6 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import './client-directory.css';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ExternalLink, RefreshCw, Search, Users, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, UserPlus, X } from 'lucide-react';
 import { validateEmail } from '@/lib/validations/auth';
@@ -477,11 +478,10 @@ export default function DieticianClientsPage() {
   };
 
   const toggleAllClients = () => {
-    setSelectedClients(prev =>
-      prev.length === filteredClients.length
-        ? []
-        : filteredClients.map(c => c._id)
-    );
+    setSelectedClients(prev => {
+      const pageIds = filteredClients.map(client => client._id);
+      return pageIds.every(id => prev.includes(id)) ? prev.filter(id => !pageIds.includes(id)) : [...new Set([...prev, ...pageIds])];
+    });
   };
 
   const formatDate = (dateString: string | undefined) => {
@@ -555,15 +555,14 @@ export default function DieticianClientsPage() {
         />
 
         {/* Header with Actions */}
-        <div className="dietitian-clients-actions-row flex items-center justify-between gap-3">
+        <div className="dietitian-clients-actions-row directory-toolbar flex items-center justify-between gap-3" role="region" aria-label="Client list actions">
           <div className="dietitian-clients-actions-left flex items-center gap-3">
-            <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-              Bulk Action
-            </Button>
+            <div><h2 className="font-semibold">Client directory</h2><p className="text-sm text-muted-foreground" role="status">{selectedClients.length ? `${selectedClients.length} selected` : `${totalClients.toLocaleString()} clients · View a profile to manage care`}</p></div>
+            {selectedClients.length > 0 && <Button size="sm" variant="outline" onClick={() => setSelectedClients([])}>Clear selection</Button>}
           </div>
 
           <Button size="sm" variant="ghost" aria-label="Refresh clients" title="Refresh clients" onClick={() => fetchMyClients(currentPage, pageSize, debouncedSearch)}>
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="h-4 w-4" /><span>Refresh</span>
           </Button>
         </div>
 
@@ -576,17 +575,18 @@ export default function DieticianClientsPage() {
             ) : (
               <>
                 <div className="dietitian-clients-table-wrap overflow-x-auto">
-                  <Table className="dietitian-clients-table">
+                  <Table className="dietitian-clients-table" aria-label="Client directory">
+                    <caption className="sr-only">Client contact details, program dates and assigned care team. Scroll horizontally for all columns; profile actions stay visible.</caption>
                     <TableHeader>
                       <TableRow className="bg-gray-50">
                         <TableHead className="w-10 px-3">
                           <Checkbox
-                            checked={selectedClients.length === filteredClients.length && filteredClients.length > 0}
+                            aria-label="Select all clients on this page"
+                            checked={filteredClients.length > 0 && filteredClients.every(c => selectedClients.includes(c._id)) ? true : filteredClients.some(c => selectedClients.includes(c._id)) ? "indeterminate" : false}
                             onCheckedChange={toggleAllClients}
                           />
                         </TableHead>
-                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3">C-Id</TableHead>
-                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Name</TableHead>
+                        <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Client</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Phone</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Email</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Tags</TableHead>
@@ -598,52 +598,38 @@ export default function DieticianClientsPage() {
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3 min-w-65">Health Counselors</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Created By</TableHead>
                         <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Joined</TableHead>
-                        {canAssign && (
-                          <TableHead className="font-semibold text-xs whitespace-nowrap px-3">Actions</TableHead>
-                        )}
+                        <TableHead className="client-actions font-semibold text-xs whitespace-nowrap px-3">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredClients.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={canAssign ? 15 : 14} className="text-center py-12 text-gray-500">
+                          <TableCell colSpan={14} className="text-center py-12 text-gray-500">
                             {loadError ? 'Unable to load clients. Please refresh to try again.' : 'No clients match these filters. Try a broader search or clear your filters.'}
                           </TableCell>
                         </TableRow>
                       ) : (
                         filteredClients.map((client) => (
-                          <TableRow key={client._id} className="dietitian-clients-row hover:bg-gray-50">
+                          <TableRow key={client._id} data-state={selectedClients.includes(client._id) ? "selected" : undefined} className="dietitian-clients-row hover:bg-gray-50">
                             <TableCell className="dietitian-clients-cell px-3" data-label="Select">
                               <Checkbox
+                                aria-label={`Select ${client.firstName} ${client.lastName}`}
                                 checked={selectedClients.includes(client._id)}
                                 onCheckedChange={() => toggleClientSelection(client._id)}
                               />
                             </TableCell>
-                            <TableCell className="dietitian-clients-cell px-3" data-label="C-Id">
-                              <Link
-                                href={`/dietician/clients/${client._id}`}
-                                className="text-blue-600 hover:underline font-medium text-sm"
-                              >
-                                {client.clientId || getClientId(client._id)}
+                            <TableCell className="dietitian-clients-cell client-identity px-3" data-label="Client">
+                              <Link prefetch={false} href={`/dietician/clients/${client._id}`} className="client-identity-link">
+                                <span className="client-monogram" aria-hidden="true">{(client.firstName?.[0] || '') + (client.lastName?.[0] || '') || '?'}</span>
+                                <span><strong>{`${client.firstName || ''} ${client.lastName || ''}`.trim() || 'Unnamed client'}</strong><small>{client.clientId || getClientId(client._id)}</small></span>
                               </Link>
                             </TableCell>
-                            <TableCell className="dietitian-clients-cell px-3" data-label="Name">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-sm whitespace-nowrap">{client.firstName} {client.lastName}</span>
-                                <span className="text-xs bg-blue-100 text-blue-700 px-1 py-0.5 rounded font-medium">
-                                  {client.clientId || getClientId(client._id)}
-                                </span>
-                                <Link href={`/dietician/clients/${client._id}`}>
-                                  <ExternalLink className="h-3 w-3 text-gray-400 hover:text-gray-600" />
-                                </Link>
-                              </div>
-                            </TableCell>
                             <TableCell className="dietitian-clients-cell px-3 text-sm whitespace-nowrap" data-label="Phone">{client.phone || '-'}</TableCell>
-                            <TableCell className="dietitian-clients-cell px-3 max-w-37.5 truncate text-sm" data-label="Email">{client.email}</TableCell>
+                            <TableCell className="dietitian-clients-cell client-email px-3 text-sm" data-label="Email">{client.email}</TableCell>
                             <TableCell className="dietitian-clients-cell px-3" data-label="Tags">
                               {client.tags && client.tags.length > 0 ? (
                                 <div className="flex gap-1 flex-wrap">
-                                  {client.tags.slice(0, 2).map((tag, idx) => (
+                                  {client.tags.map((tag, idx) => (
                                     <Badge key={tag._id || idx} variant="outline" className="text-xs px-1.5 py-0">
                                       {tag.name || '-'}
                                     </Badge>
@@ -792,19 +778,12 @@ export default function DieticianClientsPage() {
                               )}
                             </TableCell>
                             <TableCell className="dietitian-clients-cell px-3 text-sm whitespace-nowrap" data-label="Joined">{formatDate(client.createdAt)}</TableCell>
-                            {canAssign && (
-                              <TableCell className="dietitian-clients-cell px-3" data-label="Actions">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => openAssignDialog(client)}
-                                  className="h-7 px-2 text-xs"
-                                >
-                                  <UserPlus className="h-3.5 w-3.5 mr-1" />
-                                  <span>{client.assignedDietitian ? 'Reassign' : 'Assign'}</span>
-                                </Button>
-                              </TableCell>
-                            )}
+                            <TableCell className="dietitian-clients-cell client-actions px-3" data-label="Actions">
+                              <div className="client-action-stack">
+                                <Button asChild size="sm" className="client-open-button"><Link prefetch={false} href={`/dietician/clients/${client._id}`} aria-label={`Open profile for ${client.firstName} ${client.lastName}`}>View profile <ExternalLink aria-hidden="true" /></Link></Button>
+                                {canAssign && <Button size="sm" variant="outline" onClick={() => openAssignDialog(client)} aria-label={`${client.assignedDietitian ? 'Reassign' : 'Assign'} care team for ${client.firstName} ${client.lastName}`}><UserPlus aria-hidden="true" />{client.assignedDietitian ? 'Reassign' : 'Assign'}</Button>}
+                              </div>
+                            </TableCell>
                           </TableRow>
                         ))
                       )}

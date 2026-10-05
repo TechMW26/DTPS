@@ -3,6 +3,7 @@
 import { ReactNode, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import './workspace-ui.css';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 import { cn } from '@/lib/utils';
@@ -49,7 +50,8 @@ export default function DashboardLayout({
 
   return (
     <StaffUnreadCountProvider>
-      <div className={`h-screen flex overflow-hidden ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div className={`dtps-workspace h-screen flex overflow-hidden ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        <a href="#workspace-main" className="workspace-skip-link">Skip to main content</a>
         {/* Sidebar - Full Height on Dashboard */}
         {showSidebar && (
           <div className="hidden lg:block h-screen shrink-0">
@@ -64,7 +66,7 @@ export default function DashboardLayout({
           <NotificationPermissionBanner
             allowedRoles={['admin', 'dietitian', 'health_counselor']}
           />
-          <main className={cn(
+          <main id="workspace-main" tabIndex={-1} className={cn(
             "flex-1 overflow-y-auto",
             isDarkMode && "bg-gray-900",
             className

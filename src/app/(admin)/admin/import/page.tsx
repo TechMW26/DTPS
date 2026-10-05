@@ -926,18 +926,18 @@ export default function DataImportPage() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto max-h-150 overflow-y-auto">
-          <table className="w-full text-sm">
+        <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto max-h-150 overflow-y-auto">
+          <table data-slot="table" className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-900 sticky top-0">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-16">Row</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-24">Status</th>
+                <th scope="col" className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-16">Row</th>
+                <th scope="col" className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-24">Status</th>
                 {visibleHeaders.slice(0, 8).map(h => (
-                  <th key={h} className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  <th scope="col" key={h} className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {getDisplayHeader(h)}
                   </th>
                 ))}
-                <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-24">Actions</th>
+                <th data-table-actions="true" scope="col" className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-24">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1060,17 +1060,17 @@ export default function DataImportPage() {
             </p>
           </div>
 
-          <div className="overflow-x-auto max-h-100 overflow-y-auto">
-            <table className="w-full text-sm">
+          <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto max-h-100 overflow-y-auto">
+            <table data-slot="table" className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900 sticky top-0">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-16">Row</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-16">Row</th>
                   {visibleHeaders.slice(0, 6).map(h => (
-                    <th key={h} className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    <th scope="col" key={h} className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {getDisplayHeader(h)}
                     </th>
                   ))}
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-32">Actions</th>
+                  <th data-table-actions="true" scope="col" className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 w-32">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1568,16 +1568,16 @@ export default function DataImportPage() {
 
                     {/* Errors Table */}
                     <div className="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                      <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                        <table data-slot="table" className="w-full text-sm">
                           <thead className="bg-red-100 dark:bg-red-900/50 sticky top-0">
                             <tr className="border-b border-gray-200 dark:border-gray-700">
-                              <th className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Row</th>
-                              <th className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Model</th>
-                              <th className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Field</th>
-                              <th className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Issue</th>
-                              <th className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Type</th>
-                              <th className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Value</th>
+                              <th scope="col" className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Row</th>
+                              <th scope="col" className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Model</th>
+                              <th scope="col" className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Field</th>
+                              <th scope="col" className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Issue</th>
+                              <th scope="col" className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Type</th>
+                              <th scope="col" className="px-4 py-3 text-left font-semibold text-red-700 dark:text-red-400">Value</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">

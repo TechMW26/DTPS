@@ -1,0 +1,44 @@
+.dietitian-clients-page .directory-toolbar {
+  position: sticky; top: 0; z-index: 25; padding: 14px 18px;
+  border: 1px solid var(--workspace-border, #dfe7e3); border-radius: 12px;
+  background: var(--workspace-surface, #fff); box-shadow: 0 4px 12px #163d2a06;
+}
+.dietitian-clients-page .client-identity-link { display: flex; align-items: center; gap: 12px; color: var(--workspace-ink, #243b33); }
+.dietitian-clients-page .client-identity-link strong { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; font-weight: 650; }
+.dietitian-clients-page .client-identity-link small { display: block; color: var(--workspace-muted, #56675f); font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dietitian-clients-page .client-monogram { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 12px; background: #eaf3ee; color: #286651; font-size: 12px; font-weight: 650; text-transform: uppercase; }
+.dietitian-clients-page .client-action-stack { display: flex; flex-direction: column; gap: 6px; }
+.dietitian-clients-page .client-open-button { background: #216b59; color: #fff; }
+.dietitian-clients-page .client-open-button:hover { background: #185442; }
+.dietitian-clients-page .client-email { min-width: 230px; max-width: 280px; white-space: normal; overflow-wrap: anywhere; }
+.dietitian-clients-page .dietitian-clients-table-wrap { overflow: visible; }
+.dietitian-clients-page .dietitian-clients-pagination { background: var(--workspace-surface, #fff); }
+@media (min-width: 769px) {
+  .dietitian-clients-table-wrap [data-slot="table-container"] { max-height: 68vh; overflow: auto; scrollbar-gutter: stable; border-radius: 12px; }
+  .dietitian-clients-table { border-collapse: separate; border-spacing: 0; }
+  .dietitian-clients-table thead th { position: sticky; top: 0; z-index: 12; background: var(--workspace-hover, #f2f7f4); height: 48px; border-bottom: 1px solid var(--workspace-border, #dfe7e3); }
+  .dietitian-clients-table tbody td { padding: 16px 14px; border-bottom: 1px solid var(--workspace-border, #dfe7e3); vertical-align: middle; }
+  .dietitian-clients-table :is(th,td):first-child { position: sticky; left: 0; z-index: 10; min-width: 44px; background: var(--workspace-surface, #fff); }
+  .dietitian-clients-table :is(th,td):nth-child(2) { position: sticky; left: 44px; z-index: 10; min-width: 250px; max-width: 300px; background: var(--workspace-surface, #fff); border-right: 1px solid var(--workspace-border, #dfe7e3); }
+  .dietitian-clients-table .client-actions { position: sticky; right: 0; z-index: 11; min-width: 146px; background: var(--workspace-surface, #fff); border-left: 1px solid var(--workspace-border, #dfe7e3); box-shadow: -6px 0 12px #193e2b06; }
+  .dietitian-clients-table thead :is(th:first-child,th:nth-child(2),th.client-actions) { z-index: 15; background: var(--workspace-hover, #f2f7f4); }
+  .dietitian-clients-table tr:is(:hover,:focus-within,[data-state="selected"]) td { background: var(--workspace-hover, #f2f7f4); }
+}
+@media (max-width: 768px) {
+  .dietitian-clients-page .directory-toolbar { padding: 12px; }
+  .dietitian-clients-page .client-actions { position: sticky; bottom: 0; z-index: 2; background: var(--workspace-surface, #fff); border-top: 1px solid var(--workspace-border, #dfe7e3); padding-top: 12px !important; }
+  .dietitian-clients-page .client-action-stack { flex-direction: row; flex-wrap: wrap; }
+  .dietitian-clients-page .client-action-stack > * { flex: 1; min-height: 44px; }
+  .dietitian-clients-page .client-email { max-width: none; min-width: 0; }
+}
+@media (max-width: 768px) {
+  /* Avoid an accidental nested scroll container trapping the sticky toolbar. */
+  .dtps-workspace .dietitian-clients-page { overflow: visible; }
+  .dietitian-clients-table-wrap [data-slot="table-container"] { overflow: visible; }
+  .dietitian-clients-page .directory-toolbar { flex-direction: row; align-items: center; }
+  .dietitian-clients-page .directory-toolbar .dietitian-clients-actions-left { width: auto; }
+  .dietitian-clients-page .directory-toolbar > button { width: auto; }
+  .dietitian-clients-page .dietitian-clients-table [role="checkbox"] { width: 24px; height: 24px; min-height: 24px; flex: none; }
+  .dietitian-clients-page .dietitian-clients-table .client-actions { order: -1; top: 88px; bottom: auto; padding: 8px 0 !important; border-top: 0; border-bottom: 1px solid var(--workspace-border, #dfe7e3); }
+  .dietitian-clients-page .client-actions::before { display: none; }
+}

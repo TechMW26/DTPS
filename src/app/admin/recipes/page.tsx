@@ -243,21 +243,21 @@ export default function AdminRecipesPage() {
                 No recipes found
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                <table data-slot="table" className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-gray-50">
-                      <th className="p-3 text-left font-semibold text-gray-900">S/No</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">UUID</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">Recipe Name</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">Created By (Dietitian)</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">Created Date</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">Calories</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">Protein (g)</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">Carbs (g)</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">Fat (g)</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">Serving Size</th>
-                      <th className="p-3 text-left font-semibold text-gray-900">Actions</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">S/No</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">UUID</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">Recipe Name</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">Created By (Dietitian)</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">Created Date</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">Calories</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">Protein (g)</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">Carbs (g)</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">Fat (g)</th>
+                      <th scope="col" className="p-3 text-left font-semibold text-gray-900">Serving Size</th>
+                      <th data-table-actions="true" scope="col" className="p-3 text-left font-semibold text-gray-900">Actions</th>
                     </tr>
                   </thead>
                   <tbody>

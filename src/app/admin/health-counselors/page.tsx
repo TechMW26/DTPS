@@ -221,18 +221,18 @@ export default function AdminHealthCounselorsPage() {
               />
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+              <table data-slot="table" className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="text-left p-3">Name</th>
-                    <th className="text-left p-3">Email</th>
-                    <th className="text-left p-3">Phone</th>
-                    <th className="text-left p-3">Status</th>
-                    <th className="text-left p-3">Assigned Clients</th>
-                    <th className="text-left p-3">Fee</th>
-                    <th className="text-left p-3">Created</th>
-                    <th className="text-left p-3">Actions</th>
+                    <th scope="col" className="text-left p-3">Name</th>
+                    <th scope="col" className="text-left p-3">Email</th>
+                    <th scope="col" className="text-left p-3">Phone</th>
+                    <th scope="col" className="text-left p-3">Status</th>
+                    <th scope="col" className="text-left p-3">Assigned Clients</th>
+                    <th scope="col" className="text-left p-3">Fee</th>
+                    <th scope="col" className="text-left p-3">Created</th>
+                    <th data-table-actions="true" scope="col" className="text-left p-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>

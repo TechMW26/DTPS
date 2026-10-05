@@ -777,17 +777,17 @@ export default function AnalyticsPage() {
                   <p className="text-sm text-gray-400 mt-2">Click "Refresh Data" to fetch from WooCommerce</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                  <table data-slot="table" className="w-full">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-3 px-4 font-medium">Client</th>
-                        <th className="text-left py-3 px-4 font-medium">Contact</th>
-                        <th className="text-left py-3 px-4 font-medium">Login Access</th>
-                        <th className="text-left py-3 px-4 font-medium">Processing</th>
-                        <th className="text-left py-3 px-4 font-medium">Completed</th>
-                        <th className="text-left py-3 px-4 font-medium">Total Spent</th>
-                        <th className="text-left py-3 px-4 font-medium">First Order</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Client</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Contact</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Login Access</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Processing</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Completed</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Total Spent</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">First Order</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -919,16 +919,16 @@ export default function AnalyticsPage() {
                   <p className="text-gray-500">No processing orders found</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div data-table-scroll="true" tabIndex={0} role="region" aria-label="Scrollable table" className="overflow-x-auto">
+                  <table data-slot="table" className="w-full">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-3 px-4 font-medium">Order #</th>
-                        <th className="text-left py-3 px-4 font-medium">Customer</th>
-                        <th className="text-left py-3 px-4 font-medium">Total</th>
-                        <th className="text-left py-3 px-4 font-medium">Payment</th>
-                        <th className="text-left py-3 px-4 font-medium">Date</th>
-                        <th className="text-left py-3 px-4 font-medium">Status</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Order #</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Customer</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Total</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Payment</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Date</th>
+                        <th scope="col" className="text-left py-3 px-4 font-medium">Status</th>
                       </tr>
                     </thead>
                     <tbody>

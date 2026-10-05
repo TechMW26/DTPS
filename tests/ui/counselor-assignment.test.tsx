@@ -1,0 +1,24 @@
+import React from 'react';
+import {render,screen,fireEvent,waitFor,cleanup} from '@testing-library/react';
+import '@testing-library/jest-dom';
+import ClientsPage from '@/app/health-counselor/clients/page';
+const mockPermission=jest.fn((key:string)=>key==='assign_clients_to_dietitians');
+jest.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams()}));
+jest.mock('next-auth/react',()=>({useSession:()=>({status:'authenticated',data:{user:{id:'counselor',role:'health_counselor'}}})}));
+jest.mock('@/hooks/usePermissions',()=>({usePermissions:()=>({hasPermission:mockPermission,loading:false})}));
+jest.mock('@/components/layout/DashboardLayout',()=>({__esModule:true,default:({children}:any)=><main>{children}</main>}));
+afterEach(cleanup);
+test('counselor saves a primary assignment without sending forbidden secondary fields',async()=>{
+ const dt={_id:'primary',firstName:'Primary',lastName:'Dietitian',email:'dt@example.com'};
+ const client={_id:'client',firstName:'Test',lastName:'Client',email:'client@example.com',status:'active',createdAt:'2026-10-01',assignedDietitian:dt,assignedDietitians:[{_id:'secondary',firstName:'Secondary',lastName:'Dietitian'}]};
+ global.fetch=jest.fn(async(url:any,options:any)=>({ok:true,json:async()=>String(url).includes('/assign')?(options?.method==='PATCH'?{success:true,client}:{dietitians:[dt],primaryDietitianOnly:true}):String(url).includes('/api/users/clients')?{clients:[client],pagination:{total:1,pages:1}}:{tags:[]}})) as any;
+ render(<ClientsPage/>);
+ fireEvent.click((await screen.findAllByRole('button',{name:'Assign'}))[0]);
+ await screen.findByRole('button',{name:'Save Assignments'});
+ await waitFor(()=>expect(screen.getByPlaceholderText('Search primary dietitian...')).toBeVisible());
+ expect(screen.queryByText('Select Secondary Dietitians')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Save Assignments'}));
+ await waitFor(()=>expect((global.fetch as jest.Mock).mock.calls.some(([,o])=>o?.method==='PATCH')).toBe(true));
+ const request=(global.fetch as jest.Mock).mock.calls.find(([,o])=>o?.method==='PATCH');
+ expect(JSON.parse(request![1].body)).toEqual({mode:'primary_secondary',primaryDietitianId:'primary'});
+});
