@@ -865,7 +865,7 @@ export function DietPlanExport({
     setOpen(false);
   }, [generateCSVContent, clientName]);
 
-  const handleExportPDF = async (saveAs = false) => {
+  const handleExportPDF = async () => {
     setIsExporting(true);
     try {
       const filename = dietPlanPdfFilename(clientName, exportFor, new Date());
@@ -882,7 +882,7 @@ export function DietPlanExport({
         }>;
       };
       // Open before asynchronous PDF loading so the click's user activation is retained.
-      const fileHandle = saveAs && pickerWindow.showSaveFilePicker
+      const fileHandle = pickerWindow.showSaveFilePicker
         ? await pickerWindow.showSaveFilePicker({
             suggestedName: filename,
             types: [{ description: "PDF document", accept: { "application/pdf": [".pdf"] } }],
@@ -922,7 +922,7 @@ export function DietPlanExport({
         toast.success("PDF saved successfully.");
         return;
       }
-      if (saveAs) {
+      if (!pickerWindow.showSaveFilePicker) {
         toast.info("This browser uses its download settings to choose where files are saved. You can also open the PDF and use Save as.");
       }
       const link = document.createElement("a");
@@ -1096,12 +1096,6 @@ export function DietPlanExport({
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            {exportFormat === "pdf" && (
-              <Button variant="outline" onClick={() => handleExportPDF(true)} disabled={isExporting}>
-                <FileDown className="w-4 h-4 mr-2" />
-                Save as…
-              </Button>
-            )}
             <Button
               onClick={handleExport}
               disabled={isExporting}
