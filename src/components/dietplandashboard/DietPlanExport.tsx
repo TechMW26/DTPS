@@ -865,9 +865,29 @@ export function DietPlanExport({
     setOpen(false);
   }, [generateCSVContent, clientName]);
 
-  const handleExportPDF = async () => {
+  const handleExportPDF = async (saveAs = false) => {
     setIsExporting(true);
     try {
+      const filename = dietPlanPdfFilename(clientName, exportFor, new Date());
+      const pickerWindow = window as Window & {
+        showSaveFilePicker?: (options: {
+          suggestedName: string;
+          types: { description: string; accept: Record<string, string[]> }[];
+        }) => Promise<{
+          createWritable: () => Promise<{
+            write: (data: Blob) => Promise<void>;
+            close: () => Promise<void>;
+            abort: () => Promise<void>;
+          }>;
+        }>;
+      };
+      // Open before asynchronous PDF loading so the click's user activation is retained.
+      const fileHandle = saveAs && pickerWindow.showSaveFilePicker
+        ? await pickerWindow.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{ description: "PDF document", accept: { "application/pdf": [".pdf"] } }],
+          })
+        : null;
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({
         orientation: "portrait",
@@ -887,20 +907,36 @@ export function DietPlanExport({
         showMacros: exportFor === "dietitian",
       });
 
-      const blobUrl = URL.createObjectURL(pdf.output("blob"));
+      const blob = pdf.output("blob");
+      const blobUrl = URL.createObjectURL(blob);
+      setPreparedPdf({ url: blobUrl, filename });
+      if (fileHandle) {
+        const writable = await fileHandle.createWritable();
+        try {
+          await writable.write(blob);
+          await writable.close();
+        } catch (error) {
+          await writable.abort().catch(() => {});
+          throw error;
+        }
+        toast.success("PDF saved successfully.");
+        return;
+      }
+      if (saveAs) {
+        toast.info("This browser uses its download settings to choose where files are saved. You can also open the PDF and use Save as.");
+      }
       const link = document.createElement("a");
       link.href = blobUrl;
-      const filename = dietPlanPdfFilename(clientName, exportFor, new Date());
       link.download = filename;
-      setPreparedPdf({ url: blobUrl, filename });
       link.rel = "noopener";
       document.body.appendChild(link);
       link.click();
       link.remove();
       toast.success("PDF ready. Your download has started.");
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
       console.error("PDF export failed:", error);
-      toast.error("PDF generation failed. Please try again.");
+      toast.error("Could not save the PDF. Please try again or use the download link if available.");
     } finally {
       setIsExporting(false);
     }
@@ -1049,7 +1085,7 @@ export function DietPlanExport({
           {preparedPdf && (
             <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
               <p className="font-medium">Your PDF is ready</p>
-              <p className="mt-1">If the download did not start, use either link below.</p>
+              <p className="mt-1">Download another copy or open the PDF below.</p>
               <div className="mt-3 flex flex-wrap gap-4">
                 <a href={preparedPdf.url} download={preparedPdf.filename} className="font-semibold underline">Download PDF again</a>
                 <a href={preparedPdf.url} target="_blank" rel="noopener noreferrer" className="font-semibold underline">Open PDF</a>
@@ -1060,6 +1096,12 @@ export function DietPlanExport({
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
+            {exportFormat === "pdf" && (
+              <Button variant="outline" onClick={() => handleExportPDF(true)} disabled={isExporting}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Save as…
+              </Button>
+            )}
             <Button
               onClick={handleExport}
               disabled={isExporting}
