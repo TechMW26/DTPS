@@ -1,4 +1,6 @@
 'use client';
+
+import { useConversationRequests } from "@/hooks/useConversationRequests";
 import { startForegroundPolling } from '@/lib/browser/foreground-polling';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -88,7 +90,7 @@ export default function GroupChatView({
 
   useEffect(() => {
     if (group._id) {
-      fetchMessages();
+      void fetchMessages().catch(() => {});
     }
   }, [group._id]);
 
@@ -115,32 +117,23 @@ export default function GroupChatView({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const fetchMessages = async () => {
-    setLoading(true);
+  const conversationRequests = useConversationRequests(group._id);
+  const fetchMessages = async (quiet = false) => {
+    const request = conversationRequests.begin(group._id, 'messages', quiet);
+    if (!request) return;
+    if (!quiet) { setLoading(true); setMessages([]); }
     try {
-      const response = await fetch(`/api/messages/groups/${group._id}/messages?limit=50`);
+      const response = await fetch(`/api/messages/groups/${group._id}/messages?limit=50`, { signal: request.signal });
       if (response.ok) {
         const data = await response.json();
-        setMessages(data.messages || []);
+        if (request.isCurrent()) setMessages(data.messages || []);
       }
-    } catch (error) {
-      console.error('Error fetching group messages:', error);
     } finally {
-      setLoading(false);
+      if (request.isCurrent()) setLoading(false);
+      request.finish();
     }
   };
-
-  const fetchMessagesQuiet = async () => {
-    try {
-      const response = await fetch(`/api/messages/groups/${group._id}/messages?limit=50`);
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(data.messages || []);
-      }
-    } catch (error) {
-      // Silent fail
-    }
-  };
+  const fetchMessagesQuiet = () => fetchMessages(true).catch(() => {});
 
   // Expose a method to add messages from SSE
   const addMessage = useCallback((message: GroupMessage) => {

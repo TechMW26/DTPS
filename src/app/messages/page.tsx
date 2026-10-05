@@ -1,5 +1,7 @@
 "use client";
 
+import { useConversationRequests } from "@/hooks/useConversationRequests";
+
 import { useState, useEffect, useRef, Suspense, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -236,7 +238,6 @@ function ClientMessagesUI() {
 
   useEffect(() => {
     if (selectedChat) {
-      fetchMessages(selectedChat);
       // Mark messages as read
       markAsRead(selectedChat);
       // Fetch user data if not in conversations
@@ -397,15 +398,27 @@ function ClientMessagesUI() {
     }
   };
 
+  const conversationRequests = useConversationRequests(selectedChat);
+  useEffect(() => {
+    setMessages([]);
+    if (selectedChat) void fetchMessages(selectedChat);
+  }, [selectedChat]);
+
   const fetchMessages = async (userId: string) => {
+    const request = conversationRequests.begin(userId, 'messages');
+    if (!request) return;
     try {
-      const response = await fetch(`/api/messages?conversationWith=${userId}`);
+      const response = await fetch(`/api/messages?conversationWith=${userId}`, { signal: request.signal });
       if (response.ok) {
         const data = await response.json();
+      if (!request.isCurrent()) return;
         setMessages(data.messages || []);
       }
     } catch (error) {
+      if (!request.isCurrent()) return;
       console.error("Error fetching messages:", error);
+    } finally {
+      request.finish();
     }
   };
 

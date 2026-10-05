@@ -1,5 +1,7 @@
 "use client";
 
+import { useConversationRequests } from "@/hooks/useConversationRequests";
+
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
@@ -547,15 +549,29 @@ function MessagesContent() {
     }
   }, [session?.user?.id]);
 
-  // Handle user parameter from URL to open specific chat
-  useEffect(() => {
-    const userId = searchParams?.get("user");
+  const handledChatLink = useRef<string | null>(null);
+  const conversationRequests = useConversationRequests(selectedConversation);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const linkedUserId = searchParams?.get("user");
 
-    if (userId && session?.user && conversations.length >= 0) {
-      // Always try to start conversation, regardless of existing conversations
-      handleUserFromURL(userId);
-    }
-  }, [searchParams, session, conversations]);
+  // Apply a deep link once, not on every conversation/unread-count refresh.
+  useEffect(() => {
+    if (!linkedUserId) { handledChatLink.current = null; return; }
+    if (!session?.user?.id || handledChatLink.current === linkedUserId) return;
+    handledChatLink.current = linkedUserId;
+    void handleUserFromURL(linkedUserId);
+  }, [linkedUserId, session?.user?.id]);
+
+  useEffect(() => {
+    setMessages([]);
+    setMessagePage(1);
+    setHasOlderMessages(false);
+    setLoadingOlderMessages(false);
+    setMessagesError(null);
+    setReplyingToMessage(null);
+    if (selectedConversation) void fetchMessages(selectedConversation);
+  }, [selectedConversation]);
 
   // Attach remote audio stream for audio-only calls
   // Auto mark missed call if not answered within 30s (caller side)
@@ -640,7 +656,7 @@ function MessagesContent() {
       if (existingConversation) {
         // Conversation exists, just select it
         setSelectedConversation(userId);
-        fetchMessages(userId);
+
       } else {
         // No conversation exists, fetch user details and create new conversation
         await fetchUserAndStartConversation(userId);
@@ -651,11 +667,14 @@ function MessagesContent() {
   };
 
   const fetchUserAndStartConversation = async (userId: string) => {
+    const previousSelection = selectedConversationRef.current;
     try {
       const response = await fetch(`/api/users/${userId}`);
+      if (selectedConversationRef.current !== previousSelection) return;
 
       if (response.ok) {
         const userData = await response.json();
+        if (selectedConversationRef.current !== previousSelection) return;
 
         // Create new conversation object
         const newConversation: Conversation = {
@@ -685,15 +704,13 @@ function MessagesContent() {
         setSelectedConversation(userId);
         setMessages([]); // Start with empty messages for new conversation
 
-        // Try to fetch any existing messages
-        fetchMessages(userId);
+        // Selection loads existing messages through the shared effect.
       } else {
         // Still create a conversation to allow messaging
         createFallbackConversation(userId);
       }
     } catch (error) {
-      // Still create a conversation to allow messaging
-      createFallbackConversation(userId);
+      if (selectedConversationRef.current === previousSelection) createFallbackConversation(userId);
     }
   };
 
@@ -721,7 +738,7 @@ function MessagesContent() {
 
     setSelectedConversation(userId);
     setMessages([]);
-    fetchMessages(userId);
+
   };
 
   useEffect(() => {
@@ -806,14 +823,18 @@ function MessagesContent() {
     conversationWith: string,
     scrollAfterLoad = true,
   ) => {
+    const request = conversationRequests.begin(conversationWith, 'messages', !scrollAfterLoad);
+    if (!request) return;
+    if (scrollAfterLoad) { setMessagesLoading(true); setMessagesError(null); }
     try {
-      selectedConversationRef.current = conversationWith;
       const response = await fetch(
         `/api/messages?conversationWith=${conversationWith}&limit=120&page=1`,
+        { signal: request.signal },
       );
+      if (!request.isCurrent()) return;
       if (response.ok) {
         const data = await response.json();
-        if (selectedConversationRef.current !== conversationWith) return;
+        if (!request.isCurrent()) return;
         const incoming: Message[] = data.messages || [];
         if (scrollAfterLoad) {
           setMessages(incoming);
@@ -847,17 +868,16 @@ function MessagesContent() {
             });
           });
         }
-      } else if (response.status === 404) {
-        // No messages found, start with empty array (this is normal for new conversations)
-        setMessages([]);
-        setHasOlderMessages(false);
       } else {
-        setMessages([]);
-        setHasOlderMessages(false);
+        throw new Error('Unable to load this conversation. Please try again.');
       }
     } catch (error) {
-      setMessages([]);
-      setHasOlderMessages(false);
+      if (request.isCurrent() && scrollAfterLoad) {
+        setMessagesError('Unable to load this conversation. Please try again.');
+      }
+    } finally {
+      if (request.isCurrent()) setMessagesLoading(false);
+      request.finish();
     }
   };
 
@@ -866,16 +886,20 @@ function MessagesContent() {
     const container = messagesContainerRef.current;
     if (!conversationWith || !container || loadingOlderMessages || !hasOlderMessages) return;
 
+    const request = conversationRequests.begin(conversationWith, 'history');
+    if (!request) return;
     const nextPage = messagePage + 1;
     const previousHeight = container.scrollHeight;
     setLoadingOlderMessages(true);
     try {
       const response = await fetch(
         `/api/messages?conversationWith=${conversationWith}&limit=120&page=${nextPage}`,
+        { signal: request.signal },
       );
-      if (!response.ok || selectedConversationRef.current !== conversationWith) return;
+      if (!response.ok || !request.isCurrent()) return;
 
       const data = await response.json();
+      if (!request.isCurrent()) return;
       const older: Message[] = data.messages || [];
       setMessages((current) => {
         const merged = new Map<string, Message>();
@@ -895,8 +919,11 @@ function MessagesContent() {
           }
         });
       });
+    } catch {
+      // Keep existing history available when a request is cancelled or fails.
     } finally {
-      setLoadingOlderMessages(false);
+      if (request.isCurrent()) setLoadingOlderMessages(false);
+      request.finish();
     }
   };
 
@@ -1681,11 +1708,13 @@ function MessagesContent() {
   }, [acceptIncomingCall, rejectIncomingCall, incomingCall, callId]);
 
   const selectConversation = (userId: string) => {
+    if (selectedConversationRef.current === userId) return;
+    selectedConversationRef.current = userId;
     setSelectedConversation(userId);
     setReplyingToMessage(null);
     setMessages([]); // Clear messages first to show loading state
 
-    fetchMessages(userId);
+
   };
 
   const startNewConversation = (user: AvailableUser) => {
@@ -1700,7 +1729,7 @@ function MessagesContent() {
     if (existingConversation) {
       // Conversation exists, just select it
       setSelectedConversation(user._id);
-      fetchMessages(user._id);
+
     } else {
       // Create new conversation
       const newConversation: Conversation = {
@@ -2260,7 +2289,14 @@ function MessagesContent() {
                     </Button>
                   </div>
                 )}
-                {messages.length === 0 ? (
+                {messagesLoading ? (
+                  <div role="status" className="p-8 text-center text-gray-500">Loading messages…</div>
+                ) : messagesError ? (
+                  <div role="alert" className="p-8 text-center">
+                    <p>{messagesError}</p>
+                    <Button variant="outline" className="mt-3" onClick={() => selectedConversation && fetchMessages(selectedConversation)}>Retry</Button>
+                  </div>
+                ) : messages.length === 0 ? (
                   <div className="text-center py-8">
                     <MessageCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-500">No messages yet</p>

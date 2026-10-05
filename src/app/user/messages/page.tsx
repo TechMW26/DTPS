@@ -1,5 +1,7 @@
 "use client";
 
+import { useConversationRequests } from "@/hooks/useConversationRequests";
+
 import { useEffect, useState, useRef, type ChangeEvent } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -528,6 +530,7 @@ export default function UserMessagesPage() {
       // Clear previous messages first for a clean slate
       setMessages([]);
       setMessagePage(1);
+      loadingOlderMessagesRef.current = false;
       setHasOlderMessages(false);
       setReplyingToMessage(null);
       fetchMessages(selectedConversation._id);
@@ -594,12 +597,16 @@ export default function UserMessagesPage() {
     }
   };
 
+  const conversationRequests = useConversationRequests(selectedConversation?._id);
+
   const fetchMessages = async (userId: string, showLoader = true) => {
+    const request = conversationRequests.begin(userId, 'messages', !showLoader);
+    if (!request) return;
     try {
       if (showLoader) setLoadingMessages(true);
 
       const response = await fetch(
-        `/api/client/messages?conversationWith=${userId}&limit=120&page=1`,
+        `/api/client/messages?conversationWith=${userId}&limit=120&page=1`, { signal: request.signal }
       );
       if (!response.ok) {
         console.error("Failed to fetch messages");
@@ -607,6 +614,7 @@ export default function UserMessagesPage() {
       }
 
       const data = await response.json();
+      if (!request.isCurrent()) return;
       const latestMessages: Message[] = data.messages || [];
       const pages = Number(data?.pagination?.pages || 0);
       setMessagePage(1);
@@ -667,8 +675,12 @@ export default function UserMessagesPage() {
       // Refresh unread counts in background (don't await - don't block rendering)
       refreshCounts().catch(() => {});
     } catch (error) {
+      if (!request.isCurrent()) return;
       console.error("Error fetching messages:", error);
       setLoadingMessages(false);
+    } finally {
+      if (request.isCurrent()) setLoadingMessages(false);
+      request.finish();
     }
   };
 
@@ -684,6 +696,8 @@ export default function UserMessagesPage() {
       return;
     }
 
+    const request = conversationRequests.begin(conversationId, 'history');
+    if (!request) return;
     loadingOlderMessagesRef.current = true;
     const nextPage = messagePage + 1;
     const previousHeight = container.scrollHeight;
@@ -692,10 +706,12 @@ export default function UserMessagesPage() {
     try {
       const response = await fetch(
         `/api/client/messages?conversationWith=${conversationId}&limit=120&page=${nextPage}`,
+        { signal: request.signal },
       );
       if (!response.ok) return;
 
       const data = await response.json();
+      if (!request.isCurrent()) return;
       const olderMessages: Message[] = data.messages || [];
       suppressAutoScrollRef.current = true;
       setMessages((current) => {
@@ -723,7 +739,8 @@ export default function UserMessagesPage() {
     } catch {
       // A later scroll/focus can retry without disturbing the open chat.
     } finally {
-      loadingOlderMessagesRef.current = false;
+      if (request.isCurrent()) loadingOlderMessagesRef.current = false;
+      request.finish();
     }
   };
 

@@ -1,5 +1,7 @@
 'use client';
 
+import { useConversationRequests } from "@/hooks/useConversationRequests";
+
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -115,15 +117,23 @@ export default function MessagesPage() {
     }
   };
 
+  const conversationRequests = useConversationRequests(selectedChat);
+
   const fetchMessages = async (userId: string) => {
+    const request = conversationRequests.begin(userId, 'messages');
+    if (!request) return;
     try {
-      const response = await fetch(`/api/messages?userId=${userId}`);
+      const response = await fetch(`/api/messages?conversationWith=${userId}`, { signal: request.signal });
       if (response.ok) {
         const data = await response.json();
+      if (!request.isCurrent()) return;
         setMessages(data.messages || []);
       }
     } catch (error) {
+      if (!request.isCurrent()) return;
       console.error('Error fetching messages:', error);
+    } finally {
+      request.finish();
     }
   };
 

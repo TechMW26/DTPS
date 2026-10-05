@@ -1,5 +1,7 @@
 "use client";
 
+import { useConversationRequests } from "@/hooks/useConversationRequests";
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -204,14 +206,19 @@ export function ChatInterface({
   }, [recipient._id]);
 
   // Load messages
+  const conversationRequests = useConversationRequests(recipient._id);
+
   const loadMessages = useCallback(async () => {
+    const request = conversationRequests.begin(recipient._id, 'messages');
+    if (!request) return;
     try {
       setLoading(true);
       const response = await fetch(
-        `/api/messages?conversationWith=${recipient._id}`,
+        `/api/messages?conversationWith=${recipient._id}`, { signal: request.signal }
       );
       if (response.ok) {
         const data = await response.json();
+      if (!request.isCurrent()) return;
         setMessages(data.messages || []);
         setTimeout(() => scrollToBottom(true), 100);
 
@@ -219,11 +226,13 @@ export function ChatInterface({
         markMessagesAsRead();
       }
     } catch (error) {
+      if (!request.isCurrent()) return;
       console.error("Failed to load messages:", error);
     } finally {
-      setLoading(false);
+      if (request.isCurrent()) setLoading(false);
+      request.finish();
     }
-  }, [markMessagesAsRead, recipient._id, scrollToBottom]);
+  }, [markMessagesAsRead, recipient._id, scrollToBottom, conversationRequests]);
 
   // Mark single message as read
   const markMessageAsRead = useCallback(async (messageId: string) => {
