@@ -9,6 +9,18 @@ const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
 suite('native user administration controls',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];async function seed(collection:string,data:Record<string,unknown>){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
+ it('saves assessments for clients without email or measurements and preserves existing contact',async()=>{
+  const dt=await seed('users',{role:'dietitian',status:'active'}),client=await seed('users',{role:'client',status:'active',assignedDietitian:dt.id,email:'kept@example.invalid'});
+  await updateNativeUser(db,dt.id,client.id,{email:'',heightCm:'',weightKg:'',occupation:'Updated'});
+  expect((await client.get()).data()).toMatchObject({email:'kept@example.invalid',occupation:'Updated'});
+  await expect(updateNativeUser(db,dt.id,client.id,{email:'invalid'})).rejects.toThrow('email');
+ });
+ it('allows counselors to resubmit unchanged baseline but rejects weight changes',async()=>{
+  const hc=await seed('users',{role:'health_counselor',status:'active'}),client=await seed('users',{role:'client',status:'active',assignedHealthCounselor:hc.id,weightKg:'60'});
+  await updateNativeUser(db,hc.id,client.id,{weight:'60',occupation:'Updated'});
+  expect((await client.get()).get('occupation')).toBe('Updated');
+  await expect(updateNativeUser(db,hc.id,client.id,{weight:61})).rejects.toMatchObject({status:403});
+ });
  it('protects role/assignment fields and both weight aliases from client changes',async()=>{const client=await seed('users',{role:'client',status:'active',weightKg:'60',password:'never-return',fcmTokens:['private']});await expect(updateNativeUser(db,client.id,client.id,{role:'admin'})).rejects.toMatchObject({status:403});await expect(updateNativeUser(db,client.id,client.id,{weight:70})).rejects.toMatchObject({status:403});const view=await readNativeUser(db,client.id,client.id);expect(view.password).toBeUndefined();expect(view.fcmTokens).toBeUndefined();});
  it('serializes email uniqueness across concurrent client updates',async()=>{const admin=await seed('users',{role:'admin',status:'active'}),a=await seed('users',{role:'client',status:'active'}),b=await seed('users',{role:'client',status:'active'}),email=`synthetic-${randomBytes(6).toString('hex')}@example.invalid`;const results=await Promise.allSettled([updateNativeUser(db,admin.id,a.id,{email}),updateNativeUser(db,admin.id,b.id,{email})]);expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);});
  it('cannot create an administrator through a dietitian session',async()=>{const dt=await seed('users',{role:'dietitian',status:'active'});await expect(createNativeStaffUser(db,dt.id,{role:'admin',firstName:'Synthetic',lastName:'Test',email:'synthetic@example.invalid',phone:'+919876543210',password:'synthetic'})).rejects.toMatchObject({status:403});});

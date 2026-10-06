@@ -885,7 +885,7 @@ export default function HealthCounselorClientDetailPage() {
   };
 
   // Health counselors CAN edit client form data (basic info, medical, lifestyle)
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     try {
       // Prepare the data to save
       const updateData = {
@@ -920,7 +920,7 @@ export default function HealthCounselorClientDetailPage() {
       if (!response.ok) {
         const error = await response.json();
         toast.error(error.error || "Failed to save client data");
-        return;
+        return false;
       }
 
       const lifestylePayload = {
@@ -963,7 +963,7 @@ export default function HealthCounselorClientDetailPage() {
 
       if (!lifestyleResponse.ok) {
         toast.error("Failed to save lifestyle data");
-        return;
+        return false;
       }
 
       const medicalPayload = {
@@ -1004,7 +1004,7 @@ export default function HealthCounselorClientDetailPage() {
 
       if (!medicalResponse.ok) {
         toast.error("Failed to save medical data");
-        return;
+        return false;
       }
 
       toast.success("Client data saved successfully");
@@ -1015,9 +1015,11 @@ export default function HealthCounselorClientDetailPage() {
         clientId: params.clientId,
         updatedFields: ["basic", "lifestyle", "medical"],
       });
+      return true;
     } catch (error) {
       console.error("Error saving client data:", error);
       toast.error("Error saving client data");
+      return false;
     }
   };
 
