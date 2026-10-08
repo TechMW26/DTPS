@@ -18,7 +18,8 @@
       90,
       100
     ],
-    "enforcedSpendCap": false
+    "enforcedSpendCap": false,
+    "totalDtpsMonthlyTargetINR": 50000
   },
   "topQueries7Days": [
     {
@@ -60,7 +61,10 @@
     "integrationTests": 2,
     "typescript": "passed",
     "liveQueryExplain": "blocked by billing-disabled PERMISSION_DENIED",
-    "productionRedis": "configured in Vercel; secret not exportable, connection not independently verified"
+    "productionRedis": "configured in Vercel; secret not exportable, connection not independently verified",
+    "configuredIndexesReady": 70,
+    "newIndexesReady": 32,
+    "billingAccount": "DTPS linked account is paid, but open=false; payment console says payment required. Separate free-trial account is not the linked account."
   },
   "followUp": [
     "After billing is restored, verify Query Explain index usage without analyze first",

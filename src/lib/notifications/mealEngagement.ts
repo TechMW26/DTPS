@@ -289,10 +289,20 @@ export async function runNativeMealEngagementNotifications(db:Firestore,now:Date
   const reuse = reusableCandidates(cached, now, cacheDuration);
   // A cached discovery contains only candidates. Always reload due plans and
   // preferences before checking completion, freezes, holds, or notification opt-outs.
+  async function loadCandidateDocuments(ids: string[]) {
+    const batches: FirebaseFirestore.DocumentSnapshot[][] = [];
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(3, Math.ceil(ids.length / 100)) }, async () => {
+      for (;;) {
+        const slot = next++, batch = ids.slice(slot * 100, (slot + 1) * 100);
+        if (!batch.length) return;
+        batches[slot] = await db.getAll(...batch.map(id => db.collection('clientmealplans').doc(id)));
+      }
+    }));
+    return batches.flat().filter(doc => doc.exists);
+  }
   const documents = reuse
-    ? (await Promise.all(Array.from({ length: Math.ceil(cached.planIds.length / 100) }, (_, index) =>
-      db.getAll(...cached.planIds.slice(index * 100, index * 100 + 100).map(id => db.collection('clientmealplans').doc(id)))
-    ))).flat().filter(doc => doc.exists)
+    ? await loadCandidateDocuments(cached.planIds)
     : (await db.collection('clientmealplans')
     .where('status', '==', 'active')
     .where('startDate', '<=', new Date(now.getTime() + 86_400_000))

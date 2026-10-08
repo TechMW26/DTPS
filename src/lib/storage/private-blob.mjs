@@ -1,6 +1,18 @@
 import { createHash } from 'node:crypto';
 import * as vercelBlob from '@vercel/blob';
 
+// Runtime-only verified content cache; never cache access decisions or expose private bytes publicly.
+const READ_CACHE_BYTES=32*1024*1024,READ_CACHE_ITEM_BYTES=8*1024*1024,READ_CACHE_TTL=30_000;
+const verifiedReads=new Map(),pendingReads=new Map(),sdkIds=new WeakMap();
+let retainedBytes=0,nextSdkId=0;
+function removeCached(key){const entry=verifiedReads.get(key);if(entry){retainedBytes-=entry.bytes.length;verifiedReads.delete(key);}}
+function retain(key,bytes){
+  for(const [existing,entry] of verifiedReads)if(entry.expiresAt<=Date.now())removeCached(existing);
+  removeCached(key);
+  while(verifiedReads.size>=64||retainedBytes+bytes.length>READ_CACHE_BYTES)removeCached(verifiedReads.keys().next().value);
+  verifiedReads.set(key,{bytes,expiresAt:Date.now()+READ_CACHE_TTL});retainedBytes+=bytes.length;
+}
+
 const PREFIX='dtps-native-staging/originals/';
 export const blobDigest = bytes => createHash('sha256').update(bytes).digest('hex');
 
@@ -20,9 +32,11 @@ export function createPrivateBlobArchive(config, sdk=vercelBlob) {
       throw new Error('Invalid private Blob reference');
     }
   }
-  async function read(ref) {
-    validate(ref);
-    const result=await sdk.get(ref.pathname,{...auth,access:'private',useCache:false});
+  const cacheReads=config.cacheReads===true;
+  if(!sdkIds.has(sdk))sdkIds.set(sdk,++nextSdkId);
+  const cacheScope=createHash('sha256').update(JSON.stringify([sdkIds.get(sdk),config.storeId,auth])).digest('hex');
+  async function readOrigin(ref,fresh=false) {
+    const result=await sdk.get(ref.pathname,{...auth,access:'private',useCache:cacheReads&&!fresh});
     // The SDK reports size=0 when CDN compression removes Content-Length.
     // Verify the decoded stream's byte length and digest below instead.
     if(!result || result.statusCode!==200 || !sameUrl(result.blob.url,ref.url) || result.blob.pathname!==ref.pathname) {
@@ -44,6 +58,27 @@ export function createPrivateBlobArchive(config, sdk=vercelBlob) {
     if(bytes.length!==ref.size || blobDigest(bytes)!==ref.sha256) throw new Error('Private Blob checksum mismatch');
     return bytes;
   }
+  async function read(ref,{fresh=false}={}) {
+    validate(ref);
+    const key=cacheScope+':'+ref.sha256+':'+ref.size;
+    if(!cacheReads||fresh||ref.size>READ_CACHE_ITEM_BYTES){
+      if(fresh)removeCached(key);
+      return readOrigin(ref,fresh);
+    }
+    const cached=verifiedReads.get(key);
+    if(cached&&cached.expiresAt>Date.now()){
+      verifiedReads.delete(key);verifiedReads.set(key,cached);
+      return Buffer.from(cached.bytes);
+    }
+    removeCached(key);
+    const pending=pendingReads.get(key);
+    if(pending)return Buffer.from(await pending);
+    // Bound in-flight cache population as well as retained memory.
+    if(pendingReads.size>=4)return readOrigin(ref);
+    const loading=readOrigin(ref).then(bytes=>{retain(key,bytes);return bytes;});
+    pendingReads.set(key,loading);
+    try{return Buffer.from(await loading);}finally{if(pendingReads.get(key)===loading)pendingReads.delete(key);}
+  }
   async function store(bytes,contentType='application/octet-stream') {
     bytes=Buffer.from(bytes);
     const sha256=blobDigest(bytes),pathname=PREFIX+sha256;
@@ -53,10 +88,10 @@ export function createPrivateBlobArchive(config, sdk=vercelBlob) {
       if(!sameUrl(written.url,ref.url) || written.pathname!==pathname) throw new Error('Blob write used an unexpected store or path');
     } catch(error) {
       // Existing content is never overwritten. Concurrent/resumed copies must verify exactly.
-      try {await read(ref);} catch {throw error;}
+      try {await read(ref,{fresh:true});} catch {throw error;}
       return ref;
     }
-    await read(ref);
+    await read(ref,{fresh:true});
     return ref;
   }
   return {store,read};

@@ -58,3 +58,26 @@ suite('native meal engagement scheduling',()=>{
  });
  it('does not repeat sparse plan days and disables the live provider wrapper locally',async()=>{const raw=(await plan.get()).data()!;raw.startDate=new Date('2026-09-29T00:00:00+05:30');raw.endDate=new Date('2026-10-01T23:59:59+05:30');raw.meals[0].date=raw.meals[0].date.toDate();expect(getPlanMealSchedules(raw,'2026-09-30')).toHaveLength(1);expect(getPlanMealSchedules(raw,'2026-10-01')).toHaveLength(0);expect(await runMealEngagementNotifications()).toMatchObject({skipped:'local_delivery_disabled'});});
 });
+
+
+describe('meal candidate read concurrency',()=>{
+ it('limits candidate reloads to three RPCs and reads every candidate once',async()=>{
+  const now=new Date('2026-09-30T09:00:00Z');
+  const ids=Array.from({length:701},(_,i)=>String(i));
+  let active=0,peak=0;
+  const getAll=jest.fn(async(...refs:string[])=>{
+   active++;peak=Math.max(peak,active);
+   await new Promise(resolve=>setTimeout(resolve,2));
+   active--;
+   return refs.map(id=>({id,exists:false}));
+  });
+  const fakeDb={collection:()=>({doc:(id:string)=>id}),getAll} as unknown as ReturnType<typeof getNativeDatabase>;
+  const cache:MealEngagementCandidateCache={get:async()=>({generatedAt:now.getTime(),expiresAt:now.getTime()+120000,planIds:ids,plans:ids.length}),set:jest.fn()};
+  const deliver=jest.fn();
+  expect(await runNativeMealEngagementNotifications(fakeDb,now,deliver,cache)).toMatchObject({discoveryCached:true,plansLoaded:0});
+  expect(peak).toBe(3);
+  expect(getAll.mock.calls.flat()).toEqual(ids);
+  expect(getAll.mock.calls.every(batch=>batch.length<=100)).toBe(true);
+  expect(deliver).not.toHaveBeenCalled();
+ });
+});

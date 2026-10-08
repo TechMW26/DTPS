@@ -11,12 +11,73 @@ class SocketClient {
   private _down = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
+  private requested = false;
+  private lifecycleBound = false;
+  private suspended = false;
+  private resyncOnConnect = false;
+  private hideGraceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private canStream() {
+    return (typeof document === 'undefined' || document.visibilityState !== 'hidden') &&
+      (typeof navigator === 'undefined' || navigator.onLine !== false);
+  }
+  private suspend = () => {
+    if (!this.requested) return;
+    if (this.hideGraceTimer) clearTimeout(this.hideGraceTimer);
+    this.hideGraceTimer = null;
+    const wasOpen = !!this.source || this._connected;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    // Keep the replay cursor and subscriptions, unlike an explicit sign-out.
+    const source = this.source; this.source = null; source?.close();
+    this._connected = false; this.suspended = true;
+    if (wasOpen) this.deliver('disconnect', {});
+  };
+  private resume = () => {
+    if (!this.requested) return;
+    if (!this.canStream()) {
+      // Avoid reconnecting on quick tab switches. Offline/pagehide still stop
+      // immediately; an initially hidden tab never opens a stream at all.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false || !this.source) this.suspend();
+      else if (!this.hideGraceTimer) this.hideGraceTimer = setTimeout(this.suspend, 10_000);
+      return;
+    }
+    if (this.hideGraceTimer) clearTimeout(this.hideGraceTimer);
+    this.hideGraceTimer = null;
+    if (this.suspended) {
+      this.resyncOnConnect = true;
+      this.failures = 0;
+      this.suspended = false;
+    }
+    this.connect();
+  };
+  private bindLifecycle() {
+    if (this.lifecycleBound || typeof window === 'undefined' || typeof document === 'undefined') return;
+    this.lifecycleBound = true;
+    document.addEventListener('visibilitychange', this.resume);
+    window.addEventListener('offline', this.suspend);
+    window.addEventListener('online', this.resume);
+    window.addEventListener('pagehide', this.suspend);
+    window.addEventListener('pageshow', this.resume);
+  }
+  private unbindLifecycle() {
+    if (!this.lifecycleBound) return;
+    this.lifecycleBound = false;
+    document.removeEventListener('visibilitychange', this.resume);
+    window.removeEventListener('offline', this.suspend);
+    window.removeEventListener('online', this.resume);
+    window.removeEventListener('pagehide', this.suspend);
+    window.removeEventListener('pageshow', this.resume);
+  }
   static getInstance() { return this.instance ||= new SocketClient(); }
   get connected() { return this._connected; }
   get isDown() { return this._down; }
   getSocket() { return this.source; }
   getReconnectPolicy() { return { initialDelay:1000,maxDelay:30000,maxRetries:15,multiplier:1.5 }; }
   connect(): EventSource | null {
+    this.requested = true;
+    this.bindLifecycle();
+    if (!this.canStream()) { this.suspend(); return null; }
     if (this.source || typeof EventSource === 'undefined') return this.source;
     if (this.retryTimer) { clearTimeout(this.retryTimer);this.retryTimer=null; }
     const source = new EventSource(`/api/realtime/events${this.cursor ? `?cursor=${encodeURIComponent(this.cursor)}` : ''}`);
@@ -32,7 +93,10 @@ class SocketClient {
       try {
         const payload=JSON.parse(event.data);
         if(payload.event==='connected'){
-          const recovered=this._down;
+          // The server only replays a bounded history. Refresh subscribers after
+          // a hidden/offline interval so older changes are not silently missed.
+          const recovered=this._down||this.resyncOnConnect;
+          this.resyncOnConnect=false;
           this._connected=true;this._down=false;this.failures=0;
           this.deliver('connect',payload.data);
           if(recovered)this.deliver(SOCKET_EVENTS.SOCKET_RECOVERED,{});
@@ -53,6 +117,8 @@ class SocketClient {
     return source;
   }
   disconnect() {
+    this.requested=false;this.unbindLifecycle();this.suspended=false;this.resyncOnConnect=false;
+    if(this.hideGraceTimer)clearTimeout(this.hideGraceTimer);this.hideGraceTimer=null;
     if(this.retryTimer)clearTimeout(this.retryTimer);this.retryTimer=null;
     this.source?.close();this.source=null;this._connected=false;
     this.cursor='';this.seen.clear();this.failures=0;

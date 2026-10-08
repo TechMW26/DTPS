@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import OpenAI from 'openai';
+import { UserRole } from '@/types';
+import {readRecipeInput,RecipeInputError} from '@/lib/recipes/ai-request';
 
 function getOpenAIClient() {
   return new OpenAI({
@@ -75,16 +77,19 @@ const PORTION_SIZES = [
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
+    if (![UserRole.ADMIN,UserRole.DIETITIAN,UserRole.HEALTH_COUNSELOR].includes(session.user.role as UserRole)) {
+      return NextResponse.json({error:'Forbidden'},{status:403});
+    }
+    const body = await readRecipeInput(request,8192);
     const { recipeName } = body;
 
-    if (!recipeName || typeof recipeName !== 'string' || recipeName.trim().length < 2) {
+    if (!recipeName || typeof recipeName !== 'string' || recipeName.trim().length < 2 || recipeName.trim().length > 200) {
       return NextResponse.json(
-        { error: 'Please provide a valid recipe name (at least 2 characters)' },
+        { error: 'Please provide a recipe name between 2 and 200 characters' },
         { status: 400 }
       );
     }
@@ -169,8 +174,9 @@ Important rules:
         ],
         temperature: 0.3,
         max_tokens: 2000,
-      });
+      },{signal:request.signal});
     } catch (openaiError: any) {
+      if(request.signal.aborted)return NextResponse.json({error:"Request cancelled"},{status:499});
       console.error('OpenAI API Error:', {
         message: openaiError?.message,
         code: openaiError?.code,
@@ -338,6 +344,8 @@ Important rules:
 
     return NextResponse.json(sanitized);
   } catch (error: any) {
+    if(request.signal.aborted)return NextResponse.json({error:'Request cancelled'},{status:499});
+    if(error instanceof RecipeInputError)return NextResponse.json({error:error.message},{status:error.status});
     console.error('AI recipe generation error:', {
       message: error?.message,
       code: error?.code,

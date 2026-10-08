@@ -7,6 +7,8 @@ import { UserRole } from '@/types';
 import {clearCacheByTag} from '@/lib/cache/memoryCache';
 import {nativeRecipeDuplicateMap,findNativeSimilarRecipes,compareIngredients,mergeNativeRecipe} from '@/lib/db/repository/native-staff-recipe-dedup';
 import OpenAI from 'openai';
+import {setTimeout as delay} from 'node:timers/promises';
+import {readRecipeInput,RecipeInputError} from '@/lib/recipes/ai-request';
 
 function getOpenAIClient() {
   return new OpenAI({
@@ -71,17 +73,19 @@ function parseServingsToNumber(servingsStr: string): number {
   return 1;
 }
 
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function sleep(ms: number,signal:AbortSignal) {
+  return delay(ms,undefined,{signal});
 }
 
 // Retry with exponential backoff for rate limits
-async function generateRecipeWithRetry(recipeName: string, maxRetries = 4): Promise<any> {
+async function generateRecipeWithRetry(recipeName: string, signal:AbortSignal, maxRetries = 4): Promise<any> {
   let lastError: any;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await generateRecipeFromAI(recipeName);
+      signal.throwIfAborted();
+      return await generateRecipeFromAI(recipeName,signal);
     } catch (err: any) {
+      signal.throwIfAborted();
       lastError = err;
       const isRateLimit =
         err?.status === 429 ||
@@ -94,7 +98,7 @@ async function generateRecipeWithRetry(recipeName: string, maxRetries = 4): Prom
         // Exponential backoff: 2s, 4s, 8s, 16s + jitter
         const backoffMs = Math.pow(2, attempt + 1) * 1000 + Math.random() * 1000;
         console.log(`Rate limited on "${recipeName}", retrying in ${(backoffMs / 1000).toFixed(1)}s (attempt ${attempt + 1}/${maxRetries})`);
-        await sleep(backoffMs);
+        await sleep(backoffMs,signal);
         continue;
       }
       throw err;
@@ -103,7 +107,7 @@ async function generateRecipeWithRetry(recipeName: string, maxRetries = 4): Prom
   throw lastError;
 }
 
-async function generateRecipeFromAI(recipeName: string) {
+async function generateRecipeFromAI(recipeName: string, signal:AbortSignal) {
   const prompt = `You are a professional Indian nutritionist and chef. Given a recipe name, provide detailed nutritional and ingredient information. While the focus is Indian cuisine, handle any cuisine type accurately.
 
 Recipe Name: "${recipeName}"
@@ -158,7 +162,7 @@ Rules:
     ],
     temperature: 0.3,
     max_tokens: 2000,
-  });
+  },{signal});
 
   const responseText = completion.choices[0]?.message?.content?.trim();
   if (!responseText) throw new Error('Empty AI response');
@@ -233,10 +237,10 @@ export async function POST(request: Request) {
 
   let body: any;
   try {
-    body = await request.json();
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid request body' }), {
-      status: 400,
+    body = await readRecipeInput(request,1024*1024);
+  } catch(error) {
+    return new Response(JSON.stringify({ error: request.signal.aborted?'Request cancelled':error instanceof RecipeInputError?error.message:'Invalid request body' }), {
+      status: request.signal.aborted?499:error instanceof RecipeInputError?error.status:400,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -255,6 +259,7 @@ export async function POST(request: Request) {
   const names: string[] = [];
   for (const raw of recipeNames.split(',')) {
     const trimmed = raw.trim();
+    if(trimmed.length>200)return new Response(JSON.stringify({error:'Each recipe name must be at most 200 characters'}),{status:400,headers:{'Content-Type':'application/json'}});
     if (trimmed.length >= 2) {
       const key = trimmed.toLowerCase();
       if (!namesSet.has(key)) {
@@ -285,14 +290,23 @@ export async function POST(request: Request) {
   const BATCH_DELAY_MS = 500;
 
   // Create a streaming SSE response
+  const abort=new AbortController();
+  const onAbort=()=>abort.abort();
+  request.signal.addEventListener('abort',onAbort,{once:true});
+  if(request.signal.aborted)onAbort();
+  const signal=abort.signal;
+  let cancelled=false;
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
-    async start(controller) {
+    start(controller) {
+      void (async()=>{
       const send = (event: string, data: any) => {
+        if(signal.aborted||cancelled)return;
         controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       };
 
       try {
+        signal.throwIfAborted();
         const db=getNativeDatabase();await recipeActor(db,userId,true);
 
         // ── Pre-check: batch find all duplicates BEFORE calling AI ──
@@ -335,13 +349,15 @@ export async function POST(request: Request) {
 
         // ── Process only new names in batches ──
         for (let batchStart = 0; batchStart < namesToGenerate.length; batchStart += BATCH_SIZE) {
+          signal.throwIfAborted();
           const batch = namesToGenerate.slice(batchStart, batchStart + BATCH_SIZE);
 
           const batchPromises = batch.map(async (recipeName) => {
             const index = names.indexOf(recipeName);
             try {
               // AI generation with automatic retry on rate limits
-              const aiData = await generateRecipeWithRetry(recipeName);
+              const aiData = await generateRecipeWithRetry(recipeName,signal);
+              signal.throwIfAborted();
 
               // ── Post-generation dedup: check if AI ingredients match an existing recipe ──
               const similarRecipes = await findNativeSimilarRecipes(db,recipeName,3);
@@ -411,6 +427,7 @@ export async function POST(request: Request) {
                 progress: processedCount, total: totalCount,
               });
             } catch (err: any) {
+              if(signal.aborted)return;
               console.error(`Error creating "${recipeName}":`, err?.message || err);
               errorCount++;
               processedCount++;
@@ -426,7 +443,7 @@ export async function POST(request: Request) {
 
           // Pace between batches
           if (batchStart + BATCH_SIZE < namesToGenerate.length) {
-            await sleep(BATCH_DELAY_MS);
+            await sleep(BATCH_DELAY_MS,signal);
           }
         }
 
@@ -445,12 +462,16 @@ export async function POST(request: Request) {
         });
 
       } catch (err: any) {
+        if(signal.aborted)return;
         console.error('Bulk stream error:', err);
         send('error', { message: err?.message || 'Unexpected error' });
       } finally {
-        controller.close();
+        request.signal.removeEventListener('abort',onAbort);
+        if(!cancelled)controller.close();
       }
+      })();
     },
+    cancel(){cancelled=true;abort.abort();},
   });
 
   return new Response(stream, {

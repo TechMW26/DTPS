@@ -62,6 +62,7 @@ export function UnreadCountProvider({ children }: UnreadCountProviderProps) {
 
   // Manual refresh function
   const refreshCounts = useCallback(async () => {
+    if (document.visibilityState === 'hidden' || navigator.onLine === false) return;
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -97,6 +98,13 @@ export function UnreadCountProvider({ children }: UnreadCountProviderProps) {
       }
     }
   }, []);
+
+  // Reconcile counts after replay gaps (the server retains only a bounded
+  // event history), without keeping hidden tabs connected or polling.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    return socketClient.on(SOCKET_EVENTS.SOCKET_RECOVERED, () => { void refreshCounts(); });
+  }, [status, refreshCounts]);
 
   // Initial fetch when socket is not connected yet
   useEffect(() => {
