@@ -19,6 +19,40 @@ describe('distributed JSON cache', () => {
     (redisConfigured as jest.Mock).mockReturnValue(true);
     (redisOperation as jest.Mock).mockImplementation(fn => fn(client));
   });
+  it('retains opt-in summaries during a Redis outage, with bounded expiry', async () => {
+    (redisConfigured as jest.Mock).mockReturnValue(false);
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(100000);
+    const load = jest.fn(async () => ({ count: 1 }));
+    const options = { localFallback: true, ttl: 1000, tags: ['native-dashboard'] };
+    try {
+      await withJsonCache('fallback-expiry', load, options);
+      await withJsonCache('fallback-expiry', load, options);
+      expect(load).toHaveBeenCalledTimes(1);
+      clock.mockReturnValue(101001);
+      await withJsonCache('fallback-expiry', load, options);
+      expect(load).toHaveBeenCalledTimes(2);
+    } finally { clock.mockRestore(); }
+  });
+  it('does not retain fallback results unless explicitly opted in', async () => {
+    (redisConfigured as jest.Mock).mockReturnValue(false);
+    const load = jest.fn(async () => 1);
+    await withJsonCache('uncached-fallback', load);
+    await withJsonCache('uncached-fallback', load);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+  it('invalidates local entries and in-flight results while Redis is down', async () => {
+    (redisOperation as jest.Mock).mockResolvedValue(null);
+    const options = { localFallback: true, tags: ['native-dashboard'] };
+    let finish!: (n: number) => void;
+    const old = withJsonCache('fallback-race', () => new Promise<number>(resolve => { finish = resolve; }), options);
+    while (!finish) await Promise.resolve();
+    await invalidateJsonCacheTag('native-dashboard');
+    finish(1); await old;
+    expect(await withJsonCache('fallback-race', async () => 2, options)).toBe(2);
+    expect(await withJsonCache('fallback-race', async () => 3, options)).toBe(2);
+    await invalidateJsonCacheTag('native-dashboard');
+    expect(await withJsonCache('fallback-race', async () => 4, options)).toBe(4);
+  });
   it('reuses JSON across reads, coalesces a burst, and bounds expiry', async () => {
     const load = jest.fn(async () => ({ count: 42 }));
     const results = await Promise.all(Array.from({ length: 20 }, () => withJsonCache('catalog', load, { tags: ['recipes'], ttl: 300_000 })));

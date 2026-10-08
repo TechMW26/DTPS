@@ -7,7 +7,7 @@ import { touchNativePresence } from '@/lib/realtime/native-presence';
 import { Timestamp } from 'firebase-admin/firestore';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       const close=()=>{if(closed)return;closed=true;clearInterval(heartbeat);clearTimeout(deadline);unsubscribeEvents();unsubscribeActor();request.signal.removeEventListener('abort',close);try{controller.close();}catch{/* Stream already cancelled. */}};
       stop=close;
       const heartbeat=setInterval(()=>{write(': heartbeat\n\n');void touchNativePresence(db,actor.id).catch(close);},30_000);
-      const deadline=setTimeout(close,50_000);
+      const deadline=setTimeout(close,240_000);
       request.signal.addEventListener('abort',close,{once:true});
       if(request.signal.aborted){close();return;}
       write('retry: 1000\n\n');

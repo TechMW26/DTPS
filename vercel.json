@@ -35,7 +35,7 @@
       "maxDuration": 300
     },
     "src/app/api/realtime/events/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "src/app/api/internal/notification-outbox/route.ts": {
       "maxDuration": 60

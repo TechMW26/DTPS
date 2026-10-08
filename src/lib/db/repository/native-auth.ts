@@ -53,7 +53,8 @@ export async function nativeOtpLogin(db:Firestore,id:string,context:LoginContext
 }
 export async function nativeSessionStatus(db:Firestore,id:string,commerce=false) {
   validId(id);const ref=db.collection(commerce?'woocommerceclients':'users').doc(id);
-  const doc=await ref.get(),data=doc.data();if(!data)return null;
+  const [doc]=await db.getAll(ref,{fieldMask:['status','logoutOtherSessionsAt','keepCurrentSessionId']});
+  const data=doc.data();if(!data)return null;
   const raw=data.logoutOtherSessionsAt;
   const date=raw?.toDate?raw.toDate():raw instanceof Date?raw:undefined;
   return {status:data.status||(commerce?'active':'inactive'),logoutOtherSessionsAt:date,keepCurrentSessionId:data.keepCurrentSessionId as string|undefined};
@@ -73,5 +74,5 @@ export async function saveNativeCalendarCredentials(db:Firestore,id:string,accou
   });});
 }
 export async function nativeOnboardingStatus(db:Firestore,id:string) {
-  validId(id);const user=await db.collection('users').doc(id).get();return Boolean(user.get('onboardingCompleted'));
+  validId(id);const [user]=await db.getAll(db.collection('users').doc(id),{fieldMask:['onboardingCompleted']});return Boolean(user.get('onboardingCompleted'));
 }

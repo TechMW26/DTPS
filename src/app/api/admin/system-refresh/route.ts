@@ -1,3 +1,4 @@
+import {invalidateJsonCacheTag} from '@/lib/cache/json-cache';
 import {nativeResponseJson} from '@/lib/api/native-response';
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
   // route cache. Other browser instances clear their own CacheStorage when
   // they receive the revision below.
   serverCache.clear();
+  await invalidateJsonCacheTag('native-dashboard');
   revalidatePath("/", "layout");
   const online=await db.collection('_nativePresence').where('expiresAt','>',new Date()).count().get();
   const connectedUsers=online.data().count;
