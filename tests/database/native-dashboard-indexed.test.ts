@@ -40,19 +40,14 @@ test('query failure does not return incomplete totals',async()=>{
  mockReject=true;
  await expect(indexedDashboardRows('payments',['one'])).rejects.toThrow('index unavailable');
 });
-test('dense index reads exclude every client outside the authorized scope',async()=>{
- const ids=Array.from({length:3000},(_,i)=>`client-${i}`);
- mockDenseIds=[ids[0],'outside-scope',ids[1]];
- const rows=await indexedDashboardRows('plans',ids,true);
- expect(rows.map(r=>r.clientId)).toEqual(ids.slice(0,2));
- expect(mockLimits).toEqual([50001]);
-});
-test('dense read cap falls back to complete scoped queries, never truncated totals',async()=>{
+test('large scopes never scan unrelated clients even when dense mode is requested',async()=>{
  const ids=Array.from({length:3000},(_,i)=>`client-${i}`);
  mockDenseIds=Array(50001).fill('outside-scope');
  const rows=await indexedDashboardRows('plans',ids,true);
  expect(rows.map(r=>r.clientId)).toEqual(ids);
- expect(mockBatches).toHaveLength(11);
+ expect(mockBatches).toHaveLength(10);
+ expect(mockBatches.flat()).toEqual(ids);
+ expect(mockLimits).toEqual([]);
 });
 test('payment summary retains legacy numeric strings, status counts and expiry boundaries',()=>{
  const start=new Date('2026-10-01T00:00:00Z'),end=new Date('2026-10-05T00:00:00Z');
@@ -89,8 +84,10 @@ test('pending plans preserve completed and paused history while enforcing scope 
  const ids=Array.from({length:3000},(_,i)=>`client-${i}`);
  mockDenseIds=[ids[0],'outside-scope',ids[1]];
  const rows=await indexedDashboardRows('pendingPlans',ids,true);
- expect(rows.map(row=>row.clientId)).toEqual(ids.slice(0,2));
- expect(mockStatuses).toEqual([['active','paused','completed']]);
+ expect(rows.map(row=>row.clientId)).toEqual(ids);
+ expect(mockBatches.flat()).toEqual(ids);
+ expect(mockStatuses).toHaveLength(10);
+ expect(mockStatuses.every(statuses=>statuses.join(',')==='active,paused,completed')).toBe(true);
 });
 test('pending purchases use bounded scoped reads even when dense mode is requested',async()=>{
  const ids=Array.from({length:3001},(_,i)=>`client-${i}`);

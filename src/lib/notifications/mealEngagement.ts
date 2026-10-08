@@ -1,4 +1,5 @@
 import type {Firestore} from 'firebase-admin/firestore';
+import { candidateCacheDuration, mealEngagementCandidateCache, reusableCandidates, type MealEngagementCandidateCache } from './mealEngagementCandidates';
 import { getNativeDatabase } from '@/lib/db/firestore-native';
 import { hydrateNativeDocument } from '@/lib/storage/native-document';
 import { nativeDates } from '@/lib/db/repository/native-plan-editor';
@@ -272,26 +273,36 @@ export async function runMealEngagementNotifications(now = new Date()) {
   if (process.env.NODE_ENV !== 'production') {
     return { plans: 0, due: 0, sent: 0, duplicates: 0, failed: 0, skipped: 'local_delivery_disabled' };
   }
-  return runNativeMealEngagementNotifications(getNativeDatabase(),now,sendNotificationToUser);
+  const db = getNativeDatabase();
+  return runNativeMealEngagementNotifications(db, now, sendNotificationToUser, mealEngagementCandidateCache(db));
 }
 
 /** Injectable provider boundary allows emulator regressions without outbound delivery. */
-export async function runNativeMealEngagementNotifications(db:Firestore,now:Date,deliver:typeof sendNotificationToUser){
+export async function runNativeMealEngagementNotifications(db:Firestore,now:Date,deliver:typeof sendNotificationToUser, candidateCache?: MealEngagementCandidateCache){
   const lookbackMinutes = Math.max(
     1,
     Math.min(Number(process.env.MEAL_REMINDER_LOOKBACK_MINUTES || 4), 15),
   );
 
-  const snapshot = await db.collection('clientmealplans')
+  const cacheDuration = candidateCacheDuration(lookbackMinutes);
+  const cached = candidateCache ? await candidateCache.get() : null;
+  const reuse = reusableCandidates(cached, now, cacheDuration);
+  // A cached discovery contains only candidates. Always reload due plans and
+  // preferences before checking completion, freezes, holds, or notification opt-outs.
+  const documents = reuse
+    ? (await Promise.all(Array.from({ length: Math.ceil(cached.planIds.length / 100) }, (_, index) =>
+      db.getAll(...cached.planIds.slice(index * 100, index * 100 + 100).map(id => db.collection('clientmealplans').doc(id)))
+    ))).flat().filter(doc => doc.exists)
+    : (await db.collection('clientmealplans')
     .where('status', '==', 'active')
     .where('startDate', '<=', new Date(now.getTime() + 86_400_000))
-    .where('endDate', '>=', new Date(now.getTime() - 86_400_000)).get();
+    .where('endDate', '>=', new Date(now.getTime() - 86_400_000)).get()).docs;
   const plans: LooseRecord[] = [];
   // Hydrate large plan fields stored in Blob before calculating reminder schedules.
-  for (let offset = 0; offset < snapshot.size; offset += 10) {
-    await Promise.all(snapshot.docs.slice(offset, offset + 10).map(async doc => {
-      const plan = nativeDates(await hydrateNativeDocument(doc.data()));
-      if (plan.isDeleted || plan.reminders?.mealReminders === false) return;
+  for (let offset = 0; offset < documents.length; offset += 10) {
+    await Promise.all(documents.slice(offset, offset + 10).map(async doc => {
+      const plan = nativeDates(await hydrateNativeDocument(doc.data()!));
+      if (plan.status !== 'active' || plan.isDeleted || plan.reminders?.mealReminders === false) return;
       if (!plan.meals?.length && typeof plan.templateId === 'string') {
         const template = await db.collection('diettemplates').doc(plan.templateId).get();
         if (template.exists) plan.templateId = nativeDates(await hydrateNativeDocument(template.data()!));
@@ -310,7 +321,23 @@ export async function runNativeMealEngagementNotifications(db:Firestore,now:Date
     users.map((user) => [String(user._id), user]),
   );
 
-  const summary = { plans: plans.length, due: 0, sent: 0, duplicates: 0, failed: 0 };
+  if (!reuse && candidateCache && cacheDuration > 0) {
+    // Include every minute through expiry, including local midnight. New/retimed
+    // plans are rediscovered before their existing lookback window elapses.
+    const candidateIds = plans.filter(plan => {
+      const user = preferencesByClient.get(String(plan.clientId));
+      const timeZone = isValidMealTimeZone(user?.notificationTimeZone) ? user.notificationTimeZone : MEAL_NOTIFICATION_TIMEZONE;
+      for (let offset = 0; offset <= cacheDuration; offset += 60_000) {
+        const at = new Date(now.getTime() + offset);
+        const parts = zonedParts(at, timeZone);
+        if (getDueMealEvents(getPlanMealSchedules(plan, getZonedDateKey(at, timeZone)), parts.hour * 60 + parts.minute, lookbackMinutes).length) return true;
+      }
+      return false;
+    }).map(plan => String(plan._id));
+    await candidateCache.set({ generatedAt: now.getTime(), expiresAt: now.getTime() + cacheDuration, planIds: candidateIds, plans: plans.length });
+  }
+
+  const summary = { plans: reuse ? cached.plans : plans.length, due: 0, sent: 0, duplicates: 0, failed: 0, discoveryCached: reuse, plansLoaded: plans.length };
   async function processPlan(plan: LooseRecord) {
     const user = preferencesByClient.get(String(plan.clientId));
     if (!user || !allowsMealEngagement(user) || user?.holdStatus?.isOnHold) return;
@@ -334,9 +361,12 @@ export async function runNativeMealEngagementNotifications(db:Firestore,now:Date
       const dispatch = db.collection('mealengagementdispatches').doc(createHash('sha256').update(dispatchId).digest('hex'));
       try {
         await db.runTransaction(async tx=>{
-          const existing=await tx.get(db.collection('mealengagementdispatches').where('_id','==',dispatchId).limit(1));
           const current=await tx.get(dispatch);
-          if(!existing.empty||current.exists)throw Object.assign(new Error('Dispatch already claimed'),{code:6});
+          if(current.exists)throw Object.assign(new Error('Dispatch already claimed'),{code:6});
+          // Only legacy records need the compatibility lookup. Most overlapping
+          // cron attempts already have a deterministic claim and stop above.
+          const existing=await tx.get(db.collection('mealengagementdispatches').where('_id','==',dispatchId).limit(1));
+          if(!existing.empty)throw Object.assign(new Error('Dispatch already claimed'),{code:6});
           tx.create(dispatch,{
           _id: dispatchId,
           clientId,

@@ -8,8 +8,7 @@ async function related(db:Firestore,collection:string,field:string,ids:string[],
  if(collection==='clientmealplans'&&!from&&!to&&process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST){
   // This index includes drafts and history; dashboard-only active filtering must be disabled.
   const uniqueIds=[...new Set(ids)];
-  const dense=uniqueIds.length>=3000&&uniqueIds.length*2>=(await db.collection('users').where('role','==','client').count().get()).data().count;
-  return indexedDashboardRows('plans',uniqueIds,dense,false,planNameTerms);
+  return indexedDashboardRows('plans',uniqueIds,false,false,planNameTerms);
  }
  if(ids.length>=300&&collection==='unifiedpayments'&&field==='client'&&!from&&!to&&process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST)return indexedDashboardRows('directoryPayments',ids);
  const result:DocumentData[][]=[],uniqueIds=[...new Set(ids)];let next=0;

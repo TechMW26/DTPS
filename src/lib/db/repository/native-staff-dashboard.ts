@@ -13,7 +13,9 @@ export async function dashboardClients(db:Firestore,actorId:string,kind:'dietiti
  let denseScope=false;
  if(process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST){
   const scope=await indexedDashboardScope(staff,kind==='health_counselor',role==='health_counselor'&&kind!=='health_counselor',kind!=='pending');
-  denseScope=scope.length>=3000&&scope.length*2>=(await db.collection('users').where('role','==','client').count().get()).data().count;
+  // Summary projections depend only on this authorized scope; counting every
+  // client just to choose a read strategy adds a global aggregation per request.
+  denseScope=scope.length>=3000;
   if(denseScope){
    const clients=await indexedDashboardClients(scope);
    if(clients)return {role,clients:clients.filter(c=>kind!=='pending'||c.status!=='suspended').sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime()),summaryOnly:true,denseScope};

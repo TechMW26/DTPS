@@ -1,0 +1,78 @@
+{
+  "observedAt": "2026-10-08",
+  "project": "dtps-2cbac",
+  "database": "dtps-native-staging",
+  "billing": {
+    "period": "2026-10-01 through 2026-10-08",
+    "projectNetINR": 60182.25,
+    "firestoreINR": 59891.84,
+    "readUnits": 10757833780,
+    "readCostINR": 53696.81,
+    "outboundGiB": 450.44,
+    "outboundCostINR": 5188.5,
+    "forecastProjectINR": 134290.7,
+    "monthlyTargetINR": 25000,
+    "taxIncluded": false,
+    "existingBudgetAlertPercentages": [
+      50,
+      90,
+      100
+    ],
+    "enforcedSpendCap": false
+  },
+  "topQueries7Days": [
+    {
+      "collection": "clientmealplans",
+      "filter": "dietitianId + operationId",
+      "readUnits": 3101616817,
+      "executions": 9715
+    },
+    {
+      "collection": "_nativeMediaReferences",
+      "filter": "urlHash",
+      "readUnits": 1705314804,
+      "executions": 107754
+    },
+    {
+      "collection": "clientmealplans",
+      "filter": "status + startDate + endDate",
+      "readUnits": 1154786870,
+      "executions": 3814
+    },
+    {
+      "collection": "mealengagementdispatches",
+      "filter": "_id",
+      "readUnits": 1002676850,
+      "executions": 64085
+    }
+  ],
+  "changes": [
+    "32 additive indexes for observed lookup, reminder, history, payment, notification and cleanup queries; existing indexes preserved",
+    "Reminder discovery cached for up to two minutes; due plans and preferences reloaded before delivery",
+    "Deterministic reminder claims checked before legacy lookup",
+    "Dashboard relationship queries batched by authorized client IDs instead of broad scans",
+    "Staff assignment counts use indexed branches and deduplicate client IDs",
+    "Global client counts removed from read-strategy selection"
+  ],
+  "validation": {
+    "databaseSuites": 6,
+    "databaseTests": 31,
+    "integrationTests": 2,
+    "typescript": "passed",
+    "liveQueryExplain": "blocked by billing-disabled PERMISSION_DENIED",
+    "productionRedis": "configured in Vercel; secret not exportable, connection not independently verified"
+  },
+  "followUp": [
+    "After billing is restored, verify Query Explain index usage without analyze first",
+    "Measure at least 24 hours of normal traffic; exclude outage hours",
+    "Compare Query Insights read units per execution and total daily billing after reporting delay",
+    "Target all-in future run rate below INR 806/day for a 31-day month; reserve room for tax and hosting",
+    "Use node tools/firebase-migration/read-cost-usage.mjs --days=7 for read-only monitoring; do not sum Query and RunQuery aliases"
+  ],
+  "limitations": [
+    "Already incurred charges cannot be undone by code changes",
+    "No measured post-release savings yet; monthly target is not guaranteed",
+    "Indexes add modest write/storage overhead; review actual usage before removing any",
+    "Redis failure falls back to warm-instance cache and normal discovery; cross-instance savings depend on healthy Redis"
+  ]
+}

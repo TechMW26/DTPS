@@ -5,7 +5,7 @@ jest.mock('@/lib/notifications/mealEngagement', () => ({ runMealEngagementNotifi
 
 beforeEach(() => {
   process.env.CRON_SECRET = 'test-cron-secret';
-  jest.mocked(runMealEngagementNotifications).mockResolvedValue({ plans: 1, due: 1, sent: 1, failed: 0, duplicates: 0 });
+  jest.mocked(runMealEngagementNotifications).mockResolvedValue({ plans: 1, due: 1, sent: 1, failed: 0, duplicates: 0, discoveryCached: false, plansLoaded: 1 });
 });
 afterEach(() => { delete process.env.CRON_SECRET; });
 
