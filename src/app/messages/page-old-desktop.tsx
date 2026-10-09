@@ -168,9 +168,12 @@ interface AvailableUser {
 function MessagesContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
+  const knownConversationIds = useRef(new Set<string>());
+  const presenceParticipants = useRef('');
   const conversationRevision = useRef(0);
   const conversationFetchPending = useRef(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  knownConversationIds.current = new Set(conversations.map(row => row.user._id));
   const [selectedConversation, setSelectedConversation] = useState<
     string | null
   >(null);
@@ -349,9 +352,10 @@ function MessagesContent() {
             }
             conversationRevision.current++;
             setConversations(prev => applyConversationMessage(prev, incoming, session?.user?.id || '', currentConv));
-            // Reconcile new peers and authoritative unread counts; stale responses
-            // cannot overwrite a more recent realtime event.
-            fetchConversationsRef.current();
+            // Known peers are updated locally; only discovery needs another read.
+            const peerId = String((data as any)?.conversationWith ||
+              (String(incoming.sender?._id) === session?.user?.id ? incoming.receiver?._id : incoming.sender?._id));
+            if (!knownConversationIds.current.has(peerId)) fetchConversationsRef.current();
           }
           return;
         }
@@ -754,7 +758,7 @@ function MessagesContent() {
   }, [showNewChatDialog, searchUsers, roleFilter]);
 
   const fetchConversations = async () => {
-    if (conversationFetchPending.current || navigator.onLine === false) return;
+    if (conversationFetchPending.current || navigator.onLine === false || document.visibilityState === "hidden") return;
     conversationFetchPending.current = true;
     const revision = conversationRevision.current;
     try {
@@ -770,14 +774,17 @@ function MessagesContent() {
           const userIds = conversations.map(
             (conv: Conversation) => conv.user._id,
           );
-          fetchOnlineStatus(userIds);
+          const signature = [...userIds].sort().join(',');
+          if (signature !== presenceParticipants.current) {
+            presenceParticipants.current = signature;
+            fetchOnlineStatus(userIds);
+          }
         }
       }
     } catch (error) {
       // Handle error silently in production
     } finally {
       conversationFetchPending.current = false;
-      if (revision !== conversationRevision.current) void fetchConversationsRef.current();
       setLoading(false);
     }
   };
@@ -808,6 +815,7 @@ function MessagesContent() {
         );
       }
     } catch (error) {
+      presenceParticipants.current = "";
       console.error("Failed to fetch online status:", error);
     }
   };
