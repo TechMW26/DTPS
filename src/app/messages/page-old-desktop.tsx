@@ -1,4 +1,5 @@
 "use client";
+import { applyConversationMessage } from "@/lib/chat/conversation-updates";
 
 import { useConversationRequests } from "@/hooks/useConversationRequests";
 
@@ -167,6 +168,8 @@ interface AvailableUser {
 function MessagesContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
+  const conversationRevision = useRef(0);
+  const conversationFetchPending = useRef(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<
     string | null
@@ -344,7 +347,10 @@ function MessagesContent() {
               );
               setTimeout(() => scrollToBottom(false), 50);
             }
-            // Always refresh conversations list (keeps last message + unread counts in sync)
+            conversationRevision.current++;
+            setConversations(prev => applyConversationMessage(prev, incoming, session?.user?.id || '', currentConv));
+            // Reconcile new peers and authoritative unread counts; stale responses
+            // cannot overwrite a more recent realtime event.
             fetchConversationsRef.current();
           }
           return;
@@ -748,11 +754,15 @@ function MessagesContent() {
   }, [showNewChatDialog, searchUsers, roleFilter]);
 
   const fetchConversations = async () => {
+    if (conversationFetchPending.current || navigator.onLine === false) return;
+    conversationFetchPending.current = true;
+    const revision = conversationRevision.current;
     try {
       const response = await fetch("/api/messages/conversations");
       if (response.ok) {
         const data = await response.json();
         const conversations = data.conversations || [];
+        if (revision !== conversationRevision.current) return;
         setConversations(conversations);
 
         // Fetch online status for all conversation users
@@ -766,6 +776,8 @@ function MessagesContent() {
     } catch (error) {
       // Handle error silently in production
     } finally {
+      conversationFetchPending.current = false;
+      if (revision !== conversationRevision.current) void fetchConversationsRef.current();
       setLoading(false);
     }
   };

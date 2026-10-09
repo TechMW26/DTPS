@@ -24,7 +24,7 @@ export async function POST(request:NextRequest){
   const db=getNativeDatabase(),result=await sendNativeClientMessage(db,session.user.id,await request.json(),request.headers.get('x-idempotency-key'),true);
   if(result.created){
    const message=result.message,recipient=message.receiver,sender=message.sender;
-   await Promise.all([[recipient._id,sender._id],[sender._id,recipient._id]].map(([userId,peer])=>socketManager.sendToUser(userId,'new_message',{message,conversationWith:peer,timestamp:Date.now()})));
+   await Promise.allSettled([[recipient._id,sender._id],[sender._id,recipient._id]].map(([userId,peer])=>socketManager.sendToUser(userId,'new_message',{message,conversationWith:peer,timestamp:Date.now()})));
    if(process.env.NODE_ENV==='production')after(()=>notifyMessageToRecipient({recipientId:recipient._id,recipientRole:recipient.role,senderName:`${sender.firstName||''} ${sender.lastName||''}`.trim(),senderRole:sender.role,messagePreview:message.content,messageId:message._id,conversationWithUserId:sender._id,clientId:sender.role==='client'?sender._id:recipient.role==='client'?recipient._id:undefined}));
   }
   return nativeResponseJson({message:await nativeMediaJson(db,result.message)},{status:result.created?201:200});
