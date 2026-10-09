@@ -18,3 +18,21 @@ describe('authenticated media response ranges',()=>{
  });
  it('supports explicit download with sanitized filename',async()=>{const result=await nativeMediaResponse({blob:{},mimeType:'application/pdf',originalName:'report.pdf'},new Request('http://localhost/a?download=1'));expect(result.headers.get('content-disposition')).toBe('attachment; filename="report.pdf"');expect(result.headers.get('content-length')).toBe('10');});
 });
+
+describe('private browser media revalidation',()=>{
+ const media={blob:{sha256:'a'.repeat(64),size:10},mimeType:'image/png',originalName:'photo.png'};
+ beforeEach(()=>{mockRead.mockClear();mockRead.mockResolvedValue(Buffer.from('0123456789'));});
+ it('returns a content validator and forces access revalidation instead of downloading again',async()=>{
+  const first=await nativeMediaResponse(media,new Request('http://localhost/a'));
+  expect(first.headers.get('cache-control')).toBe('private, no-cache, must-revalidate');
+  expect(first.headers.get('vary')).toBe('Cookie, Authorization');
+  const etag=first.headers.get('etag')!;mockRead.mockClear();
+  const next=await nativeMediaResponse(media,new Request('http://localhost/a',{headers:{'if-none-match':etag}}));
+  expect(next.status).toBe(304);expect(await next.text()).toBe('');expect(mockRead).not.toHaveBeenCalled();
+ });
+ it('downloads replacements and never returns cached bytes when access is denied',async()=>{
+  const first=await nativeMediaResponse(media);const req=new Request('http://localhost/a',{headers:{'if-none-match':first.headers.get('etag')!}});
+  expect((await nativeMediaResponse({...media,blob:{...media.blob,sha256:'b'.repeat(64)}},req)).status).toBe(200);
+  expect((await nativeMediaResponse(null,req)).status).toBe(404);
+ });
+});

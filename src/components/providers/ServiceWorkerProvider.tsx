@@ -4,13 +4,13 @@ import { useEffect, useRef } from 'react';
 
 /**
  * ServiceWorkerProvider - Registers the app-shell service worker
- * 
+ *
  * This handles:
  * - Purging stale caches from old SW versions immediately on load
  * - Registering sw.js for caching static assets only
  * - Auto-updating the service worker when a new version is available
  * - Auto-recovering from ChunkLoadError (stale chunk references after deploy)
- * 
+ *
  * Works alongside firebase-messaging-sw.js on its dedicated messaging scope.
  */
 export default function ServiceWorkerProvider() {
@@ -18,7 +18,7 @@ export default function ServiceWorkerProvider() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const currentCachePrefix = 'dtps-v4';
+    const currentCachePrefix = 'dtps-v5';
 
     // --- 1. Purge ALL old page caches immediately (even before SW registers) ---
     // This fixes white-screen caused by stale cached HTML pointing to old JS chunks
@@ -26,8 +26,7 @@ export default function ServiceWorkerProvider() {
       caches.keys().then((names) => {
         names.forEach((name) => {
           // Delete caches from earlier service-worker versions.
-          if (name.includes('pages') || name.includes('images') ||
-              (name.startsWith('dtps-') && !name.startsWith(currentCachePrefix))) {
+          if (name.startsWith('dtps-') && !name.startsWith(currentCachePrefix)) {
             caches.delete(name);
             console.log('[SW] Purged stale cache:', name);
           }
@@ -103,7 +102,10 @@ export default function ServiceWorkerProvider() {
     window.addEventListener('unhandledrejection', handleUnhandledRejection);
 
     // --- 3. Register/update service worker ---
-    if (!('serviceWorker' in navigator)) return;
+    if (!('serviceWorker' in navigator)) return () => {
+      window.removeEventListener('error', handleChunkError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
 
     let disposed = false;
     let updateInterval: ReturnType<typeof setInterval> | undefined;
@@ -136,12 +138,11 @@ export default function ServiceWorkerProvider() {
         registrationRef.current = registration;
         registeredWorker = registration;
 
-        // Force immediate update check on every page load
-        registration.update().catch(() => {});
+        // Registration already performs the initial update check.
 
         // Check for updates periodically (every 15 minutes)
         updateInterval = setInterval(() => {
-          registration.update().catch(() => {});
+          if (document.visibilityState === 'visible' && navigator.onLine !== false) registration.update().catch(() => {});
         }, 15 * 60 * 1000);
 
         // When a new SW is waiting, activate it immediately

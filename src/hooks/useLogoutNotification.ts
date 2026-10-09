@@ -20,7 +20,7 @@ export function useLogoutNotification() {
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
     const checkAccountStatus = async () => {
-      if (checkingRef.current) return;
+      if (checkingRef.current || document.visibilityState === 'hidden' || navigator.onLine === false) return;
       checkingRef.current = true;
 
       try {
@@ -34,9 +34,9 @@ export function useLogoutNotification() {
           if (data.type === 'deactivated' || data.type === 'suspended') {
             console.log('[LogoutNotification] Account deactivated/suspended, logging out');
             if (intervalId) clearInterval(intervalId);
-            signOut({ 
-              redirect: true, 
-              callbackUrl: '/auth/signin?reason=deactivated' 
+            signOut({
+              redirect: true,
+              callbackUrl: '/auth/signin?reason=deactivated'
             });
           }
         }
@@ -57,10 +57,12 @@ export function useLogoutNotification() {
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleVisibility);
 
     return () => {
       if (intervalId) clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleVisibility);
     };
   }, [session?.user?.id, status]);
 }
