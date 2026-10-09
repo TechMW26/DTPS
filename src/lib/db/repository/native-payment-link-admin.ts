@@ -30,7 +30,14 @@ export async function createNativeStaffPaymentLink(db:Firestore,actorId:string,i
   const [current,account,user]=await tx.getAll(ref,db.collection('users').doc(actorId),db.collection('users').doc(data.clientId));
   const role=account.get('role'),assigned=role==='dietitian'?[user.get('assignedDietitian'),...(user.get('assignedDietitians')||[])]:role==='health_counselor'?[user.get('assignedHealthCounselor'),...(user.get('assignedHealthCounselors')||[])]:[];
   if(!account.exists||!user.exists||user.get('role')!=='client'||account.get('status')!=='active'||role!=='admin'&&!assigned.includes(actorId))throw new NativeCheckoutError('Client access changed',403);
-   if(data.servicePlanId){const plan=await tx.get(db.collection('serviceplans').doc(data.servicePlanId)),tier=(plan.get('pricingTiers')||[]).find((row:DocumentData)=>row._id===data.pricingTierId);if(!plan.exists||!plan.get('isActive')||!tier?.isActive||Math.round(tier.amount*100)!==Math.round(data.amount*100)||tier.durationDays!==data.durationDays||actual<Math.round(data.amount*(1+(data.tax-Number(tier.maxDiscount??plan.get('maxDiscountPercent')??0))/100)*100))throw new NativeCheckoutError('Plan pricing or discount is no longer valid',409);}
+  if(data.servicePlanId){
+   const plan=await tx.get(db.collection('serviceplans').doc(data.servicePlanId));
+   const tier=(plan.get('pricingTiers')||[]).find((row:DocumentData)=>row._id===data.pricingTierId);
+   if(!plan.exists||!plan.get('isActive')||!tier?.isActive)throw new NativeCheckoutError('This plan or duration is unavailable. Close and reopen Generate Link to refresh plans.',409);
+   if(Math.round(tier.amount*100)!==Math.round(data.amount*100)||tier.durationDays!==data.durationDays)throw new NativeCheckoutError('Plan price or duration changed. Close and reopen Generate Link to load current pricing.',409);
+   const maxDiscount=Number(tier.maxDiscount??plan.get('maxDiscountPercent')??0);
+   if(actual<Math.round(data.amount*(1+(data.tax-maxDiscount)/100)*100))throw new NativeCheckoutError(`Maximum discount for this duration is ${maxDiscount}%. Please adjust the final amount.`,409);
+  }
   if(current.exists){if(current.get('_nativeRequestIdentity')!==identity)throw new NativeCheckoutError('Payment link retry conflict',409);return {created:false,data:nativeDates(current.data()!)};}
   const now=new Date(),{clientId,...rest}=data,row=clean({...rest,_id:id,client:clientId,dietitian:actorId,currency:'INR',status:'pending',expireDate:expiry,createdAt:now,updatedAt:now,_nativeRequestIdentity:identity,_nativeProviderState:'creating'});tx.create(ref,row);return {created:true,data:row};
  });

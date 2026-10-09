@@ -47,4 +47,17 @@ suite('native staff payment links',()=>{
   expect(provider.create).toHaveBeenCalledTimes(1);
  });
 
+ it('accepts the reported 5000 to 3500 discount and rejects zero-limit discounts',async()=>{
+  const actor=id(),client=id(),plan=id(),tier=id();await add('users',actor,{role:'dietitian',status:'active'});await add('users',client,{role:'client',status:'active',assignedDietitian:actor});
+  const ref=await add('serviceplans',plan,{isActive:true,maxDiscountPercent:40,pricingTiers:[{_id:tier,isActive:true,amount:5000,durationDays:60,maxDiscount:50}]});
+  const provider={create:jest.fn(async(data:any)=>({...data,id:'plink_'+id(),short_url:'https://rzp.io/test'})),find:jest.fn(),cancel:jest.fn()};
+  const input={clientId:client,amount:5000,tax:0,discount:30,finalAmount:3500,durationDays:60,servicePlanId:plan,pricingTierId:tier};
+  const result=await createNativeStaffPaymentLink(db,actor,input,id(),provider,'https://example.invalid');
+  refs.push(db.collection('paymentlinks').doc(result._id),db.collection('_nativeOutbox').doc('payment-link-created-'+result._id));
+  expect(provider.create.mock.calls[0][0].amount).toBe(350000);
+  await ref.update({pricingTiers:[{_id:tier,isActive:true,amount:5000,durationDays:60,maxDiscount:0}]});
+  await expect(createNativeStaffPaymentLink(db,actor,input,id(),provider,'https://example.invalid')).rejects.toThrow('Maximum discount for this duration is 0%');
+  expect(provider.create).toHaveBeenCalledTimes(1);
+ });
+
 });

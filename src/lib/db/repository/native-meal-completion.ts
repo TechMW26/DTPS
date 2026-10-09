@@ -1,3 +1,4 @@
+import {nativeConversationKey} from './native-conversations';
 import {randomBytes} from 'node:crypto';
 import {Timestamp,type Firestore,type DocumentData} from 'firebase-admin/firestore';
 import {hydrateNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
@@ -32,7 +33,10 @@ export async function saveNativeMealCompletion(db:Firestore,planId:string,versio
 }
 export async function createNativeMealMessage(db:Firestore,entry:DocumentData,id=randomBytes(12).toString('hex')) {
  const record=clean({...entry,_id:id,createdAt:new Date(),updatedAt:new Date()});
- await db.collection('messages').doc(id).create(record);
+ const batch=db.batch();
+ batch.create(db.collection('messages').doc(id),record);
+ batch.set(db.collection('_nativeConversations').doc(nativeConversationKey(entry.sender,entry.receiver)),{userIds:[entry.sender,entry.receiver].sort(),lastMessageId:id,updatedAt:record.createdAt});
+ await batch.commit();
  const users=await db.getAll(db.collection('users').doc(entry.sender),db.collection('users').doc(entry.receiver),{fieldMask:['firstName','lastName','avatar','role']});
  return {...record,sender:{...users[0].data(),_id:entry.sender},receiver:{...users[1].data(),_id:entry.receiver}};
 }

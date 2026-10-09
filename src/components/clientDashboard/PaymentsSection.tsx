@@ -220,7 +220,7 @@ export default function PaymentsSection({
       setDuration(tier.durationDays);
       setDurationLabel(tier.durationLabel);
       // Use tier-level max discount
-      setMaxDiscount((tier as any).maxDiscount || 100);
+      setMaxDiscount((tier as any).maxDiscount ?? selectedServicePlan.maxDiscountPercent ?? 0);
     }
   };
 
@@ -348,10 +348,10 @@ export default function PaymentsSection({
 
   // Load service plans when modal opens
   useEffect(() => {
-    if (showModal && servicePlans.length === 0) {
+    if (showModal) {
       fetchServicePlans();
     }
-  }, [showModal, servicePlans.length, fetchServicePlans]);
+  }, [showModal, fetchServicePlans]);
 
   const resetModal = () => {
     setExpireDate("");

@@ -1,3 +1,4 @@
+import {nativeConversationKey,listNativeConversations} from '@/lib/db/repository/native-conversations';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/firestore-native';
 import {readNativeCompletionPlan,saveNativeMealCompletion,createNativeMealMessage} from '@/lib/db/repository/native-meal-completion';
@@ -17,7 +18,8 @@ suite('native meal completion concurrency',()=>{
   expect((await plan.get()).get('mealCompletions')).toBeUndefined();
  });
  it('persists a completion and creates an idempotent meal photo message',async()=>{
-  const sender=await put('users',{firstName:'Client'}),receiver=await put('users',{firstName:'Staff'});
+  const sender=await put('users',{firstName:'Client',role:'client',status:'active'}),receiver=await put('users',{firstName:'Staff',role:'dietitian',status:'active'});
+  await sender.update({assignedDietitian:receiver.id});
   const plan=await put('clientmealplans',{clientId:sender.id,status:'active',startDate:new Date(),meals:[]});
   const loaded=(await readNativeCompletionPlan(db,plan.id,sender.id))!;
   await saveNativeMealCompletion(db,plan.id,loaded.version,[{date:new Date(),completed:true,notes:undefined}],{totalDaysCompleted:1});
@@ -25,6 +27,15 @@ suite('native meal completion concurrency',()=>{
   const id=randomBytes(12).toString('hex');refs.push(db.collection('messages').doc(id));
   const payload={sender:sender.id,receiver:receiver.id,content:'synthetic',type:'image',isRead:false};
   expect((await createNativeMealMessage(db,payload,id)).sender.firstName).toBe('Client');
+  const index=db.collection('_nativeConversations').doc(nativeConversationKey(sender.id,receiver.id));refs.push(index);
+  expect((await index.get()).get('lastMessageId')).toBe(id);
   await expect(createNativeMealMessage(db,payload,id)).rejects.toMatchObject({code:6});
+  await db.collection('_nativeMigrationState').doc('conversations').set({complete:true});
+  await index.delete();
+  const recovered=await listNativeConversations(db,receiver.id);
+  expect(recovered.find(row=>row.user._id===sender.id)?.lastMessage._id).toBe(id);
+  expect(recovered.find(row=>row.user._id===sender.id)?.unreadCount).toBe(1);
+  await db.collection('messages').doc(id).update({isRead:true});
+  expect((await listNativeConversations(db,receiver.id)).find(row=>row.user._id===sender.id)?.lastMessage._id).toBe(id);
  });
 });
