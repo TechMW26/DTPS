@@ -22,8 +22,9 @@ test('compact refuses mismatched verification, then previews only transient meta
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
 test('index preview has an explicit budget and operational TTL is deferred until enabled',()=>{
- const preview=JSON.parse(run('indexes.mjs',[]));assert.equal(preview.dryRun,true);assert.equal(preview.operationalTTLDeferred,true);assert.equal(preview.indexes,34);assert(preview.indexes<=preview.budget);assert(preview.specifications.every(s=>!s.unique&&s.expireAfterSeconds===undefined));
- const ttl=JSON.parse(run('indexes.mjs',['--enable-operational-ttl']));assert.equal(ttl.indexes,35);assert.equal(ttl.specifications.filter(s=>s.expireAfterSeconds===0).length,1);
+ const preview=JSON.parse(run('indexes.mjs',[]));assert.equal(preview.dryRun,true);assert.equal(preview.operationalTTLDeferred,true);assert.equal(preview.indexes,35);assert(preview.indexes<=preview.budget);assert(preview.specifications.every(s=>!s.unique&&s.expireAfterSeconds===undefined));
+ const ttl=JSON.parse(run('indexes.mjs',['--enable-operational-ttl']));assert.equal(ttl.indexes,36);assert.equal(ttl.specifications.filter(s=>s.expireAfterSeconds===0).length,1);
+ const receiver=JSON.parse(run('indexes.mjs',['--only-index','receiver_recent']));assert.equal(receiver.indexes,1);assert.equal(receiver.approvedIndexes,35);assert.deepEqual(Object.keys(receiver.specifications[0].key),['_collectionPath','data.receiver','data.createdAt','_types.WyJjcmVhdGVkQXQiXQ.nanos','_id']);assert.deepEqual(Object.values(receiver.specifications[0].key),[1,1,-1,-1,-1]);assert.throws(()=>run('indexes.mjs',['--only-index','unknown']),/exact approved/);
  assert.throws(()=>run('indexes.mjs',['--max-indexes','10']),/Index count exceeds/);
 });
 

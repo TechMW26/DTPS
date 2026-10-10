@@ -18,7 +18,7 @@ const partial=field=>({partialFilterExpression:{[`data.${field}`]:{$type:'string
 export const INDEXES=[
  ...['assignedDietitian','assignedDietitians','assignedHealthCounselor','assignedHealthCounselors','createdBy.userId'].map(field=>query('users',`scope_${field.replaceAll('.','_')}`,[['role'],[field]])),
  query('users','role_created',[['role'],['createdAt',-1]]),...['email','phone'].map(field=>query('users',`lookup_${field}`,[[field]],partial(field))),
- query('messages','pair_recent',[['sender'],['receiver'],['createdAt',-1],['_id',-1]]),query('messages','receiver_unread',[['receiver'],['isRead'],['createdAt',-1]]),query('messages','sender_recent',[['sender'],['createdAt',-1]]),
+ query('messages','pair_recent',[['sender'],['receiver'],['createdAt',-1],['_id',-1]]),query('messages','receiver_unread',[['receiver'],['isRead'],['createdAt',-1]]),query('messages','sender_recent',[['sender'],['createdAt',-1]]),query('messages','receiver_recent',[['receiver'],['createdAt',-1],['_id',-1]]),
  query('_nativeConversations','participants_recent',[['userIds'],['updatedAt',-1]]),
  query('notifications','user_recent',[['userId'],['createdAt',-1]]),query('notifications','user_unread',[['userId'],['read'],['createdAt',-1]]),query('notifications','user_dedupe',[['userId'],['data.dedupeKey']],partial('data.dedupeKey')),
  query('clientmealplans','client_status_end',[['clientId'],['status'],['endDate']]),query('clientmealplans','purchase',[['purchaseId']]),query('clientmealplans','dietitian_operation',[['dietitianId'],['operationId']]),query('clientmealplans','reminder_dates',[['status'],['endDate'],['startDate']]),
@@ -32,14 +32,15 @@ export const INDEXES=[
  query('_nativeMediaReferences','source_url',[['urlHash']]),query('_nativeMessageMedia','url_participants',[['urlHash'],['participants']]),query('_nativeMessageMedia','file_participants',[['fileId'],['participants']]),query('files','owner_recent',[['uploadedBy'],['createdAt',-1]]),
 ];
 export async function main(){
- const planned=INDEXES.filter(spec=>spec.expireAfterSeconds===undefined||process.argv.includes('--enable-operational-ttl'));
+ const approved=INDEXES.filter(spec=>spec.expireAfterSeconds===undefined||process.argv.includes('--enable-operational-ttl')),only=arg('--only-index');
+ const planned=only?approved.filter(spec=>spec.name===only):approved;if(only&&planned.length!==1)throw new Error('Supply one exact approved --only-index name');
  const budget=Number(arg('--max-indexes','40')),database=arg('--database',process.env.MONGODB_DATABASE||'dtps');
- if(!Number.isSafeInteger(budget)||budget<0||planned.length>budget)throw new Error('Index count exceeds explicit budget');
+ if(!Number.isSafeInteger(budget)||budget<0||approved.length>budget)throw new Error('Index count exceeds explicit budget');
  if(planned.some(i=>i.unique))throw new Error('Do not assume phone/email uniqueness');
- if(!process.argv.includes('--execute')){console.log(JSON.stringify({dryRun:true,database,indexes:planned.length,budget,operationalTTLDeferred:!process.argv.includes('--enable-operational-ttl'),specifications:planned},null,2));return;}
+ if(!process.argv.includes('--execute')){console.log(JSON.stringify({dryRun:true,database,indexes:planned.length,approvedIndexes:approved.length,budget,operationalTTLDeferred:!process.argv.includes('--enable-operational-ttl'),specifications:planned},null,2));return;}
  if(!process.env.MONGODB_URI)throw new Error('MONGODB_URI required');
  const client=new MongoClient(process.env.MONGODB_URI,{maxPoolSize:4});await client.connect();
- const report={database,budget,indexes:planned.length,created:[],complete:false};
+ const report={database,budget,indexes:planned.length,approvedIndexes:approved.length,created:[],complete:false};
  try{const db=client.db(database);for(const spec of planned){const {collection,name,key,...options}=spec;const created=await createIndexWithRetry(db.collection(collection),key,{name,...options});report.created.push({collection,name:created});console.log(JSON.stringify({indexProgress:true,completed:report.created.length,expected:planned.length,collection,name:created}));}
   let verified=0;for(const collection of new Set(planned.map(spec=>spec.collection))){const actual=await db.collection(collection).listIndexes().toArray();for(const spec of planned.filter(row=>row.collection===collection)){const found=actual.find(row=>row.name===spec.name);if(!found||JSON.stringify(found.key)!==JSON.stringify(spec.key)||Boolean(found.unique)!==Boolean(spec.unique)||found.expireAfterSeconds!==spec.expireAfterSeconds||JSON.stringify(found.partialFilterExpression)!==JSON.stringify(spec.partialFilterExpression))throw new Error('Installed index differs from the compact approved specification');verified++;}}
   report.verified=verified;report.operationalTTLDeferred=!process.argv.includes('--enable-operational-ttl');report.complete=true;report.completedAt=new Date().toISOString();if(arg('--report'))save(arg('--report'),report);console.log(JSON.stringify(report));}finally{await client.close();}
