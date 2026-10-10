@@ -48,5 +48,6 @@ export async function targetQuietCheck(db,context,batches,expectedHashes){
 export async function verifyJournalBatch(db,records,context){
  let verified=0,tombstones=0;const byGroup=new Map();for(const row of records.changed){const list=byGroup.get(row._collectionGroup)||[];list.push(row);byGroup.set(row._collectionGroup,list);}
  for(const [group,rows] of byGroup){const actual=new Map((await db.collection(group).find({_id:{$in:rows.map(r=>r._id)}}).toArray()).map(r=>[r._id,r]));for(const expected of rows){if(!recordMatches(actual.get(expected._id),expected,[context.run]))throw new Error('Journal target typed body/system-version checksum mismatch');verified++;}}
- for(const {path} of records.deleted){const group=path.split('/').at(-2);if(await db.collection(group).findOne({_id:path,_migrationSource:context.source}))throw new Error('Confirmed source tombstone remains imported on target');tombstones++;}return {verified,tombstones};
+ const deletedByGroup=new Map();for(const {path} of records.deleted){const group=path.split('/').at(-2),ids=deletedByGroup.get(group)||[];ids.push(path);deletedByGroup.set(group,ids);}
+ for(const [group,ids] of deletedByGroup)for(let offset=0;offset<ids.length;offset+=250){const chunk=ids.slice(offset,offset+250),remaining=await db.collection(group).find({_id:{$in:chunk},_migrationSource:context.source},{projection:{_id:1}}).toArray();if(remaining.length)throw new Error('Confirmed source tombstone remains imported on target');tombstones+=chunk.length;}return {verified,tombstones};
 }
