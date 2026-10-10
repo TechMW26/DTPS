@@ -1,13 +1,13 @@
 # Copilot instructions (DTPS)
 
 ## Project overview
-- **Stack:** Next.js App Router (read installed Next.js docs) · React 19 · Tailwind CSS v4 · shadcn/ui (new-york style) · native Cloud Firestore + existing Vercel Blob · NextAuth v4 (JWT)
+- **Stack:** Next.js App Router (read installed Next.js docs) · React 19 · Tailwind CSS v4 · shadcn/ui (new-york style) · MongoDB Atlas + existing Vercel Blob · NextAuth v4 (JWT)
 - Multi-role platform (admin / dietitian / health_counselor / client) with role gating in `middleware.ts` and client onboarding redirects.
 - Backend is entirely App Router API routes (`src/app/api/**`) — no separate server process.
 - Native mobile shell in `mobile-app/` (iOS/Android) wraps the web app via WebView; the `useNativeApp` hook bridges JS ↔ native.
 
 ## Architecture & data flow
-- **DB:** `getNativeDatabase()` in `src/lib/db/firestore-native.ts`, with explicit domain repositories in `src/lib/db/repository/native-*.ts`. Dedicated `FIRESTORE_NATIVE_*` credentials are isolated from FCM credentials. Database writes require current role/ownership checks and transactions for related records. Production execution requires the explicit `FIRESTORE_NATIVE_PRODUCTION_ENABLED=true` cutover flag and the verified native database.
+- **DB:** `getNativeDatabase()` in `src/lib/db/database.ts`, with explicit domain repositories in `src/lib/db/repository/native-*.ts`. Dedicated `MONGODB_URI` and `MONGODB_DATABASE` configuration is isolated from Firebase Auth/FCM credentials. Database writes require current role/ownership checks and transactions for related records. Production execution requires the explicit `MONGODB_PRODUCTION_ENABLED=true` cutover flag and the verified Mongo database. The shared facade preserves route contracts; it does not connect business data to Firestore.
 - **Auth:** `src/lib/auth/config.ts` — Credentials + Google providers. JWT carries `role` (UserRole enum), `onboardingCompleted`, `isNewUser`, calendar fields. Session strategy is JWT, 30-day max age.
 - **Base URLs:** Always use `getBaseUrl()` / `getPaymentCallbackUrl()` from `src/lib/config.ts` — never raw `NEXTAUTH_URL`.
 - **Middleware** (`middleware.ts`): Adds `X-App-Version` + `Cache-Control: no-store` on API responses. Enforces role-based route access and redirects clients with `onboardingCompleted === false` to `/user/onboarding`.
@@ -18,7 +18,7 @@
   ```ts
   import { getServerSession } from 'next-auth';
   import { authOptions } from '@/lib/auth/config';
-  import { getNativeDatabase } from '@/lib/db/firestore-native';
+  import { getNativeDatabase } from '@/lib/db/database';
   import { nativeResponseJson } from '@/lib/api/native-response';
 
   export async function GET(req: NextRequest) {
@@ -51,7 +51,7 @@
 - **Contexts** in `src/contexts/`: `ThemeContext`, `UnreadCountContext`, `StaffUnreadCountContext`, `StabilityContext`. Each exports a `use{X}` hook.
 
 ## Realtime & messaging
-- **Realtime:** Firestore event documents + authenticated SSE at `/api/realtime/events`, with explicit reconnect and expiry. `socket-manager.ts` and `socket-client.ts` retain the existing event API but do not use Socket.IO or a separate server. Vercel functions close streams before their duration limit and the client reconnects with a cursor.
+- **Realtime:** MongoDB event records + authenticated SSE at `/api/realtime/events`, with explicit reconnect and expiry. `socket-manager.ts` and `socket-client.ts` retain the existing event API but do not use Socket.IO or a separate server. Vercel functions close streams before their duration limit and the client reconnects with a cursor.
 - Room architecture: `user:<userId>` for personal events, `role:<role>` for role-based broadcasts.
 - React context: `SocketProvider` in `src/contexts/SocketContext.tsx` wraps the app.
 - `useRealtime()` hook in `src/hooks/useRealtime.ts` provides `{isConnected, onlineUsers, connectionError, connect, disconnect, sendTyping, forceReconnect}`.
@@ -75,7 +75,7 @@
 ## Key workflows
 - **Dev:** `npm run dev` · **Build:** `npm run build` · **Start:** `npm run start` · **Lint:** `npm run lint`
 - **Deployment target:** Vercel. Do not deploy or enable provider delivery during local migration acceptance.
-- **Environment:** Dedicated native Firestore staging configuration in local environment; keep FCM project credentials separate. Source credentials belong only in the isolated private migration runner.
+- **Environment:** Dedicated MongoDB configuration in local environment; keep Firebase Auth/FCM credentials separate. Retired Firestore source credentials belong only in the isolated private migration runner. Bound queries, reuse connections, and invalidate caches on writes rather than repeating full scans.
 - **Error monitoring:** Sentry (edge + server configs at project root, `instrumentation.ts`).
 
 ## Naming conventions
