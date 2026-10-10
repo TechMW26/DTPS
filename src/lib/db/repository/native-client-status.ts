@@ -1,4 +1,4 @@
-import { FieldValue, Timestamp, type Firestore, type DocumentData } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, type MongoDatabase, type DocumentData } from '@/lib/db/mongo-types';
 import { computeClientStatusFromDocs } from '@/lib/status/computeClientStatus';
 import { ClientStatus } from '@/types';
 
@@ -12,13 +12,13 @@ function paymentDates(data: DocumentData) {
   return { ...data, expectedEndDate: date(data.expectedEndDate), endDate: date(data.endDate) };
 }
 
-function payments(db: Firestore, clientId: string) {
+function payments(db: MongoDatabase, clientId: string) {
   return db.collection('unifiedpayments').where('client', '==', clientId)
     .select('status', 'paymentStatus', 'expectedEndDate', 'endDate');
 }
 
 export async function recalculateNativeClientStatus(
-  db: Firestore, clientId: string,
+  db: MongoDatabase, clientId: string,
   meta?: { trigger?: string; changedBy?: string; isManual?: boolean; relatedEvent?: string },
 ) {
   const ref = db.collection('users').doc(clientId);
@@ -42,7 +42,7 @@ export async function recalculateNativeClientStatus(
   });
 }
 
-export async function findNativeActivePlan(db: Firestore, clientId: string) {
+export async function findNativeActivePlan(db: MongoDatabase, clientId: string) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const plans = await db.collection('clientmealplans').where('clientId', '==', clientId)
     .where('status', '==', 'active').where('endDate', '>=', today)
@@ -52,7 +52,7 @@ export async function findNativeActivePlan(db: Firestore, clientId: string) {
   return plan ? { startDate: date(plan.get('startDate')), endDate: date(plan.get('endDate')) } : null;
 }
 
-export async function nativeClientStatusInfo(db: Firestore, clientId: string) {
+export async function nativeClientStatusInfo(db: MongoDatabase, clientId: string) {
   const [plan, purchases, client] = await Promise.all([
     findNativeActivePlan(db, clientId), payments(db, clientId).get(), db.collection('users').doc(clientId).get(),
   ]);

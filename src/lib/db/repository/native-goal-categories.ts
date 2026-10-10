@@ -1,5 +1,5 @@
 import {createHash, randomBytes} from 'node:crypto';
-import type {Firestore, DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase, DocumentData} from '@/lib/db/mongo-types';
 import {z} from 'zod';
 import {nativeDates} from './native-plan-editor';
 
@@ -14,28 +14,28 @@ const schema = z.object({
 export class NativeGoalCategoryError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
-function categoryRef(db: Firestore, id: string) {
+function categoryRef(db: MongoDatabase, id: string) {
   if (!/^[a-f\d]{24}$/i.test(id)) throw new NativeGoalCategoryError('Invalid goal category ID', 400);
   return db.collection('goalcategories').doc(id);
 }
-function identity(db: Firestore, tag: DocumentData) {
+function identity(db: MongoDatabase, tag: DocumentData) {
   return db.collection('_nativeGoalValues').doc(createHash('sha256').update(tag.value).digest('hex'));
 }
 function view(id: string, raw: DocumentData) {
   const data = nativeDates(raw);
   return {_id:id,name:data.name,value:data.value,description:data.description||'',icon:data.icon||'target',isActive:data.isActive,order:data.order||0,createdAt:data.createdAt,updatedAt:data.updatedAt};
 }
-export async function listNativeGoalCategories(db: Firestore, activeOnly: boolean) {
+export async function listNativeGoalCategories(db: MongoDatabase, activeOnly: boolean) {
   const collection=db.collection('goalcategories');
   const rows=await (activeOnly?collection.where('isActive','==',true):collection).get();
   return rows.docs.map(row=>view(row.id,row.data())).sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name));
 }
-export async function getNativeGoalCategory(db: Firestore, id: string) {
+export async function getNativeGoalCategory(db: MongoDatabase, id: string) {
   const row = await categoryRef(db,id).get();
   if (!row.exists) throw new NativeGoalCategoryError('Goal category not found',404);
   return view(row.id,row.data()!);
 }
-export async function saveNativeGoalCategory(db: Firestore, actor: string, input: unknown, id?: string) {
+export async function saveNativeGoalCategory(db: MongoDatabase, actor: string, input: unknown, id?: string) {
   const parsed = (id ? schema.partial() : schema).safeParse(input);
   if (!parsed.success) throw new NativeGoalCategoryError('Invalid goal category fields',400);
   if (id) for (const key of Object.keys(parsed.data)) if (!Object.prototype.hasOwnProperty.call(input,key)) delete (parsed.data as Record<string,unknown>)[key];
@@ -57,7 +57,7 @@ export async function saveNativeGoalCategory(db: Firestore, actor: string, input
     return view(ref.id,{...data,...patch,createdBy:current.get('createdBy') || actor,createdAt:current.get('createdAt') || now});
   });
 }
-export async function deleteNativeGoalCategory(db: Firestore, id: string) {
+export async function deleteNativeGoalCategory(db: MongoDatabase, id: string) {
   const ref = categoryRef(db,id);
   await db.runTransaction(async tx => {
     const row = await tx.get(ref);

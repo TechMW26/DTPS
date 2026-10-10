@@ -1,11 +1,12 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {createHash,randomBytes,createHmac,timingSafeEqual} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {nativeHabitDay} from './native-habits';
 export class NativeCheckoutError extends Error{constructor(message:string,public status:number){super(message);}}
 export interface CheckoutProvider{createOrder(data:DocumentData):Promise<DocumentData>;findOrders(receipt:string):Promise<DocumentData[]>;fetchPayment(id:string):Promise<DocumentData>}
 const clean=(data:DocumentData)=>Object.fromEntries(Object.entries(data).filter(([,value])=>value!==undefined));
-export async function createNativeCheckout(db:Firestore,userId:string,kind:'service_plan'|'subscription',input:DocumentData,key:string|null,provider:CheckoutProvider){
+export async function createNativeCheckout(db:MongoDatabase,userId:string,kind:'service_plan'|'subscription',input:DocumentData,key:string|null,provider:CheckoutProvider){
  if(typeof input.planId!=='string'||!/^[a-f0-9]{24}$/.test(input.planId))throw new NativeCheckoutError('A valid plan is required',400);
  const operation=key&&/^[a-zA-Z0-9._:-]{8,128}$/.test(key)?key:randomBytes(16).toString('hex');
  const id=createHash('sha256').update([userId,kind,operation].join('\0')).digest('hex').slice(0,24),ref=db.collection('unifiedpayments').doc(id);
@@ -39,7 +40,7 @@ export async function createNativeCheckout(db:Firestore,userId:string,kind:'serv
  await db.runTransaction(async tx=>{const row=await tx.get(ref);if(!row.exists||row.get('client')!==userId||row.get('_nativeCheckoutIdentity')!==identity||row.get('razorpayOrderId')&&row.get('razorpayOrderId')!==order.id)throw new NativeCheckoutError('Checkout identity conflict',409);tx.update(ref,{razorpayOrderId:order.id,_nativeCheckoutState:'ready',updatedAt:new Date()});});
  return {...payment,razorpayOrderId:order.id};
 }
-export async function verifyNativeCheckout(db:Firestore,userId:string,input:DocumentData,secret:string,provider:CheckoutProvider){
+export async function verifyNativeCheckout(db:MongoDatabase,userId:string,input:DocumentData,secret:string,provider:CheckoutProvider){
  const orderId=input.razorpay_order_id,paymentId=input.razorpay_payment_id,signature=input.razorpay_signature;
  if(typeof orderId!=='string'||!/^order_[a-zA-Z0-9]+$/.test(orderId)||typeof paymentId!=='string'||!/^pay_[a-zA-Z0-9]+$/.test(paymentId)||typeof signature!=='string'||!/^[a-f0-9]{64}$/i.test(signature)||!secret)throw new NativeCheckoutError('Invalid payment verification data',400);
  const expected=createHmac('sha256',secret).update(orderId+'|'+paymentId).digest();if(!timingSafeEqual(expected,Buffer.from(signature,'hex')))throw new NativeCheckoutError('Invalid payment signature',400);
@@ -48,7 +49,7 @@ export async function verifyNativeCheckout(db:Firestore,userId:string,input:Docu
  return settleNativeCapturedPayment(db,userId,proof);
 }
 /** Only call with a provider-fetched payment or a signature-verified webhook entity. */
-export async function settleNativeCapturedPayment(db:Firestore,userId:string,proof:DocumentData,authorize?:(tx:FirebaseFirestore.Transaction)=>Promise<unknown>){
+export async function settleNativeCapturedPayment(db:MongoDatabase,userId:string,proof:DocumentData,authorize?:(tx:MongoTypes.Transaction)=>Promise<unknown>){
  const orderId=proof.order_id,paymentId=proof.id;
  if(typeof orderId!=='string'||!/^order_[a-zA-Z0-9]+$/.test(orderId)||typeof paymentId!=='string'||!/^pay_[a-zA-Z0-9]+$/.test(paymentId))throw new NativeCheckoutError('Invalid payment identity',400);
  const rows=await db.collection('unifiedpayments').where('razorpayOrderId','==',orderId).limit(2).get();if(rows.size!==1||rows.docs[0].get('client')!==userId)throw new NativeCheckoutError('Payment record not found or ambiguous',404);

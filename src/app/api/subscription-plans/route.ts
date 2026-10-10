@@ -5,7 +5,7 @@ import {authOptions} from '@/lib/auth/config';
 import {getNativeDatabase} from '@/lib/db/database';
 import {NativeCatalogError,saveNativeCatalog} from '@/lib/db/repository/native-plan-catalog';
 import {nativeDates} from '@/lib/db/repository/native-plan-editor';
-import type {Query} from 'firebase-admin/firestore';
+import type {Query} from '@/lib/db/mongo-types';
 export async function GET(request:NextRequest){try{
  const db=getNativeDatabase(),session=await getServerSession(authOptions),staff=session?.user&&['admin','dietitian'].includes(session.user.role);
  let query:Query=db.collection('subscriptionplans');

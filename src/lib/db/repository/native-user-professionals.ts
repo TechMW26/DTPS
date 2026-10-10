@@ -1,11 +1,12 @@
-import {Filter,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import {Filter,type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {NativeDirectoryError} from './native-client-directory';
 const fields='firstName lastName email phone avatar role status bio experience consultationFee specializations credentials createdAt'.split(' ');
-export async function nativeUserProfessionals(db:Firestore,actorId:string,kind:'dietitians'|'health-counselors'|'dietitian'|'available',params:URLSearchParams){
+export async function nativeUserProfessionals(db:MongoDatabase,actorId:string,kind:'dietitians'|'health-counselors'|'dietitian'|'available',params:URLSearchParams){
  const actor=await db.collection('users').doc(actorId).get();if(!actor.exists||actor.get('status')!=='active')throw new NativeDirectoryError('Access denied',403);const role=actor.get('role'),assigned=actor.get('assignedDietitian');
  if(kind==='dietitian'){if(role!=='client')throw new NativeDirectoryError('Client access required',403);if(!assigned)return {dietitian:null,message:'No dietitian assigned yet'};const [doc]=await db.getAll(db.collection('users').doc(assigned),{fieldMask:fields});return {dietitian:doc.exists?{_id:doc.id,...nativeDates(doc.data())}:null};}
- let query:FirebaseFirestore.Query=db.collection('users');let projection=fields;
+ let query:MongoTypes.Query=db.collection('users');let projection=fields;
  if(kind==='available'){
   projection=['firstName','lastName','avatar','role','consultationFee','specializations'];query=query.where('status','==','active');
   if(role==='client')query=query.where('role','==','dietitian').limit(11);else if(role==='dietitian'||role==='health_counselor'){const primary=role==='dietitian'?'assignedDietitian':'assignedHealthCounselor',secondary=role==='dietitian'?'assignedDietitians':'assignedHealthCounselors';query=query.where('role','==','client').where(Filter.or(Filter.where(primary,'==',actorId),Filter.where(secondary,'array-contains',actorId)));}else if(role==='admin')query=query.limit(51);else throw new NativeDirectoryError('Access denied',403);

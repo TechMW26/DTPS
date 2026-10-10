@@ -1,6 +1,7 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {indexedDashboardRows} from './native-dashboard-indexed';
 import {nativeMigrationIssues} from './native-migration-issues';
-import {type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {computeClientStatusFromDocs} from '@/lib/status/computeClientStatus';
 
@@ -11,13 +12,13 @@ export function nativeDirectoryProfile(id:string,data:DocumentData){return {_id:
 const assigned=(d:DocumentData)=>!!d.assignedDietitian||(Array.isArray(d.assignedDietitians)&&d.assignedDietitians.length>0);
 function integer(value:string|null,fallback:number,max:number){const n=value===null?fallback:Number(value);if(!Number.isSafeInteger(n)||n<1||n>max)throw new NativeDirectoryError('Invalid pagination');return n;}
 function dateBoundary(value:string|null,end=false){if(!value)return undefined;if(!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new NativeDirectoryError('Invalid date');const d=new Date(`${value}T${end?'23:59:59.999':'00:00:00.000'}+05:30`);if(!Number.isFinite(d.getTime()))throw new NativeDirectoryError('Invalid date');return d;}
-export async function populateNativeDirectory(db:Firestore,rows:DocumentData[]):Promise<DocumentData[]>{
+export async function populateNativeDirectory(db:MongoDatabase,rows:DocumentData[]):Promise<DocumentData[]>{
  const ids=[...new Set(rows.flatMap(d=>[d.assignedDietitian,d.assignedHealthCounselor,...(d.assignedDietitians||[]),...(d.assignedHealthCounselors||[]),d.createdBy?.userId]).filter(id=>typeof id==='string'&&id&&!id.includes('/')))];
  const people=new Map<string,DocumentData>();
  for(let i=0;i<ids.length;i+=100){for(const doc of await db.getAll(...ids.slice(i,i+100).map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName','email','avatar','role']})){if(doc.exists)people.set(doc.id,{_id:doc.id,...nativeDates(doc.data())});}}
  return rows.map(d=>({...d,...Object.fromEntries(['assignedDietitian','assignedHealthCounselor'].filter(k=>typeof d[k]==='string').map(k=>[k,people.get(d[k])||null])),...Object.fromEntries(['assignedDietitians','assignedHealthCounselors'].filter(k=>Array.isArray(d[k])).map(k=>[k,d[k].map((id:string)=>people.get(id)).filter(Boolean)])),...(d.createdBy?.userId?{createdBy:{...d.createdBy,userId:people.get(d.createdBy.userId)||null}}:{})}));
 }
-export async function nativeDirectoryStatuses(db:Firestore,rows:DocumentData[],loadedPayments?:DocumentData[]){
+export async function nativeDirectoryStatuses(db:MongoDatabase,rows:DocumentData[],loadedPayments?:DocumentData[]){
  const result=new Map<string,DocumentData[]>(),ids=[...new Set(rows.filter(d=>d.role==='client').map(d=>d._id as string))],allowed=new Set(ids);
  const collect=(payments:DocumentData[])=>{for(const payment of payments){if(!allowed.has(payment.client))continue;const group=result.get(payment.client)||[];group.push(payment);result.set(payment.client,group);}};
  if(loadedPayments)collect(loadedPayments);
@@ -36,11 +37,11 @@ export async function nativeDirectoryStatuses(db:Firestore,rows:DocumentData[],l
  return rows.map(d=>d.role==='client'?{...d,clientStatus:computeClientStatusFromDocs(result.get(d._id)||[],!!d.holdStatus?.isOnHold)}:d);
 }
 /** Filter projections contain no passwords, tokens, documents or medical histories. Full profiles are never scanned. */
-export async function listNativeAdminClients(db:Firestore,params:URLSearchParams){
+export async function listNativeAdminClients(db:MongoDatabase,params:URLSearchParams){
  const page=integer(params.get('page'),1,100000),limit=integer(params.get('limit'),20,100),search=(params.get('search')||'').trim().toLowerCase(),status=params.get('status')||'',assignment=params.get('assigned')||'',onboarding=params.get('onboarding')||'';
  const from=dateBoundary(params.get('dateFrom')),to=dateBoundary(params.get('dateTo'),true);if(from&&to&&from>to)throw new NativeDirectoryError('Start date must not exceed end date');
  const dt=params.get('dietitianId'),hc=params.get('healthCounselorId');for(const id of [dt,hc])if(id&&!/^[a-f0-9]{24}$/i.test(id))throw new NativeDirectoryError('Invalid staff ID');
- let query:FirebaseFirestore.Query=db.collection('users').where('role','==','client');if(from)query=query.where('createdAt','>=',from);if(to)query=query.where('createdAt','<=',to);if(dt)query=query.where('assignedDietitian','==',dt);if(hc)query=query.where('assignedHealthCounselor','==',hc);if(onboarding==='done')query=query.where('onboardingCompleted','==',true);
+ let query:MongoTypes.Query=db.collection('users').where('role','==','client');if(from)query=query.where('createdAt','>=',from);if(to)query=query.where('createdAt','<=',to);if(dt)query=query.where('assignedDietitian','==',dt);if(hc)query=query.where('assignedHealthCounselor','==',hc);if(onboarding==='done')query=query.where('onboardingCompleted','==',true);
  const all=await db.collection('users').where('role','==','client').select('assignedDietitian','assignedDietitians').get();const assignedCount=all.docs.reduce((n,d)=>n+Number(assigned(d.data())),0);
  let ids:string[],total:number;let pageProfiles:DocumentData[]|undefined;let filteredStatuses:Map<string,unknown>|undefined;
  if(!search&&!status&&!assignment&&onboarding!=='pending'){

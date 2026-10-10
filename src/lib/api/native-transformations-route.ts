@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
 import {getNativeDatabase} from '@/lib/db/database';
-import {type DocumentData,type Query} from 'firebase-admin/firestore';
+import {type DocumentData,type Query} from '@/lib/db/mongo-types';
 import {hydrateNativeDocument,prepareNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
 import {uploadToBlob} from '@/lib/storage/blob-storage';
 import {compressImageServer} from '@/lib/imageCompressionServer';
@@ -18,7 +19,7 @@ export async function nativeTransformationsRoute(request:NextRequest,context?:{p
  const admin=actor.get('role')==='admin',id=(await context?.params)?.id;if(id&&!/^[a-f0-9]{24}$/.test(id))throw new NativeAlertError('Invalid transformation ID',400);
  const ref=db.collection('transformations').doc(id||randomBytes(12).toString('hex'));
  const present=id?await ref.get():null;if(id&&!present?.exists)throw new NativeAlertError('Transformation not found',404);
- const view=async(row:FirebaseFirestore.DocumentSnapshot)=>{const data=await hydrateNativeDocument(row.data()!);delete data._nativeExternalFields;delete data._nativeSource;return {...data,_id:row.id};};
+ const view=async(row:MongoTypes.DocumentSnapshot)=>{const data=await hydrateNativeDocument(row.data()!);delete data._nativeExternalFields;delete data._nativeSource;return {...data,_id:row.id};};
  if(request.method==='GET'){
   if(present){if(!admin&&!present.get('isActive'))throw new NativeAlertError('Transformation not found',404);return NextResponse.json(await nativeMediaJson(db,{transformation:nativeJson(await view(present))}));}
   let query:Query=db.collection('transformations');if(!admin||request.nextUrl.searchParams.get('showInactive')!=='true')query=query.where('isActive','==',true);

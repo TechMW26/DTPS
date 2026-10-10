@@ -1,8 +1,8 @@
-import {Filter,type Firestore} from 'firebase-admin/firestore';
+import {Filter,type MongoDatabase} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 
 /** Rank actual workload; this collection does not contain customer ratings or staff revenue. */
-export async function nativeTopDietitians(db:Firestore,limit:number|null=10,now=new Date()) {
+export async function nativeTopDietitians(db:MongoDatabase,limit:number|null=10,now=new Date()) {
  const staff=await db.collection('users').where('role','in',['dietitian','health_counselor']).where('status','==','active').select('firstName','lastName','email','avatar','role','createdAt').get();
  const results:any[]=new Array(staff.size);let next=0;
  const since=new Date(now.getTime()-30*86400000);

@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {google,type calendar_v3} from 'googleapis';
-import {type DocumentData} from 'firebase-admin/firestore';
+import {type DocumentData} from '@/lib/db/mongo-types';
 import {getNativeDatabase} from '@/lib/db/database';
 import {nativeDates} from '@/lib/db/repository/native-plan-editor';
 import {getNativeGoogleCalendarClient} from './native-google-calendar';

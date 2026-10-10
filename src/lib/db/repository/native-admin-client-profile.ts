@@ -1,6 +1,6 @@
 import {updateNativeUser} from './native-user-admin';
 import {z} from 'zod';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {NativePlanEditor} from './native-plan-editor';
 import {NativeDirectoryError,nativeDirectoryProfile,populateNativeDirectory} from './native-client-directory';
 const text=z.string().max(1000).optional();
@@ -13,7 +13,7 @@ export async function nativeClientAccess(editor:NativePlanEditor,actorId:string,
  if(actor.role!=='admin'&&(adminOnly||!staff||!assigned))throw new NativeDirectoryError('Access denied',403);
  return {actor,client};
 }
-export async function nativeAdminClientProfile(db:Firestore,actorId:string,clientId:string){const editor=new NativePlanEditor(db);const {client}=await nativeClientAccess(editor,actorId,clientId,true);const data=await editor.hydrate(client);return (await populateNativeDirectory(db,[{...nativeDirectoryProfile(clientId,data),...Object.fromEntries(['activityLevel','dietType','allergies','dailyGoals','goals'].filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))}]))[0];}
-export async function updateNativeClientProfile(db:Firestore,actorId:string,clientId:string,input:unknown,adminOnly=true){
+export async function nativeAdminClientProfile(db:MongoDatabase,actorId:string,clientId:string){const editor=new NativePlanEditor(db);const {client}=await nativeClientAccess(editor,actorId,clientId,true);const data=await editor.hydrate(client);return (await populateNativeDirectory(db,[{...nativeDirectoryProfile(clientId,data),...Object.fromEntries(['activityLevel','dietType','allergies','dailyGoals','goals'].filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))}]))[0];}
+export async function updateNativeClientProfile(db:MongoDatabase,actorId:string,clientId:string,input:unknown,adminOnly=true){
  const parsed=profileSchema.safeParse(input);if(!parsed.success)throw new NativeDirectoryError('Invalid profile fields');return updateNativeUser(db,actorId,clientId,parsed.data,{adminOnly,role:'client'});
 }

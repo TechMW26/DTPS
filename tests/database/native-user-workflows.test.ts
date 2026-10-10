@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {Collection} from 'mongodb';
 import {getNativeDatabase} from '@/lib/db/database';
@@ -8,7 +9,7 @@ import {nativeUserAvailability} from '@/lib/db/repository/native-user-availabili
 import {nativeUserClientList} from '@/lib/db/repository/native-user-client-list';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native user workflow boundaries',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];async function seed(collection:string,data:Record<string,unknown>){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];async function seed(collection:string,data:Record<string,unknown>){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('creates tasks exactly once and blocks completing future tasks or editing schedule as a client',async()=>{const admin=await seed('users',{role:'admin',status:'active'}),client=await seed('users',{role:'client',status:'active'}),input={taskType:'General Followup',startDate:'2099-10-01',endDate:'2099-10-02'};const key='synthetic-'+randomBytes(6).toString('hex');const [a,b]=await Promise.all([saveNativeUserTask(db,admin.id,client.id,input,undefined,key),saveNativeUserTask(db,admin.id,client.id,input,undefined,key)]);expect(a.task._id).toBe(b.task._id);await expect(saveNativeUserTask(db,client.id,client.id,{status:'completed'},a.task._id)).rejects.toThrow('Available');await expect(saveNativeUserTask(db,client.id,client.id,{status:'completed',startDate:'2000-01-01'},a.task._id)).rejects.toMatchObject({status:403});});
  it('keeps private notes hidden and rejects idempotency reuse with changed content',async()=>{const admin=await seed('users',{role:'admin',status:'active'}),client=await seed('users',{role:'client',status:'active'}),key='synthetic-'+randomBytes(6).toString('hex');await saveNativeUserNote(db,admin.id,client.id,{content:'Synthetic private note'},undefined,key);expect((await listNativeUserNotes(db,client.id,client.id)).notes).toEqual([]);await expect(saveNativeUserNote(db,admin.id,client.id,{content:'Different'},undefined,key)).rejects.toMatchObject({status:409});});

@@ -1,15 +1,15 @@
 import {createHash,randomBytes} from 'node:crypto';
-import {type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 const key=(token:string)=>createHash('sha256').update(token).digest('hex');
 const tokenValue=(entry:any)=>typeof entry==='string'?entry:entry?.token;
-export async function nativeNotificationUsers(db:Firestore,ids:string[]) {
+export async function nativeNotificationUsers(db:MongoDatabase,ids:string[]) {
  const result:DocumentData[]=[];const unique=[...new Set(ids)];
  if(unique.some(id=>!id||id.includes('/')))throw new Error('Invalid user ID');
  for(let i=0;i<unique.length;i+=100){const docs=await db.getAll(...unique.slice(i,i+100).map(id=>db.collection('users').doc(id)),{fieldMask:['role','holdStatus','fcmTokens']});
   result.push(...docs.filter(doc=>doc.exists).map(doc=>({...doc.data(),_id:doc.id})));}
  return result;
 }
-export async function saveNativeNotifications(db:Firestore,ids:string[],entry:DocumentData) {
+export async function saveNativeNotifications(db:MongoDatabase,ids:string[],entry:DocumentData) {
  const unique=[...new Set(ids)],result:string[]=[];
  const clean=Object.fromEntries(Object.entries(entry).filter(([,value])=>value!==undefined));
  for(let i=0;i<unique.length;i+=400){const batch=db.batch();for(const userId of unique.slice(i,i+400)){
@@ -17,7 +17,7 @@ export async function saveNativeNotifications(db:Firestore,ids:string[],entry:Do
   batch.create(db.collection('notifications').doc(id),{...clean,_id:id,userId,read:false,createdAt:now,updatedAt:now});
  }await batch.commit();}return result;
 }
-export async function registerNativePushToken(db:Firestore,userId:string,token:string,deviceType:string,deviceInfo?:string) {
+export async function registerNativePushToken(db:MongoDatabase,userId:string,token:string,deviceType:string,deviceInfo?:string) {
  const ref=db.collection('users').doc(userId),index=db.collection('_nativeFcmTokens').doc(key(token));
  return db.runTransaction(async tx=>{
   const ready=await tx.get(db.collection('_nativeMigrationState').doc('fcmTokens'));
@@ -34,7 +34,7 @@ export async function registerNativePushToken(db:Firestore,userId:string,token:s
   tx.set(index,{ownerIds:[userId],updatedAt:now});return Boolean(existing);
  });
 }
-export async function removeNativePushTokens(db:Firestore,userId:string,tokens:string[]) {
+export async function removeNativePushTokens(db:MongoDatabase,userId:string,tokens:string[]) {
  const ref=db.collection('users').doc(userId),unique=[...new Set(tokens)];if(!unique.length)return;
  await db.runTransaction(async tx=>{
   const user=await tx.get(ref);const indexes=await tx.getAll(...unique.map(token=>db.collection('_nativeFcmTokens').doc(key(token))));
@@ -42,16 +42,16 @@ export async function removeNativePushTokens(db:Firestore,userId:string,tokens:s
   for(const index of indexes)if(index.exists)tx.update(index.ref,{ownerIds:(index.get('ownerIds')||[]).filter((id:string)=>id!==userId),updatedAt:new Date()});
  });
 }
-export async function nativeUnreadMessageCount(db:Firestore,userId:string){
+export async function nativeUnreadMessageCount(db:MongoDatabase,userId:string){
  return (await db.collection('messages').where('receiver','==',userId).where('isRead','==',false).count().get()).data().count;
 }
-export async function nativeUnreadCounts(db:Firestore,userId:string) {
+export async function nativeUnreadCounts(db:MongoDatabase,userId:string) {
  const [notifications,messages]=await Promise.all([
   db.collection('notifications').where('userId','==',userId).where('read','==',false).count().get(),
   db.collection('messages').where('receiver','==',userId).where('isRead','==',false).count().get(),
  ]);return {notifications:notifications.data().count,messages:messages.data().count};
 }
-export async function mutateNativeNotifications(db:Firestore,userId:string,action:'read'|'delete',ids?:string[]) {
+export async function mutateNativeNotifications(db:MongoDatabase,userId:string,action:'read'|'delete',ids?:string[]) {
  const collection=db.collection('notifications');
  if(ids){
   const unique=[...new Set(ids)];if(unique.length>100||unique.some(id=>!id||id.includes('/')))throw new Error('Invalid notification IDs');

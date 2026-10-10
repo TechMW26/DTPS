@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {FieldValue,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {FieldValue,type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 export const RECIPE_ADMIN_INDEX_FIELD='_nativeAdminUuid';
 export const RECIPE_ADMIN_INDEX_VERSION=1;
 export function recipeSourceWatermark():number|null{
@@ -10,7 +10,7 @@ export function recipeSourceWatermark():number|null{
 
 export function recipeAdminOrder(data:DocumentData){return data.deletedAt||data.mergedInto?FieldValue.delete():(parseInt(String(data.uuid||'0'),10)||0);}
 /** Staging maintenance only. The native database factory rejects production. */
-export async function seedRecipeAdminIndex(db:Firestore){
+export async function seedRecipeAdminIndex(db:MongoDatabase){
  const sourceWatermark=recipeSourceWatermark();if(!(process.env.NODE_ENV==='test'&&process.env.DTPS_MONGODB_LOCAL_TEST==='true')&&sourceWatermark===null)throw new Error('Verified source watermark required');
  const marker=db.collection('_nativeIndexes').doc('recipeAdmin');await marker.set({ready:false,version:RECIPE_ADMIN_INDEX_VERSION});
  const rows=await db.collection('recipes').select('uuid','deletedAt','mergedInto').get();

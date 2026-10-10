@@ -1,11 +1,11 @@
-import {type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {nativeJson} from './native-history';
 import {hydrateNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
 const fields='name firstName lastName email phone dateOfBirth gender address city state pincode profileImage avatar createdAt heightCm weightKg firstWeight targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource assignedDietitian bmi bmiCategory height weight clientStatus'.split(' ');
 const editable='name firstName lastName dateOfBirth gender address city state pincode profileImage avatar heightCm weightKg targetWeightKg activityLevel generalGoal dietType alternativeEmail alternativePhone anniversary source referralSource'.split(' ');
 export class ProfileInputError extends Error {constructor(message:string,public status=400){super(message);}}
 function publicData(data:DocumentData,id:string){return {...Object.fromEntries(fields.filter(field=>data[field]!==undefined).map(field=>[field,data[field]])),_id:id};}
-export async function nativeClientProfile(db:Firestore,id:string){
+export async function nativeClientProfile(db:MongoDatabase,id:string){
  const [doc]=await db.getAll(db.collection('users').doc(id),{fieldMask:[...fields,'_nativeExternalFields']});
  if(!doc.exists)return null;
  const data=doc.data()!;
@@ -17,7 +17,7 @@ export async function nativeClientProfile(db:Firestore,id:string){
  }
  return nativeJson(publicData(user,id)) as DocumentData;
 }
-export async function updateNativeClientProfile(db:Firestore,id:string,input:unknown){
+export async function updateNativeClientProfile(db:MongoDatabase,id:string,input:unknown){
  if(!input||typeof input!=='object'||Array.isArray(input))throw new ProfileInputError('Invalid profile');
  const incoming=input as DocumentData,patch:DocumentData={};
  for(const field of editable){

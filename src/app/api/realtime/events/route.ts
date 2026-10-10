@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth/config';
 import { getNativeDatabase } from '@/lib/db/database';
 import { nativeRealtimeActor, realtimeTargets } from '@/lib/realtime/native-events';
 import { touchNativePresence } from '@/lib/realtime/native-presence';
-import { Timestamp } from 'firebase-admin/firestore';
+import { Timestamp } from '@/lib/db/mongo-types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;

@@ -1,5 +1,6 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { differenceInCalendarDays } from 'date-fns';
-import { Timestamp, type Firestore, type DocumentData } from 'firebase-admin/firestore';
+import { Timestamp, type MongoDatabase, type DocumentData } from '@/lib/db/mongo-types';
 
 export class NativePlanDeletionConflict extends Error {}
 
@@ -9,9 +10,9 @@ function calendarDate(value: unknown): Date {
   return date;
 }
 
-/** Native Firestore transaction. Retrying a deletion can never refund the same phase twice. */
+/** Native MongoDB transaction. Retrying a deletion can never refund the same phase twice. */
 export async function deleteNativeMealPlan(
-  db: Firestore,
+  db: MongoDatabase,
   planId: string,
   actor: { id: string; role: 'admin' | 'dietitian' | 'health_counselor' },
 ):Promise<{deletedPlan:DocumentData|null;restoredDays:number}> {
@@ -36,7 +37,7 @@ export async function deleteNativeMealPlan(
     }
 
     // All reads precede all writes, including the query read protecting concurrent publications.
-    let updatePurchase: { ref: FirebaseFirestore.DocumentReference; data: FirebaseFirestore.DocumentData } | undefined;
+    let updatePurchase: { ref: MongoTypes.DocumentReference; data: MongoTypes.DocumentData } | undefined;
     let restoredDays = 0;
     if (plan.purchaseId && plan.status !== 'draft') {
       const purchaseRef = db.collection('unifiedpayments').doc(String(plan.purchaseId));

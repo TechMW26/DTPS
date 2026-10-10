@@ -1,9 +1,9 @@
 import {randomBytes} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {z} from 'zod';
 import {nativeDates} from './native-plan-editor';
 export class NativePurchaseRequestError extends Error{constructor(message:string,public status:number){super(message);}}
-export async function createNativePurchaseRequest(db:Firestore,userId:string,input:unknown){
+export async function createNativePurchaseRequest(db:MongoDatabase,userId:string,input:unknown){
  const parsed=z.object({servicePlanId:z.string().regex(/^[a-f0-9]{24}$/),pricingTierId:z.string().min(1).max(100),notes:z.string().max(2000).default('')}).safeParse(input);
  if(!parsed.success)throw new NativePurchaseRequestError('Service plan and pricing tier are required',400);
  const {servicePlanId,pricingTierId,notes}=parsed.data;
@@ -20,7 +20,7 @@ export async function createNativePurchaseRequest(db:Firestore,userId:string,inp
   tx.create(ref,data);return data;
  });
 }
-export async function listNativePurchaseRequests(db:Firestore,userId:string){
+export async function listNativePurchaseRequests(db:MongoDatabase,userId:string){
  const rows=await db.collection('purchaserequests').where('client','==',userId).orderBy('createdAt','desc').get();
  const plans=new Map<string,DocumentData|null>();const result=[];
  for(const row of rows.docs){const data=nativeDates(row.data()),id=data.servicePlan;if(typeof id==='string'&&!id.includes('/')&&!plans.has(id)){const plan=await db.collection('serviceplans').doc(id).get();plans.set(id,plan.exists?{_id:id,name:plan.get('name')||'',category:plan.get('category')||'',description:plan.get('description')||''}:null);}result.push({...data,_id:row.id,servicePlan:plans.get(id)||null});}

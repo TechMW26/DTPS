@@ -1,4 +1,5 @@
-import { type Firestore, type Query } from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import { type MongoDatabase, type Query } from '@/lib/db/mongo-types';
 import { nativeDates } from './native-plan-editor';
 
 export const notificationRoles = ['admin', 'dietitian', 'health_counselor', 'client'];
@@ -9,7 +10,7 @@ const add = (target: Counts, status: string) => {
   target.total++;
   if (status === 'sent' || status === 'deduped' || status === 'failed') target[status]++;
 };
-export async function nativeNotificationMetrics(db: Firestore, options: {
+export async function nativeNotificationMetrics(db: MongoDatabase, options: {
   days?: number; role?: string; actionType?: string; now?: Date;
 }) {
   const days = Math.trunc(Math.min(90, Math.max(1, Number.isFinite(options.days) ? options.days! : 7)));
@@ -24,7 +25,7 @@ export async function nativeNotificationMetrics(db: Firestore, options: {
   const totals = counts();
   const actions = new Map<string, Counts>(), roles = new Map<string, Counts>(), dates = new Map<string, Counts>();
   const recentFailures: Record<string, unknown>[] = [];
-  let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  let cursor: MongoTypes.QueryDocumentSnapshot | undefined;
   // Iterate a projected stream in bounded pages instead of loading audit payloads into memory.
   for (;;) {
     let page = query.orderBy('createdAt', 'desc').limit(500)

@@ -1,8 +1,8 @@
-import {type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 export const defaultClientSettings={pushNotifications:true,emailNotifications:true,mealReminders:true,appointmentReminders:true,progressUpdates:false,darkMode:false,soundEnabled:true};
 export class SettingsInputError extends Error {}
-export async function nativeClientSettings(db:Firestore,id:string){const doc=await db.collection('users').doc(id).get();return doc.exists?{...defaultClientSettings,...doc.get('settings')}:null;}
-export async function updateNativeClientSettings(db:Firestore,id:string,input:unknown){
+export async function nativeClientSettings(db:MongoDatabase,id:string){const doc=await db.collection('users').doc(id).get();return doc.exists?{...defaultClientSettings,...doc.get('settings')}:null;}
+export async function updateNativeClientSettings(db:MongoDatabase,id:string,input:unknown){
  if(!input||typeof input!=='object'||Array.isArray(input))throw new SettingsInputError('Settings are required');
  const data=input as DocumentData,patch:DocumentData={};
  for(const [key,value]of Object.entries(data)){

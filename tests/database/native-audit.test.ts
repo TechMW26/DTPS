@@ -1,8 +1,9 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { getNativeDatabase } from '@/lib/db/database';
 import { createNativeAudit } from '@/lib/db/repository/native-audit';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native audit records',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});
  afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('preserves dates and nested changes while omitting undefined optional fields',async()=>{

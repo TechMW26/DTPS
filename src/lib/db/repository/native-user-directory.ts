@@ -1,10 +1,11 @@
-import {Filter,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import {Filter,type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {directoryFields,filterFields,nativeDirectoryProfile,populateNativeDirectory,nativeDirectoryStatuses,NativeDirectoryError} from './native-client-directory';
 import {nativeDates} from './native-plan-editor';
-export async function listNativeUsers(db:Firestore,actorId:string,p:URLSearchParams){
+export async function listNativeUsers(db:MongoDatabase,actorId:string,p:URLSearchParams){
  const actor=await db.collection('users').doc(actorId).get(),role=actor.get('role');if(!actor.exists||actor.get('status')!=='active')throw new NativeDirectoryError('Access denied',403);
  const page=Number(p.get('page')||1),requested=Number(p.get('limit')||50),limit=Math.min(500,requested);if(!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(requested)||requested<1||!Number.isSafeInteger((page-1)*limit))throw new NativeDirectoryError('Invalid pagination');
- let query:FirebaseFirestore.Query=db.collection('users');const requestedRole=p.get('role');
+ let query:MongoTypes.Query=db.collection('users');const requestedRole=p.get('role');
  if(role==='admin'){if(requestedRole)query=query.where('role','==',requestedRole);}else if(role==='dietitian')query=query.where('role','==','client').where(Filter.or(Filter.where('assignedDietitian','==',actorId),Filter.where('assignedDietitians','array-contains',actorId)));else if(role==='health_counselor'){query=query.where('role','==','client');if(requestedRole!=='client')query=query.where(Filter.or(Filter.where('assignedHealthCounselor','==',actorId),Filter.where('assignedHealthCounselors','array-contains',actorId)));}else if(role==='client'){if(actor.get('assignedDietitian'))query=query.where('__name__','==',actor.get('assignedDietitian'));else query=query.where('role','in',['dietitian','health_counselor']);}else throw new NativeDirectoryError('Access denied',403);
  if(role==='admin')for(const [parameter,field] of [['dietitianId','assignedDietitian'],['healthCounselorId','assignedHealthCounselor']]){const id=p.get(parameter);if(id){if(!/^[a-f0-9]{24}$/i.test(id))throw new NativeDirectoryError('Invalid staff ID');query=query.where(field,'==',id);}}
  for(const [parameter,operator,clock] of [['dateFrom','>=','00:00:00.000'],['dateTo','<=','23:59:59.999']] as const){const date=p.get(parameter);if(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(new Date(date).getTime()))throw new NativeDirectoryError('Invalid date');query=query.where('createdAt',operator,new Date(`${date}T${clock}+05:30`));}}

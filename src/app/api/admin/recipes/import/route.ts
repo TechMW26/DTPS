@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {nativeResponseJson} from '@/lib/api/native-response';
 /**
  * API Route: Admin Recipe Import & Update
@@ -228,7 +229,7 @@ function transformRecipeData(rawData: Record<string, any>): Record<string, any> 
 export async function POST(req:NextRequest){try{
  const session=await getServerSession(authOptions);if(!session?.user?.id)throw new NativeStaffClientError('Unauthorized',401);const db=getNativeDatabase(),actor=await recipeActor(db,session.user.id,true);if(actor.get('role')!=='admin')throw new NativeStaffClientError('Admin access required',403);
  const {recipes,mode='upsert',identifierField='name'}=await req.json();if(!Array.isArray(recipes)||!recipes.length||recipes.length>500||!['upsert','create-only','update-only'].includes(mode)||!['_id','name'].includes(identifierField))throw new NativeStaffClientError('Invalid recipe import');const stats={total:recipes.length,created:0,updated:0,failed:0},errors=[];
- for(const [index,raw] of recipes.entries()){try{const data=transformRecipeData(raw);if(!data)throw new NativeStaffClientError('Invalid or incomplete recipe');let existing:FirebaseFirestore.DocumentSnapshot|undefined;
+ for(const [index,raw] of recipes.entries()){try{const data=transformRecipeData(raw);if(!data)throw new NativeStaffClientError('Invalid or incomplete recipe');let existing:MongoTypes.DocumentSnapshot|undefined;
   if(identifierField==='_id'&&raw._id){if(!/^[a-f0-9]{24}$/.test(raw._id))throw new NativeStaffClientError('Invalid recipe ID');existing=await db.collection('recipes').doc(raw._id).get();}else {const rows=await db.collection('recipes').where('name','==',data.name).limit(2).get();if(rows.size>1)throw new NativeStaffClientError('Ambiguous recipe name; supply _id',409);existing=rows.docs[0];}
   if(existing?.exists&&mode==='create-only')throw new NativeStaffClientError('Recipe already exists',409);if(!existing?.exists&&mode==='update-only')throw new NativeStaffClientError('Recipe not found',404);
   await saveStaffRecipe(db,session.user.id,{...data,...(existing?.exists?{_nativeExpectedUpdatedAt:existing.get('updatedAt')?.toDate?.().toISOString()??null}:{})},existing?.exists?existing.id:undefined);if(existing?.exists)stats.updated++;else stats.created++;

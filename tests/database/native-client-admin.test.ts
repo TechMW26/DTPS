@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {assignNativeClient} from '@/lib/db/repository/native-client-assignment';
@@ -6,7 +7,7 @@ import {updateNativeClientProfile} from '@/lib/db/repository/native-admin-client
 import {listNativeAdminClients} from '@/lib/db/repository/native-client-directory';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native client administration',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  async function seed(collection:string,data:Record<string,unknown>){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('commits assignments and purchases together, rejects wrong staff roles, and clears stale primary payment assignments',async()=>{

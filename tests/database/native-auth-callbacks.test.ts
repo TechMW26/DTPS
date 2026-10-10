@@ -6,7 +6,7 @@ suite('NextAuth native database callbacks',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const id=randomUUID(),email=id+'@example.invalid';
  beforeAll(async()=>{db=getNativeDatabase();await db.collection('users').doc(id).set({email,password:'synthetic-password',firstName:'Synthetic',lastName:'Client',status:'active',role:'client'});});
  afterAll(async()=>{await db.collection('users').doc(id).delete();for(const doc of (await db.collection('activitylogs').where('userId','==',id).get()).docs)await doc.ref.delete();await db.terminate();});
- it('runs credentials login, JWT and session callbacks entirely through Firestore',async()=>{
+ it('runs credentials login, JWT and session callbacks entirely through MongoDB',async()=>{
   const authorize=(authOptions.providers[0] as any).options.authorize;
   const user=await authorize({email,password:'synthetic-password',loginContext:'client'},{headers:{host:'localhost:3002','user-agent':'synthetic-test'}});
   expect(user).toMatchObject({id,role:'client',firstName:'Synthetic'});expect(user).not.toHaveProperty('password');

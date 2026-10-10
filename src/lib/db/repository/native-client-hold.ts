@@ -1,12 +1,12 @@
 import {getApplicableHoldExtensionMs as applicable} from '@/lib/status/holdExtension';
 import {randomBytes} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {NativePlanEditor} from './native-plan-editor';
 import {nativeClientAccess} from './native-admin-client-profile';
 import {NativeDirectoryError} from './native-client-directory';
 import {computeClientStatusFromDocs} from '@/lib/status/computeClientStatus';
 export function nativeHoldDuration(ms:number){const minutes=Math.floor(Math.max(0,ms)/60000),days=Math.floor(minutes/1440),hours=Math.floor(minutes/60)%24;return [days?`${days} day${days===1?'':'s'}`:'',hours?`${hours} hour${hours===1?'':'s'}`:'',minutes%60?`${minutes%60} minute${minutes%60===1?'':'s'}`:''].filter(Boolean).join(', ')||'0 minutes';}
-export async function changeNativeClientHold(db:Firestore,actorId:string,clientId:string,onHold:boolean,reason='',now=new Date()){
+export async function changeNativeClientHold(db:MongoDatabase,actorId:string,clientId:string,onHold:boolean,reason='',now=new Date()){
  if(typeof reason!=='string'||reason.length>5000)throw new NativeDirectoryError('Invalid reason');
  for(let attempt=0;attempt<5;attempt++){
   const editor=new NativePlanEditor(db);const access=await nativeClientAccess(editor,actorId,clientId);if(!['admin','dietitian'].includes(access.actor.role))throw new NativeDirectoryError('Admin or assigned dietitian access required',403);const client=await editor.hydrate(access.client),actor=access.actor;
@@ -24,4 +24,4 @@ export async function changeNativeClientHold(db:Firestore,actorId:string,clientI
  }
  throw new NativeDirectoryError('Client changed while saving. Please retry.',409);
 }
-export async function readNativeClientHold(db:Firestore,actorId:string,clientId:string){const editor=new NativePlanEditor(db);const {client}=await nativeClientAccess(editor,actorId,clientId);const data=await editor.hydrate(client),h=data.holdStatus||{},current=h.isOnHold&&h.holdDate?Math.max(0,Date.now()-new Date(h.holdDate).getTime()):0;return {...h,isOnHold:!!h.isOnHold,totalHoldDurationMs:h.totalHoldDurationMs||0,totalHoldDuration:nativeHoldDuration(h.totalHoldDurationMs||0),currentHoldDurationMs:current,currentHoldDuration:nativeHoldDuration(current),holdCount:h.holdCount||0,history:(data.holdStatusHistory||[]).map((e:DocumentData)=>({...e,...(e.holdDurationMs?{holdDuration:nativeHoldDuration(e.holdDurationMs)}:{})}))};}
+export async function readNativeClientHold(db:MongoDatabase,actorId:string,clientId:string){const editor=new NativePlanEditor(db);const {client}=await nativeClientAccess(editor,actorId,clientId);const data=await editor.hydrate(client),h=data.holdStatus||{},current=h.isOnHold&&h.holdDate?Math.max(0,Date.now()-new Date(h.holdDate).getTime()):0;return {...h,isOnHold:!!h.isOnHold,totalHoldDurationMs:h.totalHoldDurationMs||0,totalHoldDuration:nativeHoldDuration(h.totalHoldDurationMs||0),currentHoldDurationMs:current,currentHoldDuration:nativeHoldDuration(current),holdCount:h.holdCount||0,history:(data.holdStatusHistory||[]).map((e:DocumentData)=>({...e,...(e.holdDurationMs?{holdDuration:nativeHoldDuration(e.holdDurationMs)}:{})}))};}

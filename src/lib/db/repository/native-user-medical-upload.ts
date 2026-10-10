@@ -1,10 +1,10 @@
 import {createHash,randomBytes} from 'node:crypto';
-import type {Firestore} from 'firebase-admin/firestore';
+import type {MongoDatabase} from '@/lib/db/mongo-types';
 import {NativePlanEditor} from './native-plan-editor';
 import {nativeUserRecordAccess} from './native-user-documents';
 import {NativeDirectoryError} from './native-client-directory';
 import {storeNativeFile} from '@/lib/storage/migration-blob-storage';
-export async function uploadNativeMedicalReport(db:Firestore,actorId:string,userId:string,file:File,name:string,category:string){
+export async function uploadNativeMedicalReport(db:MongoDatabase,actorId:string,userId:string,file:File,name:string,category:string){
  if(!(file instanceof File)||file.size<=0||file.size>10*1024*1024||!['image/jpeg','image/png','image/gif','image/webp','application/pdf'].includes(file.type))throw new NativeDirectoryError('An image or PDF up to 10 MB is required');if(name.length>255||!['medical-report','other'].includes(category))throw new NativeDirectoryError('Invalid report details');
  await nativeUserRecordAccess(new NativePlanEditor(db),actorId,userId);const bytes=Buffer.from(await file.arrayBuffer()),blob=await storeNativeFile(bytes,file.type),fileId=randomBytes(12).toString('hex'),now=new Date();
  const report={id:fileId,fileName:name||file.name,uploadedOn:now.toISOString().slice(0,10),fileType:file.type,url:`/api/files/${fileId}`,category};

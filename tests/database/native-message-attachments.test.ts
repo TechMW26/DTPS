@@ -1,10 +1,11 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {sendNativeClientMessage,deleteNativeClientMessage} from '@/lib/db/repository/native-messages';
 import {lookupNativeFile} from '@/lib/db/repository/native-media';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native message attachment grants',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];const messages:string[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];const messages:string[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const id of messages)for(const row of(await db.collection('_nativeMessageMedia').where('messageId','==',id).get()).docs)await row.ref.delete();for(const ref of refs)await ref.delete();await db.terminate();});
  async function fixture(collection:string,data:Record<string,unknown>){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
  async function send(sender:string,recipientId:string,attachments:any[],forwardSourceId?:string){const result=await sendNativeClientMessage(db,sender,{recipientId,content:'Synthetic attachment',attachments,...(forwardSourceId?{forwardSourceId}:{})},undefined,true);refs.push(db.collection('messages').doc(result.message._id));messages.push(result.message._id);return result.message;}

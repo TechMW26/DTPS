@@ -1,7 +1,7 @@
-import {Filter,type Firestore,type Query,type DocumentData} from 'firebase-admin/firestore';
+import {Filter,type MongoDatabase,type Query,type DocumentData} from '@/lib/db/mongo-types';
 export class NativeNotificationError extends Error {constructor(message:string,public status:number){super(message);}}
 export const targetRoles=['client','dietitian','health_counselor'];
-export async function nativeNotificationTargets(db:Firestore,actorId:string,roles:string[]=targetRoles,ids?:string[]){
+export async function nativeNotificationTargets(db:MongoDatabase,actorId:string,roles:string[]=targetRoles,ids?:string[]){
  const actor=await db.collection('users').doc(actorId).get();const role=actor.get('role');
  if(!actor.exists||actor.get('status')==='inactive'||!['admin','dietitian','health_counselor'].includes(role))throw new NativeNotificationError('Forbidden',403);
  if(roles.some(role=>!targetRoles.includes(role)))throw new NativeNotificationError('Invalid recipient roles',400);
@@ -20,7 +20,7 @@ export async function nativeNotificationTargets(db:Firestore,actorId:string,role
  }
  return {actorRole:role,rows};
 }
-export async function deleteNativeRecipientNotifications(db:Firestore,actorId:string,ids:string[],readState:'all'|'read'|'unread'){
+export async function deleteNativeRecipientNotifications(db:MongoDatabase,actorId:string,ids:string[],readState:'all'|'read'|'unread'){
  const actor=await db.collection('users').doc(actorId).get();if(actor.get('role')!=='admin'||actor.get('status')==='inactive')throw new NativeNotificationError('Forbidden',403);
  const cutoff=new Date();let deleted=0;
  for(let offset=0;offset<ids.length;offset+=30){

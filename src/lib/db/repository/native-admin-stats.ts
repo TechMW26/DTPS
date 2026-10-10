@@ -1,11 +1,12 @@
-import {AggregateField,Filter,type Firestore,type Query} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import {AggregateField,Filter,type MongoDatabase,type Query} from '@/lib/db/mongo-types';
 import {formatInTimeZone,fromZonedTime} from 'date-fns-tz';
 const zone='Asia/Kolkata';
 const count=async(query:Query)=>(await query.count().get()).data().count;
 const asDate=(value:unknown)=>{if(value&&typeof (value as {toDate?:unknown}).toDate==='function')return (value as {toDate:()=>Date}).toDate();const date=value instanceof Date?value:new Date(value as string|number);return Number.isFinite(date.getTime())?date:null;};
-const paymentAmount=(row:FirebaseFirestore.QueryDocumentSnapshot)=>{const amount=Number(row.get('finalAmount')??row.get('baseAmount')??row.get('amount')??0);return Number.isFinite(amount)?amount:0;};
+const paymentAmount=(row:MongoTypes.QueryDocumentSnapshot)=>{const amount=Number(row.get('finalAmount')??row.get('baseAmount')??row.get('amount')??0);return Number.isFinite(amount)?amount:0;};
 const sum=async(query:Query,field:string)=>Number((await query.aggregate({value:AggregateField.sum(field)}).get()).data().value||0);
-export async function nativeAdminStats(db:Firestore,now=new Date()){
+export async function nativeAdminStats(db:MongoDatabase,now=new Date()){
  const today=formatInTimeZone(now,zone,'yyyy-MM-dd'),start=fromZonedTime(today+'T00:00:00',zone),end=new Date(start.getTime()+86400000),month=fromZonedTime(today.slice(0,7)+'-01T00:00:00',zone),activeSince=new Date(now.getTime()-30*86400000);
  const clients=db.collection('users').where('role','==','client'),appointments=db.collection('appointments');
  const paidPayments=db.collection('unifiedpayments').where(Filter.or(Filter.where('paymentStatus','==','paid'),Filter.where('status','in',['paid','completed']))).select('finalAmount','baseAmount','amount','currency','paidAt','purchaseDate','createdAt');

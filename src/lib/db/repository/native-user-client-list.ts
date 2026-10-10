@@ -1,10 +1,11 @@
-import {Filter,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import {Filter,type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {directoryFields,nativeDirectoryProfile,populateNativeDirectory,nativeDirectoryStatuses,NativeDirectoryError} from './native-client-directory';
 import {indexedDashboardRows} from './native-dashboard-indexed';
 import {nativeHabitDay} from './native-habits';
 function boundary(value:string|null,end=false){if(!value)return null;if(!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new NativeDirectoryError('Invalid filter date');const d=new Date(value+`T${end?'23:59:59.999':'00:00:00.000'}+05:30`);if(!Number.isFinite(d.getTime()))throw new NativeDirectoryError('Invalid filter date');return d;}
-async function related(db:Firestore,collection:string,field:string,ids:string[],fields:string[],from?:Date|null,to?:Date|null,planNameTerms:string[]=[]){
+async function related(db:MongoDatabase,collection:string,field:string,ids:string[],fields:string[],from?:Date|null,to?:Date|null,planNameTerms:string[]=[]){
  if(collection==='clientmealplans'&&!from&&!to&&process.env.DATABASE_PROVIDER==='mongodb'){
   // This index includes drafts and history; dashboard-only active filtering must be disabled.
   const uniqueIds=[...new Set(ids)];
@@ -14,16 +15,16 @@ async function related(db:Firestore,collection:string,field:string,ids:string[],
  const result:DocumentData[][]=[],uniqueIds=[...new Set(ids)];let next=0;
  await Promise.all(Array.from({length:Math.min(6,Math.ceil(uniqueIds.length/30))},async()=>{
   for(;;){const slot=next++,i=slot*30;if(i>=uniqueIds.length)return;
-   let q:FirebaseFirestore.Query=db.collection(collection).where(field,'in',uniqueIds.slice(i,i+30));
+   let q:MongoTypes.Query=db.collection(collection).where(field,'in',uniqueIds.slice(i,i+30));
    if(from)q=q.where('createdAt','>=',from);if(to)q=q.where('createdAt','<=',to);if(!from&&!to)q=q.orderBy(field);
    const docs=await q.select(...fields).get();result[slot]=docs.docs.map(d=>({_id:d.id,...nativeDates(d.data())}));
   }
  }));return result.flat();
 }
 
-export async function nativeUserClientList(db:Firestore,actorId:string,p:URLSearchParams){
+export async function nativeUserClientList(db:MongoDatabase,actorId:string,p:URLSearchParams){
  const actor=await db.collection('users').doc(actorId).get();if(actor.get('status')!=='active'||!['admin','dietitian','health_counselor'].includes(actor.get('role')))throw new NativeDirectoryError('Staff access required',403);let effectiveId=actorId,effectiveRole=actor.get('role');if(p.get('viewAs')){if(effectiveRole!=='admin')throw new NativeDirectoryError('Only administrators may use staff view',403);const id=p.get('viewAs')!;if(!/^[a-f0-9]{24}$/i.test(id))throw new NativeDirectoryError('Invalid staff ID');const target=await db.collection('users').doc(id).get();if(!target.exists||!['dietitian','health_counselor'].includes(target.get('role')))throw new NativeDirectoryError('Staff member not found',404);effectiveId=id;effectiveRole=target.get('role');}
- const page=Number(p.get('page')||1),limit=Math.min(100,Number(p.get('limit')||100));if(!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(limit)||limit<1)throw new NativeDirectoryError('Invalid pagination');let q:FirebaseFirestore.Query=db.collection('users').where('role','==','client');if(effectiveRole!=='admin'){const primary=effectiveRole==='dietitian'?'assignedDietitian':'assignedHealthCounselor',secondary=effectiveRole==='dietitian'?'assignedDietitians':'assignedHealthCounselors';q=q.where(Filter.or(Filter.where(primary,'==',effectiveId),Filter.where(secondary,'array-contains',effectiveId)));}
+ const page=Number(p.get('page')||1),limit=Math.min(100,Number(p.get('limit')||100));if(!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(limit)||limit<1)throw new NativeDirectoryError('Invalid pagination');let q:MongoTypes.Query=db.collection('users').where('role','==','client');if(effectiveRole!=='admin'){const primary=effectiveRole==='dietitian'?'assignedDietitian':'assignedHealthCounselor',secondary=effectiveRole==='dietitian'?'assignedDietitians':'assignedHealthCounselors';q=q.where(Filter.or(Filter.where(primary,'==',effectiveId),Filter.where(secondary,'array-contains',effectiveId)));}
  for(const [parameter,field,op] of [['primaryDietitian','assignedDietitian','=='],['secondaryDietitian','assignedDietitians','array-contains'],['tagId','tags','array-contains']] as const){const value=p.get(parameter);if(value){if(!/^[a-f0-9]{24}$/i.test(value))throw new NativeDirectoryError('Invalid filter ID');q=q.where(field,op,value);}}
  const dates=Object.fromEntries(['dtAssignedFrom','dtAssignedTo','hcAssignedFrom','hcAssignedTo','planDurationFrom','planDurationTo','lastActivityHCFrom','lastActivityHCTo','lastActivityDTFrom','lastActivityDTTo'].map(k=>[k,boundary(p.get(k),k.endsWith('To'))]));
  const search=(p.get('search')||'').trim().toLowerCase(),status=p.get('status'),planName=(p.get('planName')||'').trim().toLowerCase(),duration=p.get('planDuration'),planStatus=p.get('planStatus'),shared=p.get('planShared');

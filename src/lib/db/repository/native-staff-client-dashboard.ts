@@ -1,11 +1,12 @@
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {formatInTimeZone,fromZonedTime} from 'date-fns-tz';
 import {isValidMealTimeZone,TASK_TIME_ZONE} from '@/lib/task-schedule';
 import {nativeDates} from './native-plan-editor';
 import {nativeAppointmentActor} from './native-staff-appointments';
 import {NativeStaffClientError} from './native-staff-client';
 import {hydrateNativeDocument} from '@/lib/storage/native-document';
-export async function nativeClientDashboard(db:Firestore,userId:string){
+export async function nativeClientDashboard(db:MongoDatabase,userId:string){
  const actor=await nativeAppointmentActor(db,userId);if(actor.get('role')!=='client')throw new NativeStaffClientError('Client access required',403);
  const raw=actor.data()!,user:DocumentData={firstName:raw.firstName,lastName:raw.lastName,email:raw.email,goals:raw.goals};
  const zone=isValidMealTimeZone(raw.timezone)?raw.timezone:TASK_TIME_ZONE,dateKey=formatInTimeZone(new Date(),zone,'yyyy-MM-dd'),today=fromZonedTime(dateKey+'T00:00:00',zone),tomorrowKey=new Date(Date.parse(dateKey+'T12:00:00Z')+86400000).toISOString().slice(0,10),endOfDay=fromZonedTime(tomorrowKey+'T00:00:00',zone);
@@ -16,7 +17,7 @@ export async function nativeClientDashboard(db:Firestore,userId:string){
  db.collection('foodlogs').where('client','==',userId).where('date','>=',new Date(today.getTime()-366*86400000)).where('date','<',endOfDay).select('date').get(),
  db.collection('appointments').where('client','==',userId).where('status','in',['scheduled','confirmed','rescheduled']).where('scheduledAt','>=',new Date()).orderBy('scheduledAt').limit(1).get(),
  db.collection('dailytrackings').where('client','==',userId).where('date','>=',today).where('date','<',endOfDay).limit(1).get()]);
- const one=(s:FirebaseFirestore.QuerySnapshot)=>s.docs[0]?nativeDates(s.docs[0].data()):null,todayFoodLog=one(food),latestWeight=one(latest),weekAgoWeight=one(week),firstWeight=one(first),nextAppointment=one(appointments);if(nextAppointment)nextAppointment._id=appointments.docs[0].id;
+ const one=(s:MongoTypes.QuerySnapshot)=>s.docs[0]?nativeDates(s.docs[0].data()):null,todayFoodLog=one(food),latestWeight=one(latest),weekAgoWeight=one(week),firstWeight=one(first),nextAppointment=one(appointments);if(nextAppointment)nextAppointment._id=appointments.docs[0].id;
  const references=[raw.assignedDietitian,nextAppointment?.dietitian].filter(v=>typeof v==='string'&&/^[a-f0-9]{24}$/.test(v));const map=new Map();if(references.length)for(const d of await db.getAll(...[...new Set(references)].map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName','email','avatar','bio','experience','specializations']}))if(d.exists)map.set(d.id,{_id:d.id,...await hydrateNativeDocument(d.data()!)});user.assignedDietitian=map.get(raw.assignedDietitian)||null;if(nextAppointment)nextAppointment.dietitian=map.get(nextAppointment.dietitian)||null;
  const days=new Set(logs.docs.map(d=>formatInTimeZone(nativeDates(d.data()).date,zone,'yyyy-MM-dd')));let streak=0;for(let i=0;i<=365;i++){const key=new Date(Date.parse(dateKey+'T12:00:00Z')-i*86400000).toISOString().slice(0,10);if(!days.has(key))break;streak++;}
     // Derived calculations

@@ -4,7 +4,7 @@ export async function register() {
     process.env.TZ = 'Asia/Kolkata';
     console.log(`[Instrumentation] Timezone set to ${process.env.TZ} — current time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
 
-    // Native Firestore initializes lazily; realtime uses Vercel route handlers.
+    // Native MongoDB initializes lazily; realtime uses Vercel route handlers.
 
     // Capture unhandled runtime failures and persist into SystemAlert
     try {

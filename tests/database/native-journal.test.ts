@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {mutateJournal,journalHistory} from '@/lib/db/repository/native-journal';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native staff journal',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];const clients:string[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];const clients:string[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const client of clients)for(const collection of ['journaltrackings','progressentries','activitylogs']){const field=collection==='progressentries'?'user':collection==='activitylogs'?'targetUserId':'client';for(const row of(await db.collection(collection).where(field,'==',client).get()).docs)await row.ref.delete();}for(const ref of refs)await ref.delete();await db.terminate();});
  async function fixtures(){const admin=db.collection('users').doc(randomBytes(12).toString('hex')),client=db.collection('users').doc(randomBytes(12).toString('hex'));refs.push(admin,client);clients.push(client.id);await admin.set({role:'admin',status:'active'});await client.set({role:'client',status:'active',heightCm:170});return {admin,client};}
  it('concurrently appends without lost updates and enforces idempotent retries',async()=>{

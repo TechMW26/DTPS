@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {NextRequest} from 'next/server';
 import {getNativeDatabase} from '@/lib/db/database';
@@ -9,11 +10,11 @@ jest.mock('@/lib/status/computeClientStatus',()=>({recalculateAndPersistClientSt
 jest.mock('@/lib/cache/memoryCache',()=>({clearCacheByTag:jest.fn()}));
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native plan freeze transactions',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});
  afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  const id=()=>randomBytes(12).toString('hex');
- async function put(collection:string,data:FirebaseFirestore.DocumentData){const ref=db.collection(collection).doc(id());refs.push(ref);await ref.set(data);return ref;}
+ async function put(collection:string,data:MongoTypes.DocumentData){const ref=db.collection(collection).doc(id());refs.push(ref);await ref.set(data);return ref;}
  async function fixture(){
   const client=id();const purchase=await put('clientpurchases',{client,durationDays:90,remainingDays:70,selectedTier:{durationDays:90,freezeDays:1},expectedEndDate:new Date('2099-12-31T00:00:00+05:30')});
   const plan=await put('clientmealplans',{clientId:client,purchaseId:purchase.id,status:'active',phaseNumber:1,startDate:new Date('2099-10-01T00:00:00+05:30'),endDate:new Date('2099-10-10T00:00:00+05:30'),duration:10,meals:[{date:'2099-10-10',items:['original']}],freezedDays:[]});

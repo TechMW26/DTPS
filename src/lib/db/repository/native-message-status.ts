@@ -1,7 +1,8 @@
-import {Filter,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import {Filter,type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {NativeMessageError,nativeMessageView} from './native-messages';
 const valid=(id:unknown)=>typeof id==='string'&&/^[a-f0-9]{24}$/.test(id);
-export async function updateNativeMessageStatus(db:Firestore,userId:string,input:{messageId?:string;conversationWith?:string;status:string}){
+export async function updateNativeMessageStatus(db:MongoDatabase,userId:string,input:{messageId?:string;conversationWith?:string;status:string}){
  if(!['delivered','read','failed'].includes(input.status))throw new NativeMessageError('Invalid status',400);
  const now=new Date();
  const patch=(row:DocumentData)=>{
@@ -21,7 +22,7 @@ export async function updateNativeMessageStatus(db:Firestore,userId:string,input
   return {message:await nativeMessageView(db,ref.id,value),updatedCount:1};
  }
  if(!valid(input.conversationWith)||input.status==='failed')throw new NativeMessageError('Invalid conversation status update',400);
- let count=0,cursor:FirebaseFirestore.QueryDocumentSnapshot|undefined;
+ let count=0,cursor:MongoTypes.QueryDocumentSnapshot|undefined;
  const base=db.collection('messages').where('sender','==',input.conversationWith).where('receiver','==',userId).where('isRead','==',false).orderBy('__name__');
  for(;;){
   const rows=await (cursor?base.startAfter(cursor):base).limit(200).get();if(rows.empty)break;
@@ -33,7 +34,7 @@ export async function updateNativeMessageStatus(db:Firestore,userId:string,input
  }
  return {updatedCount:count};
 }
-export async function nativeMessageStatus(db:Firestore,userId:string,peer:string){
+export async function nativeMessageStatus(db:MongoDatabase,userId:string,peer:string){
  if(!valid(peer))throw new NativeMessageError('Invalid conversation',400);
  const rows=await db.collection('messages').where(Filter.or(Filter.and(Filter.where('sender','==',userId),Filter.where('receiver','==',peer)),Filter.and(Filter.where('sender','==',peer),Filter.where('receiver','==',userId)))).select('status','isRead','readAt','receiver','deletedAt').get();
  const statusCounts:Record<string,number>={};let unreadCount=0,lastReadAt:Date|null=null;

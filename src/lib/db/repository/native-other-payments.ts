@@ -1,5 +1,5 @@
 import {createHash,randomBytes} from 'node:crypto';
-import {Filter,type Firestore,type DocumentData,type Query} from 'firebase-admin/firestore';
+import {Filter,type MongoDatabase,type DocumentData,type Query} from '@/lib/db/mongo-types';
 import {z} from 'zod';
 import {nativeFinanceActor,nativeFinanceClient,nativeFinancePeople} from './native-finance-access';
 import {NativeCheckoutError} from './native-checkout';
@@ -9,7 +9,7 @@ import {storeNativeFile} from '@/lib/storage/migration-blob-storage';
 const valid=(id:unknown)=>typeof id==='string'&&/^[a-f0-9]{24}$/i.test(id);
 const schema=z.object({clientId:z.string().regex(/^[a-f0-9]{24}$/i),platform:z.enum(['upi','bank_transfer','cash','phonepe','gpay','paytm','other']),customPlatform:z.string().max(100).default(''),transactionId:z.string().trim().min(1).max(200),amount:z.coerce.number().finite().positive().max(1e8),paymentLinkId:z.string().regex(/^[a-f0-9]{24}$/i).optional(),planName:z.string().max(200).default(''),planCategory:z.string().max(100).default(''),durationDays:z.coerce.number().int().min(1).max(36500).optional(),durationLabel:z.string().max(100).default(''),paymentDate:z.string().max(40).optional(),notes:z.string().max(2000).default('')});
 function canStaff(actor:DocumentData,client:DocumentData,id:string){return actor.role==='admin'||(actor.role==='dietitian'?[client.assignedDietitian,...(client.assignedDietitians||[])]:actor.role==='health_counselor'?[client.assignedHealthCounselor,...(client.assignedHealthCounselors||[])]:[]).includes(id);}
-export async function createNativeOtherPayment(db:Firestore,actorId:string,input:unknown,file?:File|null){
+export async function createNativeOtherPayment(db:MongoDatabase,actorId:string,input:unknown,file?:File|null){
  const parsed=schema.safeParse(input);if(!parsed.success)throw new NativeCheckoutError('Invalid payment fields',400);const data=parsed.data;if(Math.round(data.amount*100)<1||Math.abs(data.amount*100-Math.round(data.amount*100))>1e-6)throw new NativeCheckoutError('Amount must have at most two decimal places',400);const actor=await nativeFinanceActor(db,actorId);await nativeFinanceClient(db,actor,data.clientId,true);
  let blob:any,fileId:string|undefined;
  if(file&&file.size){if(file.size>10*1024*1024||!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type))throw new NativeCheckoutError('Receipt must be an image or PDF up to 10 MB',400);blob=await storeNativeFile(Buffer.from(await file.arrayBuffer()),file.type);fileId=randomBytes(12).toString('hex');}
@@ -32,19 +32,19 @@ export async function createNativeOtherPayment(db:Firestore,actorId:string,input
   return payment;
  });
 }
-export async function listNativeOtherPayments(db:Firestore,actorId:string,params:URLSearchParams){
+export async function listNativeOtherPayments(db:MongoDatabase,actorId:string,params:URLSearchParams){
  const actor=await nativeFinanceActor(db,actorId);let query:Query=db.collection('otherplatformpayments');const clientId=params.get('clientId'),status=params.get('status');
  if(actor.role==='client')query=query.where('client','==',actorId);else if(actor.role!=='admin')query=query.where('dietitian','==',actorId);
  if(clientId){await nativeFinanceClient(db,actor,clientId);query=query.where('client','==',clientId);}if(status)query=query.where('status','==',status);
  const rows=await query.orderBy('createdAt','desc').get(),records=rows.docs.filter(row=>!row.get('deletedAt')).map(row=>({...nativeDates(row.data()),_id:row.id}));
  return nativeFinancePeople(db,records);
 }
-export async function readNativeOtherPayment(db:Firestore,actorId:string,id:string){
+export async function readNativeOtherPayment(db:MongoDatabase,actorId:string,id:string){
  if(!valid(id))throw new NativeCheckoutError('Invalid payment ID',400);const actor=await nativeFinanceActor(db,actorId),row=await db.collection('otherplatformpayments').doc(id).get();if(!row.exists||row.get('deletedAt'))throw new NativeCheckoutError('Payment not found',404);
  if(actor.role!=='admin'&&!(row.get('client')===actorId||row.get('dietitian')===actorId))await nativeFinanceClient(db,actor,row.get('client'));
  return (await nativeFinancePeople(db,[{...nativeDates(row.data()!),_id:id}]))[0];
 }
-export async function reviewNativeOtherPayment(db:Firestore,actorId:string,id:string,input:unknown){
+export async function reviewNativeOtherPayment(db:MongoDatabase,actorId:string,id:string,input:unknown){
  if(!valid(id))throw new NativeCheckoutError('Invalid payment ID',400);const parsed=z.object({status:z.enum(['approved','rejected']),reviewNotes:z.string().max(2000).default('')}).safeParse(input);if(!parsed.success)throw new NativeCheckoutError('Invalid review',400);
  return db.runTransaction(async tx=>{
   const ref=db.collection('otherplatformpayments').doc(id),[actor,row]=await tx.getAll(db.collection('users').doc(actorId),ref);
@@ -67,7 +67,7 @@ export async function reviewNativeOtherPayment(db:Firestore,actorId:string,id:st
   tx.update(ref,patch);return {...data,...patch,_id:id};
  });
 }
-export async function deleteNativeOtherPayment(db:Firestore,actorId:string,id:string){
+export async function deleteNativeOtherPayment(db:MongoDatabase,actorId:string,id:string){
  if(!valid(id))throw new NativeCheckoutError('Invalid payment ID',400);
  await db.runTransaction(async tx=>{const ref=db.collection('otherplatformpayments').doc(id),[actor,row]=await tx.getAll(db.collection('users').doc(actorId),ref);if(!actor.exists||actor.get('role')!=='admin'||actor.get('status')!=='active')throw new NativeCheckoutError('Admin access required',403);if(!row.exists)throw new NativeCheckoutError('Payment not found',404);if(row.get('status')==='approved')throw new NativeCheckoutError('Approved payments must be refunded rather than deleted',409);tx.update(ref,{deletedAt:new Date(),updatedAt:new Date()});});
 }

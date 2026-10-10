@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node tools/mongodb-migration/dev.mjs",
+    "dev": "node tools/database/dev.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -11,8 +11,8 @@
     "test": "npm run test:unit && npm run test:mongodb:local",
     "cache:check": "node tools/verify-redis.mjs",
     "test:unit": "jest --config jest.config.js --runInBand",
-    "test:realtime": "node tools/mongodb-migration/test-local.mjs",
-    "test:mongodb:local": "node tools/mongodb-migration/test-local.mjs"
+    "test:realtime": "node tools/database/test-local.mjs",
+    "test:mongodb:local": "node tools/database/test-local.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",

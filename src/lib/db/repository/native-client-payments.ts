@@ -1,8 +1,9 @@
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {hydrateNativeDocument} from '@/lib/storage/native-document';
 const fields=['dietitian','type','paymentType','planName','description','amount','finalAmount','baseAmount','discountAmount','taxAmount','currency','status','paymentStatus','paidAt','createdAt','dueDate','durationDays','durationLabel','features','planCategory','razorpayPaymentLinkUrl','razorpayPaymentLinkShortUrl','expectedStartDate','expectedEndDate','startDate','endDate'];
-export async function nativeClientPayments(db:Firestore,userId:string,limit?:number):Promise<DocumentData[]>{
+export async function nativeClientPayments(db:MongoDatabase,userId:string,limit?:number):Promise<DocumentData[]>{
  let query=db.collection('unifiedpayments').where('client','==',userId).orderBy('createdAt','desc').select(...fields,'_nativeExternalFields');if(limit)query=query.limit(limit);
  const rows=await query.get();const staff=new Map<string,DocumentData|null>();
  const result=[];
@@ -19,8 +20,8 @@ export async function nativeClientPayments(db:Firestore,userId:string,limit?:num
  return result;
 }
 
-export async function nativeClientReceipt(db:Firestore,userId:string,lookup:{paymentId?:string|null;orderId?:string|null;razorpayPaymentId?:string|null}){
- let row:FirebaseFirestore.DocumentSnapshot|undefined;
+export async function nativeClientReceipt(db:MongoDatabase,userId:string,lookup:{paymentId?:string|null;orderId?:string|null;razorpayPaymentId?:string|null}){
+ let row:MongoTypes.DocumentSnapshot|undefined;
  if(lookup.paymentId){if(!/^[a-f0-9]{24}$/.test(lookup.paymentId))return null;row=await db.collection('unifiedpayments').doc(lookup.paymentId).get();}
  else{
   let query=db.collection('unifiedpayments').where('client','==',userId);

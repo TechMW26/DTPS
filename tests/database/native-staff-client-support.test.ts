@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {NextRequest} from 'next/server';
 import {getNativeDatabase} from '@/lib/db/database';
@@ -15,7 +16,7 @@ jest.mock('@/lib/firebase/firebaseNotification',()=>({sendNotificationToUser:jes
 jest.mock('@/lib/cache/memoryCache',()=>({clearCacheByTag:jest.fn()}));
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('ported purchased duration and client history regressions',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  const id=()=>randomBytes(12).toString('hex');
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  async function put(collection:string,data:any){const ref=db.collection(collection).doc(id());refs.push(ref);await ref.set(data);return ref;}

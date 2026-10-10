@@ -1,20 +1,20 @@
-import {Filter,type Firestore,type Query} from 'firebase-admin/firestore';
+import {Filter,type MongoDatabase,type Query} from '@/lib/db/mongo-types';
 import {NativeDirectoryError} from './native-client-directory';
 import {nativeDates} from './native-plan-editor';
-export async function requireNativeAuditAdmin(db:Firestore,actorId:string){const actor=await db.collection('users').doc(actorId).get();if(!actor.exists||actor.get('role')!=='admin'||actor.get('status')!=='active')throw new NativeDirectoryError('Forbidden',403);}
-export async function readNativeAdminAudit(db:Firestore,actorId:string,params:URLSearchParams){
+export async function requireNativeAuditAdmin(db:MongoDatabase,actorId:string){const actor=await db.collection('users').doc(actorId).get();if(!actor.exists||actor.get('role')!=='admin'||actor.get('status')!=='active')throw new NativeDirectoryError('Forbidden',403);}
+export async function readNativeAdminAudit(db:MongoDatabase,actorId:string,params:URLSearchParams){
  await requireNativeAuditAdmin(db,actorId);const limit=Math.min(500,Math.max(1,Number(params.get('limit'))||50)),page=Math.max(0,Number(params.get('page'))||0);let query:Query=db.collection('adminauditlogs');
  for(const key of ['adminId','targetUserId','action'])if(params.get(key))query=query.where(key,'==',params.get(key));
  for(const [key,op] of [['startDate','>='],['endDate','<=']] as const){if(params.get(key)){const date=new Date(params.get(key)!);if(!Number.isFinite(date.getTime()))throw new NativeDirectoryError('Invalid date');query=query.where('createdAt',op,date);}}
  const [count,rows]=await Promise.all([query.count().get(),query.orderBy('createdAt','desc').offset(page*limit).limit(limit).get()]);const logs=rows.docs.map(doc=>{const {_nativeExternalFields,_nativeSource,...data}=nativeDates(doc.data());return {...data,_id:doc.id};}),total=count.data().count;return {logs,total,page,limit,pages:Math.ceil(total/limit)};
 }
-export async function readNativeAdminUserActivity(db:Firestore,actorId:string,userId:string){
+export async function readNativeAdminUserActivity(db:MongoDatabase,actorId:string,userId:string){
  await requireNativeAuditAdmin(db,actorId);if(!/^[a-f0-9]{24}$/i.test(userId))throw new NativeDirectoryError('Invalid user ID');if(!(await db.collection('users').doc(userId).get()).exists)throw new NativeDirectoryError('User not found',404);
  const paired=Filter.or(Filter.where('dietitian','==',userId),Filter.where('client','==',userId));
  const sources=[['message_sent',db.collection('messages').where('sender','==',userId),['receiver','type','content','createdAt']],['message_received',db.collection('messages').where('receiver','==',userId),['sender','type','content','createdAt']],['appointment',db.collection('appointments').where(paired),['dietitian','client','type','status','scheduledAt','createdAt']],['payment',db.collection('unifiedpayments').where(paired),['dietitian','client','amount','status','type','createdAt']],['food_log',db.collection('foodlogs').where('client','==',userId),['date','totalNutrition','createdAt']],['meal_plan',db.collection('mealplans').where(paired),['name','client','dietitian','startDate','endDate','createdAt']]] as Array<[string,Query,string[]]>;
  const groups=await Promise.all(sources.map(async([kind,query,fields])=>(await query.select(...fields).orderBy('createdAt','desc').limit(10).get()).docs.map(doc=>{const data={...nativeDates(doc.data()),_id:doc.id};return {kind,at:data.createdAt,data};})));return {activity:groups.flat().sort((a,b)=>new Date(b.at).getTime()-new Date(a.at).getTime()).slice(0,30)};
 }
-export async function readNativeSmartAudit(db:Firestore,actorId:string,params:URLSearchParams){
+export async function readNativeSmartAudit(db:MongoDatabase,actorId:string,params:URLSearchParams){
  await requireNativeAuditAdmin(db,actorId);const limit=Math.min(100,Math.max(1,Math.floor(Number(params.get('limit'))||40))),page=Math.max(1,Math.floor(Number(params.get('page'))||1));let query:Query=db.collection('activitylogs');
  for(const [param,field] of [['role','userRole'],['actionType','actionType'],['category','category']]){const value=params.get(param);if(value&&value!=='all')query=query.where(field,'==',value);}
  for(const [key,op] of [['startDate','>='],['endDate','<=']] as const)if(params.get(key)){const date=new Date(params.get(key)!);if(!Number.isFinite(date.getTime()))throw new NativeDirectoryError('Invalid date');query=query.where('createdAt',op,date);}

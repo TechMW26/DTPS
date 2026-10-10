@@ -1,4 +1,4 @@
-/** One same-origin authenticated Firestore-backed event stream per browser tab. */
+/** One same-origin authenticated MongoDB-backed event stream per browser tab. */
 import { SOCKET_EVENTS } from './socket-events';
 type EventCallback = (data: any) => void;
 class SocketClient {

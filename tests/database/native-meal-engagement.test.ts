@@ -1,10 +1,11 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { candidateCacheDuration, reusableCandidates, type MealEngagementCandidates, type MealEngagementCandidateCache } from '@/lib/notifications/mealEngagementCandidates';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {runMealEngagementNotifications,runNativeMealEngagementNotifications,getPlanMealSchedules} from '@/lib/notifications/mealEngagement';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native meal engagement scheduling',()=>{
- let db:ReturnType<typeof getNativeDatabase>;let user:FirebaseFirestore.DocumentReference,plan:FirebaseFirestore.DocumentReference;
+ let db:ReturnType<typeof getNativeDatabase>;let user:MongoTypes.DocumentReference,plan:MongoTypes.DocumentReference;
  beforeAll(()=>{db=getNativeDatabase();});beforeEach(async()=>{user=db.collection('users').doc(randomBytes(12).toString('hex'));plan=db.collection('clientmealplans').doc(randomBytes(12).toString('hex'));await user.set({role:'client',notificationTimeZone:'Australia/Sydney'});await plan.set({clientId:user.id,status:'active',startDate:new Date('2026-09-30T00:00:00+05:30'),endDate:new Date('2026-09-30T23:59:59+05:30'),meals:[{date:new Date('2026-09-30T00:00:00+05:30'),meals:{DINNER:{time:'07:00 PM',foods:[{name:'Synthetic meal'}]}}}]});});
  afterEach(async()=>{await user.delete();await plan.delete();for(const row of(await db.collection('mealengagementdispatches').where('mealPlanId','==',plan.id).get()).docs)await row.ref.delete();});afterAll(async()=>{await db.terminate();});
  it('uses the client timezone and claims one delivery under concurrent cron runs',async()=>{const deliver=jest.fn(async()=>({successCount:1,failureCount:0,invalidTokens:[],responses:[]}));const now=new Date('2026-09-30T09:00:00Z');const results=await Promise.all([runNativeMealEngagementNotifications(db,now,deliver),runNativeMealEngagementNotifications(db,now,deliver)]);expect(results.reduce((n,row)=>n+row.sent,0)).toBe(1);expect(deliver).toHaveBeenCalledTimes(1);expect((await runNativeMealEngagementNotifications(db,new Date('2026-09-30T13:30:00Z'),deliver)).due).toBe(0);});

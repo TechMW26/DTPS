@@ -1,12 +1,13 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { randomBytes } from 'node:crypto';
 import { getNativeDatabase } from '@/lib/db/database';
 import { nativeHistoryAccess,nativeHistoryPage,nativeJson } from '@/lib/db/repository/native-history';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native history access and pagination',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});
  afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
- async function put(collection:string,data:FirebaseFirestore.DocumentData){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
+ async function put(collection:string,data:MongoTypes.DocumentData){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
  it('allows self, admin and assigned dietitian but denies unrelated staff',async()=>{
   const client=await put('users',{assignedDietitians:['assigned']});
   for(const actor of [{id:client.id,role:'client'},{id:'admin',role:'admin'},{id:'assigned',role:'dietitian'}])expect((await nativeHistoryAccess(db,client.id,actor)).status).toBe(200);

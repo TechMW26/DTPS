@@ -1,4 +1,4 @@
-import {FieldValue} from 'firebase-admin/firestore';
+import {FieldValue, type QueryDocumentSnapshot} from '../src/lib/db/mongo-types';
 import dotenv from 'dotenv';
 import {getNativeDatabase} from '../src/lib/db/database';
 import {hydrateNativeDocument,prepareNativePatch} from '../src/lib/storage/native-document';
@@ -14,7 +14,7 @@ dotenv.config({ path: '.env', quiet: true });
 dotenv.config({ path: '.env.local', override: true, quiet: true });
 
 const db=getNativeDatabase();
-async function loadRecipes(){const rows:Record<string,any>[]=[];let cursor:FirebaseFirestore.QueryDocumentSnapshot|undefined;while(true){let q=db.collection('recipes').orderBy('__name__').limit(100).select('name','uuid','ingredients','instructions','servings','servingSize','isActive','isPublic','mergedInto','image','images','videoUrl','usageCount','favoriteCount','createdAt','tags','_nativeExternalFields');if(cursor)q=q.startAfter(cursor);const snap=await q.get();if(snap.empty)break;for(const row of snap.docs)rows.push({_id:row.id,...nativeDates(await hydrateNativeDocument(row.data()))});cursor=snap.docs[snap.docs.length-1];}return rows;}
+async function loadRecipes(){const rows:Record<string,any>[]=[];let cursor:QueryDocumentSnapshot|undefined;while(true){let q=db.collection('recipes').orderBy('__name__').limit(100).select('name','uuid','ingredients','instructions','servings','servingSize','isActive','isPublic','mergedInto','image','images','videoUrl','usageCount','favoriteCount','createdAt','tags','_nativeExternalFields');if(cursor)q=q.startAfter(cursor);const snap=await q.get();if(snap.empty)break;for(const row of snap.docs)rows.push({_id:row.id,...nativeDates(await hydrateNativeDocument(row.data()))});cursor=snap.docs[snap.docs.length-1];}return rows;}
 
 
 type RecipeRow = RecipeQualityInput & Record<string, any> & {

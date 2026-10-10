@@ -1,12 +1,13 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {nativePlanList,nativePlanForDate,nativeMealRecipes,recipeNameKey} from '@/lib/db/repository/native-client-meals';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native client meal reads',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});
  afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
- async function put(collection:string,data:FirebaseFirestore.DocumentData,id=randomBytes(12).toString('hex')){const ref=db.collection(collection).doc(id);refs.push(ref);await ref.set(data);return ref;}
+ async function put(collection:string,data:MongoTypes.DocumentData,id=randomBytes(12).toString('hex')){const ref=db.collection(collection).doc(id);refs.push(ref);await ref.set(data);return ref;}
  it('selects the latest overlapping published plan without exposing deleted, draft or other-client plans',async()=>{
   const clientId=randomBytes(12).toString('hex'),startDate=new Date('2026-10-01'),endDate=new Date('2026-10-10');
   await put('clientmealplans',{clientId,status:'active',startDate,endDate,createdAt:new Date(0)});

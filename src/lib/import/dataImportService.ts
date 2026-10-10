@@ -1,7 +1,7 @@
 /**
  * DATA IMPORT SERVICE - Transaction-safe data saving
  *
- * Handles the actual saving of validated data to Firestore
+ * Handles the actual saving of validated data to MongoDB
  * with full transaction support for atomic operations.
  */
 
@@ -424,7 +424,7 @@ export class DataImportService {
   }
 
   /**
-   * Save all validated data using Firestore transactions
+   * Save all validated data using MongoDB transactions
    */
   async saveAll(sessionId: string, actorId: string): Promise<SaveResult> {
     const session = sessions.get(sessionId);

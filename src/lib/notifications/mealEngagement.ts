@@ -1,4 +1,5 @@
-import type {Firestore} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import type {MongoDatabase} from '@/lib/db/mongo-types';
 import { candidateCacheDuration, mealEngagementCandidateCache, reusableCandidates, type MealEngagementCandidateCache } from './mealEngagementCandidates';
 import { getNativeDatabase } from '@/lib/db/database';
 import { hydrateNativeDocument } from '@/lib/storage/native-document';
@@ -278,7 +279,7 @@ export async function runMealEngagementNotifications(now = new Date()) {
 }
 
 /** Injectable provider boundary allows emulator regressions without outbound delivery. */
-export async function runNativeMealEngagementNotifications(db:Firestore,now:Date,deliver:typeof sendNotificationToUser, candidateCache?: MealEngagementCandidateCache){
+export async function runNativeMealEngagementNotifications(db:MongoDatabase,now:Date,deliver:typeof sendNotificationToUser, candidateCache?: MealEngagementCandidateCache){
   const lookbackMinutes = Math.max(
     1,
     Math.min(Number(process.env.MEAL_REMINDER_LOOKBACK_MINUTES || 4), 15),
@@ -290,7 +291,7 @@ export async function runNativeMealEngagementNotifications(db:Firestore,now:Date
   // A cached discovery contains only candidates. Always reload due plans and
   // preferences before checking completion, freezes, holds, or notification opt-outs.
   async function loadCandidateDocuments(ids: string[]) {
-    const batches: FirebaseFirestore.DocumentSnapshot[][] = [];
+    const batches: MongoTypes.DocumentSnapshot[][] = [];
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(3, Math.ceil(ids.length / 100)) }, async () => {
       for (;;) {

@@ -1,5 +1,6 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {createHash,randomBytes} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {z} from 'zod';
 import {nativeDates} from './native-plan-editor';
 import {nativeHabitDay} from './native-habits';
@@ -8,8 +9,8 @@ export class NativeProgressError extends Error{constructor(message:string,public
 const measurements=['waist','abdomen','hips','chest','arms','thighs'] as const;
 const numeric=z.coerce.number().finite().positive().max(1000);
 const schema=z.object({type:z.enum(['weight','body_fat','muscle_mass','waist','chest','hips','arms','thighs','abdomen','height','photo','measurements']).default('weight'),value:numeric.optional(),measurements:z.object(Object.fromEntries(measurements.map(key=>[key,z.coerce.number().finite().min(0).max(1000).optional()]))).optional(),notes:z.string().max(1000).default(''),photoUrl:z.string().max(4000).optional(),side:z.enum(['front','back','left','right','side']).default('front')});
-export async function nativeProgressHistory(db:Firestore,userId:string,start:Date,allWeights:boolean){
- const hydrate=async(rows:FirebaseFirestore.QuerySnapshot)=>Promise.all(rows.docs.filter(row=>!row.get('deletedAt')&&!row.get('isDeleted')).map(async row=>({...nativeDates(await hydrateNativeDocument(row.data())),_id:row.id})));
+export async function nativeProgressHistory(db:MongoDatabase,userId:string,start:Date,allWeights:boolean){
+ const hydrate=async(rows:MongoTypes.QuerySnapshot)=>Promise.all(rows.docs.filter(row=>!row.get('deletedAt')&&!row.get('isDeleted')).map(async row=>({...nativeDates(await hydrateNativeDocument(row.data())),_id:row.id})));
  const [user,entries,weights,food,plans]=await Promise.all([
   db.collection('users').doc(userId).get(),
   db.collection('progressentries').where('user','==',userId).where('recordedAt','>=',start).orderBy('recordedAt','desc').get(),
@@ -20,7 +21,7 @@ export async function nativeProgressHistory(db:Firestore,userId:string,start:Dat
  const relevantMealPlans=await hydrate(plans);relevantMealPlans.sort((a,b)=>new Date(b.startDate).getTime()-new Date(a.startDate).getTime()||new Date(b.lastPublishedAt||b.createdAt).getTime()-new Date(a.lastPublishedAt||a.createdAt).getTime());
  return {user:user.exists?nativeDates(user.data()!):null,allProgressEntries:await hydrate(entries),allWeightEntriesRaw:weights?await hydrate(weights):null,foodLogs:await hydrate(food),relevantMealPlans};
 }
-export async function saveNativeProgress(db:Firestore,userId:string,input:unknown,key?:string|null){
+export async function saveNativeProgress(db:MongoDatabase,userId:string,input:unknown,key?:string|null){
  const parsed=schema.safeParse(input);if(!parsed.success)throw new NativeProgressError('Invalid progress details',400);const data=parsed.data;
  const values:DocumentData[]=data.type==='measurements'?measurements.filter(type=>Number(data.measurements?.[type])>0).map(type=>({type,value:Number(data.measurements![type]),unit:'cm'})):data.type==='photo'?data.photoUrl&&(/^https:\/\//.test(data.photoUrl)||/^\/api\/(files|media)\//.test(data.photoUrl))?[{type:'photo',value:data.photoUrl,unit:data.side}]:[]:data.value?[{type:data.type,value:data.value,unit:data.type==='weight'||data.type==='muscle_mass'?'kg':data.type==='body_fat'?'%':'cm'}]:[];
  if(!values.length)throw new NativeProgressError('Progress values are required',400);
@@ -29,7 +30,7 @@ export async function saveNativeProgress(db:Firestore,userId:string,input:unknow
  return db.runTransaction(async tx=>{
   const op=db.collection('_nativeProgressOperations').doc(opId),existing=await tx.get(op);
   if(existing.exists){if(existing.get('fingerprint')!==fingerprint)throw new NativeProgressError('Progress retry conflict',409);const rows=await tx.getAll(...existing.get('entryIds').map((id:string)=>db.collection('progressentries').doc(id)));if(rows.some(row=>!row.exists||row.get('deletedAt')))throw new NativeProgressError('Progress entry was deleted',409);return {created:false,entries:rows.map(row=>nativeDates(row.data()!))};}
-  let journal:FirebaseFirestore.QueryDocumentSnapshot|undefined,patch:DocumentData|undefined,ref:FirebaseFirestore.DocumentReference|undefined;
+  let journal:MongoTypes.QueryDocumentSnapshot|undefined,patch:DocumentData|undefined,ref:MongoTypes.DocumentReference|undefined;
   if(data.type==='measurements'){
    const rows=await tx.get(db.collection('journaltrackings').where('client','==',userId).where('date','>=',day.start).where('date','<',day.end).limit(2));if(rows.size>1)throw new NativeProgressError('Duplicate journals require reconciliation',409);
    journal=rows.docs[0];ref=journal?.ref||db.collection('journaltrackings').doc(createHash('sha256').update(userId+'\0'+day.key).digest('hex').slice(0,24));
@@ -45,7 +46,7 @@ export async function saveNativeProgress(db:Firestore,userId:string,input:unknow
   return {created:true,entries};
  });
 }
-export async function deleteNativeProgress(db:Firestore,userId:string,id:string|null,allWeights=false){
+export async function deleteNativeProgress(db:MongoDatabase,userId:string,id:string|null,allWeights=false){
  if(allWeights){
   const rows=await db.collection('progressentries').where('user','==',userId).where('type','==','weight').get();let deleted=0;
   for(let i=0;i<rows.size;i+=300){deleted+=await db.runTransaction(async tx=>{const fresh=await tx.getAll(...rows.docs.slice(i,i+300).map(row=>row.ref));let count=0;for(const row of fresh)if(row.exists&&row.get('user')===userId&&row.get('type')==='weight'&&!row.get('deletedAt')){tx.update(row.ref,{deletedAt:new Date(),updatedAt:new Date()});count++;}return count;});}return deleted;

@@ -1,6 +1,6 @@
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
-export async function nativeRecentActivity(db:Firestore,now=new Date()){
+export async function nativeRecentActivity(db:MongoDatabase,now=new Date()){
  const since=new Date(now.getTime()-86400000),[users,appointments,payments]=await Promise.all([
   db.collection('users').where('createdAt','>=',since).orderBy('createdAt','desc').limit(5).select('firstName','lastName','role','createdAt').get(),
   db.collection('appointments').where('status','in',['confirmed','completed']).where('updatedAt','>=',since).orderBy('updatedAt','desc').limit(5).select('client','dietitian','status','updatedAt').get(),

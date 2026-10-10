@@ -1,13 +1,13 @@
 import {createHash,randomBytes} from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import {z} from 'zod';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {NativeDirectoryError,nativeDirectoryProfile} from './native-client-directory';
 import {nativePhoneVariations} from './native-registration';
 import {validatePhoneNumber,validateOptionalEmail} from '@/lib/validations/contact';
 const text=z.string().max(10000).optional();
 const schema=z.object({firstName:z.string().trim().min(1).max(100),lastName:z.string().trim().min(1).max(100),phone:z.string().min(6).max(30),email:z.string().max(320).optional(),password:z.string().min(4).max(72).optional(),role:z.enum(['client','admin','dietitian','health_counselor']).optional(),bio:text,experience:z.coerce.number().min(0).max(100).optional(),consultationFee:z.coerce.number().min(0).max(10000000).optional(),specializations:z.array(z.string().max(500)).max(100).optional(),credentials:z.array(z.string().max(500)).max(100).optional(),gender:z.enum(['male','female','other']).optional(),dateOfBirth:z.string().optional(),assignedDietitian:z.string().regex(/^[a-f0-9]{24}$/i).optional(),assignedHealthCounselor:z.string().regex(/^[a-f0-9]{24}$/i).optional()});
-export async function createNativeStaffUser(db:Firestore,actorId:string,input:unknown){
+export async function createNativeStaffUser(db:MongoDatabase,actorId:string,input:unknown){
  const parsed=schema.safeParse(input);if(!parsed.success)throw new NativeDirectoryError('Invalid user details');const b=parsed.data,role=b.role||'client',phone=validatePhoneNumber(b.phone,'+91'),emailCheck=validateOptionalEmail(b.email);if(!phone.isValid||!phone.normalized)throw new NativeDirectoryError('Invalid phone number');if(!emailCheck.isValid)throw new NativeDirectoryError('Invalid email address');if(role!=='client'&&(!b.email||!b.password))throw new NativeDirectoryError('Email and password are required for staff accounts');if(b.password&&Buffer.byteLength(b.password)>72)throw new NativeDirectoryError('Password is too long');
  const email=b.email?.trim().toLowerCase(),password=await bcrypt.hash(b.password||randomBytes(24).toString('hex'),12),id=randomBytes(12).toString('hex');
  const keys=[['phone',phone.normalized],...(email?[['email',email]]:[])].map(([kind,value])=>db.collection('_nativeUserKeys').doc(createHash('sha256').update(kind+'\0'+value).digest('hex')));

@@ -10,7 +10,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
  * - No new recipes are created during update operations
  * - Requests without valid _id are skipped with status 'cancelled'
  * - Arrays are replaced completely (not appended)
- * - All updates use native Firestore transactions
+ * - All updates use native MongoDB transactions
  */
 
 import { NextRequest, NextResponse } from 'next/server';

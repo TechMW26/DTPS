@@ -1,4 +1,4 @@
-import {Filter,type Firestore,type Query,type DocumentData} from 'firebase-admin/firestore';
+import {Filter,type MongoDatabase,type Query,type DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {nativeAppointmentActor} from './native-staff-appointments';
 import {NativeStaffClientError} from './native-staff-client';
@@ -6,7 +6,7 @@ import {differenceInDays} from 'date-fns';
 import {canonicalizePurchaseRecords} from '@/lib/payments/canonicalize-purchases';
 import {resolveEntitlementEndDate} from '@/lib/payments/entitlement-dates';
 import {indexedDashboardRows,hydrateDashboardClientDetails,indexedDashboardScope,indexedDashboardClients,indexedDashboardPaymentSummary,indexedDashboardPlanSummary,summarizeDashboardPayments} from './native-dashboard-indexed';
-export async function dashboardClients(db:Firestore,actorId:string,kind:'dietitian'|'health_counselor'|'pending',dietitianId?:string|null){
+export async function dashboardClients(db:MongoDatabase,actorId:string,kind:'dietitian'|'health_counselor'|'pending',dietitianId?:string|null){
  const actor=await nativeAppointmentActor(db,actorId),role=actor.get('role');if(role==='client'||kind==='health_counselor'&&!['admin','health_counselor'].includes(role))throw new NativeStaffClientError('Forbidden',403);
  let query:Query=db.collection('users').where('role','==','client');const staff=role==='admin'?dietitianId:actorId;
  if(staff){const conditions=kind==='health_counselor'?[Filter.where('assignedHealthCounselor','==',staff),Filter.where('assignedHealthCounselors','array-contains',staff)]:[Filter.where('assignedDietitian','==',staff),Filter.where('assignedDietitians','array-contains',staff)];if(role==='health_counselor'&&kind!=='health_counselor')conditions.push(Filter.where('assignedHealthCounselor','==',staff),Filter.where('assignedHealthCounselors','array-contains',staff));if(kind!=='pending')conditions.push(Filter.where('createdBy.userId','==',staff));query=query.where(Filter.or(...conditions));}
@@ -24,8 +24,8 @@ export async function dashboardClients(db:Firestore,actorId:string,kind:'dietiti
  const rows=await query.select('firstName','lastName','email','phone','avatar','clientId','clientStatus','status','createdAt','dateOfBirth','anniversary','holdStatus.isOnHold','assignedDietitian','assignedDietitians').get();
  return {role,summaryOnly:false,denseScope,clients:rows.docs.map(r=>({_id:r.id,...nativeDates(r.data())}) as DocumentData).filter(c=>kind!=='pending'||c.status!=='suspended').sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime())};
 }
-// Bound each Firestore membership query and network wave; only dashboard fields are read.
-export async function dashboardRelated(db:Firestore,collection:string,field:string,ids:string[],fields:string[],configure?:(q:Query)=>Query,membershipSize=30){
+// Bound each MongoDatabase membership query and network wave; only dashboard fields are read.
+export async function dashboardRelated(db:MongoDatabase,collection:string,field:string,ids:string[],fields:string[],configure?:(q:Query)=>Query,membershipSize=30){
  // An additional status IN multiplies disjunctions; those callers explicitly use 10.
  if(!Number.isInteger(membershipSize)||membershipSize<1||membershipSize>30)throw new Error('Invalid membership batch size');
  const rows:DocumentData[]=[],uniqueIds=[...new Set(ids)];
@@ -42,7 +42,7 @@ export async function dashboardRelated(db:Firestore,collection:string,field:stri
  for(const batch of batches)rows.push(...batch);
  return rows;
 }
-export async function nativePendingPlans(db:Firestore,actorId:string,params:URLSearchParams){
+export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:URLSearchParams){
  const {clients,summaryOnly,denseScope}=await dashboardClients(db,actorId,'pending',params.get('dietitianId')),clientIds=clients.map(c=>c._id);const today=new Date();today.setHours(0,0,0,0);
  const useIndexed=process.env.DATABASE_PROVIDER==='mongodb';
  const [rawPlans,purchases]=await Promise.all([
@@ -455,7 +455,7 @@ export async function nativePendingPlans(db:Firestore,actorId:string,params:URLS
 
 }
 
-async function dashboardAppointments(db:Firestore,actorId:string,role:string,health:boolean,start:Date,end:Date){
+async function dashboardAppointments(db:MongoDatabase,actorId:string,role:string,health:boolean,start:Date,end:Date){
  let q:Query=db.collection('appointments');if(role!=='admin')q=health?q.where(Filter.or(Filter.where('dietitian','==',actorId),Filter.where('healthCounselor','==',actorId))):q.where('dietitian','==',actorId);
  const count=async(q:Query)=>(await q.count().get()).data().count,day=q.where('scheduledAt','>=',start).where('scheduledAt','<',end);
  const [totalAppointments,completedSessions,totalPastAppointments,rows]=await Promise.all([count(q.where('scheduledAt','>=',start).where('status','in',['scheduled','confirmed','rescheduled','in-progress','pending'])),count(q.where('scheduledAt','<',start).where('status','in',['confirmed','completed'])),count(q.where('scheduledAt','<',start)),day.select('client','scheduledAt','duration','status','type').orderBy('scheduledAt').get()]);
@@ -464,7 +464,7 @@ async function dashboardAppointments(db:Firestore,actorId:string,role:string,hea
  const schedule:DocumentData[]=rows.docs.map(r=>({_id:r.id,...nativeDates(r.data())}));const ids=[...new Set(schedule.map(r=>r.client).filter(Boolean))];const users=new Map();for(let i=0;i<ids.length;i+=100)for(const r of await db.getAll(...ids.slice(i,i+100).map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName','email','avatar']}))if(r.exists)users.set(r.id,{_id:r.id,...r.data()});for(const r of schedule)r.client=users.get(r.client)||null;
  return {metrics:{totalAppointments,todaysAppointments,confirmedAppointments,pendingAppointments,completedSessions,totalPastAppointments},schedule};
 }
-export async function nativeStaffStats(db:Firestore,actorId:string,kind:'dietitian'|'health_counselor'){
+export async function nativeStaffStats(db:MongoDatabase,actorId:string,kind:'dietitian'|'health_counselor'){
  const {clients:assignedClients,role,summaryOnly,denseScope}=await dashboardClients(db,actorId,kind),clientIds=assignedClients.map(c=>c._id),clientMap=new Map(assignedClients.map(c=>[c._id,c]));
  const today=new Date();today.setHours(0,0,0,0);const startOfToday=today,endOfToday=new Date(today.getTime()+86400000),endOfPendingWindow=new Date(today.getTime()+4*86400000),startOfExpiredWindow=new Date(today.getTime()-3*86400000),todayMonth=today.getMonth(),todayDate=today.getDate();
  const useCoveringIndexes=process.env.DATABASE_PROVIDER==='mongodb';

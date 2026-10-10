@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
@@ -15,7 +16,7 @@ export async function GET(request:NextRequest){try{
  const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});
  const db=getNativeDatabase(),actor=await db.collection('users').doc(session.user.id).get();if(!actor.exists||['inactive','deleted'].includes(actor.get('status')))throw new NativeProgressError('Unauthorized',401);
  const p=request.nextUrl.searchParams,clientId=actor.get('role')==='client'?session.user.id:p.get('clientId');if(clientId)await taskClientAccess(db,session.user.id,clientId);else if(actor.get('role')!=='admin')throw new NativeProgressError('Client ID required',400);
- let query:FirebaseFirestore.Query=db.collection('progressentries');if(clientId)query=query.where('user','==',clientId);if(p.get('type'))query=query.where('type','==',p.get('type'));
+ let query:MongoTypes.Query=db.collection('progressentries');if(clientId)query=query.where('user','==',clientId);if(p.get('type'))query=query.where('type','==',p.get('type'));
  for(const [key,operator]of [['startDate','>='],['endDate','<=']]as const)if(p.get(key)){const date=new Date(p.get(key)!);if(!Number.isFinite(date.getTime()))throw new NativeProgressError('Invalid date',400);query=query.where('recordedAt',operator,date);}
  const page=Math.max(1,Math.floor(Number(p.get('page'))||1)),limit=Math.min(100,Math.max(1,Math.floor(Number(p.get('limit'))||50)));
  const all=await query.orderBy('recordedAt','desc').select('type','deletedAt','recordedAt').get(),visible=all.docs.filter(row=>!row.get('deletedAt')),latest=new Map();for(const row of visible)if(!latest.has(row.get('type')))latest.set(row.get('type'),row);

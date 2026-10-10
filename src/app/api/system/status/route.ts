@@ -26,7 +26,7 @@ export async function GET() {
   try {
     await getNativeDatabase().collection('_nativeHealth').doc('connectivity').get();
     services.database={status:'up'};
-  } catch {services.database={status:'down',message:'Firestore is temporarily unreachable'};}
+  } catch {services.database={status:'down',message:'MongoDB is temporarily unreachable'};}
 
   const allUp = Object.values(services).every((s) => s.status === "up");
 

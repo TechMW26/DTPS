@@ -1,5 +1,6 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {createHash, randomBytes} from 'node:crypto';
-import type {Firestore, DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase, DocumentData} from '@/lib/db/mongo-types';
 import {z} from 'zod';
 import {nativeDates} from './native-plan-editor';
 
@@ -13,30 +14,30 @@ const schema = z.object({
 export class NativeTagError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
-function tagRef(db: Firestore, id: string) {
+function tagRef(db: MongoDatabase, id: string) {
   if (!/^[a-f\d]{24}$/i.test(id)) throw new NativeTagError('Invalid tag ID', 400);
   return db.collection('tags').doc(id);
 }
-function identity(db: Firestore, tag: DocumentData) {
+function identity(db: MongoDatabase, tag: DocumentData) {
   return db.collection('_nativeTagNames').doc(createHash('sha256').update(tag.tagType + '\0' + tag.name).digest('hex'));
 }
 function view(id: string, raw: DocumentData) {
   const data = nativeDates(raw);
   return {_id: id, name: data.name, description: data.description || '', color: data.color || '#3B82F6', icon: data.icon || 'tag', tagType: data.tagType || 'general', createdBy: data.createdBy, createdAt: data.createdAt, updatedAt: data.updatedAt};
 }
-export async function listNativeTags(db: Firestore, role: string, type: string | null) {
-  let query: FirebaseFirestore.Query = db.collection('tags');
+export async function listNativeTags(db: MongoDatabase, role: string, type: string | null) {
+  let query: MongoTypes.Query = db.collection('tags');
   if (type && ['dietitian','health_counselor','general'].includes(type)) query = query.where('tagType', '==', type);
   else if (role !== 'admin') query = query.where('tagType', 'in', [role, 'general']);
   const rows = await query.get();
   return rows.docs.map(row => view(row.id, row.data())).sort((a,b) => a.tagType.localeCompare(b.tagType) || a.name.localeCompare(b.name));
 }
-export async function getNativeTag(db: Firestore, id: string) {
+export async function getNativeTag(db: MongoDatabase, id: string) {
   const row = await tagRef(db,id).get();
   if (!row.exists) throw new NativeTagError('Tag not found',404);
   return view(row.id,row.data()!);
 }
-export async function saveNativeTag(db: Firestore, actor: string, input: unknown, id?: string) {
+export async function saveNativeTag(db: MongoDatabase, actor: string, input: unknown, id?: string) {
   const parsed = (id ? schema.partial() : schema).safeParse(input);
   if (!parsed.success) throw new NativeTagError('Invalid tag fields',400);
   if (id) for (const key of Object.keys(parsed.data)) if (!Object.prototype.hasOwnProperty.call(input,key)) delete (parsed.data as Record<string,unknown>)[key];
@@ -59,7 +60,7 @@ export async function saveNativeTag(db: Firestore, actor: string, input: unknown
     return view(ref.id,{...data,...patch,createdBy:current.get('createdBy') || actor,createdAt:current.get('createdAt') || now});
   });
 }
-export async function deleteNativeTag(db: Firestore, id: string, actor: string) {
+export async function deleteNativeTag(db: MongoDatabase, id: string, actor: string) {
   const ref = tagRef(db,id);
   await db.runTransaction(async tx => {
     const admin=await tx.get(db.collection('users').doc(actor));if(admin.get('role')!=='admin'||admin.get('status')!=='active')throw new NativeTagError('Admin access required',403);

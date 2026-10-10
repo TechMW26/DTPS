@@ -1,10 +1,10 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 export type NativeDeliveryResult='sent'|'skipped'|'disabled';
 export type NativeOutboxDelivery=(job:DocumentData)=>Promise<NativeDeliveryResult>;
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 /** Commit database-only effects atomically. A retry cannot duplicate an in-app receipt or provider job. */
-export async function expandNativePaymentOutbox(db:Firestore,id:string){
+export async function expandNativePaymentOutbox(db:MongoDatabase,id:string){
  return db.runTransaction(async tx=>{
   const ref=db.collection('_nativeOutbox').doc(id),job=await tx.get(ref);
   if(!job.exists||job.get('status')!=='pending'||job.get('type')!=='payment-paid')return false;
@@ -21,7 +21,7 @@ export async function expandNativePaymentOutbox(db:Firestore,id:string){
   tx.update(ref,{status:'completed',completedAt:now});return true;
  });
 }
-export async function expandNativePaymentLinkOutbox(db:Firestore,id:string){
+export async function expandNativePaymentLinkOutbox(db:MongoDatabase,id:string){
  return db.runTransaction(async tx=>{
   const ref=db.collection('_nativeOutbox').doc(id),job=await tx.get(ref);
   if(!job.exists||job.get('status')!=='pending'||job.get('type')!=='payment-link-created')return false;
@@ -38,7 +38,7 @@ export async function expandNativePaymentLinkOutbox(db:Firestore,id:string){
  });
 }
 const appointmentTypes=['appointment-created','appointment-cancelled','appointment-rescheduled','appointment-completed'];
-export async function expandNativeAppointmentOutbox(db:Firestore,id:string){
+export async function expandNativeAppointmentOutbox(db:MongoDatabase,id:string){
  return db.runTransaction(async tx=>{
   const ref=db.collection('_nativeOutbox').doc(id),job=await tx.get(ref);
   if(!job.exists||job.get('status')!=='pending'||!appointmentTypes.includes(job.get('type')))return false;
@@ -62,7 +62,7 @@ export async function expandNativeAppointmentOutbox(db:Firestore,id:string){
  });
 }
 /** Only an unattempted pending effect can be claimed. Expired claims become uncertain, never automatic re-sends. */
-export async function deliverNativeOutboxJob(db:Firestore,id:string,deliver:NativeOutboxDelivery){
+export async function deliverNativeOutboxJob(db:MongoDatabase,id:string,deliver:NativeOutboxDelivery){
  const ref=db.collection('_nativeOutbox').doc(id),owner=randomUUID(),now=new Date();
  const job=await db.runTransaction(async tx=>{
   const row=await tx.get(ref);if(!row.exists)return null;
@@ -85,7 +85,7 @@ export async function deliverNativeOutboxJob(db:Firestore,id:string,deliver:Nati
  });
  return result;
 }
-export async function drainNativeOutbox(db:Firestore,deliver:NativeOutboxDelivery,limit=50){
+export async function drainNativeOutbox(db:MongoDatabase,deliver:NativeOutboxDelivery,limit=50){
  const rows=await db.collection('_nativeOutbox').where('status','in',['pending','processing']).where('type','in',['payment-paid','payment-link-created','invoice-email','payment-push','payment-link-push','appointment-push','appointment-calendar',...appointmentTypes]).orderBy('createdAt','asc').limit(Math.min(100,Math.max(1,limit))).get();
  const summary={selected:rows.size,expanded:0,sent:0,skipped:0,uncertain:0,disabled:0,failed:0};
  for(let offset=0;offset<rows.size;offset+=8)await Promise.all(rows.docs.slice(offset,offset+8).map(async row=>{

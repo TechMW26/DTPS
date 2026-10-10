@@ -1,8 +1,9 @@
-import {Filter,FieldPath,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import {Filter,FieldPath,type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {hydrateNativeDocument} from '@/lib/storage/native-document';
 
-export async function nativeClientConversation(db:Firestore,userId:string){
+export async function nativeClientConversation(db:MongoDatabase,userId:string){
  const client=await db.collection('users').doc(userId).get();
  const staffId=client.get('assignedDietitian');if(typeof staffId!=='string'||!staffId||staffId.includes('/'))return null;
  const staff=await db.collection('users').doc(staffId).get();if(!staff.exists)return null;
@@ -10,7 +11,7 @@ export async function nativeClientConversation(db:Firestore,userId:string){
   Filter.and(Filter.where('sender','==',userId),Filter.where('receiver','==',staffId)),
   Filter.and(Filter.where('sender','==',staffId),Filter.where('receiver','==',userId)),
  )).orderBy('createdAt','desc').orderBy(FieldPath.documentId(),'desc').select('content','type','createdAt','isRead','sender','receiver','deletedAt','_nativeExternalFields');
- let cursor:FirebaseFirestore.QueryDocumentSnapshot|undefined,lastMessage:DocumentData|null=null;
+ let cursor:MongoTypes.QueryDocumentSnapshot|undefined,lastMessage:DocumentData|null=null;
  for(;;){
   const rows=await (cursor?query.startAfter(cursor):query).limit(25).get();
   const latest=rows.docs.find(doc=>!doc.get('deletedAt'));

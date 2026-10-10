@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { randomUUID } from 'node:crypto';
 import { getNativeDatabase } from '@/lib/db/database';
 import { recalculateNativeClientStatus, nativeClientStatusInfo } from '@/lib/db/repository/native-client-status';
@@ -5,10 +6,10 @@ import { ClientStatus } from '@/types';
 const suite = process.env.DTPS_MONGODB_LOCAL_TEST ? describe : describe.skip;
 suite('native subscription status', () => {
   let db: ReturnType<typeof getNativeDatabase>;
-  const refs: FirebaseFirestore.DocumentReference[] = [];
+  const refs: MongoTypes.DocumentReference[] = [];
   beforeAll(() => { db = getNativeDatabase(); });
   afterAll(async () => { for (const ref of refs) await ref.delete(); await db.terminate(); });
-  async function put(collection: string, data: FirebaseFirestore.DocumentData) {
+  async function put(collection: string, data: MongoTypes.DocumentData) {
     const ref = db.collection(collection).doc(randomUUID()); refs.push(ref); await ref.set(data); return ref;
   }
   it('uses subscription expiry, excludes deleted phases, and writes one audit under concurrency', async () => {

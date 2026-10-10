@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes,createHash} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {authorizeNativeSignal} from '@/lib/db/repository/native-signals';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native call participant binding',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('allows the invited client to answer their care team but rejects a third-party call injection',async()=>{
   const staff=db.collection('users').doc(randomBytes(12).toString('hex')),client=db.collection('users').doc(randomBytes(12).toString('hex')),stranger=db.collection('users').doc(randomBytes(12).toString('hex'));

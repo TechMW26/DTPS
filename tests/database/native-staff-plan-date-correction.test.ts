@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {correctNativePlanDates} from '@/lib/db/repository/native-staff-plan-date-correction';
@@ -8,7 +9,7 @@ it('does not treat missing or unsupported dates as valid timestamps',()=>{
  expect(planNeedsDateCorrection({startDate:null,endDate:null,status:'active'})).toBe(true);
 });
 suite('explicit migration date correction',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  const id=()=>randomBytes(12).toString('hex');
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  async function put(collection:string,data:any){const ref=db.collection(collection).doc(id());refs.push(ref);await ref.set(data);return ref;}

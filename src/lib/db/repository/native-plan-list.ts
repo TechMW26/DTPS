@@ -1,4 +1,4 @@
-import {Filter,type Firestore,type DocumentData,type Query} from 'firebase-admin/firestore';
+import {Filter,type MongoDatabase,type DocumentData,type Query} from '@/lib/db/mongo-types';
 import {NativePlanEditor,nativeDates,nativePlanStaffAccess} from './native-plan-editor';
 
 const pick=(data:DocumentData|null,keys:string[])=>data?Object.fromEntries(['_id',...keys].filter(key=>data[key]!==undefined).map(key=>[key,data[key]])):null;
@@ -16,7 +16,7 @@ export async function populateNativePlan(editor:NativePlanEditor,plan:DocumentDa
   ...(plan.purchaseId?{purchaseId:purchase?.client===plan.clientId?pick(purchase,paymentKeys):null}:{}),
  };
 }
-export async function listNativePlans(db:Firestore,actor:{id:string;role:string},options:{clientId:string|null;status:string|null;includeDeleted:boolean;page:number;limit:number}){
+export async function listNativePlans(db:MongoDatabase,actor:{id:string;role:string},options:{clientId:string|null;status:string|null;includeDeleted:boolean;page:number;limit:number}){
  const editor=new NativePlanEditor(db),current=await editor.document('users',actor.id);
  if(!current||current.isActive===false||['inactive','suspended'].includes(current.status))return {status:403 as const};
  const role=current.role==='dietician'?'dietitian':current.role;

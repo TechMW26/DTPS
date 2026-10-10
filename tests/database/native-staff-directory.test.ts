@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {nativeStaffDirectory} from '@/lib/db/repository/native-staff-directory';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native staff directory',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('counts a client assigned through both fields once and excludes private account fields',async()=>{
   const key=randomBytes(12).toString('hex'),staff=db.collection('users').doc(key),client=db.collection('users').doc(randomBytes(12).toString('hex'));refs.push(staff,client);

@@ -1,17 +1,18 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { createHash } from 'node:crypto';
-import { type Firestore, type DocumentData } from 'firebase-admin/firestore';
+import { type MongoDatabase, type DocumentData } from '@/lib/db/mongo-types';
 import { hydrateNativeDocument } from '@/lib/storage/native-document';
 import { nativeJson } from './native-history';
 
 const published = ['active','completed','paused'];
-export async function nativePlanList(db: Firestore, clientId: string) {
+export async function nativePlanList(db: MongoDatabase, clientId: string) {
   const plans = await db.collection('clientmealplans').where('clientId','==',clientId)
     .where('status','in',published).select('name','status','startDate','endDate','duration','createdAt','isDeleted').get();
   return plans.docs.filter(doc=>!doc.get('isDeleted')).map(doc=>nativeJson({...doc.data(),_id:doc.id}) as DocumentData)
     .sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime());
 }
 
-export async function nativePlanForDate(db: Firestore, clientId: string, start: Date, end: Date) {
+export async function nativePlanForDate(db: MongoDatabase, clientId: string, start: Date, end: Date) {
   const plans = await db.collection('clientmealplans').where('clientId','==',clientId).where('status','in',published)
     .select('startDate','endDate','lastPublishedAt','createdAt','isDeleted').get();
   const date=(value:any)=>value?.toDate?.()||new Date(value||0);
@@ -26,7 +27,7 @@ export async function nativePlanForDate(db: Firestore, clientId: string, start: 
   return null;
 }
 
-export async function nativeTemplateMeals(db: Firestore, id: string) {
+export async function nativeTemplateMeals(db: MongoDatabase, id: string) {
   if(!id||id.includes('/'))return null;
   const doc=await db.collection('diettemplates').doc(id).get();
   return doc.exists?nativeJson(await hydrateNativeDocument(doc.data()!)) as DocumentData:null;
@@ -36,9 +37,9 @@ export function recipeNameKey(name: string) {
   return createHash('sha256').update(name.trim().toLowerCase()).digest('hex');
 }
 const recipeFields=['name','uuid','ingredients','instructions','prepTime','cookTime','servings','difficulty','cuisine','tips','calories','protein','carbs','fat','image','images','video','equipment','storage','tags','dietaryRestrictions','allergens','isActive','_nativeExternalFields'];
-export async function nativeMealRecipes(db: Firestore, ids: string[], uuids: string[], names: string[]) {
+export async function nativeMealRecipes(db: MongoDatabase, ids: string[], uuids: string[], names: string[]) {
   const records=new Map<string,DocumentData>();
-  const add=(docs:FirebaseFirestore.DocumentSnapshot[])=>docs.forEach(doc=>{if(doc.exists)records.set(doc.id,{...doc.data(),_id:doc.id});});
+  const add=(docs:MongoTypes.DocumentSnapshot[])=>docs.forEach(doc=>{if(doc.exists)records.set(doc.id,{...doc.data(),_id:doc.id});});
   const validIds=[...new Set(ids)].filter(id=>/^[a-f\d]{24}$/i.test(id));
   for(let i=0;i<validIds.length;i+=100)add(await db.getAll(...validIds.slice(i,i+100).map(id=>db.collection('recipes').doc(id)),{fieldMask:recipeFields}));
   for(const [field,values] of [['uuid',[...new Set(uuids)]],['name',[...new Set(names)]]] as const) {

@@ -1,4 +1,4 @@
-import type { Firestore } from 'firebase-admin/firestore';
+import type { MongoDatabase } from '@/lib/db/mongo-types';
 import { nativeDatabaseSettings } from '@/lib/db/database';
 import { redisNamespace, redisOperation } from '@/lib/cache/redis';
 
@@ -17,8 +17,8 @@ export interface MealEngagementCandidateCache {
 // Only plan IDs are cached, never a delivery decision or personal/medical data.
 // Production instances share discovery through Redis; warm instances still benefit
 // when Redis is unavailable. Expiry is checked by the caller against its run time.
-const local = new WeakMap<Firestore, MealEngagementCandidates>();
-export function mealEngagementCandidateCache(db: Firestore): MealEngagementCandidateCache {
+const local = new WeakMap<MongoDatabase, MealEngagementCandidates>();
+export function mealEngagementCandidateCache(db: MongoDatabase): MealEngagementCandidateCache {
   const { provider, databaseId } = nativeDatabaseSettings();
   const key = `${redisNamespace()}:meal-candidates:v1:${provider}:${databaseId}`;
   return {

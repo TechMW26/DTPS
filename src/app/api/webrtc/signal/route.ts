@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Native Firestore event stream; the signal record retains polling compatibility.
+    // Native MongoDB event stream; the signal record retains polling compatibility.
     const { socketManager } = await import('@/lib/realtime/socket-manager');
     await socketManager.sendToUser(delivery.recipientId, delivery.event, delivery.payload);
 

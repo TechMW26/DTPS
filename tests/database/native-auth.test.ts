@@ -1,13 +1,14 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomUUID} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {nativePasswordLogin,nativeOtpLogin,nativeSessionStatus,recordNativeLogin,saveNativeCalendarCredentials} from '@/lib/db/repository/native-auth';
 import {hasPublishedMealPlan,grantDietPlanAccessIfPublished} from '@/lib/auth/onboarding-access';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native authentication and onboarding',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});
  afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
- async function put(collection:string,data:FirebaseFirestore.DocumentData){const ref=db.collection(collection).doc(randomUUID());refs.push(ref);await ref.set(data);return ref;}
+ async function put(collection:string,data:MongoTypes.DocumentData){const ref=db.collection(collection).doc(randomUUID());refs.push(ref);await ref.set(data);return ref;}
  it('authenticates the correct login context and denies missing, duplicate and disabled accounts',async()=>{
   const email=randomUUID()+'@example.invalid';const ref=await put('users',{email,password:'synthetic',role:'client',status:'active'});
   expect(await nativePasswordLogin(db,email,'synthetic','staff')).toBeNull();

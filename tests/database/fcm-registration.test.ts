@@ -1,11 +1,12 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes,createHash} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {registerFCMToken,sendNotificationToUser} from '@/lib/firebase/firebaseNotification';
 import {getMessaging} from '@/lib/firebase/firebaseAdmin';
 jest.mock('@/lib/firebase/firebaseAdmin',()=>({getMessaging:jest.fn(),getNativeMessaging:jest.fn()}));
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
-suite('FCM service on native Firestore',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+suite('FCM service on native MongoDB',()=>{
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});
  afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('moves a token without rewriting unrelated users and never delivers pushes during local testing',async()=>{

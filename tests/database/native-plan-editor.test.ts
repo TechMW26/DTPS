@@ -1,12 +1,13 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {NativePlanEditor,nativePlanStaffAccess} from '@/lib/db/repository/native-plan-editor';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native plan editor consistency',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});
  afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
- async function put(collection:string,data:FirebaseFirestore.DocumentData){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
+ async function put(collection:string,data:MongoTypes.DocumentData){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
  it('rejects a save if a sibling is added after phase-number validation',async()=>{
   const client=randomBytes(12).toString('hex'),plan=await put('clientmealplans',{clientId:client,status:'draft',name:'draft'});
   const editor=new NativePlanEditor(db),data=(await editor.plan(plan.id))!;await editor.siblings(data);

@@ -76,7 +76,7 @@ const nextConfig: NextConfig = {
   },
 
   // Mark firebase-admin as external for server components (prevents Turbopack bundling issues)
-  serverExternalPackages: ['firebase-admin', '@google-cloud/firestore'],
+  serverExternalPackages: ['firebase-admin'],
 
   // Keep Firebase's auth helper on the DTPS origin. Safari, installed PWAs,
   // and native WebViews can block the cross-origin helper storage used by the

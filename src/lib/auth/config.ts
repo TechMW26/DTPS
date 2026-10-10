@@ -11,7 +11,7 @@ import { grantDietPlanAccessIfPublished } from '@/lib/auth/onboarding-access';
 
 /**
  * In-memory cache for user active-status checks in the session callback.
- * Avoids a Firestore read on every getServerSession() call.
+ * Avoids a MongoDB read on every getServerSession() call.
  * Cache TTL: 5 minutes — a user deactivated by admin will be locked out within 5 min.
  */
 const userStatusCache = new Map<string, {

@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import type {Firestore} from 'firebase-admin/firestore';
+import type {MongoDatabase} from '@/lib/db/mongo-types';
 
 export interface NativeUploadMetadata {
   filename: string;
@@ -15,7 +15,7 @@ export interface NativeUploadMetadata {
 export const nativeUploadId = (pathname: string) => createHash('sha256').update('blob\0'+pathname).digest('hex').slice(0,24);
 
 /** Bind a direct-upload pathname to one account before issuing a Blob token. */
-export async function reserveNativeUpload(db: Firestore, pathname: string, userId: string, fingerprint: string) {
+export async function reserveNativeUpload(db: MongoDatabase, pathname: string, userId: string, fingerprint: string) {
   const ref=db.collection('_nativeUploadReservations').doc(createHash('sha256').update(pathname).digest('hex'));
   await db.runTransaction(async tx=>{
     const row=await tx.get(ref);
@@ -28,7 +28,7 @@ export async function reserveNativeUpload(db: Firestore, pathname: string, userI
 }
 
 /** A successful response requires durable metadata; retries cannot change ownership. */
-export async function saveNativeUpload(db: Firestore, id: string, metadata: NativeUploadMetadata) {
+export async function saveNativeUpload(db: MongoDatabase, id: string, metadata: NativeUploadMetadata) {
   if(!/^[a-f0-9]{24}$/.test(id) || !metadata.uploadedBy || !Number.isFinite(metadata.size) || metadata.size<=0) throw new Error('Invalid file metadata');
   const ref=db.collection('files').doc(id);
   await db.runTransaction(async tx=>{
@@ -44,7 +44,7 @@ export async function saveNativeUpload(db: Firestore, id: string, metadata: Nati
 }
 
 /** Retain the physical object until reference-aware garbage collection can prove it is unused. */
-export async function deleteNativeUpload(db: Firestore, id: string, userId: string) {
+export async function deleteNativeUpload(db: MongoDatabase, id: string, userId: string) {
   if(!/^[a-f0-9]{24}$/.test(id)) return false;
   return db.runTransaction(async tx=>{
     const ref=db.collection('files').doc(id),row=await tx.get(ref);

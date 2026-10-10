@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {createHash} from 'node:crypto';
 import type {Document} from 'mongodb';
 import {getMongoDatabase} from '@/lib/db/mongo-native';
@@ -174,7 +175,7 @@ export async function indexedDashboardPaymentSummary(clientIds:string[],start:Da
  return includeDetails?summary:{groups:summary.groups,recentPayments:[],expiredPayments:[]};
 }
 
-export function summarizeDashboardPayments(payments:FirebaseFirestore.DocumentData[],start:Date,end:Date){
+export function summarizeDashboardPayments(payments:MongoTypes.DocumentData[],start:Date,end:Date){
  const totals=new Map<string,{status:string,amount:number,count:number}>();
  for(const payment of payments){const group=totals.get(payment.status)||{status:payment.status,amount:0,count:0};group.count++;group.amount+=Number(payment.amount||0);totals.set(payment.status,group);}
  return {groups:[...totals.values()],recentPayments:[...payments].sort(recentPaymentOrder).slice(0,10),expiredPayments:payments.filter(payment=>payment.expectedEndDate>=start&&payment.expectedEndDate<end)};

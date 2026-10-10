@@ -1,11 +1,12 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {createHash} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {hydrateNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
 import {nativeMediaParentAccess,type MediaActor,lookupNativeFile} from './native-media';
 export class NativeReportError extends Error{constructor(message:string,public status:number){super(message);}}
 function valid(id:string){if(!/^[a-f0-9]{24}$/.test(id))throw new NativeReportError('Invalid report ID',400);}
-function references(row:FirebaseFirestore.DocumentSnapshot){return [...new Set<string>((row.get('parents')||[]).filter((id:unknown)=>typeof id==='string'&&/^[a-f0-9]{24}$/.test(id)))];}
-export async function lookupNativeReport(db:Firestore,id:string,actor:MediaActor|null){
+function references(row:MongoTypes.DocumentSnapshot){return [...new Set<string>((row.get('parents')||[]).filter((id:unknown)=>typeof id==='string'&&/^[a-f0-9]{24}$/.test(id)))];}
+export async function lookupNativeReport(db:MongoDatabase,id:string,actor:MediaActor|null){
  valid(id);if(!actor)return null;
  const account=await db.collection('users').doc(actor.id).get();if(!account.exists||['inactive','suspended','deleted'].includes(account.get('status'))||account.get('isDeleted')||account.get('deletedAt'))return null;actor={id:actor.id,role:account.get('role')};
  const [file,grid,index]=await db.getAll(db.collection('files').doc(id),db.collection('medicalReports.files').doc(id),db.collection('_nativeReportReferences').doc(id));
@@ -22,7 +23,7 @@ export async function lookupNativeReport(db:Firestore,id:string,actor:MediaActor
  if(file.exists&&file.get('storage')==='vercel-blob')return {url:file.get('imageKitUrl'),mimeType:file.get('mimeType'),originalName:file.get('originalName')};
  return null;
 }
-export async function deleteNativeReport(db:Firestore,id:string,actor:MediaActor){
+export async function deleteNativeReport(db:MongoDatabase,id:string,actor:MediaActor){
  valid(id);valid(actor.id);
  return db.runTransaction(async tx=>{
   const [account,file,grid,index]=await tx.getAll(db.collection('users').doc(actor.id),db.collection('files').doc(id),db.collection('medicalReports.files').doc(id),db.collection('_nativeReportReferences').doc(id));
@@ -30,7 +31,7 @@ export async function deleteNativeReport(db:Firestore,id:string,actor:MediaActor
   const role=account.get('role'),source=file.exists?file:grid;if(!source.exists)throw new NativeReportError('Report not found',404);
   const ids=references(index);if(ids.length>350)throw new NativeReportError('Shared report requires reconciliation',409);
   const parents=ids.length?await tx.getAll(...ids.map(parent=>db.collection('medicalinfos').doc(parent))):[];
-  const current: {row:FirebaseFirestore.DocumentSnapshot;data:DocumentData}[]=[];
+  const current: {row:MongoTypes.DocumentSnapshot;data:DocumentData}[]=[];
   for(const row of parents)if(row.exists){const data=await hydrateNativeDocument(row.data()!);if((data.reports||[]).some((report:DocumentData)=>report.id===id))current.push({row,data});}
   const ownerIds=[...new Set(current.map(({data})=>data.userId).filter((value:unknown)=>typeof value==='string'&&/^[a-f0-9]{24}$/.test(value)))];
   const owners=ownerIds.length?await tx.getAll(...ownerIds.map(owner=>db.collection('users').doc(owner))):[];

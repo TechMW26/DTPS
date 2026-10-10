@@ -1,6 +1,7 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {createHash,randomBytes} from 'node:crypto';
 import {z} from 'zod';
-import type {Firestore,Query,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,Query,DocumentData} from '@/lib/db/mongo-types';
 import {hydrateNativeDocument,prepareNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
 import {nativeJson} from './native-history';
 const text=z.string().max(10000).optional(),strings=z.array(z.string().max(1000)).max(200).optional();
@@ -26,20 +27,20 @@ export function validateClientForm(collection:ClientFormCollection,input:unknown
  if(collection==='lifestyleinfos')return lifestyle.parse(input);
  return z.object({meals:z.array(z.object({mealType:z.string().max(100),hour:z.string().max(2),minute:z.string().max(2),meridian:z.enum(['AM','PM']),food:z.string().max(10000)})).max(100)}).parse(input);
 }
-function queryFor(db:Firestore,collection:ClientFormCollection,userId:string,date?:Date):Query{
+function queryFor(db:MongoDatabase,collection:ClientFormCollection,userId:string,date?:Date):Query{
  let query:Query=db.collection(collection).where('userId','==',userId);
  if(date)query=query.where('date','>=',date).where('date','<',new Date(date.getTime()+86400000));return query;
 }
-export async function readNativeClientForm(db:Firestore,collection:ClientFormCollection,userId:string){
+export async function readNativeClientForm(db:MongoDatabase,collection:ClientFormCollection,userId:string){
  const rows=await queryFor(db,collection,userId).limit(2).get();if(rows.size>1)throw new Error('Duplicate client form requires reconciliation');
  const row=rows.docs[0];return row?nativeJson({...await hydrateNativeDocument(row.data()),_id:row.id}):null;
 }
-export async function writeNativeClientForm(db:Firestore,collection:ClientFormCollection,userId:string,input:unknown,date?:Date,actorId?:string,staffRole?:'dietitian'){
+export async function writeNativeClientForm(db:MongoDatabase,collection:ClientFormCollection,userId:string,input:unknown,date?:Date,actorId?:string,staffRole?:'dietitian'){
  const patch=validateClientForm(collection,input);
  if(collection==='dietaryrecalls'&&(!date||!Number.isFinite(date.getTime())))throw new Error('Invalid recall date');
  const ref=db.collection(collection).doc(createHash('sha256').update(collection+'\0'+userId+'\0'+(date?.toISOString()||'')).digest('hex').slice(0,24));
  return db.runTransaction(async tx=>{
-  let client:FirebaseFirestore.DocumentSnapshot|undefined,actor:FirebaseFirestore.DocumentSnapshot|undefined;
+  let client:MongoTypes.DocumentSnapshot|undefined,actor:MongoTypes.DocumentSnapshot|undefined;
   if(actorId){
    const accounts=await tx.getAll(db.collection('users').doc(actorId),db.collection('users').doc(userId));client=accounts[1];actor=accounts[0];
    if(actor.get('role')!==(staffRole||'admin')||actor.get('status')!=='active')throw new NativeFormError('Staff access required',403);
@@ -69,7 +70,7 @@ export async function writeNativeClientForm(db:Firestore,collection:ClientFormCo
   updateProfile();tx.create(ref,await prepareNativeDocument(data));return nativeJson(data);
  });
 }
-export async function listNativeRecalls(db:Firestore,userId:string){
+export async function listNativeRecalls(db:MongoDatabase,userId:string){
  const rows=await db.collection('dietaryrecalls').where('userId','==',userId).orderBy('date','desc').limit(30).get();
  return Promise.all(rows.docs.map(async doc=>nativeJson({...await hydrateNativeDocument(doc.data()),_id:doc.id})));
 }

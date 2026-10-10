@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {createHmac,randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {createNativeCheckout,verifyNativeCheckout,type CheckoutProvider} from '@/lib/db/repository/native-checkout';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native checkout integrity',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];const secret='synthetic-test-secret';
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];const secret='synthetic-test-secret';
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  const id=()=>randomBytes(12).toString('hex');
  async function setup(){const user=db.collection('users').doc(id()),plan=db.collection('serviceplans').doc(id()),tier=id();refs.push(user,plan);await user.set({role:'client',status:'active'});await plan.set({isActive:true,showToClients:true,name:'Synthetic plan',pricingTiers:[{_id:tier,isActive:true,amount:100,durationDays:30}]});return {user,plan,tier};}

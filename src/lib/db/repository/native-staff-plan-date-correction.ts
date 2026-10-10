@@ -1,10 +1,10 @@
 import {toISTDateKey} from '@/lib/utils/ist';
-import type {Firestore} from 'firebase-admin/firestore';
+import type {MongoDatabase} from '@/lib/db/mongo-types';
 import {NativePlanEditor} from './native-plan-editor';
 import {NativeStaffClientError} from './native-staff-client';
 import {planNeedsDateCorrection,validPlanDate} from '@/lib/meal-plan-date-validity';
 const fail=(message:string,status=400):never=>{throw new NativeStaffClientError(message,status);};
-export async function correctNativePlanDates(db:Firestore,actorId:string,id:string,input:any){
+export async function correctNativePlanDates(db:MongoDatabase,actorId:string,id:string,input:any){
  if(!input||typeof input!=='object'||Array.isArray(input))fail('Enter both valid dates');
  const editor=new NativePlanEditor(db),actor=await editor.document('users',actorId);
  if(actor?.role!=='admin'||actor.isActive===false||['inactive','suspended'].includes(actor.status))fail('Administrator access required',403);

@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {createNativeStripeConsultation,settleNativeStripePayment} from '@/lib/db/repository/native-stripe-payments';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native Stripe verification',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];const id=()=>randomBytes(12).toString('hex');
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];const id=()=>randomBytes(12).toString('hex');
  const add=async(c:string,i:string,data:any)=>{const ref=db.collection(c).doc(i);refs.push(ref);await ref.set(data);return ref;};
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('uses authoritative appointment pricing and settles verified payment once',async()=>{

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { type Firestore, Timestamp } from 'firebase-admin/firestore';
+import { type MongoDatabase, Timestamp } from '@/lib/db/mongo-types';
 
 export function realtimeTargets(userId: string, role: string) {
   if (!/^[a-f0-9]{24}$/i.test(userId)) throw new Error('Invalid realtime user');
@@ -7,7 +7,7 @@ export function realtimeTargets(userId: string, role: string) {
   if (!roles.includes(role)) throw new Error('Invalid realtime role');
   return [`user:${userId}`, `role:${role}`, 'all'];
 }
-export async function publishNativeEvent(db: Firestore, targets: string[], event: string, data: unknown) {
+export async function publishNativeEvent(db: MongoDatabase, targets: string[], event: string, data: unknown) {
   if (!targets.length) return;
   if (targets.length > 100 || targets.some(target => !/^(all|user:[a-f0-9]{24}|role:(admin|dietitian|health_counselor|client))$/i.test(target))) throw new Error('Invalid event audience');
   if (!/^[a-zA-Z0-9_:-]{1,80}$/.test(event)) throw new Error('Invalid event type');
@@ -22,7 +22,7 @@ export async function publishNativeEvent(db: Firestore, targets: string[], event
   });
   return id;
 }
-export async function nativeRealtimeActor(db: Firestore, id: string) {
+export async function nativeRealtimeActor(db: MongoDatabase, id: string) {
   if (!/^[a-f0-9]{24}$/i.test(id)) return null;
   const [user] = await db.getAll(db.collection('users').doc(id), {fieldMask:['role','status','isDeleted']});
   if (!user.exists || user.get('status') === 'inactive' || user.get('isDeleted')) return null;

@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import {getNativeDatabase} from '@/lib/db/database';
@@ -6,7 +7,7 @@ import {authenticateNativeUser,nativeUserProfile} from '@/lib/db/repository/nati
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native user authentication (emulator only)',()=>{
   let db:ReturnType<typeof getNativeDatabase>;
-  const refs:FirebaseFirestore.DocumentReference[]=[];
+  const refs:MongoTypes.DocumentReference[]=[];
   const email=`${randomUUID()}@example.invalid`;
   beforeAll(()=>{db=getNativeDatabase();});
   afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});

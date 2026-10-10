@@ -1,8 +1,9 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {getNativeDatabase} from '@/lib/db/database';
 import {writeNativeDurationPreset,deleteNativeDurationPreset,reorderNativeDurationPresets} from '@/lib/db/repository/native-duration-presets';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native duration configuration',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});
  afterAll(async()=>{for(const ref of refs)await ref.delete();await db.collection('_nativeLocks').doc('durationPresets').delete();await db.terminate();});
  it('prevents duplicate durations under concurrent creation and reorders atomically',async()=>{

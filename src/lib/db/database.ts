@@ -1,4 +1,4 @@
-import type { Firestore } from 'firebase-admin/firestore';
+import type { MongoDatabase } from './mongo-types';
 import { getMongoNativeDatabase } from './mongo-native';
 
 /** Firebase authentication/push credentials are never used for the business database. */
@@ -19,7 +19,7 @@ export function nativeDatabaseSettings(env: Record<string, string | undefined> =
 }
 
 /** Shared facade keeps existing route contracts while all storage uses MongoDB. */
-export function getNativeDatabase(): Firestore {
+export function getNativeDatabase(): MongoDatabase {
   nativeDatabaseSettings();
   return getMongoNativeDatabase();
 }

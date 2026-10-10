@@ -1,9 +1,9 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {NativeCheckoutError,settleNativeCapturedPayment} from './native-checkout';
 import {verifyNativePaymentLink} from './native-payment-link';
 export function validNativeWebhookSignature(body:string,signature:string,secret:string){return !!secret&&/^[a-f\d]{64}$/i.test(signature)&&timingSafeEqual(createHmac('sha256',secret).update(body).digest(),Buffer.from(signature,'hex'));}
-export async function processNativeRazorpayWebhook(db:Firestore,event:DocumentData,eventHash:string,fetchLink:(id:string)=>Promise<DocumentData>){
+export async function processNativeRazorpayWebhook(db:MongoDatabase,event:DocumentData,eventHash:string,fetchLink:(id:string)=>Promise<DocumentData>){
  const receipt=db.collection('_nativeWebhookEvents').doc('razorpay-'+eventHash),seen=await receipt.get();if(seen.get('status')==='processed')return {duplicate:true};
  const type=event.event,payment=event.payload?.payment?.entity,link=event.payload?.payment_link?.entity;
  if(type==='payment_link.paid'||type==='payment.link.completed'){

@@ -1,9 +1,9 @@
 import {createHash} from 'node:crypto';
-import {Filter,type Firestore,type DocumentData,type Transaction} from 'firebase-admin/firestore';
+import {Filter,type MongoDatabase,type DocumentData,type Transaction} from '@/lib/db/mongo-types';
 import {NativeCheckoutError} from './native-checkout';
 import {nativeDates} from './native-plan-editor';
 import {nativeHabitDay} from './native-habits';
-export async function verifyNativePaymentLink(db:Firestore,userId:string,linkId:unknown,fetchLink:(id:string)=>Promise<DocumentData>,authorize?:(tx:Transaction)=>Promise<unknown>){
+export async function verifyNativePaymentLink(db:MongoDatabase,userId:string,linkId:unknown,fetchLink:(id:string)=>Promise<DocumentData>,authorize?:(tx:Transaction)=>Promise<unknown>){
  if(typeof linkId!=='string'||!/^plink_[a-zA-Z0-9]+$/.test(linkId))throw new NativeCheckoutError('Invalid payment link ID',400);
  const owned=await db.collection('unifiedpayments').where('razorpayPaymentLinkId','==',linkId).where('client','==',userId).limit(1).get();
  const links=await db.collection('paymentlinks').where('razorpayPaymentLinkId','==',linkId).where('client','==',userId).limit(2).get();

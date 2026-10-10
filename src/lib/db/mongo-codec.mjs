@@ -1,4 +1,4 @@
-import {Timestamp,GeoPoint} from 'firebase-admin/firestore';
+import {Timestamp,GeoPoint} from './mongo-values.mjs';
 import {Long,Binary,Double} from 'mongodb';
 export const typeKey=path=>Buffer.from(JSON.stringify(path)).toString('base64url');
 export function encodeMongoData(input){

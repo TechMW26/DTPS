@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {NativePlanEditor} from '@/lib/db/repository/native-plan-editor';
 import {randomBytes} from 'node:crypto';
 import {NextRequest} from 'next/server';
@@ -14,7 +15,7 @@ jest.mock('@/lib/status/computeClientStatus',()=>({updateClientStatusFromMealPla
 jest.mock('@/lib/cache/memoryCache',()=>({clearCacheByTag:jest.fn()}));
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('ported published-plan lifecycle protections',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  const id=()=>randomBytes(12).toString('hex');
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  async function fixture(status='draft',extra:any={}){const actor=db.collection('users').doc(id()),client=db.collection('users').doc(id()),plan=db.collection('clientmealplans').doc(id());refs.push(actor,client,plan);await actor.set({role:'admin'});await client.set({role:'client'});await plan.set({clientId:client.id,dietitianId:actor.id,status,name:'Original',startDate:new Date('2099-01-01'),endDate:new Date('2099-01-10'),duration:10,meals:[{date:'2099-01-01',meals:{BREAKFAST:{foodOptions:[{food:'Oats'}]}}}],...extra});(getServerSession as jest.Mock).mockResolvedValue({user:{id:actor.id,role:'admin'}});return plan;}

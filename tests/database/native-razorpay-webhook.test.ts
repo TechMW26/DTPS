@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes,createHmac} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {processNativeRazorpayWebhook,validNativeWebhookSignature} from '@/lib/db/repository/native-razorpay-webhook';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native Razorpay webhook',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];const id=()=>randomBytes(12).toString('hex');
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];const id=()=>randomBytes(12).toString('hex');
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('requires correct signature bytes',()=>{const body='{"event":"test"}',signature=createHmac('sha256','secret').update(body).digest('hex');expect(validNativeWebhookSignature(body,signature,'secret')).toBe(true);expect(validNativeWebhookSignature(body+' ',signature,'secret')).toBe(false);expect(validNativeWebhookSignature(body,'not-hex','secret')).toBe(false);});
  it('does not grant for authorization and settles captured payment once',async()=>{

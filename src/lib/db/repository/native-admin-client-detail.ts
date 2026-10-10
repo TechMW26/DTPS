@@ -1,10 +1,10 @@
 import {randomBytes} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {NativePlanEditor,nativeDates} from './native-plan-editor';
 import {nativeClientAccess,updateNativeClientProfile} from './native-admin-client-profile';
 import {nativeDirectoryProfile,populateNativeDirectory,NativeDirectoryError} from './native-client-directory';
 import {computeClientStatusFromDocs} from '@/lib/status/computeClientStatus';
-export async function readNativeAdminClientDetail(db:Firestore,actorId:string,clientId:string){
+export async function readNativeAdminClientDetail(db:MongoDatabase,actorId:string,clientId:string){
  const editor=new NativePlanEditor(db);const {client}=await nativeClientAccess(editor,actorId,clientId);const data=await editor.hydrate(client);
  const [plans,purchases]=await Promise.all([db.collection('clientmealplans').where('clientId','==',clientId).orderBy('createdAt','desc').limit(20).get(),db.collection('unifiedpayments').where('client','==',clientId).orderBy('createdAt','desc').get()]);
  const payments:DocumentData[]=purchases.docs.map(d=>({_id:d.id,...nativeDates(d.data())}));
@@ -15,7 +15,7 @@ export async function readNativeAdminClientDetail(db:Firestore,actorId:string,cl
  for(const p of mealPlans){delete p._nativeExternalFields;delete p._nativeSource;}
  return {client:(await populateNativeDirectory(db,[safe]))[0],mealPlans,payments};
 }
-export async function removeNativeAdminClient(db:Firestore,actorId:string,clientId:string,permanent=false){
+export async function removeNativeAdminClient(db:MongoDatabase,actorId:string,clientId:string,permanent=false){
  return db.runTransaction(async tx=>{
   const [actor,client]=await tx.getAll(db.collection('users').doc(actorId),db.collection('users').doc(clientId));if(actor.get('role')!=='admin'||actor.get('status')!=='active')throw new NativeDirectoryError('Admin access required',403);if(!client.exists||client.get('role')!=='client')throw new NativeDirectoryError('Client not found',404);
   const now=new Date(),id=randomBytes(12).toString('hex');

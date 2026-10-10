@@ -1,5 +1,5 @@
 import {createHash,randomBytes} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {formatInTimeZone,fromZonedTime} from 'date-fns-tz';
 import {z} from 'zod';
 import {taskDateError,TASK_TIME_ZONE,scheduledTaskTime} from '@/lib/task-schedule';
@@ -13,8 +13,8 @@ export function nativeHabitDay(value:unknown){
  const start=fromZonedTime(key+'T00:00:00',TASK_TIME_ZONE),end=new Date(start.getTime()+86400000);
  return {key,start,end};
 }
-const query=(db:Firestore,userId:string,day:ReturnType<typeof nativeHabitDay>)=>db.collection('journaltrackings').where('client','==',userId).where('date','>=',day.start).where('date','<',day.end).limit(2);
-export async function readNativeHabit(db:Firestore,userId:string,date:unknown){
+const query=(db:MongoDatabase,userId:string,day:ReturnType<typeof nativeHabitDay>)=>db.collection('journaltrackings').where('client','==',userId).where('date','>=',day.start).where('date','<',day.end).limit(2);
+export async function readNativeHabit(db:MongoDatabase,userId:string,date:unknown){
  const day=nativeHabitDay(date),rows=await query(db,userId,day).get();if(rows.size>1)throw new NativeHabitError('Duplicate journal dates require reconciliation',409);
  return rows.empty?null:nativeDates(await hydrateNativeDocument(rows.docs[0].data()));
 }
@@ -25,7 +25,7 @@ const schemas={
  sleep:z.object({hours:amount.max(24),minutes:amount.max(59).default(0),quality:z.string().max(100).default('Good')}),
  activities:z.object({name:z.string().max(300).default('Exercise'),duration:amount.max(1440),intensity:z.enum(['low','light','moderate','high','vigorous']).default('moderate'),sets:amount.int().max(10000).default(0),reps:amount.int().max(100000).default(0)}),
 };
-export async function mutateNativeHabit(db:Firestore,userId:string,habit:Habit,date:unknown,action:'add'|'delete'|'complete'|'complete-entry',input:DocumentData={},operationKey?:string|null){
+export async function mutateNativeHabit(db:MongoDatabase,userId:string,habit:Habit,date:unknown,action:'add'|'delete'|'complete'|'complete-entry',input:DocumentData={},operationKey?:string|null){
  const day=nativeHabitDay(date),dateError=taskDateError(day.key);if(dateError)throw new NativeHabitError(dateError);
  const parsed=action==='add'?schemas[habit].safeParse(input):null;if(parsed&&!parsed.success)throw new NativeHabitError('Invalid habit entry');
  const key=operationKey&&/^[a-zA-Z0-9._:-]{8,128}$/.test(operationKey)?operationKey:randomBytes(16).toString('hex');

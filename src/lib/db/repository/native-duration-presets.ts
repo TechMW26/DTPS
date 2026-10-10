@@ -1,8 +1,8 @@
 import {randomBytes} from 'node:crypto';
-import {type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {nativeJson} from './native-history';
 export class PresetInputError extends Error {}
-export async function nativeDurationPresets(db:Firestore,admin=false) {
+export async function nativeDurationPresets(db:MongoDatabase,admin=false) {
  const rows=await db.collection('durationpresets').get();
  const presets=rows.docs.map(doc=>({...doc.data(),_id:doc.id}) as DocumentData).filter(row=>admin||row.isActive===true)
   .sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)||(a.days||0)-(b.days||0));
@@ -12,7 +12,7 @@ export async function nativeDurationPresets(db:Firestore,admin=false) {
  const profiles=new Map(users.filter(doc=>doc.exists).map(doc=>[doc.id,{_id:doc.id,name:doc.get('name')||`${doc.get('firstName')||''} ${doc.get('lastName')||''}`.trim(),email:doc.get('email')||''}]));
  return nativeJson(presets.map(row=>({...row,createdBy:profiles.get(row.createdBy)||null}))) as DocumentData[];
 }
-export async function writeNativeDurationPreset(db:Firestore,actorId:string,input:DocumentData,id?:string) {
+export async function writeNativeDurationPreset(db:MongoDatabase,actorId:string,input:DocumentData,id?:string) {
  if(id&&!/^[a-f\d]{24}$/i.test(id))throw new PresetInputError('Invalid preset ID');
  const data:DocumentData={};
  if(input.days!==undefined){const days=Number(input.days);if(!Number.isSafeInteger(days)||days<1)throw new PresetInputError('Days must be a positive whole number');data.days=days;}
@@ -31,7 +31,7 @@ export async function writeNativeDurationPreset(db:Firestore,actorId:string,inpu
   tx.set(ref,record);tx.set(lock,{updatedAt:now});return nativeJson(record);
  });
 }
-export async function deleteNativeDurationPreset(db:Firestore,id:string) {
+export async function deleteNativeDurationPreset(db:MongoDatabase,id:string) {
  if(!/^[a-f\d]{24}$/i.test(id))throw new PresetInputError('Invalid preset ID');
  return db.runTransaction(async tx=>{
   const lock=db.collection('_nativeLocks').doc('durationPresets');await tx.get(lock);
@@ -39,7 +39,7 @@ export async function deleteNativeDurationPreset(db:Firestore,id:string) {
   tx.delete(ref);tx.set(lock,{updatedAt:new Date()});return true;
  });
 }
-export async function seedNativeDurationPresets(db:Firestore,actorId:string) {
+export async function seedNativeDurationPresets(db:MongoDatabase,actorId:string) {
  const defaults=[[7,'1 Week'],[10,'10 Days'],[14,'2 Weeks'],[21,'3 Weeks'],[30,'1 Month'],[60,'2 Months'],[90,'3 Months'],[180,'6 Months'],[365,'1 Year']] as const;
  return db.runTransaction(async tx=>{
   const lock=db.collection('_nativeLocks').doc('durationPresets');await tx.get(lock);
@@ -48,7 +48,7 @@ export async function seedNativeDurationPresets(db:Firestore,actorId:string) {
   tx.set(lock,{updatedAt:new Date()});return true;
  });
 }
-export async function reorderNativeDurationPresets(db:Firestore,ids:unknown) {
+export async function reorderNativeDurationPresets(db:MongoDatabase,ids:unknown) {
  if(!Array.isArray(ids)||ids.length>400||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||!/^[a-f\d]{24}$/i.test(id)))throw new PresetInputError('Invalid orderedIds array');
  if(!ids.length)return;
  await db.runTransaction(async tx=>{

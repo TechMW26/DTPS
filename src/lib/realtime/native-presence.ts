@@ -1,17 +1,18 @@
-import type {Firestore} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import type {MongoDatabase} from '@/lib/db/mongo-types';
 import {canSendNativeMessage} from '@/lib/db/repository/native-messages';
 // Keep this projection aligned with canSendNativeMessage. No health/profile payloads
 // are needed to authorize presence, and permissions are always read fresh.
 const permissionFields=['role','status','isDeleted','assignedDietitian','assignedDietitians','assignedHealthCounselor','assignedHealthCounselors'];
-export async function touchNativePresence(db:Firestore,userId:string){
+export async function touchNativePresence(db:MongoDatabase,userId:string){
  await db.collection('_nativePresence').doc(userId).set({userId,lastSeen:new Date(),expiresAt:new Date(Date.now()+90_000)});
 }
-export async function nativePresence(db:Firestore,userId:string,requestedIds:string[],checkTyping:boolean){
+export async function nativePresence(db:MongoDatabase,userId:string,requestedIds:string[],checkTyping:boolean){
  if(requestedIds.length>100||requestedIds.some(id=>!/^[a-f0-9]{24}$/i.test(id)))throw new Error('Invalid user IDs');
  const [actor]=await db.getAll(db.collection('users').doc(userId),{fieldMask:permissionFields});
  if(!actor.exists||actor.get('status')==='inactive')throw new Error('Unauthorized');
  let ids=[...new Set(requestedIds)];
- let onlineRows:Map<string,FirebaseFirestore.QueryDocumentSnapshot>|undefined;
+ let onlineRows:Map<string,MongoTypes.QueryDocumentSnapshot>|undefined;
  if(!ids.length){
   const online=await db.collection('_nativePresence').where('expiresAt','>',new Date()).limit(1000).get();
   ids=online.docs.map(doc=>doc.id);

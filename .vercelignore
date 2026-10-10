@@ -6,9 +6,7 @@ tmp/
 .migration-backups/
 tests/
 migration-plan/
-tools/firebase-migration/
-tools/mongodb-migration/
-functions/dashboard-summaries/
 .env*
 *.apk
 *.aab
+tools/

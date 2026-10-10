@@ -1,9 +1,9 @@
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {hydrateNativeDocument} from '@/lib/storage/native-document';
 import {nativeJson} from './native-history';
 import {assignedNativeClient} from './native-staff-client';
 import {nativeMediaJson} from '@/lib/api/native-media-json';
-export async function nativeStaffDocuments(db:Firestore,actorId:string,clientId:string){
+export async function nativeStaffDocuments(db:MongoDatabase,actorId:string,clientId:string){
  const {client}=await assignedNativeClient(db,actorId,clientId,undefined,true),user=await hydrateNativeDocument(client.data()!);
  const [medical,plans,files]=await Promise.all([
   db.collection('medicalinfos').where('userId','==',clientId).select('reports','_nativeExternalFields').get(),

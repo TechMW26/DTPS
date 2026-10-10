@@ -1,12 +1,12 @@
 import {randomBytes,createHash} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {hydrateNativeDocument,prepareNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
 import {assignedNativeClient,NativeStaffClientError} from './native-staff-client';
 import {validateClientForm} from './native-client-forms';
 import {nativeJson} from './native-history';
 import {nativeHabitDay} from './native-habits';
 /** Edit the most recent dated recall; an explicit ID prevents overwriting another day. */
-export async function nativeStaffRecall(db:Firestore,actorId:string,clientId:string,input?:unknown):Promise<{success:boolean;data:DocumentData;client?:DocumentData;message?:string}>{
+export async function nativeStaffRecall(db:MongoDatabase,actorId:string,clientId:string,input?:unknown):Promise<{success:boolean;data:DocumentData;client?:DocumentData;message?:string}>{
  return db.runTransaction(async tx=>{
   const {client}=await assignedNativeClient(db,actorId,clientId,tx);
   const records=await tx.get(db.collection('dietaryrecalls').where('userId','==',clientId));

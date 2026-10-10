@@ -1,19 +1,19 @@
-import { type Firestore, type DocumentData } from 'firebase-admin/firestore';
+import { type MongoDatabase, type DocumentData } from '@/lib/db/mongo-types';
 import { nativeJson } from './native-history';
 import {nativeHabitDay} from './native-habits';
 import {hydrateNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
 import {nativeDates} from './native-plan-editor';
 import { taskDateError } from '@/lib/task-schedule';
 
-function journalQuery(db: Firestore, clientId: string, start: Date, end: Date) {
+function journalQuery(db: MongoDatabase, clientId: string, start: Date, end: Date) {
   return db.collection('journaltrackings').where('client','==',clientId).where('date','>=',start).where('date','<',end).limit(2);
 }
-export async function nativeTaskJournal(db: Firestore, clientId: string, start: Date, end: Date) {
+export async function nativeTaskJournal(db: MongoDatabase, clientId: string, start: Date, end: Date) {
   const rows=await journalQuery(db,clientId,start,end).get();
   if(rows.size>1)throw new Error('Duplicate journal dates require reconciliation');
   return rows.empty?null:nativeJson({...await hydrateNativeDocument(rows.docs[0].data()),_id:rows.docs[0].id}) as DocumentData;
 }
-export async function completeNativeTask(db: Firestore, clientId: string, dateKey: string|undefined, taskType: string, index?: number) {
+export async function completeNativeTask(db: MongoDatabase, clientId: string, dateKey: string|undefined, taskType: string, index?: number) {
   const error=taskDateError(dateKey);if(error)throw new Error(error);
   if(!['water','steps','sleep','activity'].includes(taskType))throw new Error('Invalid task type');
   if(taskType==='activity'&&(!Number.isSafeInteger(index)||index!<0))throw new Error('Invalid activity index');

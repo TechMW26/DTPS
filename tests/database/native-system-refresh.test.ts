@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 /// <reference types="jest" />
 
 import fs from "node:fs";
@@ -25,7 +26,7 @@ jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
 jest.mock('@/lib/utils/activityLogger',()=>({logActivity:jest.fn()}));
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite("admin system refresh", () => {
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});
  beforeEach(async()=>{for(const row of(await db.collection('systemrefreshstates').get()).docs)await row.ref.delete();});
  afterAll(async()=>{for(const ref of refs)await ref.delete();for(const collection of ['systemrefreshstates','_nativeRealtimeEvents'])for(const row of(await db.collection(collection).get()).docs)await row.ref.delete();await db.terminate();});

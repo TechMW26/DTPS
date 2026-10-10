@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes,createHash} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {nativeUnreadMessageCount,registerNativePushToken,removeNativePushTokens,saveNativeNotifications} from '@/lib/db/repository/native-notifications';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native notification storage',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(async()=>{db=getNativeDatabase();const ref=db.collection('_nativeMigrationState').doc('fcmTokens');refs.push(ref);await ref.set({complete:true});});
  afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  async function user(){const ref=db.collection('users').doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set({fcmTokens:[]});return ref;}

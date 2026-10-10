@@ -1,5 +1,6 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {createHash,randomBytes} from 'node:crypto';
-import {Filter,FieldPath,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {Filter,FieldPath,type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {z} from 'zod';
 import {MessageType} from '@/types';
 import {hydrateNativeDocument,prepareNativeDocument} from '@/lib/storage/native-document';
@@ -11,12 +12,12 @@ const inputSchema=z.object({recipientId:idSchema,content:z.string().max(2000).de
 const viewFields=['content','type','attachments','sender','receiver','createdAt','updatedAt','isRead','readAt','deliveredAt','editedAt','status','reactions','isForwarded','replyTo'];
 const pair=(a:string,b:string)=>Filter.or(Filter.and(Filter.where('sender','==',a),Filter.where('receiver','==',b)),Filter.and(Filter.where('sender','==',b),Filter.where('receiver','==',a)));
 const samePair=(row:DocumentData,a:string,b:string)=>(row.sender===a&&row.receiver===b)||(row.sender===b&&row.receiver===a);
-async function publicPerson(db:Firestore,id:string){
+async function publicPerson(db:MongoDatabase,id:string){
  if(typeof id!=='string'||id.includes('/'))return null;
  const row=await db.collection('users').doc(id).get();if(!row.exists)return null;
  return {_id:id,...Object.fromEntries(['firstName','lastName','avatar','role'].filter(key=>row.get(key)!==undefined).map(key=>[key,row.get(key)]))};
 }
-export async function nativeMessageView(db:Firestore,id:string,raw:DocumentData,people=new Map<string,Promise<Awaited<ReturnType<typeof publicPerson>>>>()){
+export async function nativeMessageView(db:MongoDatabase,id:string,raw:DocumentData,people=new Map<string,Promise<Awaited<ReturnType<typeof publicPerson>>>>()){
  const person=(userId:string)=>{let pending=people.get(userId);if(!pending){pending=publicPerson(db,userId);people.set(userId,pending);}return pending;};
  const data=Object.fromEntries(viewFields.filter(key=>raw[key]!==undefined).map(key=>[key,raw[key]]));
  data._nativeExternalFields=(raw._nativeExternalFields||[]).filter((ref:any)=>viewFields.includes(ref.path?.[0]));
@@ -43,13 +44,13 @@ export function canSendNativeMessage(sender:DocumentData, recipient:DocumentData
  const secondary=role==='dietitian'?'assignedDietitians':'assignedHealthCounselors';
  return recipient[primary]===senderId||(recipient[secondary]||[]).includes(senderId);
 }
-export async function assertNativeMessagePeer(db:Firestore,userId:string,peer:string) {
+export async function assertNativeMessagePeer(db:MongoDatabase,userId:string,peer:string) {
  if(!idSchema.safeParse(userId).success||!idSchema.safeParse(peer).success)throw new NativeMessageError('Invalid conversation user ID',400);
  const [sender,recipient]=await db.getAll(db.collection('users').doc(userId),db.collection('users').doc(peer));
  if(!canSendNativeMessage(sender.data()!,recipient.data()!,userId,peer))throw new NativeMessageError('You cannot message this user',403);
  return {sender:sender.data()!,recipient:recipient.data()!};
 }
-export async function listNativeClientMessages(db:Firestore,userId:string,peer:string|null,page:number,limit:number,staffMode=false){
+export async function listNativeClientMessages(db:MongoDatabase,userId:string,peer:string|null,page:number,limit:number,staffMode=false){
  if(peer){
   if(!idSchema.safeParse(peer).success)throw new NativeMessageError('Invalid conversation user ID',400);
   const user=await db.collection('users').doc(userId).get();
@@ -59,8 +60,8 @@ export async function listNativeClientMessages(db:Firestore,userId:string,peer:s
  const [all,deleted]=await Promise.all([base.count().get(),base.where('deletedAt','>=',new Date(0)).count().get()]);
  const total=Math.max(0,all.data().count-deleted.data().count);
  const query=base.orderBy('createdAt','desc').orderBy(FieldPath.documentId(),'desc');
- let cursor:FirebaseFirestore.QueryDocumentSnapshot|undefined,skip=(page-1)*limit;
- const selected:FirebaseFirestore.QueryDocumentSnapshot[]=[];
+ let cursor:MongoTypes.QueryDocumentSnapshot|undefined,skip=(page-1)*limit;
+ const selected:MongoTypes.QueryDocumentSnapshot[]=[];
  while(selected.length<limit){
   const rows=await (cursor?query.startAfter(cursor):query).limit(Math.min(200,Math.max(limit,50))).get();
   if(rows.empty)break;
@@ -78,7 +79,7 @@ export async function listNativeClientMessages(db:Firestore,userId:string,peer:s
  const messages=await Promise.all(selected.reverse().map(row=>nativeMessageView(db,row.id,{...row.data(),...(peer&&row.get('receiver')===userId?{isRead:true}:{})},people)));
  return {messages,total,pagination:{page,limit,total,pages:Math.ceil(total/limit),hasMore:page*limit<total}};
 }
-export async function sendNativeClientMessage(db:Firestore,userId:string,input:unknown,operationKey?:string|null,staffMode=false){
+export async function sendNativeClientMessage(db:MongoDatabase,userId:string,input:unknown,operationKey?:string|null,staffMode=false){
  const parsed=inputSchema.safeParse(input);if(!parsed.success)throw new NativeMessageError('Invalid message or attachment',400);
  const data=parsed.data,hash=createHash('sha256').update(JSON.stringify(data)).digest('hex');
  const key=operationKey&&/^[a-zA-Z0-9._:-]{8,128}$/.test(operationKey)?operationKey:randomBytes(16).toString('hex');
@@ -122,7 +123,7 @@ export async function sendNativeClientMessage(db:Firestore,userId:string,input:u
  });
  return {created:result.created,message:await nativeMessageView(db,id,result.data)};
 }
-export async function deleteNativeClientMessage(db:Firestore,userId:string,id:string){
+export async function deleteNativeClientMessage(db:MongoDatabase,userId:string,id:string){
  if(!idSchema.safeParse(id).success)throw new NativeMessageError('Invalid message ID',400);
  return db.runTransaction(async tx=>{
   const ref=db.collection('messages').doc(id),row=await tx.get(ref);

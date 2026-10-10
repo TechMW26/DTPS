@@ -40,7 +40,7 @@ npm run lint       # Lint check
 
 ## Environment
 
-Local `.env.mongodb-migration.local` supplies dedicated MongoDB credentials. The local preview preserves Firebase authentication/push and Vercel Blob configuration from `.env` / `.env.local`. Never commit credentials or put source Firestore credentials into the new deployment.
+Local `.env.local` supplies MongoDB credentials. The local preview preserves Firebase authentication/push and Vercel Blob configuration from `.env` / `.env.local`. Never commit credentials.
 
 ```
 DATABASE_PROVIDER=mongodb
@@ -71,9 +71,9 @@ Realtime Database is not involved in SMS delivery.
 
 ## Local acceptance and deployment
 
-The target runtime is Vercel plus MongoDB Atlas and the existing Vercel Blob store. The migration remains local-only: native database access rejects production execution, and real push, email, calendar, and WhatsApp effects stay disabled locally. Do not deploy until source reconciliation, media verification, and local acceptance are complete.
+Production uses Vercel, MongoDB Atlas and the existing Vercel Blob stores. The local preview disables push, email, calendar and WhatsApp effects. Database tests use an isolated loopback replica set and cannot use the production database.
 
-One-time source audit tools are isolated from application dependencies. Their private runner and backups are kept outside versioned runtime configuration. The app does not load a source database adapter.
+Historical migration tools and complete recovery archives are retained privately outside versioned runtime configuration. The source database is no longer an application dependency.
 
 ## Architecture
 
@@ -110,18 +110,12 @@ See [CROSS_PLATFORM_SYNC.md](./CROSS_PLATFORM_SYNC.md) for mobile sync instructi
 | Display ID | `generateShortId()` | `Dt-AB12` |
 
 
-## MongoDB indexes and migration
+## MongoDB operations
 
-See [the migration procedure](tools/mongodb-migration/README.md). `indexes.mjs` provisions compact relationship, timestamp, provider-ID and outbox indexes. It defaults to a dry run. Phone/email indexes are deliberately nonunique; customers are never merged by contact details.
+The complete source baseline and sealed final change journal were independently verified before the production cutover. Recovery archives and their checksums are retained privately. Current production writes must be reconciled before restoring an older snapshot.
 
-Import every operational record and media reference, then verify every decoded record and collection count against a stable source snapshot. Migration-only historical backups may be excluded with the explicit archive flag while retained in the local recovery copy. Do not delete the source or its recovery files during cutover.
+Compact relationship, timestamp, provider-ID and outbox indexes support the shared document repositories. Phone and email indexes are nonunique; customers are never merged by contact details. Only transient realtime events have automatic expiry.
 
-Before enabling production MongoDB, drain source writers and pause application mutations/crons for the final snapshot. Reconcile every document, including deleted paths, before switching credentials. Retain the existing public/private Blob stores and test authorized media retrieval. A local build or passing fixture test does not establish migration completion.
+Production requires `DATABASE_PROVIDER=mongodb`, `MONGODB_URI`, `MONGODB_DATABASE` and `MONGODB_PRODUCTION_ENABLED=true`. Blob access independently requires `NATIVE_BLOB_PRODUCTION_ENABLED=true`. Firebase Authentication and Cloud Messaging remain separate services.
 
-Firestore credentials, deployment rules, indexes and summary-trigger configuration are no longer application runtime configuration. Keep source credentials only in the private one-time exporter until final reconciliation. Firebase Authentication and Cloud Messaging remain separate services.
-
-The production cutover uses `DATABASE_PROVIDER=mongodb`, `MONGODB_URI`, `MONGODB_DATABASE`, and the explicit `MONGODB_PRODUCTION_ENABLED=true` guard. Blob access uses its separate `NATIVE_BLOB_PRODUCTION_ENABLED=true` guard. Do not deploy the Mongo-only application before the target is fully verified.
-
-Notification outbox jobs remain bounded and duplicate-safe. Existing authorization, assignment, medical forms, entitlement, payment and media repository contracts are retained. MongoDB change streams deliver realtime updates without per-user database polling. Monitor pool utilization, query plans, outbox lag and provider errors after cutover. Uncertain external deliveries must be reconciled before retrying.
-
-Rollback requires reconciling writes made after cutover; do not silently replace current data with the older snapshot.
+Notification outbox jobs are bounded and duplicate-safe. MongoDB change streams deliver realtime updates without per-user database polling. Monitor pool utilization, query plans, outbox lag and provider errors. Reconcile uncertain external deliveries before retrying.

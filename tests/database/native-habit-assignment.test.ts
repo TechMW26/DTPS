@@ -1,10 +1,11 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {nativeHabitAssignment} from '@/lib/db/repository/native-habit-assignment';
 import {nativeHabitDay,mutateNativeHabit} from '@/lib/db/repository/native-habits';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native staff task assignments',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  const id=()=>randomBytes(12).toString('hex');
  async function setup(){const staff=db.collection('users').doc(id()),client=db.collection('users').doc(id()),other=db.collection('users').doc(id());refs.push(staff,client,other);await staff.set({role:'dietitian',status:'active'});await other.set({role:'dietitian',status:'active'});await client.set({role:'client',assignedDietitian:staff.id});return {staff,client,other};}

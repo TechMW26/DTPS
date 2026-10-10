@@ -1,9 +1,9 @@
-import {Filter,FieldPath,type Firestore,type DocumentData,type Query} from 'firebase-admin/firestore';
+import {Filter,FieldPath,type MongoDatabase,type DocumentData,type Query} from '@/lib/db/mongo-types';
 import {requireNativeAuditAdmin} from './native-admin-audit';
 import {nativeDirectoryProfile,nativeDirectoryStatuses,directoryFields,NativeDirectoryError} from './native-client-directory';
 import {nativeDates} from './native-plan-editor';
 import {readNativeUser} from './native-user-admin';
-export async function resolveNativeProfessional(db:Firestore,actorId:string,identifier:string,counselorOnly=false){
+export async function resolveNativeProfessional(db:MongoDatabase,actorId:string,identifier:string,counselorOnly=false){
  await requireNativeAuditAdmin(db,actorId);let id=decodeURIComponent(identifier).trim();let doc;
  if(/^[a-f0-9]{24}$/i.test(id))doc=await db.collection('users').doc(id).get();
  else if(id.includes('@')){const rows=await db.collection('users').where('email','==',id.toLowerCase()).limit(2).get();if(rows.size===1)doc=rows.docs[0];}
@@ -11,9 +11,9 @@ export async function resolveNativeProfessional(db:Firestore,actorId:string,iden
  if(!doc?.exists||!(counselorOnly?['health_counselor']:['dietitian','health_counselor']).includes(doc.get('role')))throw new NativeDirectoryError('Professional not found',404);return {_id:doc.id,...nativeDates(doc.data())} as DocumentData;
 }
 const ms=(value:any)=>value?new Date(value).getTime():0;
-async function batchClientRecords(db:Firestore,collection:string,key:string,ids:string[],fields:string[]){const result:DocumentData[]=[];for(let i=0;i<ids.length;i+=180)await Promise.all(Array.from({length:Math.min(6,Math.ceil((ids.length-i)/30))},async(_,slot)=>{const batch=ids.slice(i+slot*30,i+(slot+1)*30);const rows=await db.collection(collection).where(key,'in',batch).select(...fields).get();result.push(...rows.docs.map(doc=>({...nativeDates(doc.data()),_id:doc.id})));}));return result;}
+async function batchClientRecords(db:MongoDatabase,collection:string,key:string,ids:string[],fields:string[]){const result:DocumentData[]=[];for(let i=0;i<ids.length;i+=180)await Promise.all(Array.from({length:Math.min(6,Math.ceil((ids.length-i)/30))},async(_,slot)=>{const batch=ids.slice(i+slot*30,i+(slot+1)*30);const rows=await db.collection(collection).where(key,'in',batch).select(...fields).get();result.push(...rows.docs.map(doc=>({...nativeDates(doc.data()),_id:doc.id})));}));return result;}
 async function list(query:Query,order:string,fields:string[]){return (await query.select(...fields).orderBy(order,'desc').limit(50).get()).docs.map(doc=>({...nativeDates(doc.data()),_id:doc.id})) as DocumentData[];}
-export async function readNativeProfessionalDetail(db:Firestore,actorId:string,identifier:string,counselorOnly=false){
+export async function readNativeProfessionalDetail(db:MongoDatabase,actorId:string,identifier:string,counselorOnly=false){
  const professional=await resolveNativeProfessional(db,actorId,identifier,counselorOnly),id=professional._id,hc=professional.role==='health_counselor',primary=hc?'assignedHealthCounselor':'assignedDietitian',secondary=hc?'assignedHealthCounselors':'assignedDietitians';
  const assigned=await db.collection('users').where('role','==','client').where(Filter.or(Filter.where(primary,'==',id),Filter.where(secondary,'array-contains',id))).select(...directoryFields).get();const base=await nativeDirectoryStatuses(db,assigned.docs.map(doc=>nativeDirectoryProfile(doc.id,doc.data()))),ids=base.map(row=>row._id);
  const [clientAppointments,clientPlans]=await Promise.all([batchClientRecords(db,'appointments','client',ids,['client','dietitian','scheduledAt','type','status']),counselorOnly?Promise.resolve([]):batchClientRecords(db,'clientmealplans','clientId',ids,['clientId','assignedBy','templateId','name','startDate','status','createdAt','isDeleted'])]);

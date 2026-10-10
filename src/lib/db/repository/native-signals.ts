@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
-import type {Firestore} from 'firebase-admin/firestore';
+import type {MongoDatabase} from '@/lib/db/mongo-types';
 import {canSendNativeMessage,NativeMessageError} from './native-messages';
-export async function authorizeNativeSignal(db:Firestore,actorId:string,peerId:string,callId:string,event:string){
+export async function authorizeNativeSignal(db:MongoDatabase,actorId:string,peerId:string,callId:string,event:string){
  if(!/^[a-f0-9]{24}$/.test(actorId)||!/^[a-f0-9]{24}$/.test(peerId)||!/^[a-zA-Z0-9._:-]{1,150}$/.test(callId)||actorId===peerId)throw new NativeMessageError('Invalid call participants',400);
  const ref=db.collection('_nativeCalls').doc(createHash('sha256').update(callId).digest('hex'));
  return db.runTransaction(async tx=>{

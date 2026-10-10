@@ -1,5 +1,5 @@
 import {createHash,randomBytes} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {z} from 'zod';
 import {AppointmentType} from '@/types';
 import {nativeDates} from './native-plan-editor';
@@ -9,14 +9,14 @@ export function nativeAppointmentView(id:string,raw:DocumentData,staff:DocumentD
  const data=nativeDates(raw),end=new Date(data.scheduledAt).getTime()+Number(data.duration||30)*60000;
  return {id,dietitianId:data.dietitian,dietitianName:staff?`${staff.firstName||''} ${staff.lastName||''}`.trim():'Unknown Dietitian',dietitianImage:staff?.avatar,date:data.scheduledAt,time:new Date(data.scheduledAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}),duration:data.duration||30,type:data.type==='video_consultation'?'video':data.type==='consultation'?'audio':data.type,status:['cancelled','rescheduled','completed'].includes(data.status)?data.status:end<Date.now()?'completed':'upcoming',notes:data.notes,meetingLink:data.meetingLink,zoomMeetingId:data.zoomMeetingId,zoomJoinUrl:data.zoomJoinUrl,lifecycleHistory:data.lifecycleHistory||[],cancelledBy:data.cancelledBy,rescheduledBy:data.rescheduledBy};
 }
-export async function nativeClientAppointments(db:Firestore,userId:string,status:string|null,page:number,limit:number){
+export async function nativeClientAppointments(db:MongoDatabase,userId:string,status:string|null,page:number,limit:number){
  let query=db.collection('appointments').where('client','==',userId);if(status)query=query.where('status','==',status);
  const rows=await query.orderBy('scheduledAt','desc').offset((page-1)*limit).limit(limit).get();
  const staff=new Map<string,DocumentData>();const ids=[...new Set(rows.docs.map(row=>row.get('dietitian')).filter(id=>typeof id==='string'&&!id.includes('/')))];
  if(ids.length)for(const row of await db.getAll(...ids.map(id=>db.collection('users').doc(id))))if(row.exists)staff.set(row.id,row.data()!);
  return rows.docs.map(row=>nativeAppointmentView(row.id,row.data(),staff.get(row.get('dietitian'))||null));
 }
-export async function bookNativeClientAppointment(db:Firestore,userId:string,input:unknown,key?:string|null){
+export async function bookNativeClientAppointment(db:MongoDatabase,userId:string,input:unknown,key?:string|null){
  const parsed=schema.safeParse(input);if(!parsed.success)throw new NativeAppointmentError('Invalid appointment details',400);
  const data=parsed.data,date=new Date(data.scheduledAt);if(date.getTime()<=Date.now())throw new NativeAppointmentError('Please select a valid future appointment time',400);
  const operation=key&&/^[a-zA-Z0-9._:-]{8,128}$/.test(key)?key:randomBytes(16).toString('hex');

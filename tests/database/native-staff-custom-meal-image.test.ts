@@ -1,10 +1,11 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { NextRequest } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { format } from 'date-fns';
 
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
-let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
 const mockAfterTasks:Promise<unknown>[]=[];
 jest.mock('next/server',()=>({...jest.requireActual('next/server'),after:(fn:()=>Promise<unknown>)=>{mockAfterTasks.push(Promise.resolve().then(fn));}}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));

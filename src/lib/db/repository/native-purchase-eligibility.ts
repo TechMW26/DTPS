@@ -1,5 +1,5 @@
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
-import {Filter} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
+import {Filter} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {nativeFinanceActor,nativeFinanceClient} from './native-finance-access';
 import {nativeHabitDay} from './native-habits';
@@ -114,7 +114,7 @@ function getEffectiveRemainingDays(purchase: any): number {
 }
 
 
-export async function nativePurchaseEligibility(db:Firestore,actorId:string,clientId:string,requestedDays:number,effectiveCreateMealPlans:boolean){
+export async function nativePurchaseEligibility(db:MongoDatabase,actorId:string,clientId:string,requestedDays:number,effectiveCreateMealPlans:boolean){
  if(!Number.isSafeInteger(requestedDays)||requestedDays<0)throw new NativeCheckoutError('Invalid requested days',400);
  const actor=await nativeFinanceActor(db,actorId),client=await nativeFinanceClient(db,actor,clientId);
  const accessContext={requestedBy:{userId:actor.id,role:actor.role},permissions:{roleBasedCreateMealPlans:['admin','dietitian'].includes(actor.role),effectiveCreateMealPlans,effectiveReason:null}};

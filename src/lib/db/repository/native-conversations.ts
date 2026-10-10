@@ -1,9 +1,9 @@
 import {createHash} from 'node:crypto';
-import {type Firestore} from 'firebase-admin/firestore';
+import {type MongoDatabase} from '@/lib/db/mongo-types';
 import {canSendNativeMessage} from './native-messages';
 import {nativeDates} from './native-plan-editor';
 export const nativeConversationKey=(a:string,b:string)=>createHash('sha256').update([a,b].sort().join('\0')).digest('hex');
-export async function listNativeConversations(db:Firestore,userId:string){
+export async function listNativeConversations(db:MongoDatabase,userId:string){
  const ready=await db.collection('_nativeMigrationState').doc('conversations').get();
  if(!ready.get('complete'))throw new Error('Conversation index is not ready');
  const [actor,indexes,unread]=await Promise.all([
@@ -45,7 +45,7 @@ export async function listNativeConversations(db:Firestore,userId:string){
    let latest=message;
    if(!latest.exists||latest.get('deletedAt')){
     // Deleting the latest message exposes the previous message, never an empty or stale preview.
-    const {Filter}=await import('firebase-admin/firestore');
+    const {Filter}=await import('@/lib/db/mongo-types');
     const candidates=await db.collection('messages').where(Filter.or(Filter.and(Filter.where('sender','==',userId),Filter.where('receiver','==',peer.id)),Filter.and(Filter.where('sender','==',peer.id),Filter.where('receiver','==',userId)))).orderBy('createdAt','desc').select('content','type','sender','receiver','createdAt','isRead','deletedAt','_nativeExternalFields').get();
     latest=candidates.docs.find(row=>!row.get('deletedAt'))!;
    }

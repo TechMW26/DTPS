@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import { Timestamp, type Firestore, type DocumentData } from 'firebase-admin/firestore';
+import { Timestamp, type MongoDatabase, type DocumentData } from '@/lib/db/mongo-types';
 
-/** Preserve date/binary values while removing optional undefined fields rejected by Firestore. */
+/** Preserve date/binary values while removing optional undefined fields rejected by MongoDatabase. */
 function clean(value: unknown): unknown {
   if (value === undefined) return null;
   if (value === null || value instanceof Date || value instanceof Timestamp || Buffer.isBuffer(value)) return value;
@@ -14,7 +14,7 @@ function clean(value: unknown): unknown {
 }
 
 export async function createNativeAudit<T = DocumentData>(
-  db: Firestore, collection: 'activitylogs' | 'systemalerts' | 'histories' | 'notificationdeliveryaudits', entry: DocumentData,
+  db: MongoDatabase, collection: 'activitylogs' | 'systemalerts' | 'histories' | 'notificationdeliveryaudits', entry: DocumentData,
 ): Promise<T> {
   const id = randomBytes(12).toString('hex'), now = new Date();
   const record = { ...(clean(entry) as DocumentData), _id: id, createdAt: now, updatedAt: now };

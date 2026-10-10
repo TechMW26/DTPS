@@ -1,9 +1,9 @@
 import {createHash,createHmac,randomBytes,randomInt,timingSafeEqual} from 'node:crypto';
-import type {Firestore} from 'firebase-admin/firestore';
+import type {MongoDatabase} from '@/lib/db/mongo-types';
 import {OTP_CONFIG} from '@/lib/auth/otpStore';
 const key=(phone:string)=>createHash('sha256').update(phone).digest('hex');
 function digest(phone:string,nonce:string,otp:string) {const secret=process.env.NEXTAUTH_SECRET;if(!secret)throw new Error('OTP secret is required');return createHmac('sha256',secret).update(phone+'\0'+nonce+'\0'+otp).digest('hex');}
-export async function issueNativeOtp(db:Firestore,phone:string,purpose:'login'|'signup') {
+export async function issueNativeOtp(db:MongoDatabase,phone:string,purpose:'login'|'signup') {
  const id=key(phone),nonce=randomBytes(16).toString('hex'),otp=randomInt(1000,10000).toString(),hash=digest(phone,nonce,otp);
  const challenge=db.collection('_nativeOtpChallenges').doc(id),limit=db.collection('_nativeOtpLimits').doc(id);
  return db.runTransaction(async tx=>{
@@ -15,11 +15,11 @@ export async function issueNativeOtp(db:Firestore,phone:string,purpose:'login'|'
   return {id,nonce,otp};
  });
 }
-export async function cancelNativeOtp(db:Firestore,id:string,nonce:string) {
+export async function cancelNativeOtp(db:MongoDatabase,id:string,nonce:string) {
  const ref=db.collection('_nativeOtpChallenges').doc(id);
  await db.runTransaction(async tx=>{const doc=await tx.get(ref);if(doc.get('nonce')===nonce)tx.delete(ref);});
 }
-export async function consumeNativeOtp(db:Firestore,phone:string,purpose:'login'|'signup',otp:string) {
+export async function consumeNativeOtp(db:MongoDatabase,phone:string,purpose:'login'|'signup',otp:string) {
  if(!/^\d{4}$/.test(otp))return {ok:false,reason:'format'} as const;
  const ref=db.collection('_nativeOtpChallenges').doc(key(phone));
  return db.runTransaction(async tx=>{

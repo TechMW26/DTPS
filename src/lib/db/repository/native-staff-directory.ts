@@ -1,8 +1,8 @@
-import {Filter,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {Filter,type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {indexedDashboardScope} from './native-dashboard-indexed';
 const fields=['firstName','lastName','email','avatar','phone','specializations','credentials','experience','consultationFee','bio','role','status','createdAt','updatedAt'];
-export async function nativeStaffDirectory(db:Firestore,role:'dietitian'|'health_counselor',search:string){
+export async function nativeStaffDirectory(db:MongoDatabase,role:'dietitian'|'health_counselor',search:string){
  const needle=search.trim().slice(0,200).toLowerCase(),rows=await db.collection('users').where('role','==',role).select(...fields).get();
  const selected=rows.docs.filter(row=>!needle||[row.get('firstName'),row.get('lastName'),[row.get('firstName'),row.get('lastName')].filter(Boolean).join(' '),row.get('email'),row.get('phone'),...(row.get('specializations')||[])].some(value=>String(value||'').toLowerCase().includes(needle)));
  const result:DocumentData[]=new Array(selected.length);let next=0;

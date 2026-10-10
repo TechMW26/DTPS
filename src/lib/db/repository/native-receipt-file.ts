@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
-import type {Firestore} from 'firebase-admin/firestore';
+import type {MongoDatabase} from '@/lib/db/mongo-types';
 import {lookupNativeFile,nativeMediaParentAccess,type MediaActor} from './native-media';
-export async function lookupNativeReceipt(db:Firestore,id:string,actor:MediaActor){
+export async function lookupNativeReceipt(db:MongoDatabase,id:string,actor:MediaActor){
  if(!/^[a-f0-9]{24}$/.test(id))return null;
  const [account,receipt]=await db.getAll(db.collection('users').doc(actor.id),db.collection('receipts.files').doc(id));
  if(!account.exists||['inactive','suspended','deleted'].includes(account.get('status'))||account.get('isDeleted')||account.get('deletedAt'))return null;

@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {bookNativeClientAppointment,nativeClientAppointments} from '@/lib/db/repository/native-appointments';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native appointment booking',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  const id=()=>randomBytes(12).toString('hex');
  async function setup(){const staff=db.collection('users').doc(id()),client=db.collection('users').doc(id());refs.push(staff,client);await staff.set({role:'dietitian',status:'active',firstName:'Synthetic',password:'private'});await client.set({role:'client',assignedDietitian:staff.id});return {staff,client};}

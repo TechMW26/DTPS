@@ -1,6 +1,6 @@
 import {nativeConversationKey} from './native-conversations';
 import {randomBytes} from 'node:crypto';
-import {Timestamp,type Firestore,type DocumentData} from 'firebase-admin/firestore';
+import {Timestamp,type MongoDatabase,type DocumentData} from '@/lib/db/mongo-types';
 import {hydrateNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
 
 function dates(value:any):any {
@@ -9,7 +9,7 @@ function dates(value:any):any {
  if(value&&typeof value==='object'&&(Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null))return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,dates(item)]));
  return value;
 }
-export async function readNativeCompletionPlan(db:Firestore,planId:string,clientId:string) {
+export async function readNativeCompletionPlan(db:MongoDatabase,planId:string,clientId:string) {
  if(!/^[a-f\d]{24}$/i.test(planId))return null;
  const doc=await db.collection('clientmealplans').doc(planId).get(),data=doc.data();
  if(!data||data.clientId!==clientId||data.status!=='active'||data.isDeleted)return null;
@@ -20,7 +20,7 @@ function clean(value:any):any {
  if(value&&typeof value==='object'&&(Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null))return Object.fromEntries(Object.entries(value).filter(([,item])=>item!==undefined).map(([key,item])=>[key,clean(item)]));
  return value;
 }
-export async function saveNativeMealCompletion(db:Firestore,planId:string,version:Timestamp,mealCompletions:any[],analytics:DocumentData) {
+export async function saveNativeMealCompletion(db:MongoDatabase,planId:string,version:Timestamp,mealCompletions:any[],analytics:DocumentData) {
  // The version also guards ownership, publication, schedule and deletion fields read during validation.
  // A competing edit returns a conflict instead of overwriting its completions or reviving a deleted plan.
  const ref=db.collection('clientmealplans').doc(planId);
@@ -31,7 +31,7 @@ export async function saveNativeMealCompletion(db:Firestore,planId:string,versio
   tx.update(ref,patch);
  });
 }
-export async function createNativeMealMessage(db:Firestore,entry:DocumentData,id=randomBytes(12).toString('hex')) {
+export async function createNativeMealMessage(db:MongoDatabase,entry:DocumentData,id=randomBytes(12).toString('hex')) {
  const record=clean({...entry,_id:id,createdAt:new Date(),updatedAt:new Date()});
  const batch=db.batch();
  batch.create(db.collection('messages').doc(id),record);

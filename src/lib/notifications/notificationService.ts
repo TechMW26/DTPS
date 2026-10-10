@@ -1,6 +1,6 @@
 import { sendNotificationToUser, sendNotificationToUsers } from '@/lib/firebase';
 import { getNativeDatabase } from '@/lib/db/database';
-import { Filter } from 'firebase-admin/firestore';
+import { Filter } from '@/lib/db/mongo-types';
 
 // Notification types
 export type NotificationType =

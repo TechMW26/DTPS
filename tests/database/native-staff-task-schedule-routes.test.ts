@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { NextRequest } from 'next/server';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
@@ -5,7 +6,7 @@ import {getServerSession} from 'next-auth';
 jest.mock('next/server',()=>({...jest.requireActual('next/server'),after:jest.fn()}));
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
 async function put(collection:string,data:any){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return {...data,_id:ref.id};}
 async function read(collection:string,id:string){return (await db.collection(collection).doc(id).get()).data();}
 async function createAssignedDietitianClientPair(){const dietitian=await put('users',{role:'dietitian',status:'active'});const client=await put('users',{role:'client',status:'active',assignedDietitian:dietitian._id});return {dietitian,client};}

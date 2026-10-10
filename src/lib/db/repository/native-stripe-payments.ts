@@ -1,20 +1,21 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {createHash} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {NativeCheckoutError} from './native-checkout';
 import {nativeFinanceActor,nativeFinanceClientIds,nativeFinancePeople} from './native-finance-access';
 import {nativeDates} from './native-plan-editor';
 export interface NativeStripeProvider {create(data:DocumentData,key:string):Promise<DocumentData>;retrieve(id:string):Promise<DocumentData>}
 const validId=(id:unknown):id is string=>typeof id==='string'&&/^[a-f0-9]{24}$/i.test(id);
 const publicPayment=(data:DocumentData):DocumentData=>Object.fromEntries(Object.entries(nativeDates(data)).filter(([key])=>!key.startsWith('_native')&&!/signature|secret/i.test(key)));
-export async function listNativePayments(db:Firestore,userId:string,params:URLSearchParams){
+export async function listNativePayments(db:MongoDatabase,userId:string,params:URLSearchParams){
  const actor=await nativeFinanceActor(db,userId),ids=await nativeFinanceClientIds(db,actor),page=Math.max(1,Math.min(10000,Number(params.get('page'))||1)),limit=Math.max(1,Math.min(100,Number(params.get('limit'))||10)),status=params.get('status');
- let query:FirebaseFirestore.Query=db.collection('unifiedpayments');if(status)query=query.where('paymentStatus','==',status);
- let total:number,rows:FirebaseFirestore.QueryDocumentSnapshot[];
+ let query:MongoTypes.Query=db.collection('unifiedpayments');if(status)query=query.where('paymentStatus','==',status);
+ let total:number,rows:MongoTypes.QueryDocumentSnapshot[];
  if(ids===null||actor.role==='client'){if(ids)query=query.where('client','==',userId);total=(await query.count().get()).data().count;rows=(await query.orderBy('createdAt','desc').offset((page-1)*limit).limit(limit).get()).docs;}
- else{const allowed=new Set(ids);const routing=(await query.select('client','createdAt').get()).docs.filter(row=>allowed.has(row.get('client'))).sort((a,b)=>(b.get('createdAt')?.toMillis?.()||0)-(a.get('createdAt')?.toMillis?.()||0));total=routing.length;const selected=routing.slice((page-1)*limit,page*limit);rows=selected.length?(await db.getAll(...selected.map(row=>row.ref))).filter(row=>row.exists) as FirebaseFirestore.QueryDocumentSnapshot[]:[];}
+ else{const allowed=new Set(ids);const routing=(await query.select('client','createdAt').get()).docs.filter(row=>allowed.has(row.get('client'))).sort((a,b)=>(b.get('createdAt')?.toMillis?.()||0)-(a.get('createdAt')?.toMillis?.()||0));total=routing.length;const selected=routing.slice((page-1)*limit,page*limit);rows=selected.length?(await db.getAll(...selected.map(row=>row.ref))).filter(row=>row.exists) as MongoTypes.QueryDocumentSnapshot[]:[];}
  return {payments:await nativeFinancePeople(db,rows.map(row=>publicPayment({...row.data(),_id:row.id}))),pagination:{page,limit,total,pages:Math.ceil(total/limit)}};
 }
-export async function createNativeStripeConsultation(db:Firestore,userId:string,input:DocumentData,key:string|null,provider:NativeStripeProvider){
+export async function createNativeStripeConsultation(db:MongoDatabase,userId:string,input:DocumentData,key:string|null,provider:NativeStripeProvider){
  if(!key||!/^[\w.:-]{8,128}$/.test(key))throw new NativeCheckoutError('An idempotency key is required',400);
  if(!validId(input.appointmentId))throw new NativeCheckoutError('A booked consultation is required',400);
  const id=createHash('sha256').update(userId+'\0stripe\0'+key).digest('hex').slice(0,24),ref=db.collection('unifiedpayments').doc(id);
@@ -38,7 +39,7 @@ export async function createNativeStripeConsultation(db:Firestore,userId:string,
  return {payment:publicPayment({...payment,stripePaymentIntentId:intent.id}),paymentIntent:{id:intent.id,client_secret:intent.client_secret,status:intent.status}};
 }
 /** proof must come from Stripe retrieve or a signature-verified webhook. */
-export async function settleNativeStripePayment(db:Firestore,proof:DocumentData,userId?:string){
+export async function settleNativeStripePayment(db:MongoDatabase,proof:DocumentData,userId?:string){
  if(!/^pi_[\w]+$/.test(proof.id||''))throw new NativeCheckoutError('Invalid payment identity',400);
  const rows=await db.collection('unifiedpayments').where('stripePaymentIntentId','==',proof.id).limit(2).get();if(rows.size!==1)throw new NativeCheckoutError('Payment not found or ambiguous',404);
  return db.runTransaction(async tx=>{
@@ -55,7 +56,7 @@ export async function settleNativeStripePayment(db:Firestore,proof:DocumentData,
   tx.update(ref,patch);return publicPayment({...row.data(),...patch});
  });
 }
-export async function linkNativePaymentPlan(db:Firestore,actorId:string,input:DocumentData){
+export async function linkNativePaymentPlan(db:MongoDatabase,actorId:string,input:DocumentData){
  if(!validId(input.paymentId)||!validId(input.mealPlanId)||input.mealPlanCreated!==true)throw new NativeCheckoutError('A published linked meal plan is required',400);
  return db.runTransaction(async tx=>{
   const [actor,payment,plan]=await tx.getAll(db.collection('users').doc(actorId),db.collection('unifiedpayments').doc(input.paymentId),db.collection('clientmealplans').doc(input.mealPlanId));

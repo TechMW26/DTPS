@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {mutateEcommerceContent,readEcommerceContent} from '@/lib/db/repository/native-ecommerce-content';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native ecommerce content',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('validates server-owned fields, public visibility, and current admin rights',async()=>{
   const actor=db.collection('users').doc(randomBytes(12).toString('hex'));refs.push(actor);await actor.set({role:'admin',status:'active'});

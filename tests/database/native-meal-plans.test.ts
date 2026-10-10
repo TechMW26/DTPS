@@ -1,15 +1,16 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { getNativeDatabase } from '@/lib/db/database';
 import { deleteNativeMealPlan } from '@/lib/db/repository/native-meal-plans';
 import { randomUUID } from 'node:crypto';
 
 const suite = process.env.DTPS_MONGODB_LOCAL_TEST ? describe : describe.skip;
-suite('native Firestore plan allocation transactions (local emulator only)', () => {
+suite('native MongoDB plan allocation transactions (local Mongo replica only)', () => {
   const prefix = 'test-' + randomUUID();
   let db: ReturnType<typeof getNativeDatabase>;
-  const refs: FirebaseFirestore.DocumentReference[] = [];
+  const refs: MongoTypes.DocumentReference[] = [];
   beforeAll(async () => { db = getNativeDatabase(); for(const [id,role] of [['admin','admin'],['staff','dietitian'],['counselor','health_counselor'],['outsider','dietitian']]){const ref=db.collection('users').doc(id);refs.push(ref);await ref.set({role,status:'active'});}const client=db.collection('users').doc('client');refs.push(client);await client.set({role:'client',assignedDietitian:'staff'}); });
   afterAll(async () => { for (const ref of refs) await ref.delete(); await db.terminate(); });
-  async function put(collection: string, suffix: string, data: FirebaseFirestore.DocumentData) {
+  async function put(collection: string, suffix: string, data: MongoTypes.DocumentData) {
     const ref = db.collection(collection).doc(prefix + suffix); refs.push(ref); await ref.set(data); return ref;
   }
   it('restores used days exactly once under concurrent repeated deletion', async () => {

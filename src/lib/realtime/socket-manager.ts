@@ -1,4 +1,4 @@
-/** Existing event API backed by durable native Firestore events, hosted through Vercel SSE. */
+/** Existing event API backed by durable native MongoDB events, hosted through Vercel SSE. */
 import { after } from 'next/server';
 import { getNativeDatabase } from '@/lib/db/database';
 import { publishNativeEvent } from './native-events';

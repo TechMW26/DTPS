@@ -1,4 +1,5 @@
-import {Timestamp,type Firestore,type DocumentData,type DocumentSnapshot,type Query,type WhereFilterOp} from 'firebase-admin/firestore';
+import type * as MongoTypes from '@/lib/db/mongo-types';
+import {Timestamp,type MongoDatabase,type DocumentData,type DocumentSnapshot,type Query,type WhereFilterOp} from '@/lib/db/mongo-types';
 import {hydrateNativeDocument,prepareNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
 export function nativeDates(value:any):any {
  if(value instanceof Timestamp)return value.toDate();
@@ -13,7 +14,7 @@ const signature=(docs:DocumentSnapshot[])=>docs.map(doc=>`${doc.id}:${doc.update
 export class NativePlanEditor {
  private documents=new Map<string,DocumentSnapshot>();
  private queries:Array<{query:Query;signature:string}>=[];
- constructor(private db:Firestore){}
+ constructor(private db:MongoDatabase){}
  private projections=new Map<string,Promise<DocumentData|null>>();
  projection(collection:string,id:string,fields:string[]):Promise<DocumentData|null>{
   if(!id||id.includes('/'))return Promise.resolve(null);
@@ -45,7 +46,7 @@ export class NativePlanEditor {
  async commit(mutations:Array<{collection:string;id:string;patch:DocumentData}>,creates:Array<{collection:string;id:string;data:DocumentData}>=[]){
   if(!mutations.length&&!creates.length)return true;
   if(mutations.length+creates.length>450)throw new Error('Too many linked records to update atomically');
-  const ready:Array<{ref:FirebaseFirestore.DocumentReference;patch:DocumentData}>=[];
+  const ready:Array<{ref:MongoTypes.DocumentReference;patch:DocumentData}>=[];
   const paths=new Set<string>();
   for(const mutation of mutations){
    const path=mutation.collection+'/'+mutation.id;
@@ -54,7 +55,7 @@ export class NativePlanEditor {
    if(!stored)throw new Error('Missing validated record snapshot');
    ready.push({ref:this.db.doc(path),patch:await prepareNativePatch(stored,clean({...mutation.patch,updatedAt:new Date()}))});
   }
-  const preparedCreates:Array<{ref:FirebaseFirestore.DocumentReference;data:DocumentData}>=[];
+  const preparedCreates:Array<{ref:MongoTypes.DocumentReference;data:DocumentData}>=[];
   for(const item of creates){
    const path=item.collection+'/'+item.id;if(paths.has(path))throw new Error('Duplicate mutation');paths.add(path);
    if(!this.documents.has(path))await this.document(item.collection,item.id);
@@ -86,7 +87,7 @@ export class NativePlanEditor {
   return applied?{...plan,...next}:null;
  }
 }
-export async function appendNativePlanAudit(db:Firestore,id:string,entry:DocumentData){
+export async function appendNativePlanAudit(db:MongoDatabase,id:string,entry:DocumentData){
  const ref=db.collection('clientmealplans').doc(id);
  await db.runTransaction(async tx=>{
   const doc=await tx.get(ref);if(!doc.exists)return;

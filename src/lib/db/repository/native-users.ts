@@ -1,22 +1,23 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import { timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { type Firestore, Timestamp } from 'firebase-admin/firestore';
+import { type MongoDatabase, Timestamp } from '@/lib/db/mongo-types';
 
 const publicFields = ['email','firstName','lastName','role','status','avatar','emailVerified','onboardingCompleted'] as const;
 
-function profile(id: string, data: FirebaseFirestore.DocumentData) {
+function profile(id: string, data: MongoTypes.DocumentData) {
   const fields = Object.fromEntries(publicFields.filter(key=>data[key]!==undefined).map(key=>[key,data[key]]));
   return {...fields,_id:id,fullName:`${data.firstName||''} ${data.lastName||''}`.trim()};
 }
 
-export async function nativeUserProfile(db: Firestore, id: string) {
+export async function nativeUserProfile(db: MongoDatabase, id: string) {
   if(!id || id.includes('/')) throw new Error('Invalid user ID');
   const doc = await db.collection('users').doc(id).get();
   return doc.exists ? profile(doc.id,doc.data()!) : null;
 }
 
 /** Authenticate on the server; passwords/tokens must never be included in returned profiles. */
-export async function authenticateNativeUser(db: Firestore, email: string, password: string, context: 'staff'|'client') {
+export async function authenticateNativeUser(db: MongoDatabase, email: string, password: string, context: 'staff'|'client') {
   if(!email.trim() || !password) return null;
   const matches = await db.collection('users').where('email','==',email.trim().toLowerCase()).limit(2).get();
   // Ambiguous legacy accounts need review; never authenticate an arbitrary duplicate.

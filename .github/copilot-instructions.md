@@ -7,7 +7,7 @@
 - Native mobile shell in `mobile-app/` (iOS/Android) wraps the web app via WebView; the `useNativeApp` hook bridges JS ↔ native.
 
 ## Architecture & data flow
-- **DB:** `getNativeDatabase()` in `src/lib/db/database.ts`, with explicit domain repositories in `src/lib/db/repository/native-*.ts`. Dedicated `MONGODB_URI` and `MONGODB_DATABASE` configuration is isolated from Firebase Auth/FCM credentials. Database writes require current role/ownership checks and transactions for related records. Production execution requires the explicit `MONGODB_PRODUCTION_ENABLED=true` cutover flag and the verified Mongo database. The shared facade preserves route contracts; it does not connect business data to Firestore.
+- **DB:** `getNativeDatabase()` in `src/lib/db/database.ts`, with explicit domain repositories in `src/lib/db/repository/native-*.ts`. Dedicated `MONGODB_URI` and `MONGODB_DATABASE` configuration is isolated from Firebase Auth/FCM credentials. Database writes require current role/ownership checks and transactions for related records. Production execution requires the explicit `MONGODB_PRODUCTION_ENABLED=true` cutover flag and the verified Mongo database. The shared facade preserves route contracts and stores business data exclusively in MongoDB.
 - **Auth:** `src/lib/auth/config.ts` — Credentials + Google providers. JWT carries `role` (UserRole enum), `onboardingCompleted`, `isNewUser`, calendar fields. Session strategy is JWT, 30-day max age.
 - **Base URLs:** Always use `getBaseUrl()` / `getPaymentCallbackUrl()` from `src/lib/config.ts` — never raw `NEXTAUTH_URL`.
 - **Middleware** (`middleware.ts`): Adds `X-App-Version` + `Cache-Control: no-store` on API responses. Enforces role-based route access and redirects clients with `onboardingCompleted === false` to `/user/onboarding`.
@@ -74,8 +74,8 @@
 
 ## Key workflows
 - **Dev:** `npm run dev` · **Build:** `npm run build` · **Start:** `npm run start` · **Lint:** `npm run lint`
-- **Deployment target:** Vercel. Do not deploy or enable provider delivery during local migration acceptance.
-- **Environment:** Dedicated MongoDB configuration in local environment; keep Firebase Auth/FCM credentials separate. Retired Firestore source credentials belong only in the isolated private migration runner. Bound queries, reuse connections, and invalidate caches on writes rather than repeating full scans.
+- **Deployment target:** Vercel. Keep real provider delivery disabled during local acceptance.
+- **Environment:** Dedicated MongoDB configuration in local environment; keep Firebase Auth/FCM credentials separate. Historical source credentials belong only in private recovery archives. Bound queries, reuse connections, and invalidate caches on writes rather than repeating full scans.
 - **Error monitoring:** Sentry (edge + server configs at project root, `instrumentation.ts`).
 
 ## Naming conventions

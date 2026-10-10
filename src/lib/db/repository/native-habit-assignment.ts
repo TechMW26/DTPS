@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import type {Firestore,DocumentData} from 'firebase-admin/firestore';
+import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {z} from 'zod';
 import {nativeHabitDay,NativeHabitError,type Habit} from './native-habits';
 import {nativeDates} from './native-plan-editor';
@@ -7,7 +7,7 @@ import {hydrateNativeDocument,prepareNativeDocument,prepareNativePatch} from '@/
 export const assignmentField={water:'assignedWater',steps:'assignedSteps',sleep:'assignedSleep',activities:'assignedActivities'} as const;
 const activity=z.object({name:z.string().trim().min(1).max(300).default('Activity'),sets:z.number().int().min(0).max(10000).default(0),reps:z.number().int().min(0).max(100000).default(0),duration:z.number().min(0).max(1440).default(0),videoLink:z.union([z.literal(''),z.string().url().max(4000)]).default('')});
 const schemas={water:z.object({amount:z.number().positive().max(100000)}),steps:z.object({target:z.number().int().positive().max(200000)}),sleep:z.object({targetHours:z.number().int().min(0).max(24),targetMinutes:z.number().int().min(0).max(59).default(0)}).refine(v=>v.targetHours*60+v.targetMinutes>0&&v.targetHours*60+v.targetMinutes<=1440),activities:z.object({activities:z.array(activity).min(1).max(100)})};
-export async function nativeHabitAssignment(db:Firestore,actorId:string,clientId:string,habit:Habit,date:unknown,action:'read'|'assign'|'remove',input?:unknown){
+export async function nativeHabitAssignment(db:MongoDatabase,actorId:string,clientId:string,habit:Habit,date:unknown,action:'read'|'assign'|'remove',input?:unknown){
  if(!/^[a-f0-9]{24}$/.test(actorId)||!/^[a-f0-9]{24}$/.test(clientId))throw new NativeHabitError('Invalid user ID');
  const day=nativeHabitDay(date),parsed=action==='assign'?schemas[habit].safeParse(input):null;
  if(parsed&&!parsed.success)throw new NativeHabitError('Invalid task assignment');

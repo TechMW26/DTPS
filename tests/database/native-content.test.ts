@@ -1,9 +1,10 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {nativeBlogLike,nativeBlogDetail,nativePublicBlogs} from '@/lib/db/repository/native-content';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native public content',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  async function blog(data:Record<string,unknown>){const ref=db.collection('blogs').doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set({isActive:true,publishedAt:new Date(),...data});return ref;}
  it('does not expose inactive content or internal fields',async()=>{

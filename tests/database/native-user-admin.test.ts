@@ -1,3 +1,4 @@
+import type * as MongoTypes from '@/lib/db/mongo-types';
 import {randomBytes} from 'node:crypto';
 import {getNativeDatabase} from '@/lib/db/database';
 import {updateNativeUser,readNativeUser} from '@/lib/db/repository/native-user-admin';
@@ -7,7 +8,7 @@ import {addNativeStaffMeasurements,readNativeStaffMeasurements,deleteNativeStaff
 import {nativeStaffRecall} from '@/lib/db/repository/native-admin-recall';
 const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native user administration controls',()=>{
- let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];async function seed(collection:string,data:Record<string,unknown>){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
+ let db:ReturnType<typeof getNativeDatabase>;const refs:MongoTypes.DocumentReference[]=[];async function seed(collection:string,data:Record<string,unknown>){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
  it('saves assessments for clients without email or measurements and preserves existing contact',async()=>{
   const dt=await seed('users',{role:'dietitian',status:'active'}),client=await seed('users',{role:'client',status:'active',assignedDietitian:dt.id,email:'kept@example.invalid'});
