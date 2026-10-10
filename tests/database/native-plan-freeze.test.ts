@@ -1,13 +1,13 @@
 import {randomBytes} from 'node:crypto';
 import {NextRequest} from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {POST,DELETE} from '@/app/api/client-meal-plans/[id]/freeze/route';
 import {getServerSession} from 'next-auth';
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
 jest.mock('@/lib/status/computeClientStatus',()=>({recalculateAndPersistClientStatus:jest.fn()}));
 jest.mock('@/lib/cache/memoryCache',()=>({clearCacheByTag:jest.fn()}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native plan freeze transactions',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});

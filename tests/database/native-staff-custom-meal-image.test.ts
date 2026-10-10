@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { format } from 'date-fns';
 
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
 const mockAfterTasks:Promise<unknown>[]=[];
 jest.mock('next/server',()=>({...jest.requireActual('next/server'),after:(fn:()=>Promise<unknown>)=>{mockAfterTasks.push(Promise.resolve().then(fn));}}));
@@ -62,7 +62,7 @@ function mockSession(user: Record<string, any> | null): void {
     (getServerSession as jest.Mock).mockResolvedValue(buildSession(user));
 }
 
-(process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip)('Custom Meal Type Completion With Image Flow', () => {
+(process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip)('Custom Meal Type Completion With Image Flow', () => {
     beforeAll(async () => {
         db=getNativeDatabase();
     });

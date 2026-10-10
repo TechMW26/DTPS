@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
 import {randomBytes,createHash} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativePlanEditor,nativePlanStaffAccess} from '@/lib/db/repository/native-plan-editor';
 import {listNativePlans,populateNativePlan} from '@/lib/db/repository/native-plan-list';
 import { UserRole } from "@/types";

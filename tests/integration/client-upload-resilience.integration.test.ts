@@ -4,7 +4,7 @@ const handleUploadMock = jest.fn();
 const getTokenMock = jest.fn();
 const directUploadMock = jest.fn();
 const reserveUploadMock=jest.fn().mockResolvedValue(undefined);
-jest.mock("@/lib/db/firestore-native",()=>({getNativeDatabase:()=>({synthetic:true})}));
+jest.mock("@/lib/db/database",()=>({getNativeDatabase:()=>({synthetic:true})}));
 jest.mock("@/lib/db/repository/native-files",()=>({reserveNativeUpload:(...args:unknown[])=>reserveUploadMock(...args),saveNativeUpload:jest.fn(),nativeUploadId:jest.fn()}));
 
 jest.mock("@vercel/blob/client", () => ({

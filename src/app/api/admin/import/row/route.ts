@@ -1,5 +1,5 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {requireNativeAuditAdmin} from '@/lib/db/repository/native-admin-audit';
 /**
  * API Route: Data Import - Update Row

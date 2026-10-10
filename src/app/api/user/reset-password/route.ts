@@ -1,7 +1,7 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {createHash} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {validateNativeReset,consumeNativeReset} from '@/lib/db/repository/native-account';
 function input(token:unknown,email:unknown){return typeof token==='string'&&/^[a-f0-9]{64}$/i.test(token)&&typeof email==='string'&&email.length<=320&&email.includes('@');}
 export async function GET(r:NextRequest){try{const token=r.nextUrl.searchParams.get('token'),email=r.nextUrl.searchParams.get('email');if(!input(token,email))return nativeResponseJson({valid:false,error:'Invalid reset link'},{status:400});const user=await validateNativeReset(getNativeDatabase(),email!,createHash('sha256').update(token!).digest('hex'),'client');return user?nativeResponseJson({valid:true,userName:user.firstName||'User'}):nativeResponseJson({valid:false,error:'This password reset link is invalid or has expired.'},{status:400});}catch{return nativeResponseJson({valid:false,error:'Unable to validate reset link'},{status:500});}}

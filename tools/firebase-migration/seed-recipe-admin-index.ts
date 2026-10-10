@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import dotenv from 'dotenv';
-import {getNativeDatabase} from '../../src/lib/db/firestore-native';
+import {getNativeDatabase} from '../../src/lib/db/database';
 import {seedRecipeAdminIndex} from '../../src/lib/db/repository/native-recipe-admin-index';
 async function main(){
  if(!process.argv.includes('--execute')||process.env.VERCEL||process.env.NODE_ENV==='production')throw new Error('Explicit local staging operation required');

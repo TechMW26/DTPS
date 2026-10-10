@@ -1,7 +1,7 @@
 import {NextResponse,after} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {readNativeHabit,mutateNativeHabit,nativeHabitDay,NativeHabitError,type Habit} from '@/lib/db/repository/native-habits';
 import {logActivity} from '@/lib/utils/activityLogger';
 export function nativeHabitRoute(habit:Habit,build:(journal:any,date:Date,goal?:number)=>unknown){

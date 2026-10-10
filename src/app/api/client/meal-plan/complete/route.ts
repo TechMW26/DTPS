@@ -1,5 +1,5 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { nativeTemplateMeals } from '@/lib/db/repository/native-client-meals';
 import { readNativeCompletionPlan, saveNativeMealCompletion, createNativeMealMessage } from '@/lib/db/repository/native-meal-completion';
 import { nativeUnreadCounts } from '@/lib/db/repository/native-notifications';

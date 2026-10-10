@@ -1,17 +1,17 @@
 import {randomBytes} from 'node:crypto';
 import {NextRequest} from 'next/server';
 import {getServerSession} from 'next-auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {sendNotificationToUser} from '@/lib/firebase/firebaseNotification';
 import {POST,GET} from '@/app/api/admin/notifications/send/route';
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:jest.fn()}));
+jest.mock('@/lib/db/database',()=>({getNativeDatabase:jest.fn()}));
 jest.mock('@/lib/firebase/firebaseNotification',()=>({sendNotificationToUser:jest.fn()}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native notification dispatch endpoint with mocked delivery',()=>{
  let db:any,admin:string,clients:string[];
- beforeAll(()=>{db=jest.requireActual('@/lib/db/firestore-native').getNativeDatabase();jest.mocked(getNativeDatabase).mockReturnValue(db);});
+ beforeAll(()=>{db=jest.requireActual('@/lib/db/database').getNativeDatabase();jest.mocked(getNativeDatabase).mockReturnValue(db);});
  beforeEach(async()=>{admin=randomBytes(12).toString('hex');clients=Array.from({length:3},()=>randomBytes(12).toString('hex'));await db.collection('users').doc(admin).set({role:'admin',status:'active'});for(const id of clients)await db.collection('users').doc(id).set({role:'client',status:'active'});jest.mocked(getServerSession).mockResolvedValue({user:{id:admin}} as any);jest.mocked(sendNotificationToUser).mockResolvedValue({successCount:1,failureCount:0,invalidTokens:[],responses:[]});});
  afterEach(async()=>{jest.restoreAllMocks();for(const id of[admin,...clients])await db.collection('users').doc(id).delete();});afterAll(async()=>{await db.terminate();});
  const request=(patch:any={})=>new NextRequest('http://localhost/api/admin/notifications/send',{method:'POST',body:JSON.stringify({title:'Synthetic',body:'Synthetic',targetType:'particular',userIds:clients,recipientRoles:['client'],...patch})});

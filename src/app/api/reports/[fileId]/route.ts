@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {lookupNativeReport,deleteNativeReport,NativeReportError} from '@/lib/db/repository/native-reports';
 import {nativeMediaResponse} from '@/lib/api/native-media-response';
 type Context={params:Promise<{fileId:string}>};

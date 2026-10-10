@@ -5,12 +5,12 @@ import {indexedDashboardRows} from './native-dashboard-indexed';
 import {nativeHabitDay} from './native-habits';
 function boundary(value:string|null,end=false){if(!value)return null;if(!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new NativeDirectoryError('Invalid filter date');const d=new Date(value+`T${end?'23:59:59.999':'00:00:00.000'}+05:30`);if(!Number.isFinite(d.getTime()))throw new NativeDirectoryError('Invalid filter date');return d;}
 async function related(db:Firestore,collection:string,field:string,ids:string[],fields:string[],from?:Date|null,to?:Date|null,planNameTerms:string[]=[]){
- if(collection==='clientmealplans'&&!from&&!to&&process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST){
+ if(collection==='clientmealplans'&&!from&&!to&&process.env.DATABASE_PROVIDER==='mongodb'){
   // This index includes drafts and history; dashboard-only active filtering must be disabled.
   const uniqueIds=[...new Set(ids)];
   return indexedDashboardRows('plans',uniqueIds,false,false,planNameTerms);
  }
- if(ids.length>=300&&collection==='unifiedpayments'&&field==='client'&&!from&&!to&&process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST)return indexedDashboardRows('directoryPayments',ids);
+ if(ids.length>=300&&collection==='unifiedpayments'&&field==='client'&&!from&&!to&&process.env.DATABASE_PROVIDER==='mongodb')return indexedDashboardRows('directoryPayments',ids);
  const result:DocumentData[][]=[],uniqueIds=[...new Set(ids)];let next=0;
  await Promise.all(Array.from({length:Math.min(6,Math.ceil(uniqueIds.length/30))},async()=>{
   for(;;){const slot=next++,i=slot*30;if(i>=uniqueIds.length)return;

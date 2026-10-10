@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeDurationPresets,writeNativeDurationPreset,deleteNativeDurationPreset,PresetInputError} from '@/lib/db/repository/native-duration-presets';
 async function admin(){const session=await getServerSession(authOptions);return session?.user?.role==='admin'?session.user:null;}
 const failure=(error:unknown)=>nativeResponseJson({success:false,error:error instanceof PresetInputError?error.message:'Failed to update duration presets'},{status:error instanceof PresetInputError?400:500});

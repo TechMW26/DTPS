@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse,after} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeClientAppointments,bookNativeClientAppointment,NativeAppointmentError} from '@/lib/db/repository/native-appointments';
 import {sendNotificationToUser} from '@/lib/firebase/firebaseNotification';
 export async function GET(request:NextRequest){

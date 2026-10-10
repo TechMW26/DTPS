@@ -2,7 +2,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {type DocumentData,type Query} from 'firebase-admin/firestore';
 import {hydrateNativeDocument,prepareNativeDocument,prepareNativePatch} from '@/lib/storage/native-document';
 import {uploadToBlob} from '@/lib/storage/blob-storage';

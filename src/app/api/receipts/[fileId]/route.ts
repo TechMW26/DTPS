@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {lookupNativeReceipt} from '@/lib/db/repository/native-receipt-file';
 import {nativeMediaResponse} from '@/lib/api/native-media-response';
 export const dynamic='force-dynamic';

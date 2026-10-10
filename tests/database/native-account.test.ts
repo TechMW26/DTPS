@@ -1,8 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {setNativeResetToken,validateNativeReset,consumeNativeReset,revokeNativeOtherSessions} from '@/lib/db/repository/native-account';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native account recovery',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});

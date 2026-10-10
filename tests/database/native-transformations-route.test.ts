@@ -3,7 +3,7 @@ const mockGet=jest.fn();
 const mockDb={collection:jest.fn()};
 jest.mock('next-auth',()=>({getServerSession:jest.fn(async()=>({user:{id:'a'.repeat(24)}}))}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:()=>mockDb}));
+jest.mock('@/lib/db/database',()=>({getNativeDatabase:()=>mockDb}));
 jest.mock('@/lib/storage/blob-storage',()=>({uploadToBlob:jest.fn()}));
 jest.mock('@/lib/imageCompressionServer',()=>({compressImageServer:jest.fn()}));
 import {nativeTransformationsRoute} from '@/lib/api/native-transformations-route';

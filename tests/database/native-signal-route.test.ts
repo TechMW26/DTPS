@@ -1,12 +1,12 @@
 import {randomBytes} from 'node:crypto';
 import {NextRequest} from 'next/server';
 import {getServerSession} from 'next-auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {POST,GET} from '@/app/api/webrtc/signal/route';
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
 jest.mock('@/lib/firebase/firebaseNotification',()=>({sendNotificationToUser:jest.fn()}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native signal polling delivery',()=>{
  let db:ReturnType<typeof getNativeDatabase>,staff:string,client:string;
  beforeAll(()=>{db=getNativeDatabase();});

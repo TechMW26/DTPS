@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {readNativeOtherPayment,reviewNativeOtherPayment,deleteNativeOtherPayment} from '@/lib/db/repository/native-other-payments';
 import {NativeCheckoutError} from '@/lib/db/repository/native-checkout';
 type Context={params:Promise<{id:string}>};

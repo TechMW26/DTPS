@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {getServerSession} from 'next-auth';
 jest.mock('next/server',()=>({...jest.requireActual('next/server'),after:jest.fn()}));
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
@@ -47,7 +47,7 @@ async function complete(client: any, plan: any, extra: Record<string, unknown> =
     body: { mealId: `${plan._id}-0-0`, mealType: 'dinner', date: day, ...extra } });
 }
 
-(process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip)('scheduled client completion', () => {
+(process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip)('scheduled client completion', () => {
   beforeAll(()=>{db=getNativeDatabase();});
   beforeEach(() => { clock(morning); });
   afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});

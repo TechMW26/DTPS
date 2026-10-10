@@ -1,4 +1,4 @@
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { SOCKET_EVENTS } from '@/lib/realtime/socket-events';
 

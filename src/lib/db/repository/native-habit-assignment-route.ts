@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse,after} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativeHabitError,type Habit} from './native-habits';
 import {nativeHabitAssignment,assignmentResponse} from './native-habit-assignment';
 import {sendTaskAssignedNotification} from '@/lib/notifications/notificationService';

@@ -1,11 +1,11 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {updateNativePermissions,nativePermissionView} from '@/lib/db/repository/native-permissions';
 import {checkPermission,getUserPermissions} from '@/lib/permissions/check';
 import {PermissionKey} from '@/types/permissions';
 import {UserRole} from '@/types';
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native permission rules',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});

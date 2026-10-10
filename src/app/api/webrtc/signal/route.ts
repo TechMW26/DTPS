@@ -1,7 +1,7 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import { measureApi } from '@/lib/api/performance';
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativeMessageError} from '@/lib/db/repository/native-messages';
 import {authorizeNativeSignal} from '@/lib/db/repository/native-signals';
 import {nativeDates} from '@/lib/db/repository/native-plan-editor';

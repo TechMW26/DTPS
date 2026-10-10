@@ -1,4 +1,4 @@
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { createNativeAudit } from '@/lib/db/repository/native-audit';
 import { sendNotificationToUser } from '@/lib/firebase';
 import { socketManager } from '@/lib/realtime/socket-manager';

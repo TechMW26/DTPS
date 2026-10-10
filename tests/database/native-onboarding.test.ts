@@ -1,7 +1,7 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {completeNativeOnboarding} from '@/lib/db/repository/native-onboarding';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native onboarding atomicity',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const ids:string[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const id of ids){await db.collection('users').doc(id).delete();for(const collection of ['medicalinfos','lifestyleinfos']){const rows=await db.collection(collection).where('userId','==',id).get();for(const row of rows.docs)await row.ref.delete();}}await db.terminate();});

@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import {getNativeDatabase} from '../src/lib/db/firestore-native';
+import {getNativeDatabase} from '../src/lib/db/database';
 import {hydrateNativeDocument,prepareNativePatch} from '../src/lib/storage/native-document';
 import {nativeDates} from '../src/lib/db/repository/native-plan-editor';
 import {nativeCommerceAdmin} from '../src/lib/db/repository/native-staff-ecommerce';

@@ -1,6 +1,6 @@
 // Watch Service - Handles all watch-related business logic
 import type {IWatchConnection,IWatchHealthData} from '../watch-types';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeWatchConnection,nativeWatchHealth} from '@/lib/db/repository/native-admin-watch';
 import { getBaseUrl } from '@/lib/config';
 

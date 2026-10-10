@@ -1,4 +1,4 @@
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { nativeNotificationUsers, saveNativeNotifications, registerNativePushToken, removeNativePushTokens } from '@/lib/db/repository/native-notifications';
 import { getMessaging, getNativeMessaging } from './firebaseAdmin';
 

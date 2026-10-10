@@ -1,4 +1,4 @@
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 
 const PUBLISHED_PLAN_STATUSES=['active','completed','paused','cancelled'];
 export async function hasPublishedMealPlan(clientId:string):Promise<boolean> {

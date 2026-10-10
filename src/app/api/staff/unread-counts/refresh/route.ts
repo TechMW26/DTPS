@@ -2,7 +2,7 @@ import {coalesceRead} from '@/lib/api/coalesce-read';
 import {nativeResponseJson} from '@/lib/api/native-response';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { nativeUnreadMessageCount } from '@/lib/db/repository/native-notifications';
 import { socketManager } from '@/lib/realtime/socket-manager';
 export async function POST(){

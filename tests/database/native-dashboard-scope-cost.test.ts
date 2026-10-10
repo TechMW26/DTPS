@@ -5,11 +5,11 @@ jest.mock('@/lib/db/repository/native-staff-appointments',()=>({nativeAppointmen
 jest.mock('@/lib/db/repository/native-dashboard-indexed',()=>({indexedDashboardScope:jest.fn(),indexedDashboardClients:jest.fn()}));
 
 test('large authorized dashboards do not count unrelated clients to choose a projection',async()=>{
- const oldProject=process.env.FIRESTORE_NATIVE_PROJECT_ID,oldEmulator=process.env.FIRESTORE_EMULATOR_HOST;
- process.env.FIRESTORE_NATIVE_PROJECT_ID='dtps-2cbac';delete process.env.FIRESTORE_EMULATOR_HOST;
+ const oldProject=process.env.DATABASE_PROVIDER,oldEmulator=process.env.DTPS_MONGODB_LOCAL_TEST;
+ process.env.DATABASE_PROVIDER='mongodb';delete process.env.DTPS_MONGODB_LOCAL_TEST;
  const count=jest.fn(()=>{throw new Error('Unnecessary global count');});
  const query:any={where:()=>query,count};
- const db:any={databaseId:'dtps-native-staging',collection:()=>query};
+ const db:any={databaseId:'dtps',collection:()=>query};
  const scope=Array.from({length:3000},(_,index)=>`client-${index}`);
  (indexedDashboardScope as jest.Mock).mockResolvedValue(scope);
  (indexedDashboardClients as jest.Mock).mockResolvedValue([{_id:scope[0],status:'active',createdAt:new Date()}]);
@@ -20,7 +20,7 @@ test('large authorized dashboards do not count unrelated clients to choose a pro
   expect(indexedDashboardClients).toHaveBeenCalledWith(scope);
   expect(count).not.toHaveBeenCalled();
  }finally{
-  if(oldProject===undefined)delete process.env.FIRESTORE_NATIVE_PROJECT_ID;else process.env.FIRESTORE_NATIVE_PROJECT_ID=oldProject;
-  if(oldEmulator===undefined)delete process.env.FIRESTORE_EMULATOR_HOST;else process.env.FIRESTORE_EMULATOR_HOST=oldEmulator;
+  if(oldProject===undefined)delete process.env.DATABASE_PROVIDER;else process.env.DATABASE_PROVIDER=oldProject;
+  if(oldEmulator===undefined)delete process.env.DTPS_MONGODB_LOCAL_TEST;else process.env.DTPS_MONGODB_LOCAL_TEST=oldEmulator;
  }
 });

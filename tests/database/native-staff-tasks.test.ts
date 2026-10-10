@@ -1,7 +1,7 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {mutateStaffTask,readStaffTasks} from '@/lib/db/repository/native-staff-tasks';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native staff tasks',()=>{let db:ReturnType<typeof getNativeDatabase>;beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{await db.terminate();});const id=()=>randomBytes(12).toString('hex');
  it('prevents early client completion, foreign task access and duplicate creation',async()=>{
   const staff=id(),client=id(),other=id();await db.collection('users').doc(staff).set({role:'dietitian',status:'active'});await db.collection('users').doc(client).set({role:'client',status:'active',assignedDietitian:staff});await db.collection('users').doc(other).set({role:'client',status:'active',assignedDietitian:staff});

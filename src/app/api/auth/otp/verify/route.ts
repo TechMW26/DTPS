@@ -1,7 +1,7 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from 'firebase-admin/auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {consumeNativeOtp} from '@/lib/db/repository/native-otp';
 import { getFirebaseAdmin } from '@/lib/firebase/firebaseAdmin';
 import { validatePhoneNumber } from '@/lib/validations/contact';

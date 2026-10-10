@@ -1,8 +1,8 @@
 import { candidateCacheDuration, reusableCandidates, type MealEngagementCandidates, type MealEngagementCandidateCache } from '@/lib/notifications/mealEngagementCandidates';
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {runMealEngagementNotifications,runNativeMealEngagementNotifications,getPlanMealSchedules} from '@/lib/notifications/mealEngagement';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native meal engagement scheduling',()=>{
  let db:ReturnType<typeof getNativeDatabase>;let user:FirebaseFirestore.DocumentReference,plan:FirebaseFirestore.DocumentReference;
  beforeAll(()=>{db=getNativeDatabase();});beforeEach(async()=>{user=db.collection('users').doc(randomBytes(12).toString('hex'));plan=db.collection('clientmealplans').doc(randomBytes(12).toString('hex'));await user.set({role:'client',notificationTimeZone:'Australia/Sydney'});await plan.set({clientId:user.id,status:'active',startDate:new Date('2026-09-30T00:00:00+05:30'),endDate:new Date('2026-09-30T23:59:59+05:30'),meals:[{date:new Date('2026-09-30T00:00:00+05:30'),meals:{DINNER:{time:'07:00 PM',foods:[{name:'Synthetic meal'}]}}}]});});

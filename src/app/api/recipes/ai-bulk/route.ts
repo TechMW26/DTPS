@@ -1,6 +1,6 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {saveStaffRecipe,recipeActor} from '@/lib/db/repository/native-staff-recipes';
 
 import { UserRole } from '@/types';

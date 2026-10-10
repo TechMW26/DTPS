@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {updateNativeMessageStatus,nativeMessageStatus} from '@/lib/db/repository/native-message-status';
 import {NativeMessageError} from '@/lib/db/repository/native-messages';
 import {socketManager} from '@/lib/realtime/socket-manager';

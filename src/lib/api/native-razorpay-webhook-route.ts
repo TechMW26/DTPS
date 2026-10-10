@@ -1,5 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {validNativeWebhookSignature,processNativeRazorpayWebhook,nativeWebhookHash} from '@/lib/db/repository/native-razorpay-webhook';
 import {NativeCheckoutError} from '@/lib/db/repository/native-checkout';
 import {nativeFetchPaymentLink} from '@/lib/payments/native-provider';

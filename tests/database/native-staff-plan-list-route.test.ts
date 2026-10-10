@@ -1,6 +1,6 @@
 import {randomBytes} from 'node:crypto';
 import {NextRequest} from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {GET} from '@/app/api/client-meal-plans/route';
 import {getServerSession} from 'next-auth';
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
@@ -11,7 +11,7 @@ jest.mock('@/lib/auth/onboarding-access',()=>({grantDietPlanAccess:jest.fn()}));
 jest.mock('@/lib/firebase/firebaseNotification',()=>({sendNotificationToUser:jest.fn()}));
 jest.mock('@/lib/status/computeClientStatus',()=>({updateClientStatusFromMealPlan:jest.fn()}));
 jest.mock('@/lib/cache/memoryCache',()=>({clearCacheByTag:jest.fn()}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('PlanningSection client plan GET contract',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const id=()=>randomBytes(12).toString('hex');
  beforeAll(()=>{db=getNativeDatabase();});afterAll(()=>db.terminate());

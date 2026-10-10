@@ -3,7 +3,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {z} from 'zod';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativeStaffClientError} from './native-staff-client';
 import {listStaffTemplates,readStaffTemplate,mutateStaffTemplate,type NativeTemplateCollection} from './native-staff-templates';
 import {nativeMediaJson} from '@/lib/api/native-media-json';

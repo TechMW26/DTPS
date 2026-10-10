@@ -1,6 +1,6 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextResponse} from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeDates} from '@/lib/db/repository/native-plan-editor';
 import {hydrateNativeDocument} from '@/lib/storage/native-document';
 export async function GET(_request:Request,{params}:{params:Promise<{id:string}>}){

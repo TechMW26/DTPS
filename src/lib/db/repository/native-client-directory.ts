@@ -21,7 +21,7 @@ export async function nativeDirectoryStatuses(db:Firestore,rows:DocumentData[],l
  const result=new Map<string,DocumentData[]>(),ids=[...new Set(rows.filter(d=>d.role==='client').map(d=>d._id as string))],allowed=new Set(ids);
  const collect=(payments:DocumentData[])=>{for(const payment of payments){if(!allowed.has(payment.client))continue;const group=result.get(payment.client)||[];group.push(payment);result.set(payment.client,group);}};
  if(loadedPayments)collect(loadedPayments);
- else if(ids.length>=300&&process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST)collect(await indexedDashboardRows('directoryPayments',ids));
+ else if(ids.length>=300&&process.env.DATABASE_PROVIDER==='mongodb')collect(await indexedDashboardRows('directoryPayments',ids));
  else{
   let next=0;
   await Promise.all(Array.from({length:Math.min(6,Math.ceil(ids.length/30))},async()=>{

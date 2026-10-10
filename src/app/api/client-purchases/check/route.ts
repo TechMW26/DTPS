@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativePurchaseEligibility} from '@/lib/db/repository/native-purchase-eligibility';
 import {nativeFinanceActor} from '@/lib/db/repository/native-finance-access';
 import {NativeCheckoutError} from '@/lib/db/repository/native-checkout';

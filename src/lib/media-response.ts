@@ -1,7 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {lookupNativeFile,lookupNativeMedia,nativeMediaHash} from '@/lib/db/repository/native-media';
 import {nativeMediaResponse} from '@/lib/api/native-media-response';
 /** Resolve exact migrated references. Never recover by filename, which is not an ownership boundary. */

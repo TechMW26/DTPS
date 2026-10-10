@@ -6,7 +6,7 @@ export async function nativeStaffDirectory(db:Firestore,role:'dietitian'|'health
  const needle=search.trim().slice(0,200).toLowerCase(),rows=await db.collection('users').where('role','==',role).select(...fields).get();
  const selected=rows.docs.filter(row=>!needle||[row.get('firstName'),row.get('lastName'),[row.get('firstName'),row.get('lastName')].filter(Boolean).join(' '),row.get('email'),row.get('phone'),...(row.get('specializations')||[])].some(value=>String(value||'').toLowerCase().includes(needle)));
  const result:DocumentData[]=new Array(selected.length);let next=0;
- const useIndexed=process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST;
+ const useIndexed=process.env.DATABASE_PROVIDER==='mongodb';
  // Enterprise's Core OR count can scan the full users collection per staff member.
  // Split the branches using the existing indexed ID projection and deduplicate
  // primary/secondary assignments; created-by alone is not an assignment.

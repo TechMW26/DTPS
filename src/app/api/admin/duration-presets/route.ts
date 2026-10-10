@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeDurationPresets,seedNativeDurationPresets,reorderNativeDurationPresets,PresetInputError} from '@/lib/db/repository/native-duration-presets';
 async function admin(){const session=await getServerSession(authOptions);return session?.user?.role==='admin'?session.user:null;}
 const denied=()=>nativeResponseJson({error:'Admin access required'},{status:403});

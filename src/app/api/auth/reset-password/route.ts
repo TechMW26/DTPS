@@ -1,6 +1,6 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {consumeNativeReset,validateNativeReset} from '@/lib/db/repository/native-account';
 import {invalidateUserStatusCache} from '@/lib/auth/config';
 import crypto from 'crypto';

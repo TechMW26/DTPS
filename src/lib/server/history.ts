@@ -1,4 +1,4 @@
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { createNativeAudit } from '@/lib/db/repository/native-audit';
 
 export type HistoryAction = 'create' | 'update' | 'delete' | 'upload' | 'assign' | 'download' | 'view';

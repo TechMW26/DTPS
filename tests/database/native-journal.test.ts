@@ -1,7 +1,7 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {mutateJournal,journalHistory} from '@/lib/db/repository/native-journal';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native staff journal',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];const clients:string[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const client of clients)for(const collection of ['journaltrackings','progressentries','activitylogs']){const field=collection==='progressentries'?'user':collection==='activitylogs'?'targetUserId':'client';for(const row of(await db.collection(collection).where(field,'==',client).get()).docs)await row.ref.delete();}for(const ref of refs)await ref.delete();await db.terminate();});

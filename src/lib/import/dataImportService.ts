@@ -5,7 +5,7 @@
  * with full transaction support for atomic operations.
  */
 
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {saveNativeAdminImport} from '@/lib/db/repository/native-admin-import-save';
 import { modelRegistry } from './modelRegistry';
 import { validationEngine, ValidationError, type FieldMappingInfo } from './validationEngine';

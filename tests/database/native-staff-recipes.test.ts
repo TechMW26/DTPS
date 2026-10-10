@@ -1,7 +1,7 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {saveStaffRecipe,readStaffRecipe} from '@/lib/db/repository/native-staff-recipes';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native recipe mutations',()=>{let db:ReturnType<typeof getNativeDatabase>;beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{await db.terminate();});const id=()=>randomBytes(12).toString('hex');
  it('serializes identical creates, preserves ownership and hides archives from clients',async()=>{
   const staff=id(),client=id();await db.collection('users').doc(staff).set({role:'dietitian',status:'active'});await db.collection('users').doc(client).set({role:'client',status:'active'});await db.collection('_nativeCounters').doc('recipeIds').set({seq:10000});

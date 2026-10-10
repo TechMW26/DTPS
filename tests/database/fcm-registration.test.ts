@@ -1,9 +1,9 @@
 import {randomBytes,createHash} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {registerFCMToken,sendNotificationToUser} from '@/lib/firebase/firebaseNotification';
 import {getMessaging} from '@/lib/firebase/firebaseAdmin';
 jest.mock('@/lib/firebase/firebaseAdmin',()=>({getMessaging:jest.fn(),getNativeMessaging:jest.fn()}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('FCM service on native Firestore',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});

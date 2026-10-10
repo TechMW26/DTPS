@@ -1,7 +1,7 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {saveNativeProgress,deleteNativeProgress,nativeProgressHistory} from '@/lib/db/repository/native-progress';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native progress persistence',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const users:string[]=[];
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const user of users)for(const [collection,field] of [['progressentries','user'],['journaltrackings','client'],['_nativeProgressOperations','userId']]){const rows=await db.collection(collection).where(field,'==',user).get();for(const row of rows.docs)await row.ref.delete();}await db.terminate();});

@@ -22,14 +22,6 @@ export class NativePlanEditor {
   return promise;
  }
 
- async preloadDocuments(collection:string,ids:string[]){
-  const missing=[...new Set(ids)].filter(id=>id&&!id.includes('/')&&!this.documents.has(collection+'/'+id));
-  for(let i=0;i<missing.length;i+=50){const snapshots=await this.db.getAll(...missing.slice(i,i+50).map(id=>this.db.collection(collection).doc(id)));for(const snapshot of snapshots)this.documents.set(snapshot.ref.path,snapshot);}
- }
- async preloadProjections(collection:string,ids:string[],fields:string[]){
-  const missing=[...new Set(ids)].filter(id=>id&&!id.includes('/')&&!this.projections.has(collection+'/'+id+'|'+fields.join(',')));
-  for(let i=0;i<missing.length;i+=100){const rows=await this.db.getAll(...missing.slice(i,i+100).map(id=>this.db.collection(collection).doc(id)),{fieldMask:fields});for(const row of rows)this.projections.set(collection+'/'+row.id+'|'+fields.join(','),Promise.resolve(row.exists?{...nativeDates(row.data()),_id:row.id}:null));}
- }
  async document(collection:string,id:string){
   if(!id||id.includes('/'))return null;
   const ref=this.db.collection(collection).doc(id);

@@ -3,7 +3,7 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
-import { getNativeDatabase } from "@/lib/db/firestore-native";
+import { getNativeDatabase } from "@/lib/db/database";
 import { reserveNativeUpload, saveNativeUpload, nativeUploadId } from "@/lib/db/repository/native-files";
 
 export const runtime = "nodejs";

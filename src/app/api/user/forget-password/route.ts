@@ -1,6 +1,6 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeAccountByEmail,setNativeResetToken} from '@/lib/db/repository/native-account';
 import { sendEmail, getPasswordResetTemplate } from '@/lib/services/email';
 import { getBaseUrl } from '@/lib/config';

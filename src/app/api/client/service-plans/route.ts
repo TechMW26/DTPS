@@ -3,7 +3,7 @@ import { measureApi } from '@/lib/api/performance';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { nativeClientServices, nativeServiceCatalog } from '@/lib/db/repository/native-client-services';
 import { prioritizeClientDashboardPurchases } from '@/lib/client-plan-visibility';
 import { canonicalizePurchaseRecords } from '@/lib/payments/canonicalize-purchases';

@@ -1,11 +1,12 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {Collection} from 'mongodb';
+import {getNativeDatabase} from '@/lib/db/database';
 import {saveNativeUserTask} from '@/lib/db/repository/native-user-tasks';
 import {saveNativeUserNote,listNativeUserNotes} from '@/lib/db/repository/native-user-notes';
 import {writeNativeUserRecall,readNativeUserRecall} from '@/lib/db/repository/native-user-recall';
 import {nativeUserAvailability} from '@/lib/db/repository/native-user-availability';
 import {nativeUserClientList} from '@/lib/db/repository/native-user-client-list';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native user workflow boundaries',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];async function seed(collection:string,data:Record<string,unknown>){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
  beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
@@ -23,13 +24,13 @@ suite('native user workflow boundaries',()=>{
   for(const client of [own,second])await seed('unifiedpayments',{client:client.id,planName:'Purchased wellness',status:'paid',paymentStatus:'paid',expectedEndDate:new Date('2099-01-01')});
   await seed('clientmealplans',{clientId:own.id,name:'Current phase',status:'active',startDate:new Date('2026-01-01'),endDate:new Date('2099-01-01')});
   await seed('clientmealplans',{clientId:own.id,name:'Deleted phase',status:'active',isDeleted:true,startDate:new Date('2099-02-01'),endDate:new Date('2099-03-01')});
-  const queries=jest.spyOn(db,'collection');
+  const queries=jest.spyOn(Collection.prototype,'find');
   try{
    const result=await nativeUserClientList(db,dt.id,new URLSearchParams({planName:'wellness',status:'active',limit:'1'}));
    expect(result.pagination).toMatchObject({total:2,pages:2});
    expect(result.clients[0]).toMatchObject({_id:own.id,clientStatus:'active',lastDiet:'Current phase',activePlanName:'Current phase'});
-   expect(queries.mock.calls.filter(([name])=>name==='clientmealplans')).toHaveLength(2);
-   expect(queries.mock.calls.filter(([name])=>name==='unifiedpayments')).toHaveLength(1);
+   expect(queries.mock.contexts.filter(collection=>collection.collectionName==='clientmealplans')).toHaveLength(2);
+   expect(queries.mock.contexts.filter(collection=>collection.collectionName==='unifiedpayments')).toHaveLength(1);
   }finally{queries.mockRestore();}
  });
 

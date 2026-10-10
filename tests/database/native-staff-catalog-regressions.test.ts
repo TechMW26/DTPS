@@ -1,10 +1,10 @@
 import {seedRecipeAdminIndex} from '@/lib/db/repository/native-recipe-admin-index';
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {saveStaffRecipe,listStaffRecipes,readStaffRecipe} from '@/lib/db/repository/native-staff-recipes';
 import {mutateStaffTemplate,readStaffTemplate,listStaffTemplates} from '@/lib/db/repository/native-staff-templates';
 import {getStrictRecipeFingerprint} from '@/lib/recipe-quality';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('ported recipe quality, pagination and template regressions',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const id=()=>randomBytes(12).toString('hex');
  beforeAll(async()=>{db=getNativeDatabase();await db.collection('_nativeCounters').doc('recipeIds').set({seq:10000});await db.collection('_nativeCounters').doc('dietTemplateIds').set({seq:10000});});afterAll(()=>db.terminate());

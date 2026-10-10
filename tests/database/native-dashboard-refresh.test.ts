@@ -5,7 +5,7 @@ import {nativeStaffDashboardRoute} from '@/lib/db/repository/native-staff-dashbo
 
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:()=>({})}));
+jest.mock('@/lib/db/database',()=>({getNativeDatabase:()=>({})}));
 jest.mock('@/lib/db/repository/native-staff-dashboard',()=>({nativeStaffStats:jest.fn(),nativePendingPlans:jest.fn()}));
 jest.mock('@/lib/db/repository/native-staff-client-dashboard',()=>({nativeClientDashboard:jest.fn()}));
 

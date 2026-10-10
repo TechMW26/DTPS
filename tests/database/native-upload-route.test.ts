@@ -5,11 +5,11 @@
 
 import { UserRole } from '@/types';
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 let db:ReturnType<typeof getNativeDatabase>;
 const fixtureUsers:string[]=[];
 async function createUser(data:Record<string,unknown>){const id=randomBytes(12).toString('hex');fixtureUsers.push(id);const row={_id:id,status:'active',...data};await db.collection('users').doc(id).set(row);return row;}
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
 import { getServerSession } from 'next-auth';
 import { NextRequest } from 'next/server';

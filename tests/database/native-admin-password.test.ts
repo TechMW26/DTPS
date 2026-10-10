@@ -1,8 +1,8 @@
 import {randomBytes} from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {adminResetNativePassword} from '@/lib/db/repository/native-account';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native administrator password reset',()=>{
  let db:ReturnType<typeof getNativeDatabase>;beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{await db.terminate();});
  it('hashes the password, consumes reset credentials and revokes existing sessions',async()=>{

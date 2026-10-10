@@ -5,7 +5,7 @@ import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { GET, POST } from "@/app/api/admin/system-refresh/route";
 import {randomBytes} from "node:crypto";
-import {getNativeDatabase} from "@/lib/db/firestore-native";
+import {getNativeDatabase} from "@/lib/db/database";
 import { SOCKET_EVENTS } from "@/lib/realtime/socket-events";
 import { socketManager } from "@/lib/realtime/socket-manager";
 import {
@@ -23,7 +23,7 @@ jest.mock("next/cache", () => ({
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
 jest.mock('@/lib/utils/activityLogger',()=>({logActivity:jest.fn()}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite("admin system refresh", () => {
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});

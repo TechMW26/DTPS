@@ -1,6 +1,6 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeBlogDetail,nativeBlogLike} from '@/lib/db/repository/native-content';
 export async function GET(_request:NextRequest,{params}:{params:Promise<{id:string}>}){
  try{const {id}=await params;const result=await nativeBlogDetail(getNativeDatabase(),id);return result?nativeResponseJson(result):nativeResponseJson({error:'Blog not found'},{status:404});}

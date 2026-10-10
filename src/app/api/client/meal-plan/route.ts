@@ -1,6 +1,6 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {nativeMediaJson} from '@/lib/api/native-media-json';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { nativePlanList, nativePlanForDate, nativeTemplateMeals, nativeMealRecipes } from '@/lib/db/repository/native-client-meals';
 import { withJsonCache } from '@/lib/cache/json-cache';
 import { completionMatchesMeal } from '@/lib/task-schedule';

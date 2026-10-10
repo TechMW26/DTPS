@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { createHash, randomBytes } from "node:crypto";
 import { authOptions } from "@/lib/auth/config";
-import { getNativeDatabase } from "@/lib/db/firestore-native";
+import { getNativeDatabase } from "@/lib/db/database";
 import { saveNativeUpload, deleteNativeUpload, reserveNativeUpload } from "@/lib/db/repository/native-files";
 import { uploadToBlob } from "@/lib/storage/blob-storage";
 import { serverCompressionPresets } from "@/lib/imageCompressionServer";

@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {correctNativePlanDates} from '@/lib/db/repository/native-staff-plan-date-correction';
 import {NativeStaffClientError} from '@/lib/db/repository/native-staff-client';
 export async function POST(req:NextRequest,{params}:{params:Promise<{id:string}>}){

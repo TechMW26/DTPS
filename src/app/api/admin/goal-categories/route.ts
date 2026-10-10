@@ -1,6 +1,6 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest, NextResponse} from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {listNativeGoalCategories,saveNativeGoalCategory} from '@/lib/db/repository/native-goal-categories';
 import {requireCategoryAdmin,categoryError} from '@/lib/db/repository/native-goal-categories-route';
 export async function GET(req:NextRequest) {

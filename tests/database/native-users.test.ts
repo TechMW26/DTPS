@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {authenticateNativeUser,nativeUserProfile} from '@/lib/db/repository/native-users';
 
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native user authentication (emulator only)',()=>{
   let db:ReturnType<typeof getNativeDatabase>;
   const refs:FirebaseFirestore.DocumentReference[]=[];

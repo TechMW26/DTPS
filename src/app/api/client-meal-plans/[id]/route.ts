@@ -1,6 +1,6 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import { validPlanDate, planNeedsDateCorrection } from '@/lib/meal-plan-date-validity';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { NativePlanEditor, nativePlanStaffAccess, appendNativePlanAudit } from '@/lib/db/repository/native-plan-editor';
 import { deleteNativeMealPlan, NativePlanDeletionConflict } from '@/lib/db/repository/native-meal-plans';
 import { clearCacheByTag } from '@/lib/cache/memoryCache';

@@ -1,5 +1,5 @@
 import { sendNotificationToUser, sendNotificationToUsers } from '@/lib/firebase';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { Filter } from 'firebase-admin/firestore';
 
 // Notification types

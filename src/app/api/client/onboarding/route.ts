@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse,after} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {completeNativeOnboarding,NativeOnboardingError} from '@/lib/db/repository/native-onboarding';
 import {grantDietPlanAccessIfPublished} from '@/lib/auth/onboarding-access';
 import {logActivity} from '@/lib/utils/activityLogger';

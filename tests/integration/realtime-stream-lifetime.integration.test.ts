@@ -1,11 +1,11 @@
 import {NextRequest} from 'next/server';
 import {GET} from '@/app/api/realtime/events/route';
 import {getServerSession} from 'next-auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeRealtimeActor} from '@/lib/realtime/native-events';
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:jest.fn()}));
+jest.mock('@/lib/db/database',()=>({getNativeDatabase:jest.fn()}));
 jest.mock('@/lib/realtime/native-events',()=>({nativeRealtimeActor:jest.fn(),realtimeTargets:()=>['user:test']}));
 jest.mock('@/lib/realtime/native-presence',()=>({touchNativePresence:jest.fn(async()=>{})}));
 

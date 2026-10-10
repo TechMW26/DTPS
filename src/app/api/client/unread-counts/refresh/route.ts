@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {getServerSession} from 'next-auth';
 import {NextResponse} from 'next/server';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeUnreadCounts} from '@/lib/db/repository/native-notifications';
 import {broadcastUnreadCounts} from '@/lib/realtime/broadcast-counts';
 export async function POST(){

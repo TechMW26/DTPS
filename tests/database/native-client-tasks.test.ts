@@ -1,11 +1,11 @@
 import {prepareNativeDocument,hydrateNativeDocument} from '@/lib/storage/native-document';
 import {randomBytes} from 'node:crypto';
 import {nativeHabitDay} from '@/lib/db/repository/native-habits';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeTaskJournal,completeNativeTask} from '@/lib/db/repository/native-client-tasks';
 const files=new Map<string,Buffer>();
 jest.mock('@/lib/storage/migration-blob-storage',()=>({storeNativeFile:async(bytes:Buffer,contentType:string)=>{const sha256=require('node:crypto').createHash('sha256').update(bytes).digest('hex');files.set(sha256,Buffer.from(bytes));return {provider:'vercel-blob',sha256,size:bytes.length,contentType,storeId:'test',pathname:sha256,url:'https://test.private.blob.vercel-storage.com/'+sha256};},readNativeFile:async(ref:{sha256:string})=>Buffer.from(files.get(ref.sha256)!)}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native task completion',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
  beforeAll(()=>{db=getNativeDatabase();});

@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import { after, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {readNativeClientForm,writeNativeClientForm,listNativeRecalls} from '@/lib/db/repository/native-client-forms';
 import {ZodError} from 'zod';
 import { clearCacheByTag } from '@/lib/cache/memoryCache';

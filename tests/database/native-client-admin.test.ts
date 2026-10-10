@@ -1,10 +1,10 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {assignNativeClient} from '@/lib/db/repository/native-client-assignment';
 import {changeNativeClientHold} from '@/lib/db/repository/native-client-hold';
 import {updateNativeClientProfile} from '@/lib/db/repository/native-admin-client-profile';
 import {listNativeAdminClients} from '@/lib/db/repository/native-client-directory';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native client administration',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
  async function seed(collection:string,data:Record<string,unknown>){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}

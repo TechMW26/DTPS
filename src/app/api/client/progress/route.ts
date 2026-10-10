@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { nativeProgressHistory, saveNativeProgress, deleteNativeProgress, NativeProgressError } from '@/lib/db/repository/native-progress';
 import { startOfDay, endOfDay, parseISO } from "date-fns";
 import { withCache, clearCacheByTag } from "@/lib/api/utils";

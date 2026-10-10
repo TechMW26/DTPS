@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { recalculateNativeClientStatus, nativeClientStatusInfo } from '@/lib/db/repository/native-client-status';
 import { ClientStatus } from '@/types';
-const suite = process.env.FIRESTORE_EMULATOR_HOST ? describe : describe.skip;
+const suite = process.env.DTPS_MONGODB_LOCAL_TEST ? describe : describe.skip;
 suite('native subscription status', () => {
   let db: ReturnType<typeof getNativeDatabase>;
   const refs: FirebaseFirestore.DocumentReference[] = [];

@@ -1,8 +1,8 @@
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { deleteNativeMealPlan } from '@/lib/db/repository/native-meal-plans';
 import { randomUUID } from 'node:crypto';
 
-const suite = process.env.FIRESTORE_EMULATOR_HOST ? describe : describe.skip;
+const suite = process.env.DTPS_MONGODB_LOCAL_TEST ? describe : describe.skip;
 suite('native Firestore plan allocation transactions (local emulator only)', () => {
   const prefix = 'test-' + randomUUID();
   let db: ReturnType<typeof getNativeDatabase>;

@@ -1,6 +1,6 @@
 import {randomBytes} from 'node:crypto';
 import {NextRequest} from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {GET} from '@/app/api/client/service-plans/route';
 jest.mock('@/lib/db/repository/native-client-services',()=>({...jest.requireActual('@/lib/db/repository/native-client-services'),nativeServiceCatalog:jest.fn(()=>{throw new Error('Summary must not load catalog');})}));
 import {nativeUserClientList} from '@/lib/db/repository/native-user-client-list';
@@ -13,7 +13,7 @@ jest.mock('@/lib/auth/onboarding-access',()=>({grantDietPlanAccess:jest.fn()}));
 jest.mock('@/lib/firebase/firebaseNotification',()=>({sendNotificationToUser:jest.fn()}));
 
 jest.mock('@/lib/cache/memoryCache',()=>({clearCacheByTag:jest.fn()}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('ported purchased duration and client history regressions',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
  const id=()=>randomBytes(12).toString('hex');

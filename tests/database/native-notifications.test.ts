@@ -1,7 +1,7 @@
 import {randomBytes,createHash} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeUnreadMessageCount,registerNativePushToken,removeNativePushTokens,saveNativeNotifications} from '@/lib/db/repository/native-notifications';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native notification storage',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
  beforeAll(async()=>{db=getNativeDatabase();const ref=db.collection('_nativeMigrationState').doc('fcmTokens');refs.push(ref);await ref.set({complete:true});});

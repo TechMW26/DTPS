@@ -1,6 +1,6 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest, NextResponse} from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {listNativeTags, saveNativeTag} from '@/lib/db/repository/native-tags';
 import {requireTagStaff, tagError} from '@/lib/db/repository/native-tags-route';
 export async function GET(req: NextRequest) {

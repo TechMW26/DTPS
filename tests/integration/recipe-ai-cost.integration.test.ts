@@ -2,7 +2,7 @@ import {getServerSession} from 'next-auth';
 const mockCreate=jest.fn();
 jest.mock('openai',()=>({__esModule:true,default:jest.fn(()=>({chat:{completions:{create:(...args:any[])=>mockCreate(...args)}}}))}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:()=>({})}));
+jest.mock('@/lib/db/database',()=>({getNativeDatabase:()=>({})}));
 jest.mock('@/lib/db/repository/native-staff-recipes',()=>({recipeActor:jest.fn(async()=>({})),saveStaffRecipe:jest.fn(async()=>({_id:'synthetic'}))}));
 jest.mock('@/lib/db/repository/native-staff-recipe-dedup',()=>({nativeRecipeDuplicateMap:jest.fn(async()=>new Map()),findNativeSimilarRecipes:jest.fn(async()=>[]),compareIngredients:jest.fn(),mergeNativeRecipe:jest.fn()}));
 jest.mock('@/lib/cache/memoryCache',()=>({clearCacheByTag:jest.fn()}));

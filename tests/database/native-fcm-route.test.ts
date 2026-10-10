@@ -1,11 +1,11 @@
 import {randomBytes,createHash} from 'node:crypto';
 import {NextRequest} from 'next/server';
 import {getServerSession} from 'next-auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {POST} from '@/app/api/fcm/token/route';
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native authenticated device timezone registration',()=>{
  let db:ReturnType<typeof getNativeDatabase>,id:string,token:string;
  beforeAll(async()=>{db=getNativeDatabase();await db.collection('_nativeMigrationState').doc('fcmTokens').set({complete:true});});beforeEach(async()=>{id=randomBytes(12).toString('hex');token='synthetic-'+id;await db.collection('users').doc(id).set({role:'client',status:'active',fcmTokens:[]});jest.mocked(getServerSession).mockResolvedValue({user:{id}} as any);});afterEach(async()=>{await db.collection('users').doc(id).delete();await db.collection('_nativeFcmTokens').doc(createHash('sha256').update(token).digest('hex')).delete();});afterAll(async()=>{await db.collection('_nativeMigrationState').doc('fcmTokens').delete();await db.terminate();});

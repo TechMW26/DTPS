@@ -4,7 +4,7 @@ import {getServerSession} from 'next-auth';
 import {google} from 'googleapis';
 import {createHash,randomUUID} from 'node:crypto';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
 import {NativeStaffClientError} from '@/lib/db/repository/native-staff-client';
 import {nativeDates} from '@/lib/db/repository/native-plan-editor';

@@ -1,7 +1,7 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {nativeStripe} from '@/lib/payments/native-stripe-provider';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {settleNativeStripePayment} from '@/lib/db/repository/native-stripe-payments';
 export async function POST(request:NextRequest){
  const secret=process.env.STRIPE_WEBHOOK_SECRET;if(!secret)return nativeResponseJson({error:'Stripe webhook is not configured'},{status:503});

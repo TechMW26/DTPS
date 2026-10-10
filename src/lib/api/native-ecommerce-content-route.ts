@@ -1,7 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {readEcommerceContent,mutateEcommerceContent,type EcommerceContentKind} from '@/lib/db/repository/native-ecommerce-content';
 import {assertNativeAlertAdmin,NativeAlertError} from '@/lib/db/repository/native-system-alerts';
 import {nativeMediaJson} from './native-media-json';

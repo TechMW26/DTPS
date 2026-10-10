@@ -1,6 +1,6 @@
 import type {Firestore} from 'firebase-admin/firestore';
 import { candidateCacheDuration, mealEngagementCandidateCache, reusableCandidates, type MealEngagementCandidateCache } from './mealEngagementCandidates';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { hydrateNativeDocument } from '@/lib/storage/native-document';
 import { nativeDates } from '@/lib/db/repository/native-plan-editor';
 import { createHash } from 'node:crypto';

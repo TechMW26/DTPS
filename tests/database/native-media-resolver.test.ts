@@ -1,6 +1,6 @@
 import {NextRequest} from 'next/server';
 const mockSession=jest.fn(),mockFile=jest.fn(),mockMedia=jest.fn(),mockResponse=jest.fn();
-jest.mock('next-auth',()=>({getServerSession:()=>mockSession()}));jest.mock('@/lib/auth',()=>({authOptions:{}}));jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:()=>({})}));
+jest.mock('next-auth',()=>({getServerSession:()=>mockSession()}));jest.mock('@/lib/auth',()=>({authOptions:{}}));jest.mock('@/lib/db/database',()=>({getNativeDatabase:()=>({})}));
 jest.mock('@/lib/db/repository/native-media',()=>({lookupNativeFile:(...args:any[])=>mockFile(...args),lookupNativeMedia:(...args:any[])=>mockMedia(...args),nativeMediaHash:()=> 'a'.repeat(64)}));jest.mock('@/lib/api/native-media-response',()=>({nativeMediaResponse:(...args:any[])=>mockResponse(...args)}));
 import {handleMediaResolve} from '@/lib/media-response';
 describe('native media resolver',()=>{

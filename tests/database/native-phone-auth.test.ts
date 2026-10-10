@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
 import {randomBytes,createHash} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
-jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:jest.fn()}));
+import {getNativeDatabase} from '@/lib/db/database';
+jest.mock('@/lib/db/database',()=>({getNativeDatabase:jest.fn()}));
 let db:any;
 const fixtureIds:string[]=[];
 const testPhones=['+447911123456','+14155552671','+33142278186','+919822223333','+919876543210','+61412345678','+919811112222','+14155550100'];
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 async function otpCount(phone:string){return (await db.collection('_nativeOtpChallenges').where('phone','==',phone).get()).size;}
 import { UserRole } from '@/types';
 import { getAuth } from 'firebase-admin/auth';
@@ -73,7 +73,7 @@ suite('Firebase SMS phone authentication with WhatsApp fallback', () => {
     const previousFirebaseProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
     const previousAisensyKey = process.env.AISENSY_API_KEY;
 
-    beforeAll(()=>{db=jest.requireActual('@/lib/db/firestore-native').getNativeDatabase();jest.mocked(getNativeDatabase).mockReturnValue(db);});
+    beforeAll(()=>{db=jest.requireActual('@/lib/db/database').getNativeDatabase();jest.mocked(getNativeDatabase).mockReturnValue(db);});
     beforeEach(async () => {
         process.env.NEXTAUTH_SECRET='synthetic-phone-auth-test-secret';
         await db.collection('_nativeCounters').doc('clientIds').set({seq:10000});

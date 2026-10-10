@@ -11,7 +11,7 @@ export async function dashboardClients(db:Firestore,actorId:string,kind:'dietiti
  let query:Query=db.collection('users').where('role','==','client');const staff=role==='admin'?dietitianId:actorId;
  if(staff){const conditions=kind==='health_counselor'?[Filter.where('assignedHealthCounselor','==',staff),Filter.where('assignedHealthCounselors','array-contains',staff)]:[Filter.where('assignedDietitian','==',staff),Filter.where('assignedDietitians','array-contains',staff)];if(role==='health_counselor'&&kind!=='health_counselor')conditions.push(Filter.where('assignedHealthCounselor','==',staff),Filter.where('assignedHealthCounselors','array-contains',staff));if(kind!=='pending')conditions.push(Filter.where('createdBy.userId','==',staff));query=query.where(Filter.or(...conditions));}
  let denseScope=false;
- if(process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST){
+ if(process.env.DATABASE_PROVIDER==='mongodb'){
   const scope=await indexedDashboardScope(staff,kind==='health_counselor',role==='health_counselor'&&kind!=='health_counselor',kind!=='pending');
   // Summary projections depend only on this authorized scope; counting every
   // client just to choose a read strategy adds a global aggregation per request.
@@ -44,7 +44,7 @@ export async function dashboardRelated(db:Firestore,collection:string,field:stri
 }
 export async function nativePendingPlans(db:Firestore,actorId:string,params:URLSearchParams){
  const {clients,summaryOnly,denseScope}=await dashboardClients(db,actorId,'pending',params.get('dietitianId')),clientIds=clients.map(c=>c._id);const today=new Date();today.setHours(0,0,0,0);
- const useIndexed=process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST;
+ const useIndexed=process.env.DATABASE_PROVIDER==='mongodb';
  const [rawPlans,purchases]=await Promise.all([
  useIndexed?indexedDashboardRows('pendingPlans',clientIds,denseScope):dashboardRelated(db,'clientmealplans','clientId',clientIds,['clientId','name','startDate','endDate','duration','status','purchaseId','isDeleted'],q=>q.where('status','in',['active','paused','completed']),10),
  useIndexed?indexedDashboardRows('pendingPurchases',clientIds):dashboardRelated(db,'unifiedpayments','client',clientIds,'client planName durationDays durationLabel startDate endDate expectedStartDate expectedEndDate mealPlanCreated daysUsed remainingDays linkedMealPlanIds parentPaymentId status paymentStatus finalAmount amount paymentLink otherPlatformPayment razorpayOrderId razorpayPaymentId razorpayPaymentLinkId transactionId stripePaymentIntentId createdAt updatedAt'.split(' '),q=>q.where('status','in',['active','paid','completed']),10)]);
@@ -467,7 +467,7 @@ async function dashboardAppointments(db:Firestore,actorId:string,role:string,hea
 export async function nativeStaffStats(db:Firestore,actorId:string,kind:'dietitian'|'health_counselor'){
  const {clients:assignedClients,role,summaryOnly,denseScope}=await dashboardClients(db,actorId,kind),clientIds=assignedClients.map(c=>c._id),clientMap=new Map(assignedClients.map(c=>[c._id,c]));
  const today=new Date();today.setHours(0,0,0,0);const startOfToday=today,endOfToday=new Date(today.getTime()+86400000),endOfPendingWindow=new Date(today.getTime()+4*86400000),startOfExpiredWindow=new Date(today.getTime()-3*86400000),todayMonth=today.getMonth(),todayDate=today.getDate();
- const useCoveringIndexes=process.env.FIRESTORE_NATIVE_PROJECT_ID==='dtps-2cbac'&&db.databaseId==='dtps-native-staging'&&!process.env.FIRESTORE_EMULATOR_HOST;
+ const useCoveringIndexes=process.env.DATABASE_PROVIDER==='mongodb';
  // Reuse this request's verified scope density; do not bill a second population count.
  const allowDenseScan=useCoveringIndexes&&denseScope;
  let taskQuery:Query=db.collection('tasks');if(role!=='admin')taskQuery=taskQuery.where('dietitian','==',actorId);

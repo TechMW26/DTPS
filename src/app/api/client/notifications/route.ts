@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { nativeUnreadCounts,mutateNativeNotifications } from '@/lib/db/repository/native-notifications';
 import { nativeJson } from '@/lib/db/repository/native-history';
 import { hydrateNativeDocument } from '@/lib/storage/native-document';

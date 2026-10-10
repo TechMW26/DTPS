@@ -13,7 +13,7 @@ const ERASURE_COLLECTIONS=[
 /** Financial records, audit logs and immutable migration archives require a separate retention decision. */
 export const CLIENT_ERASURE_RETENTION=['unifiedpayments','payments','otherplatformpayments','clientpurchases','clientsubscriptions','subscriptions','adminauditlogs','activitylogs','_nativeDeletedUsers','_mediaAssets'];
 export async function processNativeClientErasure(db:Firestore,adminId:string,userId:string){
- if(!process.env.FIRESTORE_EMULATOR_HOST&&process.env.DTPS_NATIVE_ERASURE_ENABLED!=='true')throw new NativeDirectoryError('Native erasure worker is disabled pending local acceptance',503);
+ if(!(process.env.NODE_ENV==='test'&&process.env.DTPS_MONGODB_LOCAL_TEST==='true')&&process.env.DTPS_NATIVE_ERASURE_ENABLED!=='true')throw new NativeDirectoryError('Native erasure worker is disabled pending local acceptance',503);
  if(!/^[a-f0-9]{24}$/i.test(userId))throw new NativeDirectoryError('Invalid account ID');
  const {Filter}=await import('firebase-admin/firestore');const jobRef=db.collection('_nativeErasureJobs').doc(userId);
  return db.runTransaction(async tx=>{const [actor,job,account]=await tx.getAll(db.collection('users').doc(adminId),jobRef,db.collection('users').doc(userId));if(actor.get('role')!=='admin'||actor.get('status')!=='active')throw new NativeDirectoryError('Forbidden',403);if(!job.exists)throw new NativeDirectoryError('Erasure job not found',404);if(account.exists)throw new NativeDirectoryError('Account must be revoked before erasure',409);if(job.get('status')==='media_review_required')return {status:'media_review_required',recordsRemoved:job.get('recordsRemoved')||0,retainedCollections:CLIENT_ERASURE_RETENTION};

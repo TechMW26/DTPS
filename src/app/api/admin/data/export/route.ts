@@ -3,7 +3,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
 import {FieldPath} from 'firebase-admin/firestore';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {modelRegistry} from '@/lib/import/modelRegistry';
 import {nativeAdminCatalog,nativeCatalogFields,safeNativeCatalogDocument} from '@/lib/db/repository/native-admin-data';
 import {NativeDirectoryError} from '@/lib/db/repository/native-client-directory';

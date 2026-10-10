@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativeDirectoryError} from '@/lib/db/repository/native-client-directory';
 import {nativeAdminCatalog,nativeCatalogFields,readNativeDataRecords,updateNativeDataRecord} from '@/lib/db/repository/native-admin-data';
 import {requireNativeAuditAdmin} from '@/lib/db/repository/native-admin-audit';

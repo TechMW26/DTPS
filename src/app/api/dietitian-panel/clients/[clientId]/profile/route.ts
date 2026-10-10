@@ -3,7 +3,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {z} from 'zod';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {assignedNativeClient,staffClientView,updateStaffClient,NativeStaffClientError} from '@/lib/db/repository/native-staff-client';
 export const dynamic='force-dynamic';
 type Context={params:Promise<{clientId:string}>};

@@ -3,7 +3,7 @@ import {NextRequest,NextResponse,after} from 'next/server';
 import {randomUUID} from 'node:crypto';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {sendNativeClientMessage,assertNativeMessagePeer,NativeMessageError} from '@/lib/db/repository/native-messages';
 import {socketManager} from '@/lib/realtime/socket-manager';
 import {notifyMessageToRecipient} from '@/lib/notifications/staffPushService';

@@ -1,4 +1,4 @@
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeDates} from '@/lib/db/repository/native-plan-editor';
 import {sendEmail} from '@/lib/services/email';
 import {generateEmailInvoiceHTML,buildInvoiceDataFromPayment} from '@/lib/services/invoiceTemplate';

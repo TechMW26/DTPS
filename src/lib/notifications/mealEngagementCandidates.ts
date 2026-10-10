@@ -1,5 +1,5 @@
 import type { Firestore } from 'firebase-admin/firestore';
-import { nativeDatabaseSettings } from '@/lib/db/firestore-native';
+import { nativeDatabaseSettings } from '@/lib/db/database';
 import { redisNamespace, redisOperation } from '@/lib/cache/redis';
 
 export interface MealEngagementCandidates {
@@ -19,8 +19,8 @@ export interface MealEngagementCandidateCache {
 // when Redis is unavailable. Expiry is checked by the caller against its run time.
 const local = new WeakMap<Firestore, MealEngagementCandidates>();
 export function mealEngagementCandidateCache(db: Firestore): MealEngagementCandidateCache {
-  const { projectId, databaseId } = nativeDatabaseSettings();
-  const key = `${redisNamespace()}:meal-candidates:v1:${projectId}:${databaseId}`;
+  const { provider, databaseId } = nativeDatabaseSettings();
+  const key = `${redisNamespace()}:meal-candidates:v1:${provider}:${databaseId}`;
   return {
     async get() {
       const memory = local.get(db);

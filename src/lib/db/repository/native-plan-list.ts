@@ -36,7 +36,7 @@ export async function listNativePlans(db:Firestore,actor:{id:string;role:string}
  // Legacy records may omit isDeleted; filtering it here preserves those records until the derived list index is built.
  const rows:DocumentData[]=[];
  const load=async(ids?:string[])=>{
-  let query:Query=db.collection('clientmealplans');if(ids)query=ids.length===1?query.where('clientId','==',ids[0]):query.where('clientId','in',ids);
+  let query:Query=db.collection('clientmealplans');if(ids)query=query.where('clientId','in',ids);
   if(options.status&&options.status!=='all')query=query.where('status','==',options.status);
   if(clientIds)query=query.orderBy('clientId');
   const result=await query.select('clientId','status','isDeleted','createdAt').get();
@@ -46,15 +46,6 @@ export async function listNativePlans(db:Firestore,actor:{id:string;role:string}
  const visible=rows.filter(row=>(role==='admin'&&options.includeDeleted||!row.isDeleted)&&(role!=='client'||['active','completed','paused'].includes(row.status)));
  visible.sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime()||String(b._id).localeCompare(String(a._id)));
  const selected=visible.slice((options.page-1)*options.limit,options.page*options.limit),plans:DocumentData[]=[];
- await editor.preloadDocuments('clientmealplans',selected.map(row=>row._id));
- const full=await Promise.all(selected.map(row=>editor.document('clientmealplans',row._id)));
- const ids=(key:string)=>full.flatMap(plan=>typeof plan?.[key]==='string'?[plan[key]]:[]);
- await Promise.all([
-  editor.preloadProjections('users',ids('clientId'),['firstName','lastName','email']),
-  editor.preloadProjections('users',ids('dietitianId'),['firstName','lastName']),
-  editor.preloadProjections('diettemplates',ids('templateId'),['name','category','duration']),
-  editor.preloadProjections('unifiedpayments',ids('purchaseId'),['client',...paymentKeys]),
- ]);
  for(let i=0;i<selected.length;i+=8){const batch=await Promise.all(selected.slice(i,i+8).map(async row=>{
   const plan=await editor.document('clientmealplans',row._id);if(!plan)return null;
   if(!(role==='admin'&&options.includeDeleted)&&plan.isDeleted)return null;

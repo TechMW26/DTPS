@@ -2,7 +2,7 @@ import {grantDietPlanAccess,grantDietPlanAccessIfPublished,hasPublishedMealPlan}
 import {randomBytes} from 'node:crypto';
 import {NextRequest} from 'next/server';
 import {getServerSession} from 'next-auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
 let db:ReturnType<typeof getNativeDatabase>;const refs:FirebaseFirestore.DocumentReference[]=[];
@@ -10,7 +10,7 @@ const entityId=(row:any)=>row._id;
 async function put(collection:string,data:any){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set({...data,createdAt:new Date()});return {...data,_id:ref.id};}
 async function createAssignedDietitianClientPair(){const dietitian=await put('users',{role:'dietitian',status:'active'}),client=await put('users',{role:'client',status:'active',assignedDietitian:dietitian._id});return {dietitian,client};}
 async function invokeRoute(handler:any,options:any){(getServerSession as jest.Mock).mockResolvedValue({user:{...options.user,id:options.user._id}});const response=await handler(new NextRequest(options.url));return {status:response.status,json:await response.json()};}
-(process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip)('onboarding plan access', () => {
+(process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip)('onboarding plan access', () => {
   beforeAll(()=>{db=getNativeDatabase();});
   afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
 

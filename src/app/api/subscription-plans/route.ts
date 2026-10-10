@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativeCatalogError,saveNativeCatalog} from '@/lib/db/repository/native-plan-catalog';
 import {nativeDates} from '@/lib/db/repository/native-plan-editor';
 import type {Query} from 'firebase-admin/firestore';

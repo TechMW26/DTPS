@@ -1,7 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {journalDay,journalTargets,mutateJournal,resolveJournalPlanMeal,deleteJournalTrackerEntry,type JournalSection} from '@/lib/db/repository/native-journal';
 import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
 import {nativeJson} from '@/lib/db/repository/native-history';

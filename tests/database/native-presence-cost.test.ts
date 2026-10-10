@@ -1,7 +1,7 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativePresence,touchNativePresence} from '@/lib/realtime/native-presence';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('projected presence permissions',()=>{
  let db:ReturnType<typeof getNativeDatabase>;
  const staff=randomBytes(12).toString('hex'),client=randomBytes(12).toString('hex'),other=randomBytes(12).toString('hex');

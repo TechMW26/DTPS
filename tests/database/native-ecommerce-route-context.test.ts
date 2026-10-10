@@ -2,7 +2,7 @@ import {NextRequest} from 'next/server';
 const mockRead=jest.fn(async(..._args:any[])=>({plans:[]}));
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:()=>({})}));
+jest.mock('@/lib/db/database',()=>({getNativeDatabase:()=>({})}));
 jest.mock('@/lib/db/repository/native-ecommerce-content',()=>({readEcommerceContent:(...args:any[])=>mockRead(...args),mutateEcommerceContent:jest.fn()}));
 import {ecommerceContentRoute} from '@/lib/api/native-ecommerce-content-route';
 describe('ecommerce collection route context',()=>{

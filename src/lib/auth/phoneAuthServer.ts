@@ -1,7 +1,7 @@
 import {validateLoginPhone} from '@/lib/validations/login-phone';
 import crypto from 'crypto';
 import { sign, verify } from 'jsonwebtoken';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativePhoneUser,nativeContactExists,createNativeAccount,NativeDuplicateAccountError} from '@/lib/db/repository/native-registration';
 import {nativeOtpLogin} from '@/lib/db/repository/native-auth';
 import { UserRole } from '@/types';

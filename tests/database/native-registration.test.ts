@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {createNativeAccount,nativePhoneUser,nativeContactExists} from '@/lib/db/repository/native-registration';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native registration uniqueness',()=>{
  let db:ReturnType<typeof getNativeDatabase>;
  beforeAll(async()=>{db=getNativeDatabase();await db.collection('_nativeCounters').doc('clientIds').set({seq:500});});

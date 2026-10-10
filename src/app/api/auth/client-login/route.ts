@@ -1,7 +1,7 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import jwt from 'jsonwebtoken';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativePasswordLogin,recordNativeLogin} from '@/lib/db/repository/native-auth';
 
 function secret(){const value=process.env.NEXTAUTH_SECRET;if(!value)throw new Error('Authentication secret is not configured');return value;}

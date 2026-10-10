@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { nativeRealtimeActor, realtimeTargets } from '@/lib/realtime/native-events';
 import { touchNativePresence } from '@/lib/realtime/native-presence';
 import { Timestamp } from 'firebase-admin/firestore';
@@ -35,8 +35,7 @@ export async function GET(request: NextRequest) {
       request.signal.addEventListener('abort',close,{once:true});
       if(request.signal.aborted){close();return;}
       write('retry: 1000\n\n');
-      // Core-operation listeners are supported by Native Enterprise. The Admin SDK
-      // automatically uses gRPC for Listen even when normal requests prefer REST.
+      // The MongoDB adapter shares collection change streams across subscribers.
       unsubscribeActor=db.collection('users').doc(actor.id).onSnapshot(user=>{
         if(!user.exists||user.get('role')!==actor.role||user.get('status')==='inactive'||user.get('isDeleted'))close();
       },close);

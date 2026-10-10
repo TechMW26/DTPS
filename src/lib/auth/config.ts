@@ -1,7 +1,7 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativePasswordLogin,nativeOtpLogin,nativeSessionStatus,recordNativeLogin,saveNativeCalendarCredentials,nativeOnboardingStatus} from '@/lib/db/repository/native-auth';
 import { UserRole } from '@/types';
 import { getBaseUrl } from '@/lib/config';

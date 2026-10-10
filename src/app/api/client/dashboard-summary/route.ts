@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { readNativeHabit, nativeHabitDay, NativeHabitError } from '@/lib/db/repository/native-habits';
 import { nativePlanForDate } from '@/lib/db/repository/native-client-meals';
 import { nativeDates } from '@/lib/db/repository/native-plan-editor';

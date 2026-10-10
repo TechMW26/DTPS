@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/config';
 import { getBaseUrl } from '@/lib/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeSessionStatus,saveNativeCalendarCredentials} from '@/lib/db/repository/native-auth';
 import { google } from 'googleapis';
 

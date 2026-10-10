@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeNotificationTargets,deleteNativeRecipientNotifications,NativeNotificationError,targetRoles} from '@/lib/db/repository/native-notification-targets';
 import {sendNotificationToUser} from '@/lib/firebase/firebaseNotification';
 import {z} from 'zod';

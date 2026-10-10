@@ -3,7 +3,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {z} from 'zod';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativeStaffClientError} from '@/lib/db/repository/native-staff-client';
 import {readStaffRecipe,saveStaffRecipe,recipeActor} from '@/lib/db/repository/native-staff-recipes';
 export const dynamic='force-dynamic';

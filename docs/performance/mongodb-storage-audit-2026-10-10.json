@@ -1,0 +1,705 @@
+{
+  "sourceSnapshotTime": "2026-10-08T13:09:12.440Z",
+  "sourceDocuments": 3761064,
+  "sourceComplete": true,
+  "measuredAt": "2026-10-10",
+  "estimatedBsonBytesBeforeIndexesOrEnvelope": 3547054373,
+  "freeAtlasBytes": 536870912,
+  "externalMedia": "Blob bytes not included; references only",
+  "limits": "Offline size estimate. Does not include later writes, Mongo envelope or indexes. No records are deleted or deduplicated.",
+  "groups": {
+    "clientmealplans": {
+      "docs": 32357,
+      "raw": 2391333833,
+      "gzBytes": 187052123,
+      "maxBytes": 549154,
+      "bsonBytes": 1268836702
+    },
+    "notifications": {
+      "docs": 831220,
+      "raw": 1093431304,
+      "gzBytes": 91502338,
+      "maxBytes": 1323,
+      "bsonBytes": 622730158
+    },
+    "messages": {
+      "docs": 821778,
+      "raw": 796888431,
+      "gzBytes": 83332006,
+      "maxBytes": 2914,
+      "bsonBytes": 375827330
+    },
+    "notificationdeliveryaudits": {
+      "docs": 433284,
+      "raw": 542607886,
+      "gzBytes": 60837759,
+      "maxBytes": 1896,
+      "bsonBytes": 293730355
+    },
+    "histories": {
+      "docs": 518353,
+      "raw": 530359432,
+      "gzBytes": 33706020,
+      "maxBytes": 2277,
+      "bsonBytes": 250077623
+    },
+    "activitylogs": {
+      "docs": 298404,
+      "raw": 365014812,
+      "gzBytes": 41246932,
+      "maxBytes": 3156,
+      "bsonBytes": 185090099
+    },
+    "_nativeMediaUrls": {
+      "docs": 143344,
+      "raw": 158466173,
+      "gzBytes": 23899733,
+      "maxBytes": 852,
+      "bsonBytes": 104970464
+    },
+    "files": {
+      "docs": 109352,
+      "raw": 130047199,
+      "gzBytes": 11148044,
+      "maxBytes": 1239,
+      "bsonBytes": 72955898
+    },
+    "_mediaAssets": {
+      "docs": 102116,
+      "raw": 98624323,
+      "gzBytes": 14096568,
+      "maxBytes": 991,
+      "bsonBytes": 59097484
+    },
+    "_nativeMediaReferences": {
+      "docs": 146383,
+      "raw": 115436107,
+      "gzBytes": 10363625,
+      "maxBytes": 936,
+      "bsonBytes": 57759275
+    },
+    "mealengagementdispatches": {
+      "docs": 120496,
+      "raw": 136226763,
+      "gzBytes": 8645038,
+      "maxBytes": 531,
+      "bsonBytes": 57160891
+    },
+    "diettemplates": {
+      "docs": 1514,
+      "raw": 98929298,
+      "gzBytes": 7131001,
+      "maxBytes": 119941,
+      "bsonBytes": 52424705
+    },
+    "users": {
+      "docs": 10428,
+      "raw": 42286469,
+      "gzBytes": 3392812,
+      "maxBytes": 13995,
+      "bsonBytes": 22207875
+    },
+    "chunks": {
+      "docs": 10388,
+      "raw": 30429594,
+      "gzBytes": 5760259,
+      "maxBytes": 11781,
+      "bsonBytes": 21030306
+    },
+    "journaltrackings": {
+      "docs": 17624,
+      "raw": 45180792,
+      "gzBytes": 2988395,
+      "maxBytes": 14136,
+      "bsonBytes": 20013975
+    },
+    "_nativeRealtimeEvents": {
+      "docs": 27495,
+      "raw": 24274979,
+      "gzBytes": 2670065,
+      "maxBytes": 2274,
+      "bsonBytes": 11328016
+    },
+    "recipes": {
+      "docs": 4669,
+      "raw": 17623457,
+      "gzBytes": 1893707,
+      "maxBytes": 4551,
+      "bsonBytes": 9972998
+    },
+    "unifiedpayments": {
+      "docs": 8494,
+      "raw": 17605894,
+      "gzBytes": 1646646,
+      "maxBytes": 1866,
+      "bsonBytes": 9210459
+    },
+    "websitePayments": {
+      "docs": 5230,
+      "raw": 13219359,
+      "gzBytes": 1095295,
+      "maxBytes": 1746,
+      "bsonBytes": 7181602
+    },
+    "paymentlinks": {
+      "docs": 9177,
+      "raw": 12426502,
+      "gzBytes": 1030567,
+      "maxBytes": 1270,
+      "bsonBytes": 6385436
+    },
+    "websiteOrders": {
+      "docs": 6368,
+      "raw": 11565965,
+      "gzBytes": 855646,
+      "maxBytes": 1050,
+      "bsonBytes": 6205516
+    },
+    "progressentries": {
+      "docs": 20438,
+      "raw": 14117405,
+      "gzBytes": 1110918,
+      "maxBytes": 350,
+      "bsonBytes": 4980868
+    },
+    "dietaryrecalls": {
+      "docs": 5527,
+      "raw": 10694776,
+      "gzBytes": 944267,
+      "maxBytes": 4477,
+      "bsonBytes": 4936190
+    },
+    "lifestyleinfos": {
+      "docs": 6317,
+      "raw": 7718975,
+      "gzBytes": 694195,
+      "maxBytes": 1508,
+      "bsonBytes": 3738511
+    },
+    "_migration_originals": {
+      "docs": 10388,
+      "raw": 6222443,
+      "gzBytes": 1174887,
+      "maxBytes": 375,
+      "bsonBytes": 3199549
+    },
+    "otherplatformpayments": {
+      "docs": 3565,
+      "raw": 4696265,
+      "gzBytes": 468698,
+      "maxBytes": 1369,
+      "bsonBytes": 2384646
+    },
+    "medicalinfos": {
+      "docs": 4164,
+      "raw": 4564999,
+      "gzBytes": 489096,
+      "maxBytes": 5394,
+      "bsonBytes": 2081438
+    },
+    "_nativeConversations": {
+      "docs": 9108,
+      "raw": 4508132,
+      "gzBytes": 809883,
+      "maxBytes": 220,
+      "bsonBytes": 2003760
+    },
+    "_nativeDashboardEvents": {
+      "docs": 20408,
+      "raw": 6407856,
+      "gzBytes": 1263129,
+      "maxBytes": 98,
+      "bsonBytes": 1999984
+    },
+    "_nativeUploadReservations": {
+      "docs": 4655,
+      "raw": 2639004,
+      "gzBytes": 736807,
+      "maxBytes": 322,
+      "bsonBytes": 1410182
+    },
+    "clientnotes": {
+      "docs": 3105,
+      "raw": 2560990,
+      "gzBytes": 419772,
+      "maxBytes": 10814,
+      "bsonBytes": 1172606
+    },
+    "websiteVisitors": {
+      "docs": 858,
+      "raw": 1494357,
+      "gzBytes": 193398,
+      "maxBytes": 8468,
+      "bsonBytes": 882452
+    },
+    "waticontacts": {
+      "docs": 450,
+      "raw": 1186503,
+      "gzBytes": 42344,
+      "maxBytes": 1488,
+      "bsonBytes": 559807
+    },
+    "_nativeRecipeNames": {
+      "docs": 4315,
+      "raw": 1460747,
+      "gzBytes": 242111,
+      "maxBytes": 223,
+      "bsonBytes": 559333
+    },
+    "_nativeFcmTokens": {
+      "docs": 3295,
+      "raw": 1283425,
+      "gzBytes": 214625,
+      "maxBytes": 273,
+      "bsonBytes": 476879
+    },
+    "foods": {
+      "docs": 1233,
+      "raw": 972576,
+      "gzBytes": 84873,
+      "maxBytes": 558,
+      "bsonBytes": 414993
+    },
+    "mealplantemplates": {
+      "docs": 325,
+      "raw": 644466,
+      "gzBytes": 69130,
+      "maxBytes": 4202,
+      "bsonBytes": 337674
+    },
+    "adminauditlogs": {
+      "docs": 346,
+      "raw": 378325,
+      "gzBytes": 30110,
+      "maxBytes": 1027,
+      "bsonBytes": 193454
+    },
+    "medicalReports.chunks": {
+      "docs": 276,
+      "raw": 316575,
+      "gzBytes": 22213,
+      "maxBytes": 650,
+      "bsonBytes": 179400
+    },
+    "_nativeMessageMedia": {
+      "docs": 626,
+      "raw": 356190,
+      "gzBytes": 48231,
+      "maxBytes": 265,
+      "bsonBytes": 165890
+    },
+    "_nativeOutbox": {
+      "docs": 422,
+      "raw": 311601,
+      "gzBytes": 37975,
+      "maxBytes": 728,
+      "bsonBytes": 146353
+    },
+    "_nativeDashboardSummaries": {
+      "docs": 6,
+      "raw": 143791,
+      "gzBytes": 46908,
+      "maxBytes": 117683,
+      "bsonBytes": 132215
+    },
+    "clientpurchases": {
+      "docs": 111,
+      "raw": 169486,
+      "gzBytes": 13256,
+      "maxBytes": 840,
+      "bsonBytes": 81335
+    },
+    "appointments": {
+      "docs": 118,
+      "raw": 158853,
+      "gzBytes": 15376,
+      "maxBytes": 1526,
+      "bsonBytes": 78297
+    },
+    "systemalerts": {
+      "docs": 60,
+      "raw": 106907,
+      "gzBytes": 6916,
+      "maxBytes": 1817,
+      "bsonBytes": 68933
+    },
+    "_nativeUserKeys": {
+      "docs": 437,
+      "raw": 156883,
+      "gzBytes": 29480,
+      "maxBytes": 135,
+      "bsonBytes": 58995
+    },
+    "payments": {
+      "docs": 93,
+      "raw": 111896,
+      "gzBytes": 10117,
+      "maxBytes": 714,
+      "bsonBytes": 58703
+    },
+    "otprecords": {
+      "docs": 229,
+      "raw": 149661,
+      "gzBytes": 17842,
+      "maxBytes": 338,
+      "bsonBytes": 56083
+    },
+    "websiteBlogs": {
+      "docs": 18,
+      "raw": 68654,
+      "gzBytes": 4802,
+      "maxBytes": 3184,
+      "bsonBytes": 51638
+    },
+    "_nativeRealtime": {
+      "docs": 557,
+      "raw": 153732,
+      "gzBytes": 19657,
+      "maxBytes": 67,
+      "bsonBytes": 37319
+    },
+    "websiteTransformations": {
+      "docs": 14,
+      "raw": 51565,
+      "gzBytes": 3366,
+      "maxBytes": 3421,
+      "bsonBytes": 36224
+    },
+    "websiteSuccessStories": {
+      "docs": 14,
+      "raw": 51551,
+      "gzBytes": 3363,
+      "maxBytes": 3421,
+      "bsonBytes": 36224
+    },
+    "_nativeProgressOperations": {
+      "docs": 123,
+      "raw": 71059,
+      "gzBytes": 17947,
+      "maxBytes": 424,
+      "bsonBytes": 35192
+    },
+    "_nativeReportReferences": {
+      "docs": 294,
+      "raw": 101583,
+      "gzBytes": 6571,
+      "maxBytes": 133,
+      "bsonBytes": 34044
+    },
+    "provideravailabilities": {
+      "docs": 124,
+      "raw": 84446,
+      "gzBytes": 3597,
+      "maxBytes": 258,
+      "bsonBytes": 31250
+    },
+    "medicalReports.files": {
+      "docs": 93,
+      "raw": 63136,
+      "gzBytes": 5626,
+      "maxBytes": 335,
+      "bsonBytes": 27537
+    },
+    "tasks": {
+      "docs": 46,
+      "raw": 51521,
+      "gzBytes": 5040,
+      "maxBytes": 715,
+      "bsonBytes": 25084
+    },
+    "websitePricing": {
+      "docs": 18,
+      "raw": 41125,
+      "gzBytes": 3276,
+      "maxBytes": 1863,
+      "bsonBytes": 21735
+    },
+    "blogs": {
+      "docs": 3,
+      "raw": 23760,
+      "gzBytes": 5750,
+      "maxBytes": 8261,
+      "bsonBytes": 21489
+    },
+    "serviceplans": {
+      "docs": 9,
+      "raw": 31099,
+      "gzBytes": 4172,
+      "maxBytes": 4411,
+      "bsonBytes": 20790
+    },
+    "contactmessages": {
+      "docs": 39,
+      "raw": 29203,
+      "gzBytes": 6210,
+      "maxBytes": 856,
+      "bsonBytes": 15066
+    },
+    "permissions": {
+      "docs": 36,
+      "raw": 27017,
+      "gzBytes": 2323,
+      "maxBytes": 368,
+      "bsonBytes": 11004
+    },
+    "dailytrackings": {
+      "docs": 31,
+      "raw": 24363,
+      "gzBytes": 1682,
+      "maxBytes": 272,
+      "bsonBytes": 8432
+    },
+    "bugreports": {
+      "docs": 13,
+      "raw": 13888,
+      "gzBytes": 2722,
+      "maxBytes": 873,
+      "bsonBytes": 7657
+    },
+    "_nativeDeletedUsers": {
+      "docs": 3,
+      "raw": 12255,
+      "gzBytes": 2419,
+      "maxBytes": 2470,
+      "bsonBytes": 6458
+    },
+    "receipts.files": {
+      "docs": 20,
+      "raw": 13860,
+      "gzBytes": 2032,
+      "maxBytes": 346,
+      "bsonBytes": 6356
+    },
+    "watchhealthdatas": {
+      "docs": 4,
+      "raw": 13282,
+      "gzBytes": 1328,
+      "maxBytes": 1922,
+      "bsonBytes": 6091
+    },
+    "receipts.chunks": {
+      "docs": 9,
+      "raw": 10266,
+      "gzBytes": 953,
+      "maxBytes": 650,
+      "bsonBytes": 5850
+    },
+    "websiteSiteBanners": {
+      "docs": 6,
+      "raw": 8241,
+      "gzBytes": 1444,
+      "maxBytes": 1020,
+      "bsonBytes": 5429
+    },
+    "_nativePresence": {
+      "docs": 48,
+      "raw": 18045,
+      "gzBytes": 2410,
+      "maxBytes": 113,
+      "bsonBytes": 5424
+    },
+    "tags": {
+      "docs": 22,
+      "raw": 13727,
+      "gzBytes": 1549,
+      "maxBytes": 269,
+      "bsonBytes": 5147
+    },
+    "_migration_quarantine": {
+      "docs": 3,
+      "raw": 6847,
+      "gzBytes": 1191,
+      "maxBytes": 1582,
+      "bsonBytes": 4675
+    },
+    "_nativeRazorpayLinks": {
+      "docs": 31,
+      "raw": 11842,
+      "gzBytes": 2266,
+      "maxBytes": 138,
+      "bsonBytes": 4278
+    },
+    "_nativeOtherTransactions": {
+      "docs": 24,
+      "raw": 10200,
+      "gzBytes": 2184,
+      "maxBytes": 177,
+      "bsonBytes": 4248
+    },
+    "_nativeRazorpayPayments": {
+      "docs": 31,
+      "raw": 11873,
+      "gzBytes": 2267,
+      "maxBytes": 136,
+      "bsonBytes": 4216
+    },
+    "durationpresets": {
+      "docs": 13,
+      "raw": 7616,
+      "gzBytes": 759,
+      "maxBytes": 194,
+      "bsonBytes": 2512
+    },
+    "transformations": {
+      "docs": 5,
+      "raw": 4608,
+      "gzBytes": 902,
+      "maxBytes": 511,
+      "bsonBytes": 2467
+    },
+    "watchconnections": {
+      "docs": 3,
+      "raw": 4274,
+      "gzBytes": 1476,
+      "maxBytes": 817,
+      "bsonBytes": 2339
+    },
+    "websiteSecurityLogs": {
+      "docs": 12,
+      "raw": 5370,
+      "gzBytes": 799,
+      "maxBytes": 188,
+      "bsonBytes": 2094
+    },
+    "websiteLeads": {
+      "docs": 5,
+      "raw": 3915,
+      "gzBytes": 897,
+      "maxBytes": 399,
+      "bsonBytes": 1830
+    },
+    "goalcategories": {
+      "docs": 6,
+      "raw": 4052,
+      "gzBytes": 638,
+      "maxBytes": 277,
+      "bsonBytes": 1526
+    },
+    "_nativeMigrationState": {
+      "docs": 3,
+      "raw": 3206,
+      "gzBytes": 863,
+      "maxBytes": 718,
+      "bsonBytes": 1525
+    },
+    "_nativeOtpLimits": {
+      "docs": 12,
+      "raw": 4020,
+      "gzBytes": 958,
+      "maxBytes": 111,
+      "bsonBytes": 1332
+    },
+    "messagegroups": {
+      "docs": 1,
+      "raw": 1436,
+      "gzBytes": 478,
+      "maxBytes": 594,
+      "bsonBytes": 594
+    },
+    "_nativeCounters": {
+      "docs": 4,
+      "raw": 1368,
+      "gzBytes": 481,
+      "maxBytes": 149,
+      "bsonBytes": 434
+    },
+    "purchaserequests": {
+      "docs": 1,
+      "raw": 825,
+      "gzBytes": 377,
+      "maxBytes": 365,
+      "bsonBytes": 365
+    },
+    "websiteCoupons": {
+      "docs": 1,
+      "raw": 805,
+      "gzBytes": 385,
+      "maxBytes": 324,
+      "bsonBytes": 324
+    },
+    "groupmessages": {
+      "docs": 1,
+      "raw": 839,
+      "gzBytes": 372,
+      "maxBytes": 323,
+      "bsonBytes": 323
+    },
+    "websiteAdmins": {
+      "docs": 1,
+      "raw": 630,
+      "gzBytes": 364,
+      "maxBytes": 302,
+      "bsonBytes": 302
+    },
+    "_nativeOtpChallenges": {
+      "docs": 1,
+      "raw": 626,
+      "gzBytes": 359,
+      "maxBytes": 299,
+      "bsonBytes": 299
+    },
+    "appointmenttypes": {
+      "docs": 1,
+      "raw": 683,
+      "gzBytes": 325,
+      "maxBytes": 245,
+      "bsonBytes": 245
+    },
+    "lead": {
+      "docs": 1,
+      "raw": 664,
+      "gzBytes": 326,
+      "maxBytes": 244,
+      "bsonBytes": 244
+    },
+    "appointmentmodes": {
+      "docs": 1,
+      "raw": 694,
+      "gzBytes": 334,
+      "maxBytes": 240,
+      "bsonBytes": 240
+    },
+    "counters": {
+      "docs": 4,
+      "raw": 1180,
+      "gzBytes": 321,
+      "maxBytes": 59,
+      "bsonBytes": 212
+    },
+    "systemrefreshstates": {
+      "docs": 1,
+      "raw": 520,
+      "gzBytes": 295,
+      "maxBytes": 209,
+      "bsonBytes": 209
+    },
+    "_nativeDashboardRevisions": {
+      "docs": 2,
+      "raw": 668,
+      "gzBytes": 313,
+      "maxBytes": 100,
+      "bsonBytes": 200
+    },
+    "_nativeIndexes": {
+      "docs": 1,
+      "raw": 391,
+      "gzBytes": 253,
+      "maxBytes": 110,
+      "bsonBytes": 110
+    },
+    "_migration_checks": {
+      "docs": 1,
+      "raw": 261,
+      "gzBytes": 187,
+      "maxBytes": 50,
+      "bsonBytes": 50
+    },
+    "_websiteAdminState": {
+      "docs": 1,
+      "raw": 255,
+      "gzBytes": 184,
+      "maxBytes": 43,
+      "bsonBytes": 43
+    }
+  }
+}

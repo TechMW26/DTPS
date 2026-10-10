@@ -1,98 +1,73 @@
-import {indexedDashboardRows,summarizeDashboardPayments} from '@/lib/db/repository/native-dashboard-indexed';
-import {Timestamp} from '@google-cloud/firestore';
+import {MongoClient,type Db} from 'mongodb';
+import {randomBytes} from 'node:crypto';
+let mockDb:Db;
+jest.mock('@/lib/db/mongo-native',()=>({getMongoDatabase:async()=>mockDb}));
+const uri=process.env.MONGODB_TEST_URI;
+const mongoSuite=uri?describe:describe.skip;
+const databaseName='dtps_dashboard_'+randomBytes(5).toString('hex');
+let client:MongoClient;
+const envelope=(collection:string,id:string,data:Record<string,any>)=>({_id:collection+'/'+id,_collectionPath:collection,data});
+import {indexedDashboardClients,indexedDashboardRows,hydrateDashboardClientDetails,summarizeDashboardPayments} from '@/lib/db/repository/native-dashboard-indexed';
+mongoSuite('Mongo dashboard projected queries',()=>{
 
-const mockBatches:string[][]=[];
-let mockActive=0,mockPeak=0,mockReject=false;
-let mockDenseIds:string[]=[];
-const mockLimits:number[]=[];
-let mockActiveFilters=0;
-const mockStatuses:string[][]=[];
-jest.mock('@/lib/db/firestore-native',()=>({nativeDatabaseSettings:()=>({projectId:'test',databaseId:'test',clientEmail:'test',privateKey:'test'})}));
-jest.mock('@google-cloud/firestore',()=>{
- const actual=jest.requireActual('@google-cloud/firestore');
- return {...actual,Firestore:class{
-  pipeline(){return {collection:()=>{
-   let ids:string[]=[];
-   const query:any={where:(condition:any)=>{if(condition.ids)ids=condition.ids;if(condition.statuses)mockStatuses.push(condition.statuses);if(condition.equals==='active')mockActiveFilters++;return query;},select:()=>query,limit:(n:number)=>{mockLimits.push(n);return query;},execute:async()=>{
-    mockBatches.push(ids);mockActive++;mockPeak=Math.max(mockPeak,mockActive);
-    try{await new Promise(r=>setTimeout(r,2));if(mockReject)throw new Error('index unavailable');return {results:(ids.length?ids:mockDenseIds).map(id=>({get:()=>id,data:()=>({_id:`plan-${id}`,clientId:id,endDate:actual.Timestamp.fromDate(new Date('2026-10-04T00:00:00Z'))})}))};}finally{mockActive--;}
-   }};return query;
-  }};}
- },Pipelines:{field:(name:string)=>({equalAny:(ids:string[])=>name==='status'?{statuses:ids}:{ids},equal:(value:string)=>({equals:value}),documentId:()=>({as:()=>({})})})}};
-});
-beforeEach(()=>{mockStatuses.length=0;mockActiveFilters=0;mockBatches.length=0;mockLimits.length=0;mockDenseIds=[];mockActive=0;mockPeak=0;mockReject=false;});
+ beforeAll(async()=>{client=new MongoClient(uri!,{serverSelectionTimeoutMS:5000});await client.connect();mockDb=client.db(databaseName);});
+ afterAll(async()=>{if(client){if(mockDb)await mockDb.dropDatabase();await client.close();}});
+ beforeEach(async()=>{for(const collection of await mockDb.collections())await collection.deleteMany({});delete process.env.MONGODB_DASHBOARD_SUMMARIES_ENABLED;});
 
-test('indexed dashboard requests only authorized IDs, deduplicates, and retains IDs and dates',async()=>{
- const ids=Array.from({length:1901},(_,i)=>`client-${i}`);
- const rows=await indexedDashboardRows('plans',[...ids,ids[0]]);
- expect(mockBatches.flat()).toEqual(ids);
- expect(Math.max(...mockBatches.map(b=>b.length))).toBe(300);
- expect(mockPeak).toBe(3);
- expect(rows.map(r=>r._id)).toEqual(ids.map(id=>`plan-${id}`));
- expect(rows[0].endDate).toEqual(new Date('2026-10-04T00:00:00Z'));
- expect(rows[0].endDate).not.toBeInstanceOf(Timestamp);
-});
-test('empty access scope issues no database reads',async()=>{
- expect(await indexedDashboardRows('payments',[])).toEqual([]);
- expect(mockBatches).toHaveLength(0);
-});
-test('query failure does not return incomplete totals',async()=>{
- mockReject=true;
- await expect(indexedDashboardRows('payments',['one'])).rejects.toThrow('index unavailable');
-});
-test('large scopes never scan unrelated clients even when dense mode is requested',async()=>{
- const ids=Array.from({length:3000},(_,i)=>`client-${i}`);
- mockDenseIds=Array(50001).fill('outside-scope');
- const rows=await indexedDashboardRows('plans',ids,true);
- expect(rows.map(r=>r.clientId)).toEqual(ids);
- expect(mockBatches).toHaveLength(10);
- expect(mockBatches.flat()).toEqual(ids);
- expect(mockLimits).toEqual([]);
-});
-test('payment summary retains legacy numeric strings, status counts and expiry boundaries',()=>{
- const start=new Date('2026-10-01T00:00:00Z'),end=new Date('2026-10-05T00:00:00Z');
- const rows=[
-  {_id:'a',status:'completed',amount:'100',createdAt:start,expectedEndDate:start},
-  {_id:'b',status:'completed',amount:20,createdAt:end,expectedEndDate:end},
-  {_id:'c',status:'pending',amount:null,createdAt:start,expectedEndDate:new Date('2026-10-04T00:00:00Z')},
- ];
- const summary=summarizeDashboardPayments(rows,start,end);
- expect(summary.groups).toEqual([{status:'completed',count:2,amount:120},{status:'pending',count:1,amount:0}]);
- expect(summary.expiredPayments.map(row=>row._id)).toEqual(['a','c']);
- expect(summary.recentPayments[0]._id).toBe('b');
- expect(rows[0]._id).toBe('a');
-});
-
-test('client-list metadata reads include drafts and history rather than filtering to active plans',async()=>{
- await indexedDashboardRows('plans',['one'],false,false);
- expect(mockActiveFilters).toBe(0);
- await indexedDashboardRows('plans',['one']);
- expect(mockActiveFilters).toBe(1);
-});
-
-test('directory payment batching preserves the full authorized scope and does not apply active-plan filtering',async()=>{
- const ids=Array.from({length:1501},(_,i)=>`client-${i}`);
- const rows=await indexedDashboardRows('directoryPayments',ids,true);
- expect(rows).toHaveLength(ids.length);
- expect(mockBatches.flat()).toEqual(ids);
- expect(mockActiveFilters).toBe(0);
- expect(mockLimits).toEqual([]);
- expect(mockPeak).toBe(3);
-});
-
-test('pending plans preserve completed and paused history while enforcing scope on dense reads',async()=>{
- const ids=Array.from({length:3000},(_,i)=>`client-${i}`);
- mockDenseIds=[ids[0],'outside-scope',ids[1]];
- const rows=await indexedDashboardRows('pendingPlans',ids,true);
- expect(rows.map(row=>row.clientId)).toEqual(ids);
- expect(mockBatches.flat()).toEqual(ids);
- expect(mockStatuses).toHaveLength(10);
- expect(mockStatuses.every(statuses=>statuses.join(',')==='active,paused,completed')).toBe(true);
-});
-test('pending purchases use bounded scoped reads even when dense mode is requested',async()=>{
- const ids=Array.from({length:3001},(_,i)=>`client-${i}`);
- await indexedDashboardRows('pendingPurchases',ids,true);
- expect(mockBatches.flat()).toEqual(ids);
- expect(mockLimits).toEqual([]);
- expect(mockStatuses.every(values=>values.join(',')==='active,paid,completed')).toBe(true);
+ test('deduplicates authorized IDs, retains dates and excludes other clients and subcollections',async()=>{
+  const ids=Array.from({length:1901},(_,i)=>'client-'+i),endDate=new Date('2026-10-04T00:00:00Z');
+  await mockDb.collection<any>('clientmealplans').insertMany([...ids.map(id=>envelope('clientmealplans','p-'+id,{clientId:id,status:'active',endDate,meals:['not projected']})),envelope('clientmealplans','outside',{clientId:'outside',status:'active'}),{...envelope('clientmealplans','nested',{clientId:ids[0],status:'active'}),_collectionPath:'parents/a/clientmealplans'}]);
+  const rows=await indexedDashboardRows('plans',[...ids,ids[0]]);
+  expect(rows).toHaveLength(ids.length);expect(new Set(rows.map(row=>row.clientId))).toEqual(new Set(ids));
+  expect(rows[0].endDate).toEqual(endDate);expect(rows.every(row=>!('meals'in row))).toBe(true);
+ });
+ test('empty scopes issue no connection or reads',async()=>{
+  expect(await indexedDashboardRows('payments',[])).toEqual([]);expect(await indexedDashboardClients([])).toEqual([]);
+ });
+ test('dense mode still reads only authorized client relations',async()=>{
+  await mockDb.collection<any>('clientmealplans').insertMany([envelope('clientmealplans','allowed',{clientId:'one',status:'active'}),envelope('clientmealplans','outside',{clientId:'outside',status:'active'})]);
+  expect((await indexedDashboardRows('plans',['one'],true)).map(row=>row._id)).toEqual(['allowed']);
+ });
+ test('metadata option preserves drafts and history and default filters active',async()=>{
+  await mockDb.collection<any>('clientmealplans').insertMany(['active','draft','completed'].map(status=>envelope('clientmealplans',status,{clientId:'one',status,duration:24,purchaseId:'purchase'})));
+  expect(await indexedDashboardRows('plans',['one'],false,false)).toHaveLength(3);
+  expect((await indexedDashboardRows('plans',['one'])).map(row=>row.status)).toEqual(['active']);
+ });
+ test('pending scopes retain paused/completed plans and only eligible purchases',async()=>{
+  await mockDb.collection<any>('clientmealplans').insertMany(['active','paused','completed','draft'].map(status=>envelope('clientmealplans',status,{clientId:'one',status,duration:24,purchaseId:'purchase'})));
+  await mockDb.collection<any>('unifiedpayments').insertMany(['active','paid','completed','pending','failed'].map(status=>envelope('unifiedpayments',status,{client:'one',status})));
+  expect((await indexedDashboardRows('pendingPlans',['one'])).map(row=>row.status).sort()).toEqual(['active','completed','paused']);
+  expect((await indexedDashboardRows('pendingPurchases',['one'])).map(row=>row.status).sort()).toEqual(['active','completed','paid']);
+  expect((await indexedDashboardRows('pendingPlans',['one']))[0]).toMatchObject({duration:24,purchaseId:'purchase'});
+ });
+ test('name matching treats regex punctuation literally and permits legacy non-string names',async()=>{
+  await mockDb.collection<any>('clientmealplans').insertMany(['A+B','AAB',123].map((name,i)=>envelope('clientmealplans','p'+i,{clientId:'one',status:'active',name})));
+  expect((await indexedDashboardRows('plans',['one'],false,false,['a+b'])).map(row=>row.name)).toEqual(['A+B',123]);
+ });
+ test('client summaries query only scope, and hydrate selected display fields without private data',async()=>{
+  await mockDb.collection<any>('users').insertMany([envelope('users','one',{role:'client',firstName:'One',password:'secret',holdStatus:{isOnHold:true},createdAt:new Date('2026-10-01')}),envelope('users','other',{role:'client'}),envelope('users','staff',{role:'dietitian'})]);
+  const rows=await indexedDashboardClients(['one','staff']);expect(rows).toHaveLength(1);expect(rows[0].holdStatus).toEqual({isOnHold:true});expect(rows[0].firstName).toBeUndefined();
+  await hydrateDashboardClientDetails(rows,['one','other']);expect(rows[0].firstName).toBe('One');expect(rows[0].password).toBeUndefined();
+ });
+ test('directory payments retain all statuses and return projected metadata',async()=>{
+  await mockDb.collection<any>('unifiedpayments').insertMany(['paid','pending','failed'].map(status=>envelope('unifiedpayments',status,{client:'one',status,largePayload:'hidden'})));
+  const rows=await indexedDashboardRows('directoryPayments',['one'],true);expect(rows).toHaveLength(3);expect(rows.every(row=>!('largePayload'in row))).toBe(true);
+ });
+ test('large scopes limit reads to three concurrent batches and propagate failures without partial totals',async()=>{
+  const real=mockDb,ids=Array.from({length:1901},(_,i)=>'client-'+i);
+  let active=0,peak=0,reject=false;const batches:string[][]=[];
+  mockDb={collection:()=>({find:(filter:any)=>({toArray:async()=>{
+   const batch=filter['data.clientId']?.$in||filter['data.client']?.$in;batches.push(batch);active++;peak=Math.max(peak,active);
+   try{await new Promise(resolve=>setTimeout(resolve,2));if(reject)throw new Error('database unavailable');return batch.map((id:string)=>envelope('clientmealplans','p-'+id,{clientId:id,status:'active'}));}finally{active--;}
+  }})})} as unknown as Db;
+  try{
+   expect(await indexedDashboardRows('plans',ids,true)).toHaveLength(ids.length);expect(batches.flat()).toEqual(ids);expect(Math.max(...batches.map(batch=>batch.length))).toBe(300);expect(peak).toBe(3);
+   reject=true;await expect(indexedDashboardRows('payments',['one'])).rejects.toThrow('database unavailable');
+  }finally{mockDb=real;}
+ });
+ test('pure payment summary retains legacy numeric strings, status counts and exclusive expiry end',()=>{
+  const start=new Date('2026-10-01'),end=new Date('2026-10-05');
+  const rows=[{_id:'a',status:'completed',amount:'100',createdAt:start,expectedEndDate:start},{_id:'b',status:'completed',amount:20,createdAt:end,expectedEndDate:end},{_id:'c',status:'pending',amount:null,createdAt:start,expectedEndDate:new Date('2026-10-04')}];
+  const result=summarizeDashboardPayments(rows,start,end);expect(result.groups).toEqual([{status:'completed',count:2,amount:120},{status:'pending',count:1,amount:0}]);expect(result.expiredPayments.map(row=>row._id)).toEqual(['a','c']);expect(result.recentPayments[0]._id).toBe('b');
+ });
 });

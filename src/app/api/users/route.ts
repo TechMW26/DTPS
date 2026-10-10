@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {listNativeUsers} from '@/lib/db/repository/native-user-directory';
 import {createNativeStaffUser} from '@/lib/db/repository/native-admin-create-user';
 import {updateNativeUser} from '@/lib/db/repository/native-user-admin';

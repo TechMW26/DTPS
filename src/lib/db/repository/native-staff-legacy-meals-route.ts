@@ -3,7 +3,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {z} from 'zod';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativeStaffClientError} from './native-staff-client';
 import {legacyNativeMeals,saveLegacyNativeMeal} from './native-staff-legacy-meals';
 type Context={params:Promise<{id:string}>};

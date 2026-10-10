@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {journalProgressEntries} from '@/lib/db/repository/native-journal';
 import {saveNativeProgress,deleteNativeProgress,NativeProgressError} from '@/lib/db/repository/native-progress';
 import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';

@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeTopDietitians} from '@/lib/db/repository/native-top-dietitians';
 import {withJsonCache} from '@/lib/cache/json-cache';
 export async function GET(request:NextRequest){

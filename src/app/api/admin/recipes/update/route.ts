@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {recipeActor,readStaffRecipe,saveStaffRecipe} from '@/lib/db/repository/native-staff-recipes';
 import {NativeStaffClientError} from '@/lib/db/repository/native-staff-client';
 export const runtime='nodejs';export const maxDuration=60;

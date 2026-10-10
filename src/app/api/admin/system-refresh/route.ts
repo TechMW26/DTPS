@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/config";
 import { serverCache } from "@/lib/cache/memoryCache";
-import {getNativeDatabase} from "@/lib/db/firestore-native";
+import {getNativeDatabase} from "@/lib/db/database";
 import {nativeDates} from "@/lib/db/repository/native-plan-editor";
 import { SOCKET_EVENTS } from "@/lib/realtime/socket-events";
 import { socketManager } from "@/lib/realtime/socket-manager";

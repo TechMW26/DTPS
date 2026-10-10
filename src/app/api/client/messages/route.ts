@@ -3,7 +3,7 @@ import {nativeMediaJson} from '@/lib/api/native-media-json';
 import {NextRequest,NextResponse,after} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {listNativeClientMessages,sendNativeClientMessage,NativeMessageError} from '@/lib/db/repository/native-messages';
 import {socketManager} from '@/lib/realtime/socket-manager';
 import {notifyMessageToRecipient} from '@/lib/notifications/staffPushService';

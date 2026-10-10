@@ -2,7 +2,7 @@ import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativeCatalogError,listNativeCatalog,saveNativeCatalog,deleteNativeCatalog,type NativeCatalog} from './native-plan-catalog';
 export function nativeCatalogHandlers(collection:NativeCatalog){
  const label=collection==='serviceplans'?'Service plan':'Subscription plan';

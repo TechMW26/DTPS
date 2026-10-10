@@ -1,6 +1,6 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
 import {NextRequest,NextResponse} from 'next/server';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {readNativeBlog,saveNativeBlog,deleteNativeBlog,NativeBlogError} from '@/lib/db/repository/native-blogs';
 import {requireBlogAdmin,blogError,nativeBlogForm} from '@/lib/db/repository/native-blogs-route';
 type Context={params:Promise<{id:string}>};

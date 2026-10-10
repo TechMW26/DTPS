@@ -3,7 +3,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {z} from 'zod';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {NativeStaffClientError} from './native-staff-client';
 import {readStaffTasks,mutateStaffTask} from './native-staff-tasks';
 type Context={params:Promise<{clientId:string;taskId?:string}>};

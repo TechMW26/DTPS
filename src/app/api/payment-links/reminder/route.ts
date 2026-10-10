@@ -1,5 +1,5 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeAuthorizedPaymentLink} from '@/lib/db/repository/native-payment-link-admin';
 import {NativeCheckoutError} from '@/lib/db/repository/native-checkout';
 import { NextRequest, NextResponse } from 'next/server';

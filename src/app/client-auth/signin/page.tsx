@@ -1,5 +1,6 @@
 'use client';
 
+import {readOtpResponse} from '@/lib/auth/otp-response';
 import { useState, useEffect, useRef } from 'react';
 import { signIn, getSession, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -153,7 +154,7 @@ export default function ClientSignInPage() {
         fallbackReason,
       }),
     });
-    const data = await response.json();
+    const data = await readOtpResponse(response);
     if (!response.ok || !data.success) throw new Error(data.error || 'Unable to send a verification code.');
     confirmationResultRef.current = null;
     setOtpProvider('whatsapp');
@@ -181,7 +182,7 @@ export default function ClientSignInPage() {
         body: JSON.stringify({ phone: phoneValidation.normalized }),
       });
 
-      const data = await response.json();
+      const data = await readOtpResponse(response);
 
       if (!response.ok || !data.success) {
         if (response.status === 404 && data.code === 'client-not-found') {
@@ -281,7 +282,7 @@ export default function ClientSignInPage() {
         }),
       });
 
-      const data = await response.json();
+      const data = await readOtpResponse(response);
 
       if (!response.ok || !data.success) {
         setError(data.error || 'Invalid OTP. Please try again.');

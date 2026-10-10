@@ -1,14 +1,14 @@
 import {nativeCommerceAdmin} from '@/lib/db/repository/native-staff-ecommerce';
 import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {assignedNativeClient} from '@/lib/db/repository/native-staff-client';
 import {nativeDraft} from '@/lib/db/repository/native-staff-drafts';
 import {nativeAppointmentActor,mutateStaffAppointment} from '@/lib/db/repository/native-staff-appointments';
 import {saveNativeAppointmentConfig} from '@/lib/db/repository/native-staff-appointment-config';
 import {saveProviderAvailability} from '@/lib/db/repository/native-staff-availability';
 import {nativeDailyTracking} from '@/lib/db/repository/native-staff-tracking';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('revoked accounts cannot use native staff or self-service paths',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const id=()=>randomBytes(12).toString('hex');
  beforeAll(()=>{db=getNativeDatabase();});afterAll(()=>db.terminate());

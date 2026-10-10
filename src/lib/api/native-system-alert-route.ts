@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {assertNativeAlertAdmin,NativeAlertError} from '@/lib/db/repository/native-system-alerts';
 import {z} from 'zod';
 export async function nativeAlertRoute(operation:(db:ReturnType<typeof getNativeDatabase>,id:string)=>Promise<unknown>){

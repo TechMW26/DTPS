@@ -1,5 +1,5 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {journalHistory,journalProgressEntries,journalProfile} from '@/lib/db/repository/native-journal';
 import {taskClientAccess} from '@/lib/db/repository/native-staff-tasks';
 import {nativeJournalRoute} from '@/lib/api/native-journal-route';

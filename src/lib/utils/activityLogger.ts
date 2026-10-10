@@ -1,5 +1,5 @@
 import type { IActivityLog, ISystemAlert } from '@/types/audit';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { createNativeAudit } from '@/lib/db/repository/native-audit';
 
 // Activity Log Types

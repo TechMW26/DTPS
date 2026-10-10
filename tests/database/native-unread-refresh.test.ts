@@ -4,7 +4,7 @@ import {socketManager} from '@/lib/realtime/socket-manager';
 import {POST} from '@/app/api/staff/unread-counts/refresh/route';
 jest.mock('next-auth',()=>({getServerSession:jest.fn()}));
 jest.mock('@/lib/auth/config',()=>({authOptions:{}}));
-jest.mock('@/lib/db/firestore-native',()=>({getNativeDatabase:()=>({})}));
+jest.mock('@/lib/db/database',()=>({getNativeDatabase:()=>({})}));
 jest.mock('@/lib/db/repository/native-notifications',()=>({nativeUnreadMessageCount:jest.fn()}));
 jest.mock('@/lib/realtime/socket-manager',()=>({socketManager:{sendToUser:jest.fn()}}));
 test('overlapping refreshes share counts and broadcast, later requests read fresh data',async()=>{

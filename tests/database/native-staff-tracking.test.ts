@@ -1,9 +1,9 @@
 import {randomBytes} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeDailyTracking} from '@/lib/db/repository/native-staff-tracking';
 import {createStaffFoodLog,readStaffFoodLogs} from '@/lib/db/repository/native-staff-foodlogs';
 import {mutateStaffActivityAssignment} from '@/lib/db/repository/native-staff-activity-assignments';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('native tracking and assignments',()=>{let db:ReturnType<typeof getNativeDatabase>;beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{await db.terminate();});const id=()=>randomBytes(12).toString('hex');
  it('serializes daily increments and does not create tracking on reads',async()=>{const client=id();await db.collection('users').doc(client).set({role:'client',status:'active',timezone:'America/New_York'});expect((await nativeDailyTracking(db,client,'water') as any).water.glasses).toBe(0);expect((await db.collection('dailytrackings').where('client','==',client).get()).empty).toBe(true);await Promise.all([1,2,3].map(()=>nativeDailyTracking(db,client,'water',{action:'increment'})));expect((await nativeDailyTracking(db,client,'water') as any).water.glasses).toBe(3);});
  it('deduplicates food retries and rejects future meals',async()=>{const client=id();await db.collection('users').doc(client).set({role:'client',status:'active'});const input={foodName:'Meal',quantity:1,calories:100,mealType:'lunch'};await Promise.all([1,2].map(()=>createStaffFoodLog(db,client,input,'food-retry-123')));const result=await readStaffFoodLogs(db,client,new URLSearchParams());expect(result.foodLogs).toHaveLength(1);await expect(createStaffFoodLog(db,client,{...input,loggedAt:'2090-01-01'})).rejects.toMatchObject({status:400});});

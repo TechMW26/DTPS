@@ -6,7 +6,7 @@
  * are notified within ~3 seconds of a payment status change.
  */
 
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { UserRole } from '@/types';
 import { socketManager } from '@/lib/realtime/socket-manager';
 import { clearCacheByTag } from '@/lib/cache/memoryCache';

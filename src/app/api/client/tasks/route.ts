@@ -1,5 +1,5 @@
 import {nativeResponseJson} from '@/lib/api/native-response';
-import { getNativeDatabase } from '@/lib/db/firestore-native';
+import { getNativeDatabase } from '@/lib/db/database';
 import { nativeTaskJournal, completeNativeTask } from '@/lib/db/repository/native-client-tasks';
 import {nativeHabitDay} from '@/lib/db/repository/native-habits';
 import { taskDateError } from '@/lib/task-schedule';

@@ -130,7 +130,7 @@ export async function recalculateAndPersistClientStatus(
   clientId: string,
   meta?: { trigger?: string; changedBy?: string; isManual?: boolean; relatedEvent?: string }
 ): Promise<ClientStatus> {
-  const { getNativeDatabase } = await import('@/lib/db/firestore-native');
+  const { getNativeDatabase } = await import('@/lib/db/database');
   const { recalculateNativeClientStatus } = await import('@/lib/db/repository/native-client-status');
   return recalculateNativeClientStatus(getNativeDatabase(), clientId, meta);
 }
@@ -142,7 +142,7 @@ export async function recalculateAndPersistClientStatus(
  * @returns Boolean indicating if client has a currently valid meal plan
  */
 export async function hasActiveMealPlan(clientId: string): Promise<boolean> {
-  const { getNativeDatabase } = await import('@/lib/db/firestore-native');
+  const { getNativeDatabase } = await import('@/lib/db/database');
   const { findNativeActivePlan } = await import('@/lib/db/repository/native-client-status');
   return !!(await findNativeActivePlan(getNativeDatabase(), clientId));
 }
@@ -160,7 +160,7 @@ export async function getClientStatusInfo(clientId: string): Promise<{
   activePlanStartDate?: Date;
   activePlanEndDate?: Date;
 }> {
-  const { getNativeDatabase } = await import('@/lib/db/firestore-native');
+  const { getNativeDatabase } = await import('@/lib/db/database');
   const { nativeClientStatusInfo } = await import('@/lib/db/repository/native-client-status');
   return nativeClientStatusInfo(getNativeDatabase(), clientId);
 }

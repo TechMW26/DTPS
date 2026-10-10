@@ -12,7 +12,7 @@ export interface NativeStoredFile {
 
 function archive() {
   const deployed = Boolean(process.env.VERCEL) || process.env.NODE_ENV === 'production';
-  if (deployed && process.env.FIRESTORE_NATIVE_PRODUCTION_ENABLED !== 'true') throw new Error('Native Blob production cutover has not been enabled');
+  if (deployed && process.env.NATIVE_BLOB_PRODUCTION_ENABLED !== 'true') throw new Error('Native Blob production cutover has not been enabled');
   return createPrivateBlobArchive({
     cacheReads:true,
     storeId:process.env.NATIVE_BLOB_STORE_ID || (!deployed ? process.env.MIGRATION_BLOB_STORE_ID : undefined),

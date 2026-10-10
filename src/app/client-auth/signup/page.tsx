@@ -1,5 +1,7 @@
 'use client';
 
+import {readOtpResponse} from '@/lib/auth/otp-response';
+
 import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -129,7 +131,7 @@ function ClientSignUpForm() {
                 fallbackReason,
             }),
         });
-        const data = await response.json();
+        const data = await readOtpResponse(response);
         if (!response.ok || !data.success) throw new Error(data.error || 'Unable to send a verification code.');
         confirmationResultRef.current = null;
         setOtpProvider('whatsapp');
@@ -184,7 +186,7 @@ function ClientSignUpForm() {
                 }),
             });
 
-            const data = await response.json();
+            const data = await readOtpResponse(response);
             if (!response.ok || !data.success) {
                 setError(data.error || 'Failed to send OTP. Please try again.');
                 return;
@@ -272,7 +274,7 @@ function ClientSignUpForm() {
                 }),
             });
 
-            const data = await response.json();
+            const data = await readOtpResponse(response);
             if (!response.ok || !data.success) {
                 setError(data.error || 'OTP verification failed.');
                 return;

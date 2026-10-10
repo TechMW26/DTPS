@@ -3,7 +3,7 @@ import {nativeClientDashboard} from './native-staff-client-dashboard';
 import {NextRequest,NextResponse} from 'next/server';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {nativeJson} from './native-history';
 import {NativeStaffClientError} from './native-staff-client';
 import {nativePendingPlans,nativeStaffStats} from './native-staff-dashboard';

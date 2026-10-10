@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
-import {getNativeDatabase} from '@/lib/db/firestore-native';
+import {getNativeDatabase} from '@/lib/db/database';
 import {authOptions,invalidateUserStatusCache} from '@/lib/auth/config';
-const suite=process.env.FIRESTORE_EMULATOR_HOST?describe:describe.skip;
+const suite=process.env.DTPS_MONGODB_LOCAL_TEST?describe:describe.skip;
 suite('NextAuth native database callbacks',()=>{
  let db:ReturnType<typeof getNativeDatabase>;const id=randomUUID(),email=id+'@example.invalid';
  beforeAll(async()=>{db=getNativeDatabase();await db.collection('users').doc(id).set({email,password:'synthetic-password',firstName:'Synthetic',lastName:'Client',status:'active',role:'client'});});
