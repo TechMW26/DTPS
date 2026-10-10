@@ -60,9 +60,11 @@ export function manifestAt(dir){const m=JSON.parse(fs.readFileSync(path.join(dir
 export async function checkArchive(dir,manifest){let total=0;for(const file of manifest.files){const filename=path.join(dir,file.file);if(!/^[a-zA-Z0-9_.-]+$/.test(file.file)||await fileHash(filename)!==file.sha256)throw new Error('Archive checksum mismatch');total+=file.records;}if(total!==manifest.documents)throw new Error('Archive manifest count mismatch');}
 
 /** Archive-only banks are retained in the local source dump, never required by application media hydration. */
+export const ARCHIVE_ROOTS=['_migration_originals','_migration_checks','_nativeMigrationJournal','_nativeMigrationJournalCounters'];
+export const excludedArchivePath=path=>ARCHIVE_ROOTS.includes(path.split('/')[0]);
 export function excludedMigrationArchive(doc,source){
  const prefix=`projects/${source.project}/databases/${source.database}/documents/`;
  if(!doc.name?.startsWith(prefix))throw new Error('Source identity mismatch');
  const root=doc.name.slice(prefix.length).split('/')[0];
- return root==='_migration_originals'||root==='_migration_checks';
+ return ARCHIVE_ROOTS.includes(root);
 }

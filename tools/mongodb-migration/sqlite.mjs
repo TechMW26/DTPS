@@ -1,8 +1,10 @@
 import {spawn} from 'node:child_process';
 import readline from 'node:readline';
 import path from 'node:path';
-export function sqliteIndex(file){
- const child=spawn('python3',[path.resolve('tools/mongodb-migration/baseline-index.py'),'serve',file],{stdio:['pipe','pipe','pipe']});const pending=new Map();let serial=0,errors='';
+export function sqliteIndex(file,{overlay,journal,output,minFreeBytes,maxExtraBytes}={}){
+ if(overlay&&journal)throw new Error('One local index mode required');
+ const args=journal?[path.resolve('tools/mongodb-migration/journal-path-index.py'),file]:overlay?[path.resolve('tools/mongodb-migration/baseline-overlay.py'),file,overlay,output,String(minFreeBytes??3*1024**3),String(maxExtraBytes??2*1024**3)]:[path.resolve('tools/mongodb-migration/baseline-index.py'),'serve',file];
+ const child=spawn('python3',args,{stdio:['pipe','pipe','pipe']});const pending=new Map();let serial=0,errors='';
  child.stderr.on('data',bytes=>{errors=(errors+String(bytes)).slice(-4000);});
  const lines=readline.createInterface({input:child.stdout});lines.on('line',line=>{const response=JSON.parse(line),wait=pending.get(response.id);pending.delete(response.id);if(response.error)wait?.reject(new Error(response.error));else wait?.resolve(response.result);});
  const reject=error=>{for(const wait of pending.values())wait.reject(error);pending.clear();};child.on('error',reject);child.on('exit',code=>{if(code!==0)reject(new Error('Local baseline index failed: '+errors));else reject(new Error('Local baseline index closed'));});

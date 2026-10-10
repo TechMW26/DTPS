@@ -3,7 +3,7 @@ import {targetCredentials} from './target.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {MongoClient,BSON} from 'mongodb';
-import {archiveDocuments,arg,manifestAt,checkArchive,mongoRecord,save,excludedMigrationArchive} from './archive.mjs';
+import {archiveDocuments,arg,manifestAt,checkArchive,mongoRecord,save,excludedMigrationArchive,excludedArchivePath} from './archive.mjs';
 import {baselineProof,checkDeltaFiles} from './delta-guard.mjs';
 import {requestPool} from './batch.mjs';
 targetCredentials();
@@ -22,9 +22,9 @@ try{
   for(const key of batches.keys())await flush(key);await pool.drain();if(changed+excluded!==manifest.changedDocuments)throw new Error('Changed source total differs');Object.assign(state,{changedApplied:true,changed,excludedChanged:excluded});save(stateFile,state);
  }
  if(!state.deletesApplied){const groups=new Map();let seen=0;async function flush(group){const ids=groups.get(group);if(!ids?.length)return;groups.set(group,[]);await pool.add(()=>db.collection(group).deleteMany({_id:{$in:ids},_migrationSource:source,_migrationRun:{$in:state.acceptedRuns}}));}
-  for await(const row of archiveDocuments(path.join(dir,'deleted.jsonl.gz'))){const parts=row.path?.split('/');if(!parts||parts.length%2||parts.some(x=>!x))throw new Error('Deleted source identity invalid');seen++;if(excludeArchives&&['_migration_originals','_migration_checks'].includes(parts[0]))continue;const group=parts.at(-2),ids=groups.get(group)||[];ids.push(row.path);groups.set(group,ids);if(ids.length>=500)await flush(group);}
+  for await(const row of archiveDocuments(path.join(dir,'deleted.jsonl.gz'))){const parts=row.path?.split('/');if(!parts||parts.length%2||parts.some(x=>!x))throw new Error('Deleted source identity invalid');seen++;if(excludeArchives&&excludedArchivePath(row.path))continue;const group=parts.at(-2),ids=groups.get(group)||[];ids.push(row.path);groups.set(group,ids);if(ids.length>=500)await flush(group);}
   for(const group of groups.keys())await flush(group);await pool.drain();if(seen!==manifest.deletedDocuments)throw new Error('Deleted source total differs');Object.assign(state,{deletesApplied:true,deletedSourceRecords:seen});save(stateFile,state);
  }
- const excluded=excludeArchives?(manifest.collections||[]).filter(c=>['_migration_originals','_migration_checks'].includes(c.path.split('/')[0])).reduce((n,c)=>n+c.documents,0):0;
+ const excluded=excludeArchives?(manifest.collections||[]).filter(c=>excludedArchivePath(c.path)).reduce((n,c)=>n+c.documents,0):0;
  Object.assign(state,{complete:true,documents:manifest.documents-excluded,excludedDocuments:excluded,completedFiles:Object.fromEntries(manifest.files.map(f=>[f.file,f.sha256])),completedAt:new Date().toISOString()});save(stateFile,state);console.log(JSON.stringify({complete:true,changed:state.changed,deletedSourceRecords:state.deletedSourceRecords,finalDocuments:state.documents,fullVerificationRequired:true}));
 }finally{await pool.drain().catch(()=>{});await client.close();}

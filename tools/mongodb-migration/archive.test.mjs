@@ -22,7 +22,8 @@ test('field maps preserve literal reserved keys and source path identity checks 
 test('archive exclusion is restricted to the exact unused root banks, preserving media chunks and business fields',async()=>{
  const {excludedMigrationArchive}=await import('./archive.mjs');const source={project:'p',database:'d'},doc=path=>({name:'projects/p/databases/d/documents/'+path});
  assert.equal(excludedMigrationArchive(doc('_migration_originals/id/chunks/0'),source),true);assert.equal(excludedMigrationArchive(doc('_migration_checks/id'),source),true);
- for(const path of ['files/id/chunks/0','medicalReports.chunks/id','receipts.chunks/id','_mediaAssets/id','users/id/_migration_originals/id','_migration_originalsOther/id'])assert.equal(excludedMigrationArchive(doc(path),source),false);
+ for(const path of ['_nativeMigrationJournal/epoch-00-0000000000000001','_nativeMigrationJournalCounters/epoch-00'])assert.equal(excludedMigrationArchive(doc(path),source),true);
+ for(const path of ['files/id/chunks/0','medicalReports.chunks/id','receipts.chunks/id','_mediaAssets/id','users/id/_migration_originals/id','_migration_originalsOther/id','users/id/_nativeMigrationJournal/id','_nativeMigrationJournalOther/id'])assert.equal(excludedMigrationArchive(doc(path),source),false);
 });
 test('bounded request pool drains failures and never exceeds its concurrency limit',async()=>{
  const {requestPool}=await import('./batch.mjs');const pool=requestPool(3);let active=0,max=0,done=0;

@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {MongoClient,BSON} from 'mongodb';
 import {requestPool} from './batch.mjs';
-import {archiveDocuments,arg,checkArchive,manifestAt,mongoRecord,save,excludedMigrationArchive,sha256,canonical} from './archive.mjs';
+import {archiveDocuments,arg,checkArchive,manifestAt,mongoRecord,save,excludedMigrationArchive,excludedArchivePath,sha256,canonical} from './archive.mjs';
 targetCredentials();
 const dir=path.resolve(arg('--archive','')),database=arg('--database',process.env.MONGODB_DATABASE||'dtps');
 if(!arg('--archive')||!database||/[/\\. "*$<>:|?]/.test(database))throw new Error('Supply --archive and a valid --database');
 const excludeArchives=process.argv.includes('--exclude-migration-archives'),manifest=manifestAt(dir);await checkArchive(dir,manifest);
-const excludedEstimate=excludeArchives?(manifest.collections||[]).filter(c=>['_migration_originals','_migration_checks'].includes(c.path.split('/')[0])).reduce((n,c)=>n+c.documents,0):0;
+const excludedEstimate=excludeArchives?(manifest.collections||[]).filter(c=>excludedArchivePath(c.path)).reduce((n,c)=>n+c.documents,0):0;
 if(!process.argv.includes('--execute')){console.log(JSON.stringify({dryRun:true,source:`${manifest.project}/${manifest.database}`,documents:manifest.documents,readTime:manifest.readTime,targetDatabase:database,files:manifest.files.length,excludeMigrationArchives:excludeArchives,excludedArchivedLocally:excludedEstimate,expectedImported:manifest.documents-excludedEstimate}));process.exit(0);}
 const uri=process.env.MONGODB_URI;if(!uri)throw new Error('MONGODB_URI is required');
 const stateFile=arg('--state',path.join(dir,`mongo-import-${database}.json`));
