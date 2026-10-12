@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { toast } from 'sonner';
+import { servicePlanSchema, servicePlanValidationMessage } from '@/lib/service-plan-validation';
 import {
   Plus,
   Edit,
@@ -129,13 +130,9 @@ export default function AdminServicePlansPage() {
   // getDurationLabel is now provided by useDurationPresets hook
 
   const handleSubmit = async () => {
-    if (!formData.name) {
-      toast.error('Please enter a plan name');
-      return;
-    }
-
-    if (formData.pricingTiers.length === 0) {
-      toast.error('Please add at least one pricing tier');
+    const parsed = servicePlanSchema.safeParse(formData);
+    if (!parsed.success) {
+      toast.error(servicePlanValidationMessage(parsed.error));
       return;
     }
 
@@ -143,9 +140,11 @@ export default function AdminServicePlansPage() {
       setSaving(true);
       const url = '/api/admin/service-plans';
       const method = editingPlan ? 'PUT' : 'POST';
+      // Submit only fields this form owns; retain saved features and other settings.
+      const validated = Object.fromEntries(Object.keys(formData).map(key => [key, parsed.data[key as keyof typeof parsed.data]]));
       const body = editingPlan
-        ? { id: editingPlan._id, ...formData }
-        : formData;
+        ? { id: editingPlan._id, ...validated }
+        : validated;
 
       const response = await fetch(url, {
         method,
@@ -206,7 +205,7 @@ export default function AdminServicePlansPage() {
   };
 
   const addPricingTier = () => {
-    if (newTier.durationDays < 1 || newTier.amount < 0) {
+    if (!Number.isInteger(newTier.durationDays) || newTier.durationDays < 1 || newTier.amount < 0 || !Number.isFinite(newTier.amount)) {
       toast.error('Please fill in tier details correctly');
       return;
     }
@@ -401,7 +400,7 @@ export default function AdminServicePlansPage() {
                                 min="0"
                                 max="100"
                                 value={tier.maxDiscount || 0}
-                                onChange={(e) => updatePricingTier(index, 'maxDiscount', Math.min(100, parseInt(e.target.value) || 0))}
+                                onChange={(e) => updatePricingTier(index, 'maxDiscount', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
                                 className="mt-1 sm:mt-0"
                               />
                             </div>
@@ -499,7 +498,7 @@ export default function AdminServicePlansPage() {
                             min="0"
                             max="100"
                             value={newTier.maxDiscount}
-                            onChange={(e) => setNewTier({ ...newTier, maxDiscount: Math.min(100, parseInt(e.target.value) || 0) })}
+                            onChange={(e) => setNewTier({ ...newTier, maxDiscount: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
                             placeholder="0"
                             className="bg-white h-10 text-base"
                           />

@@ -127,3 +127,9 @@ describe('client meal-plan empty-state messaging', () => {
     ).toBe('upcoming');
   });
 });
+
+it('links directly to the displayed published phase using the IST date',async()=>{
+ const {clientMealPlanHref}=await import('@/lib/client-plan-visibility');
+ expect(clientMealPlanHref({startDate:'2026-10-11T18:30:00Z',endDate:'2026-10-20T18:30:00Z'},new Date('2026-10-12T12:00:00Z'))).toBe('/user/plan?date=2026-10-12');
+ expect(clientMealPlanHref({startDate:'2026-10-22',endDate:'2026-10-31'},new Date('2026-10-12T12:00:00Z'))).toBe('/user/plan?date=2026-10-22');
+});

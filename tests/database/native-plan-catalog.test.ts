@@ -15,3 +15,17 @@ suite('native plan catalogs',()=>{
   const changed=await saveNativeCatalog(db,'subscriptionplans',actor,{createdBy:'attacker',price:150},plan._id);expect(changed.createdBy).toBe(actor);expect(changed.isActive).toBe(false);expect(changed.currency).toBe('INR');await deleteNativeCatalog(db,'subscriptionplans',plan._id);
  });
 });
+
+suite('service-plan form compatibility',()=>{
+ let db:ReturnType<typeof getNativeDatabase>;beforeAll(()=>{db=getNativeDatabase();});afterAll(()=>db.terminate());
+ it('accepts a free 30-day tier and numeric form values without losing extension settings',async()=>{
+  const actor=randomBytes(12).toString('hex');
+  const plan=await saveNativeCatalog(db,'serviceplans',actor,{name:'  Form plan  ',category:'general-wellness',description:'',pricingTiers:[{durationDays:'30',durationLabel:'1 Month',amount:'0',maxDiscount:'40',extendDays:'0',freezeDays:'0',isActive:true}],showToClients:false,isActive:false});
+  expect(plan.name).toBe('Form plan');expect(plan.pricingTiers[0]).toMatchObject({durationDays:30,amount:0,maxDiscount:40,extendDays:0,freezeDays:0});
+  await deleteNativeCatalog(db,'serviceplans',plan._id);
+ });
+ it('returns the actual invalid tier field and keeps invalid catalog data out',async()=>{
+  const actor=randomBytes(12).toString('hex');
+  await expect(saveNativeCatalog(db,'serviceplans',actor,{name:'Bad tier',category:'custom',pricingTiers:[{durationDays:30,durationLabel:'1 Month',amount:0,maxDiscount:-1}]})).rejects.toMatchObject({status:400,message:'Pricing tier 1: Discount must be between 0% and 100%.'});
+ });
+});

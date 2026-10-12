@@ -10,3 +10,23 @@ suite('native administrative data transactions',()=>{let db:ReturnType<typeof ge
  it('protects credentials and applies program allocation edits consistently',async()=>{const admin=await seed('users',{role:'admin',status:'active'}),client=await seed('users',{role:'client',status:'active',password:'private',fcmTokens:['private']}),payment=await seed('unifiedpayments',{client:client.id,durationDays:90,daysUsed:10,remainingDays:80});const result=await readNativeDataRecords(db,admin.id,new URLSearchParams({model:'User',id:client.id}));expect(result.record?.password).toBeUndefined();expect(result.record?.fcmTokens).toBeUndefined();await updateNativeDataRecord(db,admin.id,'UnifiedPayment',payment.id,{remainingDays:70});expect((await payment.get()).get('daysUsed')).toBe(20);const patch={remainingDays:100};expect(()=>reconcileNativeAllocation({durationDays:90,daysUsed:0,remainingDays:90},patch)).toThrow();});
  it('replaces predictable passwords without disclosing credentials and rejects non-admins',async()=>{const {migrateNativeCommercePasswords,nativeCommercePasswordStatus}=await import('@/lib/db/repository/native-admin-password-migration');const admin=db.collection('users').doc(randomBytes(12).toString('hex')),client=db.collection('woocommerceclients').doc(randomBytes(12).toString('hex')),staff=db.collection('users').doc(randomBytes(12).toString('hex'));refs.push(admin,client,staff);await admin.set({role:'admin',status:'active'});await staff.set({role:'dietitian',status:'active'});await client.set({name:'Synthetic',email:'synthetic@example.invalid',password:'Password123'});await expect(migrateNativeCommercePasswords(db,staff.id)).rejects.toMatchObject({status:403});let cursor:string|undefined;do{const result=await migrateNativeCommercePasswords(db,admin.id,cursor);cursor=result.nextCursor||undefined;}while(cursor);const saved=(await client.get()).data()!;expect(saved.password).toMatch(/^\$2/);expect(saved.requirePasswordReset).toBe(true);expect(saved.logoutOtherSessionsAt).toBeDefined();const status=await nativeCommercePasswordStatus(db,admin.id);expect(JSON.stringify(status)).not.toContain(saved.password);expect(JSON.stringify(status)).not.toContain('Password123');});
 });
+
+suite('legacy duplicate payment edits',()=>{
+ let db:ReturnType<typeof getNativeDatabase>;
+ const refs:MongoTypes.DocumentReference[]=[];
+ beforeAll(()=>{db=getNativeDatabase();});afterAll(async()=>{for(const ref of refs)await ref.delete();await db.terminate();});
+ async function put(collection:string,data:any){const ref=db.collection(collection).doc(randomBytes(12).toString('hex'));refs.push(ref);await ref.set(data);return ref;}
+ it('allows an allocation edit while preserving an unchanged imported duplicate identifier',async()=>{
+  const admin=await put('users',{role:'admin',status:'active'}),client=await put('users',{role:'client'}),transactionId='legacy-'+randomBytes(8).toString('hex');
+  const payment=await put('unifiedpayments',{client:client.id,durationDays:90,daysUsed:10,remainingDays:80,transactionId});
+  await put('unifiedpayments',{client:client.id,durationDays:90,daysUsed:10,remainingDays:80,transactionId});
+  await updateNativeDataRecord(db,admin.id,'UnifiedPayment',payment.id,{...(await payment.get()).data(),remainingDays:70});
+  expect((await payment.get()).data()).toMatchObject({transactionId,daysUsed:20,remainingDays:70});
+ });
+ it('still rejects a change that creates a duplicate identifier',async()=>{
+  const admin=await put('users',{role:'admin',status:'active'}),client=await put('users',{role:'client'}),shared='existing-'+randomBytes(8).toString('hex');
+  const payment=await put('unifiedpayments',{client:client.id,transactionId:'unique-'+randomBytes(8).toString('hex')});
+  await put('unifiedpayments',{client:client.id,transactionId:shared});
+  await expect(updateNativeDataRecord(db,admin.id,'UnifiedPayment',payment.id,{transactionId:shared})).rejects.toMatchObject({status:409});
+ });
+});

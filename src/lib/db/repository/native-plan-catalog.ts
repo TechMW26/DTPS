@@ -2,12 +2,12 @@ import {randomBytes} from 'node:crypto';
 import type {MongoDatabase,DocumentData,Query} from '@/lib/db/mongo-types';
 import {z} from 'zod';
 import {nativeDates} from './native-plan-editor';
+import {servicePlanSchema,servicePlanValidationMessage} from '@/lib/service-plan-validation';
 export type NativeCatalog='serviceplans'|'subscriptionplans';
 export class NativeCatalogError extends Error {constructor(message:string,public status:number){super(message);}}
 const categories=['weight-loss','weight-gain','muscle-gain','diabetes','pcos','thyroid','general-wellness','custom'] as const;
-const tier=z.object({_id:z.string().regex(/^[a-f\d]{24}$/i).optional(),durationDays:z.number().int().min(1).max(36500),durationLabel:z.string().trim().min(1).max(100),amount:z.number().finite().nonnegative(),maxDiscount:z.number().min(0).max(100).default(0),extendDays:z.number().int().nonnegative().default(0),freezeDays:z.number().int().nonnegative().default(0),isActive:z.boolean().default(true)});
 const common={name:z.string().trim().min(1).max(200),description:z.string().max(10000).optional(),features:z.array(z.string().trim().max(2000)).max(100).default([]),isActive:z.boolean().default(true)};
-const service=z.object({...common,category:z.enum([...categories,'detox','sports-nutrition']),pricingTiers:z.array(tier).min(1).max(100),showToClients:z.boolean().default(true),maxDiscountPercent:z.number().min(0).max(100).default(0)});
+const service=servicePlanSchema;
 const subscription=z.object({...common,description:z.string().max(1000).optional(),category:z.enum(categories),duration:z.number().int().min(1).max(36500),durationType:z.enum(['days','weeks','months']),price:z.number().finite().nonnegative(),currency:z.string().regex(/^[A-Za-z]{3}$/).transform(value=>value.toUpperCase()).default('INR'),consultationsIncluded:z.number().int().nonnegative().default(0),dietPlanIncluded:z.boolean().default(true),followUpsIncluded:z.number().int().nonnegative().default(0),chatSupport:z.boolean().default(true),videoCallsIncluded:z.number().int().nonnegative().default(0)});
 function refFor(db:MongoDatabase,collection:NativeCatalog,id:unknown){if(typeof id!=='string'||!/^[a-f\d]{24}$/i.test(id))throw new NativeCatalogError('Invalid plan ID',400);return db.collection(collection).doc(id);}
 export async function listNativeCatalog(db:MongoDatabase,collection:NativeCatalog,params:URLSearchParams){
@@ -20,7 +20,7 @@ export async function listNativeCatalog(db:MongoDatabase,collection:NativeCatalo
 }
 export async function saveNativeCatalog(db:MongoDatabase,collection:NativeCatalog,actor:string,input:unknown,id?:string){
  const schema=collection==='serviceplans'?service:subscription,parsed=(id?schema.partial():schema).safeParse(input);
- if(!parsed.success)throw new NativeCatalogError('Invalid plan fields',400);
+ if(!parsed.success)throw new NativeCatalogError(collection==='serviceplans'?servicePlanValidationMessage(parsed.error):'Invalid plan fields',400);
  const patch:DocumentData=parsed.data;
  if(id)for(const key of Object.keys(patch))if(!Object.prototype.hasOwnProperty.call(input,key))delete patch[key];
  if(patch.pricingTiers){const seen=new Set();patch.pricingTiers=patch.pricingTiers.map((item:DocumentData)=>{const tierId=item._id||randomBytes(12).toString('hex');if(seen.has(tierId))throw new NativeCatalogError('Duplicate pricing tier ID',400);seen.add(tierId);return {...item,_id:tierId};});}

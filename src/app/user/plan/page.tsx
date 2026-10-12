@@ -11,7 +11,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRealtime } from '@/hooks/useRealtime';
-import { findRecipeByName } from '@/lib/recipe-match';
+import { todayIST } from '@/lib/utils/ist';
+import { findRecipeByName, isSameRecipeName, mealRecipeName } from '@/lib/recipe-match';
 import {
   Clock,
   Check,
@@ -72,6 +73,8 @@ interface MealItem {
   alternatives?: { name: string; portion: string; calories: number }[];
   isAlternative?: boolean; // Flag for alternative food items
   recipe?: {
+    _id?: string;
+    name?: string;
     ingredients: string[];
     instructions: string[];
     prepTime?: string;
@@ -312,7 +315,7 @@ export default function UserPlanPage() {
 
   useEffect(() => {
     // Generate dates: today at START (index 0) + 30 future days + 15 previous days at end (for scrolling back)
-    const today = new Date();
+    const today = new Date(todayIST() + 'T00:00:00');
     const dates: Date[] = [];
 
     // Add today first (index 0) - will be at START
@@ -329,7 +332,7 @@ export default function UserPlanPage() {
     const params = new URLSearchParams(window.location.search);
     const deepLinkDate = params.get('date') || '';
     const isCameraDeepLink = params.get('action') === 'camera';
-    const initialDate = isCameraDeepLink && /^\d{4}-\d{2}-\d{2}$/.test(deepLinkDate)
+    const initialDate = /^\d{4}-\d{2}-\d{2}$/.test(deepLinkDate)
       ? new Date(`${deepLinkDate}T00:00:00`)
       : today;
 
@@ -385,6 +388,15 @@ export default function UserPlanPage() {
           ? data.activePurchases
           : [];
         setEntitlementStatus(data?.hasActivePlan ? 'active' : 'none');
+
+        // A later published phase must not send a client away from today's diet.
+        if (data?.currentMealPlan?.startDate && data?.currentMealPlan?.endDate) {
+          setPlanDateWindow({
+            startDate: data.currentMealPlan.startDate,
+            endDate: data.currentMealPlan.endDate,
+          });
+          return;
+        }
 
         // The API resolves this from the earliest actual published future
         // phase, independent of duplicated or overlapping purchase records.
@@ -470,10 +482,14 @@ export default function UserPlanPage() {
       fetchDayPlan(selectedDate, false);
     };
 
+    const refreshTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') handleFocus();
+    }, 60_000);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      window.clearInterval(refreshTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
@@ -505,6 +521,8 @@ export default function UserPlanPage() {
 
   // Fetch full recipe details when recipe modal opens
   useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
     const fetchFullRecipe = async () => {
       if (!recipeModal.isOpen || !recipeModal.item.name) {
         setFullRecipeData(null);
@@ -512,22 +530,23 @@ export default function UserPlanPage() {
       }
 
       // Skip fetch if the item already has recipe data from the API enrichment
-      if (recipeModal.item.recipe?.ingredients && recipeModal.item.recipe.ingredients.length > 0) {
+      if (recipeModal.item.recipe?.ingredients?.length && recipeModal.item.recipe?.instructions?.length && (!recipeModal.item.recipe.name || isSameRecipeName(recipeModal.item.recipe.name, recipeModal.item.name))) {
         setFullRecipeData(null);
         setLoadingRecipe(false);
         return;
       }
 
+      setFullRecipeData(null);
       setLoadingRecipe(true);
       try {
         let recipeData = null;
 
         // First try to fetch by recipeId if available
         if (recipeModal.item.recipeId) {
-          const response = await fetch(`/api/recipes/${recipeModal.item.recipeId}`);
+          const response = await fetch(`/api/recipes/${recipeModal.item.recipeId}`, { signal: controller.signal, cache: 'no-store' });
           if (response.ok) {
             const data = await response.json();
-            if (data.success && data.recipe) {
+            if (data.success && data.recipe && isSameRecipeName(data.recipe.name || '', recipeModal.item.name)) {
               recipeData = data.recipe;
             }
           }
@@ -535,10 +554,10 @@ export default function UserPlanPage() {
 
         // Legacy plans sometimes stored the same recipe words in a different order.
         if (!recipeData && recipeModal.item.name) {
-          const searchName = encodeURIComponent(recipeModal.item.name.trim());
+          const searchName = encodeURIComponent(mealRecipeName(recipeModal.item.name));
           // Resolve the exact recipe directly. A paginated broad search can
           // contain dozens of similarly named foods before the exact match.
-          const searchResponse = await fetch(`/api/recipes?exactName=${searchName}&limit=10`);
+          const searchResponse = await fetch(`/api/recipes?exactName=${searchName}&limit=10`, { signal: controller.signal, cache: 'no-store' });
           if (searchResponse.ok) {
             const searchData = await searchResponse.json();
             if (searchData.success && searchData.recipes && searchData.recipes.length > 0) {
@@ -547,23 +566,25 @@ export default function UserPlanPage() {
           }
         }
 
-        if (recipeData) {
+        if (!cancelled && recipeData) {
           setFullRecipeData(recipeData);
         }
       } catch (error) {
-        console.error('Error fetching recipe:', error);
+        if (!cancelled) console.error('Error fetching recipe:', error);
       } finally {
-        setLoadingRecipe(false);
+        if (!cancelled) setLoadingRecipe(false);
       }
     };
 
-    fetchFullRecipe();
+    void fetchFullRecipe();
+    return () => { cancelled = true; controller.abort(); };
   }, [recipeModal.isOpen, recipeModal.item.recipeId, recipeModal.item.name]);
 
   // Function to open recipe modal with item
   const openRecipeModal = (item: MealItem) => {
     setFullRecipeData(null);
-    setRecipeModal({ item, isOpen: true });
+    const safeItem=item.recipe?.name && !isSameRecipeName(item.recipe.name,item.name) ? {...item,recipe:undefined} : item;
+    setRecipeModal({ item: safeItem, isOpen: true });
   };
 
   // Function to close recipe modal

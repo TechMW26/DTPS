@@ -15,3 +15,9 @@ describe('legacy recipe name matching', () => {
     expect(findRecipeByName(recipes, 'Capsicum')).toBeNull();
   });
 });
+
+it('ignores a legacy portion annotation without confusing ingredient variants', () => {
+  expect(isSameRecipeName('Salad', 'SALAD (1 Katori 100.0g)')).toBe(true);
+  expect(isSameRecipeName('Raita', 'Raita (Low Fat Curd)')).toBe(false);
+  expect(isSameRecipeName('Raita', 'Raita (100g cucumber)')).toBe(false);
+});

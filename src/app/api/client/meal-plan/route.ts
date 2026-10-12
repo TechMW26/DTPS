@@ -3,6 +3,9 @@ import {nativeMediaJson} from '@/lib/api/native-media-json';
 import { getNativeDatabase } from '@/lib/db/database';
 import { nativePlanList, nativePlanForDate, nativeTemplateMeals, nativeMealRecipes } from '@/lib/db/repository/native-client-meals';
 import { withJsonCache } from '@/lib/cache/json-cache';
+import { coalesceRead } from '@/lib/api/coalesce-read';
+import { resolveMealRecipe, isSameRecipeName } from '@/lib/recipe-match';
+import { todayIST, toISTDateKey } from '@/lib/utils/ist';
 import { completionMatchesMeal } from '@/lib/task-schedule';
 import { measureApi } from '@/lib/api/performance';
 import { NextRequest, NextResponse } from 'next/server';
@@ -62,12 +65,14 @@ function resolveBuiltInMealTypeKey(input: string): MealTypeKey | null {
 }
 
 function resolveRequestedDate(dateParam: string | null): Date | null {
-  const requestedDate = dateParam ? parseISO(dateParam) : new Date();
+  const key=dateParam || todayIST();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(key))return null;
+  const requestedDate = parseISO(key+'T00:00:00Z');
   if (!isValid(requestedDate)) {
     return null;
   }
 
-  return startOfDay(requestedDate);
+  return requestedDate;
 }
 
 // GET /api/client/meal-plan - Get client's meal plan for a specific date
@@ -113,11 +118,11 @@ async function getHandler(request: NextRequest) {
 
     const cacheKey = `client:meal-plan:${session.user.id}:${effectiveDate.toISOString().slice(0, 10)}`;
 
-    const data = await withJsonCache(
+    const data = await coalesceRead(
       cacheKey,
       async () => {
         // Find active OR completed meal plan for the client on this date
-        const mealPlan = await nativePlanForDate(db, session.user.id, startOfDay(effectiveDate), endOfDay(effectiveDate));
+        const mealPlan = await nativePlanForDate(db, session.user.id, effectiveDate, effectiveDate);
 
         if (!mealPlan) {
           return {
@@ -128,7 +133,7 @@ async function getHandler(request: NextRequest) {
         }
 
         // Calculate day index within the plan
-        const planStartDate = startOfDay(new Date(mealPlan.startDate));
+        const planStartDate = new Date(toISTDateKey(mealPlan.startDate)!+'T00:00:00Z');
         const dayIndex = Math.floor((effectiveDate.getTime() - planStartDate.getTime()) / (1000 * 60 * 60 * 24));
 
         // Get meals for this day
@@ -142,11 +147,11 @@ async function getHandler(request: NextRequest) {
         if (mealPlan.meals?.length > 0) {
           // Prefer the stored calendar date. Index-only lookup serves the wrong
           // day when legacy plans have gaps or freeze recovery days appended.
-          const requestedDateKey = format(effectiveDate, 'yyyy-MM-dd');
+          const requestedDateKey = toISTDateKey(effectiveDate);
           const dayData = mealPlan.meals.find((entry: any) => {
             if (!entry?.date) return false;
             const entryDate = new Date(entry.date);
-            return isValid(entryDate) && format(entryDate, 'yyyy-MM-dd') === requestedDateKey;
+            return isValid(entryDate) && toISTDateKey(entryDate) === requestedDateKey;
           }) || mealPlan.meals[dayIndex];
 
           // Capture daily note
@@ -217,16 +222,16 @@ async function getHandler(request: NextRequest) {
           mealPlan.customizations?.targetCalories || 0) * 100) / 100;
 
         // Check if this date is frozen
-        const dateStr = format(effectiveDate, 'yyyy-MM-dd');
+        const dateStr = toISTDateKey(effectiveDate);
         const freezedDays = mealPlan.freezedDays || [];
         const isFrozen = freezedDays.some((fd: any) => {
-          const freezeDate = format(new Date(fd.date), 'yyyy-MM-dd');
+          const freezeDate = toISTDateKey(fd.date);
           return freezeDate === dateStr;
         });
 
         // Get freeze day details if frozen
         const freezeInfo = isFrozen ? freezedDays.find((fd: any) =>
-          format(new Date(fd.date), 'yyyy-MM-dd') === dateStr
+          toISTDateKey(fd.date) === dateStr
         ) : null;
 
         return {
@@ -256,11 +261,10 @@ async function getHandler(request: NextRequest) {
             hasMealsData: dayMeals.some(m => m.items?.length > 0)
           }
         };
-      },
-      { ttl: 60000, tags: ['client'] }
+      }
     );
 
-    return nativeResponseJson(await nativeMediaJson(getNativeDatabase(),{ ...data, serverNow: new Date().toISOString() }));
+    return nativeResponseJson(await nativeMediaJson(getNativeDatabase(),{ ...data, serverNow: new Date().toISOString() }),{headers:{'Cache-Control':'private, no-store, max-age=0'}});
 
   } catch (error) {
     console.error('Error fetching client meal plan:', error);
@@ -536,16 +540,16 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
           Array.isArray(item.recipe?.ingredients) &&
           item.recipe.ingredients.length > 0 &&
           Array.isArray(item.recipe?.instructions) &&
-          item.recipe.instructions.length > 0;
+          item.recipe.instructions.length > 0 &&
+          (!item.recipe.name || isSameRecipeName(item.recipe.name,item.name));
 
         if (!hasCompleteEmbeddedRecipe) {
           if (item.recipeUuid) {
             recipeUuids.push(item.recipeUuid);
           } else if (item.recipeId) {
             recipeIds.push(item.recipeId.toString());
-          } else if (item.name) {
-            recipeNames.push(String(item.name).trim());
           }
+          if (item.name) recipeNames.push(String(item.name).trim());
         }
       });
     }
@@ -561,35 +565,20 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
       return nativeMealRecipes(getNativeDatabase(), recipeIds, recipeUuids, recipeNames);
     }, { ttl: 30_000, tags: ['recipes'] });
 
-    // Create maps for quick lookup by both ID and UUID
-    const recipeMapById = new Map(recipes.map((r: any) => [r._id.toString(), r]));
-    const recipeMapByUuid = new Map(
-      recipes.filter((r: any) => r.uuid).map((r: any) => [String(r.uuid), r]),
-    );
-    const recipeMapByName = new Map(
-      recipes.map((r: any) => [String(r.name || '').trim().toLowerCase(), r]),
-    );
-
     // Enrich meal items with recipe details
     return meals.map(meal => ({
       ...meal,
       items: meal.items?.map((item: any) => {
-        // Look up recipe by UUID first, then by ID
-        let fullRecipe = null;
-        if (item.recipeUuid) {
-          fullRecipe = recipeMapByUuid.get(String(item.recipeUuid));
-        }
-        if (!fullRecipe && item.recipeId) {
-          fullRecipe = recipeMapById.get(item.recipeId.toString());
-        }
-        if (!fullRecipe && item.name) {
-          fullRecipe = recipeMapByName.get(String(item.name).trim().toLowerCase());
-        }
+        const fullRecipe = resolveMealRecipe(recipes,item);
 
         if (fullRecipe) {
           return {
             ...item,
+            recipeId: fullRecipe._id,
+            recipeUuid: fullRecipe.uuid,
             recipe: {
+              _id: fullRecipe._id,
+              name: fullRecipe.name,
               ingredients: fullRecipe.ingredients?.map((ing: any) =>
                 `${ing.quantity} ${ing.unit} ${ing.name}${ing.remarks ? ` (${ing.remarks})` : ''}`
               ) || [],
@@ -616,7 +605,7 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
             }
           };
         }
-        return item;
+        return item.recipe?.name && !isSameRecipeName(item.recipe.name,item.name) ? {...item,recipe:null} : item;
       }) || []
     }));
   } catch (error) {
@@ -625,4 +614,9 @@ async function enrichMealsWithRecipeDetails(meals: any[]): Promise<any[]> {
   }
 }
 
-export const GET = measureApi('/api/client/meal-plan', getHandler);
+export const dynamic='force-dynamic';
+export const GET = measureApi('/api/client/meal-plan', async (request:NextRequest) => {
+  const response=await getHandler(request);
+  response.headers.set('Cache-Control','private, no-store, max-age=0');
+  return response;
+});

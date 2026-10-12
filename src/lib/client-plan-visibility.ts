@@ -1,4 +1,15 @@
+import { toISTDateKey } from '@/lib/utils/ist';
 type DateLike = Date | string | number | null | undefined;
+
+/** Open a day belonging to the phase displayed on the dashboard. */
+export function clientMealPlanHref(plan: { startDate?: DateLike; endDate?: DateLike } | null, now = new Date()): string {
+  const start = toISTDateKey(plan?.startDate);
+  const end = toISTDateKey(plan?.endDate);
+  if (!start) return '/user/plan';
+  const today = toISTDateKey(now)!;
+  const date = today >= start && end && today <= end ? today : start;
+  return `/user/plan?date=${date}`;
+}
 
 export interface DashboardPurchaseLike {
   _id?: unknown;

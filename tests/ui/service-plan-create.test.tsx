@@ -1,0 +1,23 @@
+import '@testing-library/jest-dom';
+import {act,fireEvent,render,screen,within} from '@testing-library/react';
+import Page from '@/app/admin/service-plans/page';
+import {servicePlanSchema} from '@/lib/service-plan-validation';
+import {toast} from 'sonner';
+jest.mock('@/components/layout/DashboardLayout',()=>({__esModule:true,default:({children}:any)=><main>{children}</main>}));
+jest.mock('@/hooks/useDurationPresets',()=>({useDurationPresets:()=>({presets:[{days:30,label:'1 Month'}],getDurationLabel:()=> '1 Month',loading:false})}));
+jest.mock('@/components/ui/rich-text-editor',()=>({RichTextEditor:()=>null}));
+jest.mock('sonner',()=>({toast:{success:jest.fn(),error:jest.fn()}}));
+beforeEach(()=>{global.fetch=jest.fn(async(url,init)=>({ok:true,json:async()=>init?.method==='POST'?{success:true}:{success:true,plans:[]}})) as any;});
+it('submits a valid free pricing tier using the same schema as the server',async()=>{
+ await act(async()=>{render(<Page/>);});
+ fireEvent.click(screen.getByRole('button',{name:'Create Service Plan'}));
+ fireEvent.change(screen.getByPlaceholderText('e.g., Weight Loss Program'),{target:{value:'  Synthetic service  '}});
+ const dialog=screen.getByRole('dialog');
+ fireEvent.click(within(dialog).getByRole('button',{name:'Add'}));
+ await act(async()=>{fireEvent.click(within(dialog).getByRole('button',{name:'Create Plan'}));});
+ const request=(global.fetch as jest.Mock).mock.calls.find(([,init])=>init?.method==='POST');
+ expect(request).toBeDefined();const body=JSON.parse(request![1].body);
+ expect(servicePlanSchema.safeParse(body).success).toBe(true);
+ expect(body).toMatchObject({name:'Synthetic service',pricingTiers:[expect.objectContaining({durationDays:30,durationLabel:'1 Month',amount:0,extendDays:0,freezeDays:0})]});
+ expect(toast.success).toHaveBeenCalledWith('Service plan created');
+});

@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { type MongoDatabase, type DocumentData } from '@/lib/db/mongo-types';
 import { hydrateNativeDocument } from '@/lib/storage/native-document';
 import { nativeJson } from './native-history';
+import { mealRecipeName } from '@/lib/recipe-match';
+import { toISTDateKey } from '@/lib/utils/ist';
 
 const published = ['active','completed','paused'];
 export async function nativePlanList(db: MongoDatabase, clientId: string) {
@@ -16,12 +18,14 @@ export async function nativePlanForDate(db: MongoDatabase, clientId: string, sta
   const plans = await db.collection('clientmealplans').where('clientId','==',clientId).where('status','in',published)
     .select('startDate','endDate','lastPublishedAt','createdAt','isDeleted').get();
   const date=(value:any)=>value?.toDate?.()||new Date(value||0);
-  const matches=plans.docs.filter(doc=>!doc.get('isDeleted')&&date(doc.get('startDate'))<=end&&date(doc.get('endDate'))>=start)
+  const day=(value:any)=>toISTDateKey(value?.toDate?.()||value);
+  const firstDay=day(start)!,lastDay=day(end)!;
+  const matches=plans.docs.filter(doc=>!doc.get('isDeleted')&&day(doc.get('startDate'))&&day(doc.get('endDate'))&&day(doc.get('startDate'))!<=lastDay&&day(doc.get('endDate'))!>=firstDay)
     .sort((a,b)=>date(b.get('startDate')).getTime()-date(a.get('startDate')).getTime()||date(b.get('lastPublishedAt')).getTime()-date(a.get('lastPublishedAt')).getTime()||date(b.get('createdAt')).getTime()-date(a.get('createdAt')).getTime());
   for(const match of matches) {
     const fresh=await match.ref.get(),data=fresh.data();
     // Recheck after the second read: a deleted or rescheduled phase must not leak through.
-    if(!data||data.isDeleted||data.clientId!==clientId||!published.includes(data.status)||date(data.startDate)>end||date(data.endDate)<start)continue;
+    if(!data||data.isDeleted||data.clientId!==clientId||!published.includes(data.status)||!day(data.startDate)||!day(data.endDate)||day(data.startDate)!>lastDay||day(data.endDate)!<firstDay)continue;
     return nativeJson(await hydrateNativeDocument({...data,_id:fresh.id})) as DocumentData;
   }
   return null;
@@ -38,6 +42,7 @@ export function recipeNameKey(name: string) {
 }
 const recipeFields=['name','uuid','ingredients','instructions','prepTime','cookTime','servings','difficulty','cuisine','tips','calories','protein','carbs','fat','image','images','video','equipment','storage','tags','dietaryRestrictions','allergens','isActive','_nativeExternalFields'];
 export async function nativeMealRecipes(db: MongoDatabase, ids: string[], uuids: string[], names: string[]) {
+  names=[...new Set(names.flatMap(name=>[name,mealRecipeName(name)]).filter(Boolean))];
   const records=new Map<string,DocumentData>();
   const add=(docs:MongoTypes.DocumentSnapshot[])=>docs.forEach(doc=>{if(doc.exists)records.set(doc.id,{...doc.data(),_id:doc.id});});
   const validIds=[...new Set(ids)].filter(id=>/^[a-f\d]{24}$/i.test(id));

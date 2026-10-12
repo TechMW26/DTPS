@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { format } from 'date-fns';
+import { clientMealPlanHref } from '@/lib/client-plan-visibility';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDataRefresh, DataEventTypes } from '@/lib/events/useDataRefresh';
@@ -900,7 +901,7 @@ export default function UserHomePage() {
                   <div className="mt-4 pt-4 border-t border-[#3AB1A0]/10 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <Link
-                        href="/user/plan"
+                        href={clientMealPlanHref(currentMealPlan)}
                         className="flex items-center justify-center gap-2 px-4 py-3 bg-[#3AB1A0] text-white rounded-xl text-sm font-semibold hover:bg-[#2A9A8B] transition-colors"
                       >
                         <Utensils className="w-4 h-4" />
