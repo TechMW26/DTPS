@@ -5,7 +5,7 @@ import {getMongoDatabase} from '@/lib/db/mongo-native';
 
 // Query relationship indexes and project only the metadata needed by the dashboard.
 const specs={
- pendingPlans:{collection:'clientmealplans',relation:'clientId',fields:['clientId','name','startDate','endDate','duration','status','purchaseId','isDeleted']},
+ pendingPlans:{collection:'clientmealplans',relation:'clientId',fields:['clientId','name','startDate','endDate','duration','freezedDays','status','purchaseId','isDeleted']},
  pendingPurchases:{collection:'unifiedpayments',relation:'client',fields:'client planName durationDays durationLabel startDate endDate expectedStartDate expectedEndDate mealPlanCreated daysUsed remainingDays linkedMealPlanIds parentPaymentId status paymentStatus finalAmount amount paymentLink otherPlatformPayment razorpayOrderId razorpayPaymentId razorpayPaymentLinkId transactionId stripePaymentIntentId createdAt updatedAt'.split(' ')},
  plans:{collection:'clientmealplans',relation:'clientId',fields:['clientId','status','name','startDate','endDate','isDeleted']},
  // Directory status fields require primary-record reads; batching still avoids

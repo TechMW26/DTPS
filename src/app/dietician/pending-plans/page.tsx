@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { useSession } from 'next-auth/react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,13 +22,16 @@ import {
   Loader2,
   Search,
   RefreshCw,
+  CalendarDays,
   Filter,
   X,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
+import { formatIST, todayIST } from '@/lib/utils/ist';
+import { pendingPlanNeededDate } from '@/lib/meal-plan-pending-dates';
 import '@/components/admin/user-filters.css';
 import '@/components/clients/client-filters.css';
 import { DashboardContentSkeleton } from '@/components/ui/skeleton';
@@ -73,16 +75,17 @@ interface PendingPlan {
   reasonText: string;
   urgency: 'critical' | 'high' | 'medium';
   hasNextPhase: boolean;
+  planNeededDate?: string | null;
 }
 
 export default function PendingPlansPage() {
-  const { data: session } = useSession();
   const [pendingPlans, setPendingPlans] = useState<PendingPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [criticalCount, setCriticalCount] = useState(0);
-  const [highCount, setHighCount] = useState(0);
-  const [mediumCount, setMediumCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const pendingRequest = useRef<AbortController | null>(null);
 
   // Filter state
   const [page, setPage] = useState(1);
@@ -110,45 +113,52 @@ export default function PendingPlansPage() {
     setDietitianFilter('');
   };
 
-  // Fetch pending plans
-  const fetchPendingPlans = async () => {
-    setLoading(true);
+  // Keep the work queue current while it is open and when returning from plan editing.
+  const fetchPendingPlans = useCallback(async () => {
+    if (pendingRequest.current) return;
+    const controller = new AbortController();
+    pendingRequest.current = controller;
+    setRefreshing(true);
     try {
       const response = await fetch('/api/dashboard/pending-plans', {
-        cache: 'no-store',
+        cache: 'no-store', signal: controller.signal,
       });
-      if (response.ok) {
-        const text = await response.text();
-        if (text) {
-          const data = JSON.parse(text);
-          setPendingPlans(data.pendingPlans || []);
-          setCriticalCount(data.criticalCount || 0);
-          setHighCount(data.highCount || 0);
-          setMediumCount(data.mediumCount || 0);
-        } else {
-          setPendingPlans([]);
-          setCriticalCount(0);
-          setHighCount(0);
-          setMediumCount(0);
-        }
-      } else {
-        console.error('Failed to fetch pending plans');
-        setPendingPlans([]);
+      if (!response.ok) throw new Error('Unable to load pending plans');
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : { pendingPlans: [] };
+      if (controller.signal.aborted) return;
+      setPendingPlans(data.pendingPlans || []);
+      setLastUpdated(new Date());
+      setLoadError('');
+    } catch {
+      if (!controller.signal.aborted) {
+        setLoadError('Could not refresh pending plans. Please retry; the last successful list is still shown.');
       }
-    } catch (error) {
-      console.error('Error fetching pending plans:', error);
-      setPendingPlans([]);
-      setCriticalCount(0);
-      setHighCount(0);
-      setMediumCount(0);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+      if (pendingRequest.current === controller) pendingRequest.current = null;
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchPendingPlans();
-  }, []);
+    void fetchPendingPlans();
+    const refreshVisible = () => {
+      if (document.visibilityState === 'visible') void fetchPendingPlans();
+    };
+    const timer = window.setInterval(refreshVisible, 60_000);
+    window.addEventListener('focus', refreshVisible);
+    document.addEventListener('visibilitychange', refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshVisible);
+      document.removeEventListener('visibilitychange', refreshVisible);
+      pendingRequest.current?.abort();
+      pendingRequest.current = null;
+    };
+  }, [fetchPendingPlans]);
 
   // Fetch dietitians for filter
   useEffect(() => {
@@ -213,24 +223,18 @@ export default function PendingPlansPage() {
     // Dietitian filter
     if (dietitianFilter && plan.assignedDietitianId !== dietitianFilter) return false;
 
-    // Plan date range filter
-    if (planDateFrom) {
-      const from = new Date(planDateFrom);
-      const planStart = plan.currentPlanStartDate ? new Date(plan.currentPlanStartDate) :
-        plan.upcomingPlanStartDate ? new Date(plan.upcomingPlanStartDate) : null;
-      if (!planStart || planStart < from) return false;
-    }
-    if (planDateTo) {
-      const to = new Date(planDateTo);
-      to.setHours(23, 59, 59, 999);
-      const planEnd = plan.currentPlanEndDate ? new Date(plan.currentPlanEndDate) :
-        plan.upcomingPlanEndDate ? new Date(plan.upcomingPlanEndDate) : null;
-      if (!planEnd || planEnd > to) return false;
-    }
+    // Filter the next uncovered business date, including clients with no phase yet.
+    const neededDate = plan.planNeededDate || pendingPlanNeededDate(plan);
+    if ((planDateFrom || planDateTo) && !neededDate) return false;
+    if (planDateFrom && neededDate! < planDateFrom) return false;
+    if (planDateTo && neededDate! > planDateTo) return false;
 
     return true;
   }), [pendingPlans, searchQuery, urgencyFilter, reasonFilter, planNameFilter, remainingDaysFilter, pendingDaysFilter, dietitianFilter, planDateFrom, planDateTo]);
   useEffect(() => { setPage(1); }, [searchQuery, urgencyFilter, reasonFilter, planNameFilter, remainingDaysFilter, pendingDaysFilter, dietitianFilter, planDateFrom, planDateTo]);
+  const criticalCount = filteredPlans.filter(plan => plan.urgency === 'critical').length;
+  const highCount = filteredPlans.filter(plan => plan.urgency === 'high').length;
+  const mediumCount = filteredPlans.filter(plan => plan.urgency === 'medium').length;
   const pageCount = Math.max(1, Math.ceil(filteredPlans.length / 50));
   const currentPage = Math.min(page, pageCount);
   const visiblePlans = filteredPlans.slice((currentPage - 1) * 50, currentPage * 50);
@@ -257,19 +261,23 @@ export default function PendingPlansPage() {
           <div className="dietitian-pending-plans-header-actions flex items-center gap-3">
             <Badge className="bg-teal-100 text-teal-700 border-teal-200 px-3 py-1">
               <Users className="h-4 w-4 mr-1" />
-              {pendingPlans.length} Clients
+              {filteredPlans.length} Clients
             </Badge>
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchPendingPlans}
+              onClick={() => void fetchPendingPlans()}
+              disabled={refreshing}
               className="gap-2"
             >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Refreshing…' : 'Refresh'}
             </Button>
           </div>
         </div>
+
+        {loadError && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{lastUpdated ? loadError : 'Could not load pending plans. Select Refresh to retry.'}</div>}
+        <p className="text-xs text-gray-500">{lastUpdated ? `Updated ${formatIST(lastUpdated, 'hh:mm:ss a')} IST · Refreshes every minute and when you return to this page.` : 'Loading current pending plans…'}</p>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -353,6 +361,21 @@ export default function PendingPlansPage() {
                 </div>
             <button type="button" className="user-filter-more" aria-expanded={filtersOpen} aria-controls="pending-advanced" onClick={() => setFiltersOpen(!filtersOpen)}>More filters {activeFilterCount > 0 && <span className="user-filter-count">{activeFilterCount}</span>}<ChevronDown size={16} aria-hidden="true" /></button>
           </div>
+          <section className="pending-date-filters border-t border-gray-200 px-5 py-4" aria-labelledby="pending-dates-title">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div><h3 id="pending-dates-title" className="flex items-center gap-2 text-sm font-semibold"><CalendarDays size={16} aria-hidden="true" /> Plan needed by</h3><p className="text-xs text-gray-500 mt-1">Filter the next day without a meal plan. All dates are in IST.</p></div>
+              <div className="flex flex-wrap gap-2" aria-label="Quick date filters">
+                <Button type="button" variant="outline" size="sm" onClick={() => {setPlanDateFrom('');setPlanDateTo(format(addDays(parseISO(todayIST()), -1), 'yyyy-MM-dd'));}}>Overdue</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => {setPlanDateFrom(todayIST());setPlanDateTo(todayIST());}}>Today</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => {const today=todayIST();setPlanDateFrom(today);setPlanDateTo(format(addDays(parseISO(today), 6), 'yyyy-MM-dd'));}}>Next 7 days</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => {setPlanDateFrom('');setPlanDateTo('');}} disabled={!planDateFrom && !planDateTo}>All dates</Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+              <div className="user-filter-field"><label htmlFor="pending-needed-from">Needed from</label><Input id="pending-needed-from" type="date" className="user-filter-control" value={planDateFrom} max={planDateTo || undefined} onChange={e => setPlanDateFrom(e.target.value)} /></div>
+              <div className="user-filter-field"><label htmlFor="pending-needed-to">Needed to</label><Input id="pending-needed-to" type="date" className="user-filter-control" value={planDateTo} min={planDateFrom || undefined} onChange={e => setPlanDateTo(e.target.value)} /></div>
+            </div>
+          </section>
           <div id="pending-advanced" className="client-filter-advanced" hidden={!filtersOpen}>
             <section className="client-filter-group"><h3>Meal plan & care team</h3><div className="client-filter-plan">
                 <div className="user-filter-field">
@@ -401,15 +424,6 @@ export default function PendingPlansPage() {
                   </Select>
                 </div>
             </div></section>
-            <section className="client-filter-group"><h3>Plan dates</h3><div className="client-filter-columns">
-                <div className="user-filter-field">
-                  <label htmlFor="pending-plan-start-from">Plan Start From</label>
-                  <Input id="pending-plan-start-from" type="date" className="user-filter-control" value={planDateFrom} onChange={(e) => setPlanDateFrom(e.target.value)} />
-                </div>                <div className="user-filter-field">
-                  <label htmlFor="pending-plan-end-to">Plan End To</label>
-                  <Input id="pending-plan-end-to" type="date" className="user-filter-control" value={planDateTo} onChange={(e) => setPlanDateTo(e.target.value)} />
-                </div>
-            </div></section>
           </div>
           <div className="user-filter-summary"><p role="status">{filteredPlans.length.toLocaleString()} clients{activeFilterCount || searchQuery ? ' matching your filters' : ' requiring attention'}. Filters update automatically.</p></div>
         </section>
@@ -420,7 +434,7 @@ export default function PendingPlansPage() {
             <CardContent className="text-center py-12">
               <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-700">
-                {searchQuery || activeFilterCount > 0 ? 'No Results Found' : 'No Pending Plans Available'}
+                {searchQuery || activeFilterCount > 0 ? 'No Results Found' : loadError && !lastUpdated ? 'Pending Plans Unavailable' : 'No Pending Plans Available'}
               </h3>
               <p className="text-gray-500 mt-2">
                 {searchQuery || activeFilterCount > 0 ? 'No clients match your search or filter criteria.' : 'No pending plans available.'}
@@ -486,7 +500,7 @@ export default function PendingPlansPage() {
                                 </p>
                                 {plan.previousPlanEndDate && (
                                   <p className="text-xs text-gray-400">
-                                    Ended: {format(new Date(plan.previousPlanEndDate), 'dd MMM')}
+                                    Ended: {formatIST(new Date(plan.previousPlanEndDate), 'dd MMM')}
                                   </p>
                                 )}
                               </div>
@@ -525,21 +539,21 @@ export default function PendingPlansPage() {
                             {plan.currentPlanStartDate && plan.currentPlanEndDate ? (
                               <div className="text-xs">
                                 <p className="text-gray-600 font-medium">
-                                  {format(new Date(plan.currentPlanStartDate), 'dd MMM')}
+                                  {formatIST(new Date(plan.currentPlanStartDate), 'dd MMM')}
                                 </p>
                                 <p className="text-gray-400">to</p>
                                 <p className="text-gray-600 font-medium">
-                                  {format(new Date(plan.currentPlanEndDate), 'dd MMM yyyy')}
+                                  {formatIST(new Date(plan.currentPlanEndDate), 'dd MMM yyyy')}
                                 </p>
                               </div>
                             ) : plan.upcomingPlanStartDate && plan.upcomingPlanEndDate ? (
                               <div className="text-xs">
                                 <p className="text-blue-600 font-medium">
-                                  {format(new Date(plan.upcomingPlanStartDate), 'dd MMM')}
+                                  {formatIST(new Date(plan.upcomingPlanStartDate), 'dd MMM')}
                                 </p>
                                 <p className="text-gray-400">to</p>
                                 <p className="text-blue-600 font-medium">
-                                  {format(new Date(plan.upcomingPlanEndDate), 'dd MMM yyyy')}
+                                  {formatIST(new Date(plan.upcomingPlanEndDate), 'dd MMM yyyy')}
                                 </p>
                                 <Badge className="bg-blue-100 text-blue-700 text-xs mt-1">Upcoming</Badge>
                               </div>
@@ -552,11 +566,11 @@ export default function PendingPlansPage() {
                             {plan.expectedStartDate && plan.expectedEndDate ? (
                               <div className="text-xs">
                                 <p className="text-amber-600 font-medium">
-                                  {format(new Date(plan.expectedStartDate), 'dd MMM')}
+                                  {formatIST(new Date(plan.expectedStartDate), 'dd MMM')}
                                 </p>
                                 <p className="text-gray-400">to</p>
                                 <p className="text-amber-600 font-medium">
-                                  {format(new Date(plan.expectedEndDate), 'dd MMM yyyy')}
+                                  {formatIST(new Date(plan.expectedEndDate), 'dd MMM yyyy')}
                                 </p>
                               </div>
                             ) : (
@@ -572,7 +586,7 @@ export default function PendingPlansPage() {
                                 'bg-yellow-500 text-gray-900 border border-yellow-600'
                               }`}>
                               {plan.currentPlanRemainingDays <= 0
-                                ? '🔴 Expired'
+                                ? plan.currentPlanEndDate && plan.currentPlanRemainingDays === 0 ? 'Ends today' : 'No current plan'
                                 : plan.currentPlanRemainingDays <= 3
                                   ? `🟠 ${plan.currentPlanRemainingDays} days left`
                                   : `🟡 ${plan.currentPlanRemainingDays} days left`}
@@ -581,6 +595,7 @@ export default function PendingPlansPage() {
                           {/* Pending Meal Days */}
                           <td role="cell" data-label="Pending Meal Days" className="px-4 py-3 text-center">
                             <div>
+                              {(plan.planNeededDate || pendingPlanNeededDate(plan)) && <p className="text-xs text-gray-600 mb-1">Needed: {format(parseISO((plan.planNeededDate || pendingPlanNeededDate(plan))!), 'dd MMM yyyy')}</p>}
                               <Badge className={`${plan.pendingDaysToCreate > 14 ? 'bg-red-500 text-white' :
                                 plan.pendingDaysToCreate > 7 ? 'bg-amber-500 text-white' :
                                   'bg-teal-500 text-white'

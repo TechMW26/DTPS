@@ -5,6 +5,8 @@ import {NativeStaffClientError} from './native-staff-client';
 import {differenceInDays} from 'date-fns';
 import {canonicalizePurchaseRecords} from '@/lib/payments/canonicalize-purchases';
 import {resolveEntitlementEndDate} from '@/lib/payments/entitlement-dates';
+import {todayIST,toISTDateKey} from '@/lib/utils/ist';
+import {pendingPlanNeededDate} from '@/lib/meal-plan-pending-dates';
 import {indexedDashboardRows,hydrateDashboardClientDetails,indexedDashboardScope,indexedDashboardClients,indexedDashboardPaymentSummary,indexedDashboardPlanSummary,summarizeDashboardPayments} from './native-dashboard-indexed';
 export async function dashboardClients(db:MongoDatabase,actorId:string,kind:'dietitian'|'health_counselor'|'pending',dietitianId?:string|null){
  const actor=await nativeAppointmentActor(db,actorId),role=actor.get('role');if(role==='client'||kind==='health_counselor'&&!['admin','health_counselor'].includes(role))throw new NativeStaffClientError('Forbidden',403);
@@ -43,10 +45,13 @@ export async function dashboardRelated(db:MongoDatabase,collection:string,field:
  return rows;
 }
 export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:URLSearchParams){
- const {clients,summaryOnly,denseScope}=await dashboardClients(db,actorId,'pending',params.get('dietitianId')),clientIds=clients.map(c=>c._id);const today=new Date();today.setHours(0,0,0,0);
+ const {clients,summaryOnly,denseScope}=await dashboardClients(db,actorId,'pending',params.get('dietitianId')),clientIds=clients.map(c=>c._id);
+ // Compare business dates in IST, regardless of the server's timezone.
+ const calendarDate=(value:any)=>{const key=toISTDateKey(value);return new Date(key?key+'T00:00:00Z':NaN);};
+ const today=calendarDate(todayIST());
  const useIndexed=process.env.DATABASE_PROVIDER==='mongodb';
  const [rawPlans,purchases]=await Promise.all([
- useIndexed?indexedDashboardRows('pendingPlans',clientIds,denseScope):dashboardRelated(db,'clientmealplans','clientId',clientIds,['clientId','name','startDate','endDate','duration','status','purchaseId','isDeleted'],q=>q.where('status','in',['active','paused','completed']),10),
+ useIndexed?indexedDashboardRows('pendingPlans',clientIds,denseScope):dashboardRelated(db,'clientmealplans','clientId',clientIds,['clientId','name','startDate','endDate','duration','freezedDays','status','purchaseId','isDeleted'],q=>q.where('status','in',['active','paused','completed']),10),
  useIndexed?indexedDashboardRows('pendingPurchases',clientIds):dashboardRelated(db,'unifiedpayments','client',clientIds,'client planName durationDays durationLabel startDate endDate expectedStartDate expectedEndDate mealPlanCreated daysUsed remainingDays linkedMealPlanIds parentPaymentId status paymentStatus finalAmount amount paymentLink otherPlatformPayment razorpayOrderId razorpayPaymentId razorpayPaymentLinkId transactionId stripePaymentIntentId createdAt updatedAt'.split(' '),q=>q.where('status','in',['active','paid','completed']),10)]);
  const mealPlans=rawPlans.filter(p=>p.isDeleted!==true);purchases.sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime());
     // Group meal plans by client
@@ -76,7 +81,16 @@ export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:
       const clientId = (client as any)._id.toString();
       const clientMealPlans = mealPlansByClient[clientId] || [];
       const clientPurchases = canonicalizePurchaseRecords(
-        purchasesByClient[clientId] || [],
+        (purchasesByClient[clientId] || []).map((purchase:any)=>{
+          // Published phases are stronger evidence than a stale allocation counter.
+          // Match only this purchase's links; never charge another renewal's days.
+          const linkedIds=new Set(purchase.linkedMealPlanIds || []);
+          const createdDays=clientMealPlans.filter(plan=>plan.purchaseId===purchase._id||linkedIds.has(plan._id)).reduce((total,plan)=>{
+            const duration=Number(plan.duration)||differenceInDays(calendarDate(plan.endDate),calendarDate(plan.startDate))+1-(plan.freezedDays?.length||0);
+            return total+(Number.isFinite(duration)?Math.max(0,duration):0);
+          },0);
+          return {...purchase,daysUsed:Math.max(Number(purchase.daysUsed)||0,createdDays)};
+        }),
       ).purchases.map((purchase: any) => ({
         ...purchase,
         expectedEndDate:
@@ -98,9 +112,9 @@ export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:
         const entitlementEnd = purchase.expectedEndDate || purchase.endDate;
         if (!entitlementEnd) return true;
 
-        const endDate = new Date(entitlementEnd);
+        const endDate = calendarDate(entitlementEnd);
         if (Number.isNaN(endDate.getTime())) return true;
-        endDate.setHours(23, 59, 59, 999);
+
         return endDate >= today;
       });
 
@@ -137,31 +151,34 @@ export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:
       const totalMealPlanDays = daysUsed;
 
       // Find current running plan
-      const currentPlan = sortedMealPlans.find((plan: any) => {
-        const planStart = new Date(plan.startDate);
-        const planEnd = new Date(plan.endDate);
-        planStart.setHours(0, 0, 0, 0);
-        planEnd.setHours(23, 59, 59, 999);
+      const currentPlan = [...sortedMealPlans].sort((a,b)=>calendarDate(b.endDate).getTime()-calendarDate(a.endDate).getTime()).find((plan: any) => {
+        if (plan.status !== 'active') return false;
+        const planStart = calendarDate(plan.startDate);
+        const planEnd = calendarDate(plan.endDate);
         return today >= planStart && today <= planEnd;
       });
 
       // Find upcoming plans (starting in future)
       const upcomingPlans = sortedMealPlans.filter((plan: any) => {
-        const planStart = new Date(plan.startDate);
-        planStart.setHours(0, 0, 0, 0);
+        if (plan.status !== 'active') return false;
+        const planStart = calendarDate(plan.startDate);
         return planStart > today;
       });
 
       // Find the most recent completed/previous plan
       const previousPlans = sortedMealPlans.filter((plan: any) => {
-        const planEnd = new Date(plan.endDate);
-        planEnd.setHours(23, 59, 59, 999);
+        const planEnd = calendarDate(plan.endDate);
         return planEnd < today;
       });
       const lastPlan =
         previousPlans.length > 0
-          ? previousPlans[previousPlans.length - 1]
+          ? previousPlans.sort((a,b)=>calendarDate(a.endDate).getTime()-calendarDate(b.endDate).getTime())[previousPlans.length - 1]
           : null;
+
+      // This is a work queue, not a list of every unallocated program day.
+      // A published next phase or a current phase with >5 days resolves the work.
+      if (pendingDaysToCreate <= 0 || upcomingPlans.length > 0) continue;
+      if (currentPlan && differenceInDays(calendarDate(currentPlan.endDate),today)>5) continue;
 
       // CASE 1: Has purchase but NO meal plan created at all
       if (clientMealPlans.length === 0) {
@@ -204,8 +221,7 @@ export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:
 
       // CASE 2: Current plan ends within 5 days AND there are pending days
       if (currentPlan && pendingDaysToCreate > 0) {
-        const planEndDate = new Date(currentPlan.endDate);
-        planEndDate.setHours(0, 0, 0, 0);
+        const planEndDate = calendarDate(currentPlan.endDate);
         const daysRemaining = differenceInDays(planEndDate, today);
 
         if (daysRemaining <= 5 && daysRemaining >= 0) {
@@ -267,7 +283,7 @@ export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:
       // CASE 3: No current running plan but has pending days (gap between phases)
       if (!currentPlan && pendingDaysToCreate > 0 && lastPlan) {
         // Check if the last plan ended recently (within last 7 days) or there's a gap
-        const lastPlanEnd = new Date(lastPlan.endDate);
+        const lastPlanEnd = calendarDate(lastPlan.endDate);
         const daysSinceLastPlan = differenceInDays(today, lastPlanEnd);
 
         if (
@@ -343,7 +359,7 @@ export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:
           if (currentPlan) {
             // Has a running plan
             daysUntilNextAction = differenceInDays(
-              new Date(currentPlan.endDate),
+              calendarDate(currentPlan.endDate),
               today,
             );
             reasonText = `Current plan ends in ${daysUntilNextAction} days`;
@@ -357,7 +373,7 @@ export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:
             // Has upcoming plan but no current
             const nextPlan = upcomingPlans[0];
             daysUntilNextAction = differenceInDays(
-              new Date(nextPlan.startDate),
+              calendarDate(nextPlan.startDate),
               today,
             );
             reasonText = `Next plan starts in ${daysUntilNextAction} days, ${pendingDaysToCreate} days pending`;
@@ -382,7 +398,7 @@ export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:
             currentPlanStartDate: currentPlan?.startDate || null,
             currentPlanEndDate: currentPlan?.endDate || null,
             currentPlanRemainingDays: currentPlan
-              ? differenceInDays(new Date(currentPlan.endDate), today)
+              ? differenceInDays(calendarDate(currentPlan.endDate), today)
               : 0,
 
             // Previous plan info
@@ -431,6 +447,7 @@ export async function nativePendingPlans(db:MongoDatabase,actorId:string,params:
       });}
     }
     // Sort by urgency (critical first) and then by pending days
+    for (const plan of pendingPlans) plan.planNeededDate=pendingPlanNeededDate(plan);
     pendingPlans.sort((a, b) => {
       const urgencyOrder: Record<string, number> = {
         critical: 0,
