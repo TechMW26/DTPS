@@ -273,3 +273,37 @@ export function normalizeRecipeForDisplay(recipe: Record<string, unknown> | null
     instructions: normalizeToArray(recipe.instructions),
   };
 }
+
+/**
+ * Food-name synonyms so equivalent ingredients share one canonical term.
+ * Mirrors the pairs used by recipe de-duplication (yogurt/dahi → curd).
+ */
+export const RECIPE_FOOD_SYNONYMS: Record<string, string> = {
+  yogurt: 'curd', yoghurt: 'curd', dahi: 'curd',
+  aloo: 'potato', gobi: 'cauliflower', gobhi: 'cauliflower',
+  palak: 'spinach', saag: 'spinach', chana: 'chickpea', chole: 'chickpea',
+  rajma: 'kidney bean', bhindi: 'okra', baingan: 'eggplant', brinjal: 'eggplant',
+  jeera: 'cumin', chawal: 'rice', chapati: 'roti', chapatti: 'roti',
+  phulka: 'roti', fullka: 'roti', nan: 'naan', dhal: 'dal', daal: 'dal',
+  lentil: 'dal', panir: 'paneer', makhan: 'butter', makhanwala: 'butter',
+  makhani: 'butter', maida: 'flour', atta: 'flour',
+};
+
+/** Canonical synonym form for a single food token (e.g. yogurt → curd). */
+export function canonicalFoodToken(token: string): string {
+  const low = String(token || '').trim().toLowerCase();
+  return RECIPE_FOOD_SYNONYMS[low] || low;
+}
+
+/**
+ * Canonicalize free text word-by-word so a search for a synonym matches the
+ * stored spelling. Non-synonym words are preserved verbatim.
+ */
+export function canonicalFoodText(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map(canonicalFoodToken)
+    .join(' ');
+}

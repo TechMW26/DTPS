@@ -25,6 +25,14 @@ suite('ported recipe quality, pagination and template regressions',()=>{
   await db.collection('users').doc(user).update({status:'suspended'});
   await expect(listStaffRecipes(db,user,params)).rejects.toMatchObject({status:401});
  });
+ it('matches a synonym food term so yogurt finds recipes stored as curd',async()=>{
+  const user=await actor();
+  const saved=await saveStaffRecipe(db,user,{...recipe(id()),name:'Raita Bowl',ingredients:[{name:'Curd',quantity:1,unit:'cup'}],instructions:['Mix']});
+  const results=await listStaffRecipes(db,user,new URLSearchParams({search:'yogurt',sortBy:'relevance',limit:'50',page:'1',includeTotal:'true',includeInactive:'true'}));
+  expect(results.recipes.map(r=>r._id)).toContain(saved._id);
+  const miss=await listStaffRecipes(db,user,new URLSearchParams({search:'xylophone',limit:'50',page:'1'}));
+  expect(miss.recipes).toHaveLength(0);
+ });
  it('uses stable numeric UUID ordering across page boundaries',async()=>{
   const user=await actor(),term=id(),rows=[];
   for(const uuid of ['100','2','10','abc','12abc','002','-3',' +5']){const key=id();await db.collection('recipes').doc(key).set({...recipe(term+' '+uuid),uuid,createdBy:user,createdAt:new Date(),isActive:true});rows.push({id:key,uuid});}

@@ -20,9 +20,12 @@ import {
   ChefHat,
   Clock,
   Eye,
-  Filter
+  Filter,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface Recipe {
   _id: string;
@@ -55,30 +58,48 @@ export default function HealthCounselorRecipesPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const RECIPES_PER_PAGE = 24;
+
+  // Debounce search term to prevent excessive API calls
+  const debouncedSearchTerm = useDebounce(searchTerm, 400);
 
   // Only fetch when session is authenticated
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.id) {
-      fetchRecipes();
+      fetchRecipes(1);
     } else if (status === 'unauthenticated') {
       setLoading(false);
     }
-  }, [status, session?.user?.id, searchTerm, selectedCategory, sortBy]);
+  }, [status, session?.user?.id, debouncedSearchTerm, selectedCategory, sortBy]);
 
-  const fetchRecipes = async () => {
+  const fetchRecipes = async (pageNum = currentPage) => {
     try {
       setLoading(true);
 
       const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearchTerm) {
+        params.append('search', debouncedSearchTerm);
+        // Search results must be ordered by match quality, not recency.
+        params.append('sortBy', 'relevance');
+      } else if (sortBy) {
+        params.append('sortBy', sortBy);
+      }
       if (selectedCategory && selectedCategory !== 'all') params.append('category', selectedCategory);
-      if (sortBy) params.append('sortBy', sortBy);
+      params.append('limit', String(RECIPES_PER_PAGE));
+      params.append('page', String(pageNum));
+      params.append('includeTotal', 'true');
 
       const response = await fetch(`/api/recipes?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
         setRecipes(data.recipes || []);
         setCategories(data.categories || []);
+        const total = Number(data.pagination?.total || 0);
+        setTotalPages(Math.max(1, Number(data.pagination?.pages || 0) || Math.ceil(total / RECIPES_PER_PAGE)));
+        setCurrentPage(pageNum);
       } else {
         console.error('Failed to fetch recipes:', response.status);
         setRecipes([]);
@@ -88,6 +109,13 @@ export default function HealthCounselorRecipesPage() {
       setRecipes([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const goToPage = (pageNum: number) => {
+    if (pageNum >= 1 && pageNum <= totalPages && pageNum !== currentPage) {
+      fetchRecipes(pageNum);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -248,6 +276,35 @@ export default function HealthCounselorRecipesPage() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {!loading && totalPages > 1 && (
+          <div className="flex flex-col items-center gap-4 py-8">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Previous</span>
+              </Button>
+              <span className="px-2 text-sm text-gray-600">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                <span className="hidden sm:inline mr-1">Next</span>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         )}
       </div>
