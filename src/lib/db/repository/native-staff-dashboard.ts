@@ -483,7 +483,10 @@ async function dashboardAppointments(db:MongoDatabase,actorId:string,role:string
 }
 export async function nativeStaffStats(db:MongoDatabase,actorId:string,kind:'dietitian'|'health_counselor'){
  const {clients:assignedClients,role,summaryOnly,denseScope}=await dashboardClients(db,actorId,kind),clientIds=assignedClients.map(c=>c._id),clientMap=new Map(assignedClients.map(c=>[c._id,c]));
- const today=new Date();today.setHours(0,0,0,0);const startOfToday=today,endOfToday=new Date(today.getTime()+86400000),endOfPendingWindow=new Date(today.getTime()+4*86400000),startOfExpiredWindow=new Date(today.getTime()-3*86400000),todayMonth=today.getMonth(),todayDate=today.getDate();
+ // Business day is always India time (Vercel servers run in UTC).
+ const todayKey=todayIST(),today=new Date(`${todayKey}T00:00:00+05:30`);const startOfToday=today,endOfToday=new Date(today.getTime()+86400000),endOfPendingWindow=new Date(today.getTime()+4*86400000),startOfExpiredWindow=new Date(today.getTime()-3*86400000),todayMonthDay=todayKey.slice(5);
+ const isISTMonthDayToday=(value:any)=>{const key=toISTDateKey(value);return !!key&&key.slice(5)===todayMonthDay;};
+ const istDayNumber=(value:any)=>{const key=toISTDateKey(value);return key?Date.parse(`${key}T00:00:00Z`)/86400000:NaN;};
  const useCoveringIndexes=process.env.DATABASE_PROVIDER==='mongodb';
  // Reuse this request's verified scope density; do not bill a second population count.
  const allowDenseScan=useCoveringIndexes&&denseScope;
@@ -496,7 +499,7 @@ export async function nativeStaffStats(db:MongoDatabase,actorId:string,kind:'die
  ]);
  const visibleTasks=(taskRows?.docs||[]).map(r=>({_id:r.id,...nativeDates(r.data())}) as DocumentData).filter(t=>t.status!=='cancelled').sort((a,b)=>a.startDate-b.startDate||b.createdAt-a.createdAt).slice(0,10);
  if(summaryOnly){
-  const visible=kind==='health_counselor'?[]:assignedClients.filter(client=>[client.dateOfBirth,client.anniversary].some(value=>{const date=new Date(value);return date.getMonth()===todayMonth&&date.getDate()===todayDate;})||client.createdAt>=startOfToday&&client.createdAt<endOfToday);
+  const visible=kind==='health_counselor'?[]:assignedClients.filter(client=>[client.dateOfBirth,client.anniversary].some(isISTMonthDayToday)||client.createdAt>=startOfToday&&client.createdAt<endOfToday);
   await hydrateDashboardClientDetails(assignedClients,[...assignedClients.slice(0,10).map(c=>c._id),...visible.map(c=>c._id),...(kind==='health_counselor'?[]:[...planSummary.expiringPlans.map(p=>p.clientId),...paymentSummary.expiredPayments.map(p=>p.client),...paymentSummary.recentPayments.map(p=>p.client),...visibleTasks.map(t=>t.client)])]);
  }
  const activePlanClientIds=planSummary.activeClientIds,todaysSchedule=appt.schedule;
@@ -583,8 +586,7 @@ export async function nativeStaffStats(db:MongoDatabase,actorId:string,kind:'die
     // ─── Celebrations ─────────────────────────────────────────────────────────
     const isTodayMonthDay = (value?: Date | string | null) => {
       if (!value) return false;
-      const d = new Date(value);
-      return d.getMonth() === todayMonth && d.getDate() === todayDate;
+      return isISTMonthDayToday(value);
     };
 
     const recentClients = assignedClients
@@ -661,17 +663,13 @@ export async function nativeStaffStats(db:MongoDatabase,actorId:string,kind:'die
     // ─── Helper: calendar days remaining from today (positive = future) ───────
     // Returns 0 if endDate is today, 1 if tomorrow, -1 if yesterday, etc.
     const daysRemainingFromToday = (endDate: Date | string): number => {
-      const d = new Date(endDate);
-      d.setHours(0, 0, 0, 0);
-      return Math.ceil((d.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+      return istDayNumber(endDate) - istDayNumber(todayKey);
     };
 
     // ─── Helper: calendar days since expiry (positive = already expired) ──────
     // Returns 0 if expectedEndDate is today, 1 if yesterday, 2 if 2 days ago, etc.
     const expiredDaysFromToday = (endDate: Date | string): number => {
-      const d = new Date(endDate);
-      d.setHours(0, 0, 0, 0);
-      return Math.round((startOfToday.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+      return istDayNumber(todayKey) - istDayNumber(endDate);
     };
 
     // ─── Build response ───────────────────────────────────────────────────────
@@ -776,6 +774,7 @@ export async function nativeStaffStats(db:MongoDatabase,actorId:string,kind:'die
           hour:   'numeric',
           minute: '2-digit',
           hour12: true,
+          timeZone: 'Asia/Kolkata',
         }),
         clientName: appt.client
           ? `${appt.client.firstName} ${appt.client.lastName}`
