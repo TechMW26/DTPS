@@ -154,7 +154,6 @@ function RecipesPageContent() {
       params.append('limit', String(RECIPES_PER_PAGE));
       params.append('page', String(pageNum));
       params.append('includeTotal', 'true');
-      params.append('includeInactive', 'true');
 
       const response = await fetch(`/api/recipes?${params.toString()}`, {
         signal: abortControllerRef.current.signal
@@ -483,6 +482,9 @@ function RecipesPageContent() {
                       <div className="flex items-center gap-1 mb-1">
                         <CardTitle className="text-base line-clamp-2 font-semibold text-gray-900">{recipe.name}</CardTitle>
                       </div>
+                      {recipe.description && (
+                        <p className="text-xs text-gray-600 line-clamp-2 mb-1">{recipe.description}</p>
+                      )}
                       {recipe.uuid && (
                         <Badge variant="secondary" className="mb-1 text-xs font-mono">
                           ID: {recipe.uuid}

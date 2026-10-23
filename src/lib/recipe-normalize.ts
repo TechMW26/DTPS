@@ -289,10 +289,53 @@ export const RECIPE_FOOD_SYNONYMS: Record<string, string> = {
   makhani: 'butter', maida: 'flour', atta: 'flour',
 };
 
+/** Every stored spelling (lowercased) that canonicalizes to the same token (e.g. curd → curd, yogurt, yoghurt, dahi). */
+export const RECIPE_FOOD_SYNONYM_FORMS: Record<string, string[]> = Object.entries(RECIPE_FOOD_SYNONYMS).reduce<Record<string, string[]>>((forms, [alias, canonical]) => {
+  (forms[canonical] ||= []).push(alias);
+  return forms;
+}, {});
+
 /** Canonical synonym form for a single food token (e.g. yogurt → curd). */
 export function canonicalFoodToken(token: string): string {
   const low = String(token || '').trim().toLowerCase();
   return RECIPE_FOOD_SYNONYMS[low] || low;
+}
+
+/** All spellings a single token should match: itself plus synonyms when it canonicalizes to a known group (yogurt → curd, curd, yoghurt, dahi). */
+export function foodTokenForms(token: string): string[] {
+  const low = String(token || '').trim().toLowerCase();
+  if (!low) return [];
+  const canonical = canonicalFoodToken(low);
+  return [...new Set([low, canonical, ...(RECIPE_FOOD_SYNONYM_FORMS[canonical] || [])])];
+}
+
+/**
+ * Canonical synonym groups a multi-word search can expand to. A word like "yogurt"
+ * expands to curd/yoghurt/dahi, so "yogurt smoothie" also finds "Curd Smoothie".
+ * Multi-word groups ("kidney bean") expand as whole phrases, never word by word.
+ */
+function phraseForms(term: string): string[][] {
+  return canonicalFoodText(term)
+    .split(' ')
+    .filter(Boolean)
+    .map(token => RECIPE_FOOD_SYNONYM_FORMS[token]?.length ? [...new Set([token, ...RECIPE_FOOD_SYNONYM_FORMS[token]])] : [token]);
+}
+
+/**
+ * Does the text contain the search term, honouring food synonyms in both
+ * directions ("yogurt" matches "Ragi Curd Bowl" and "curd" matches "Ragi Yogurt Bowl")?
+ * Words must match on token boundaries: "curd" must not match "Vegetable Oats Chilla".
+ * Multi-word searches match in any order ("curd salad" finds "Curd & Cucumber Salad").
+ */
+export function matchesFoodSearch(text: string, search: string): boolean {
+  const raw = String(text || '').toLowerCase();
+  const term = String(search || '').trim().toLowerCase();
+  if (!term) return true;
+  if (raw.includes(term)) return true;
+  const groups = phraseForms(term);
+  if (!groups.length) return false;
+  const tokens = canonicalFoodText(raw).split(' ').filter(Boolean);
+  return groups.every(forms => forms.some(form => tokens.includes(form)));
 }
 
 /**
@@ -306,4 +349,49 @@ export function canonicalFoodText(value: string): string {
     .filter(Boolean)
     .map(canonicalFoodToken)
     .join(' ');
+}
+
+export interface RecipeSearchFields {
+  name?: unknown;
+  description?: unknown;
+  tags?: unknown;
+  ingredients?: unknown;
+}
+
+function ingredientNames(ingredients: unknown): string[] {
+  return (Array.isArray(ingredients) ? ingredients : [])
+    .map(item => String((item as { name?: unknown })?.name ?? item ?? ''))
+    .filter(Boolean);
+}
+
+/**
+ * Lower is more relevant. Ordering is exact name → name prefix → foods in the
+ * name → synonym match → tag → ingredient → description. Alphabetical sorting is
+ * deliberately the last tiebreaker so a real match never falls behind an unrelated
+ * recipe, and generic one-word names ("Curd") never outrank named dishes.
+ */
+export function recipeSearchRelevance(recipe: RecipeSearchFields, search: string): number {
+  const term = String(search || '').trim().toLowerCase();
+  if (!term) return 0;
+  const name = String(recipe.name || '').toLowerCase();
+  const description = String(recipe.description || '').toLowerCase();
+  const tags = normalizeToArray(recipe.tags).map(tag => tag.toLowerCase());
+  const ingredients = ingredientNames(recipe.ingredients);
+  const canonicalTerm = canonicalFoodText(term);
+  const nameTokens = name.split(/[^a-z0-9]+/).filter(Boolean);
+  const forms = foodTokenForms(term).filter(form => !form.includes(' '));
+
+  // A bare ingredient name ("Curd") describes nothing, so any title that actually names a dish outranks it.
+  const descriptive = nameTokens.length > term.split(/[^a-z0-9]+/).filter(Boolean).length;
+  if (name === term) return descriptive ? 0 : 2;
+  if (forms.some(form => nameTokens.includes(form))) return descriptive ? 1 : 2;
+  if (name.startsWith(term)) return descriptive ? 1.5 : 2;
+  if (canonicalTerm && canonicalFoodText(name).includes(canonicalTerm)) return 3;
+  if (name.includes(term)) return 4;
+  if (tags.some(tag => tag === term || matchesFoodSearch(tag, term))) return 5;
+  if (ingredients.some(ingredient => ingredient.toLowerCase() === term)) return 6;
+  if (ingredients.some(ingredient => matchesFoodSearch(ingredient, term))) return 7;
+  if (description.includes(term)) return 8;
+  if (canonicalTerm && canonicalFoodText(description).includes(canonicalTerm)) return 9;
+  return 10;
 }

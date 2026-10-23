@@ -54,7 +54,13 @@ async function main() {
     shapeCounts[shape] = (await users.where('phone', '==', shape).get()).size;
   }
 
-  const rows = [...phoneMatches.docs, ...emailMatches.docs].map(doc => {
+  const matchedDocs = [...phoneMatches.docs, ...emailMatches.docs];
+  const phoneClaims = await Promise.all(matchedDocs.map(doc => {
+    const phone = doc.get('phone');
+    return phone ? db.collection('_nativeUserKeys').doc(claimId('phone', phone)).get() : null;
+  }));
+
+  const rows = matchedDocs.map((doc, index) => {
     const data = doc.data() || {};
     return {
       id: doc.id,
@@ -71,7 +77,7 @@ async function main() {
       clientId: data.clientId ?? null,
       createdBy: data.createdBy ?? null,
       createdAt: data.createdAt ?? null,
-      hasPhoneClaim: data.phone ? (await db.collection('_nativeUserKeys').doc(claimId('phone', data.phone)).get()).exists : false,
+      hasPhoneClaim: phoneClaims[index]?.exists ?? false,
     };
   });
 

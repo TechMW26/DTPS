@@ -31,6 +31,7 @@ interface Recipe {
   _id: string;
   name: string;
   description: string;
+  uuid?: string;
   nutrition: {
     calories: number;
     protein: number;
@@ -91,6 +92,8 @@ export default function HealthCounselorRecipesPage() {
       params.append('limit', String(RECIPES_PER_PAGE));
       params.append('page', String(pageNum));
       params.append('includeTotal', 'true');
+      // Same visibility rules as the admin list so every role searches the same published set.
+      params.append('summary', 'true');
 
       const response = await fetch(`/api/recipes?${params.toString()}`);
       if (response.ok) {
@@ -212,7 +215,10 @@ export default function HealthCounselorRecipesPage() {
                   </div>
                 )}
                 <CardContent className="p-4">
-                  <h3 className="font-semibold text-lg mb-2 line-clamp-1">{recipe.name}</h3>
+                  <h3 className="font-semibold text-lg mb-1 line-clamp-1">{recipe.name}</h3>
+                  {recipe.uuid && (
+                    <span className="inline-block mb-2 text-xs font-mono text-gray-500">ID: {recipe.uuid}</span>
+                  )}
                   {recipe.description && (
                     <p className="text-gray-600 text-sm mb-3 line-clamp-2">{recipe.description}</p>
                   )}
