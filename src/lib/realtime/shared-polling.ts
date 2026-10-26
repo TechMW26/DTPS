@@ -64,9 +64,14 @@ export class SharedRealtimePolling {
 
   private delay() {
     if (this.failures) return Math.min(30_000, 5_000 * 2 ** Math.min(this.failures, 3));
-    if (Date.now() < this.fastUntil || window.location.pathname.includes('/messages')) return 1_250;
-    // Keep a delivery fallback even when the remote socket is connected.
-    return socketClient.connected ? 15_000 : 5_000;
+    // A call is being negotiated through this fallback: stay fast.
+    if (Date.now() < this.fastUntil) return 1_250;
+    // The live event stream (SSE) already delivers call signals instantly, and
+    // incoming calls also send a push notification. While it is connected, this
+    // poll is only a safety net, so a slow cadence is enough on every page.
+    if (socketClient.connected) return 30_000;
+    // Live stream is down: keep the previous fallback speeds.
+    return window.location.pathname.includes('/messages') ? 1_250 : 5_000;
   }
 
   private async poll() {

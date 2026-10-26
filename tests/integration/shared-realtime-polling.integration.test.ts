@@ -40,10 +40,23 @@ describe('shared browser realtime polling', () => {
     cleanups.push(poller.subscribe(jest.fn()));
     await jest.advanceTimersByTimeAsync(60_000);
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/realtime/status')).toHaveLength(0);
-    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/webrtc/signal')).toHaveLength(5);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/webrtc/signal')).toHaveLength(3);
     (socketClient as any).connected = false;
     await jest.advanceTimersByTimeAsync(30_000);
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/realtime/status')).toHaveLength(1);
+  });
+
+  it('keeps the messages page slow while the live stream is connected, fast when it is down', async () => {
+    (window as any).location.pathname = '/messages';
+    (socketClient as any).connected = true;
+    cleanups.push(poller.subscribe(jest.fn()));
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/webrtc/signal')).toHaveLength(3);
+    (socketClient as any).connected = false;
+    fetchMock.mockClear();
+    await jest.advanceTimersByTimeAsync(30_000);
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/webrtc/signal').length).toBeGreaterThanOrEqual(8);
   });
 
   it('delivers a signal to every consumer and accelerates active call negotiation', async () => {
