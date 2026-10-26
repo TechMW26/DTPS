@@ -21,5 +21,11 @@ suite('native signal polling delivery',()=>{
   await db.collection('users').doc(client).update({status:'inactive'});expect((await GET()).status).toBe(403);
   expect(jest.requireMock('@/lib/firebase/firebaseNotification').sendNotificationToUser).not.toHaveBeenCalled();
  });
+ it('delivers a signal exactly once when several polls arrive together',async()=>{
+  session(staff);expect((await POST(request({callId:'race-'+client,receiverId:client,type:'audio',offer:{type:'offer',sdp:'synthetic'}}))).status).toBe(200);
+  session(client);const results=await Promise.all([GET(),GET(),GET()]);expect(results.map(r=>r.status)).toEqual([200,200,200]);
+  const delivered=(await Promise.all(results.map(r=>r.json()))).flatMap(body=>body.signals);expect(delivered).toHaveLength(1);
+  expect((await (await GET()).json()).signals).toEqual([]);
+ });
  it('rejects invalid recipients and oversized payloads before persisting a call',async()=>{session(staff);expect((await POST(request({callId:'invalid',receiverId:'bad',type:'video'}))).status).toBe(400);expect((await POST(request({callId:'too-large',receiverId:client,type:'video',offer:'x'.repeat(100001)}))).status).toBe(400);expect((await db.collection('_nativeCalls').where('callerId','==',staff).get()).empty).toBe(true);});
 });

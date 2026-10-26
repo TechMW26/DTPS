@@ -187,11 +187,15 @@ async function getHandler() {
     }
 
     const db=getNativeDatabase();
-    const signals=await db.runTransaction(async tx=>{
-      const actor=await tx.get(db.collection('users').doc(session.user.id));
-      if(!actor.exists||actor.get('isDeleted')||['inactive','suspended','deleted'].includes(actor.get('status'))||!['admin','dietitian','health_counselor','client'].includes(actor.get('role')))throw new NativeMessageError('Unauthorized',403);
-      const rows=await tx.get(db.collection('realtimesignals').where('recipientId','==',session.user.id)
-        .where('deliveredAt','==',null).where('expiresAt','>',new Date()).orderBy('expiresAt','asc').limit(50));
+    // Every signed-in screen polls this, so the common "nothing new" case uses plain reads.
+    // It no longer opens a transaction that also locks the user's own record.
+    const actor=await db.collection('users').doc(session.user.id).get();
+    if(!actor.exists||actor.get('isDeleted')||['inactive','suspended','deleted'].includes(actor.get('status'))||!['admin','dietitian','health_counselor','client'].includes(actor.get('role')))throw new NativeMessageError('Unauthorized',403);
+    const pending=()=>db.collection('realtimesignals').where('recipientId','==',session.user.id)
+      .where('deliveredAt','==',null).where('expiresAt','>',new Date()).orderBy('expiresAt','asc').limit(50);
+    const signals:Array<Record<string,any>>=(await pending().get()).empty?[]:await db.runTransaction(async tx=>{
+      // Claim inside a transaction so each signal is still delivered exactly once.
+      const rows=await tx.get(pending());
       for(const row of rows.docs)tx.update(row.ref,{deliveredAt:new Date()});
       return rows.docs.map(row=>({...nativeDates(row.data()),_id:row.id}));
     });
