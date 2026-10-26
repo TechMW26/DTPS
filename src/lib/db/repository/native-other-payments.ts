@@ -54,7 +54,7 @@ export async function reviewNativeOtherPayment(db:MongoDatabase,actorId:string,i
   const now=new Date(),patch={status:parsed.data.status,reviewNotes:parsed.data.reviewNotes,reviewedBy:actorId,reviewedAt:now,updatedAt:now};
   if(parsed.data.status==='approved'){
    const linkRef=valid(data.paymentLink)?db.collection('paymentlinks').doc(data.paymentLink):null,link=linkRef?await tx.get(linkRef):null;
-   if(link&&(!link.exists||link.get('client')!==data.client||['paid','cancelled','expired'].includes(link.get('status'))||Math.round(Number(link.get('finalAmount'))*100)!==Math.round(data.amount*100)))throw new NativeCheckoutError('Payment link requires reconciliation before approval',409);
+   if(link&&(!link.exists||link.get('client')!==data.client||['paid','cancelled'].includes(link.get('status'))||Math.round(Number(link.get('finalAmount'))*100)!==Math.round(data.amount*100)))throw new NativeCheckoutError('Payment link requires reconciliation before approval',409);
    const clauses=[Filter.where('otherPlatformPayment','==',id)];if(linkRef)clauses.push(Filter.where('paymentLink','==',linkRef.id));
    const existing=await tx.get(db.collection('unifiedpayments').where(Filter.or(...clauses)).limit(2));if(existing.size>1||existing.docs.some(doc=>doc.get('client')!==data.client||doc.get('paymentStatus')==='paid'))throw new NativeCheckoutError('Payment entitlement already exists or is ambiguous',409);
    if(link?.exists&&link.get('currency')&&link.get('currency')!=='INR')throw new NativeCheckoutError('Receipt currency requires reconciliation',409);const duration=Number(link?.get('durationDays')??data.durationDays);if(!Number.isSafeInteger(duration)||duration<=0)throw new NativeCheckoutError('Plan duration requires reconciliation',409);
