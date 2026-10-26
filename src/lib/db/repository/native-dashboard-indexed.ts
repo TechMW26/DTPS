@@ -97,6 +97,12 @@ export async function indexedDashboardRows(kind:keyof typeof specs,clientIds:str
   // Non-string legacy names continue to the caller's authoritative String conversion.
   filters.$or=[{'data.name':{$not:{$type:'string'}}},...patterns.map(pattern=>({'data.name':{$regex:pattern,$options:'i'}}))];
  }
+ if(kind==='directoryPayments'&&planNameTerms.length){
+  // Search only needs purchases whose plan name can match. Non-string legacy names
+  // still go to the caller's authoritative String conversion.
+  const patterns=planNameTerms.map(term=>term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+  filters.$or=[{'data.planName':{$not:{$type:'string'}}},...patterns.map(pattern=>({'data.planName':{$regex:pattern,$options:'i'}}))];
+ }
  const batches=await dashboardBatches(ids,async batch=>{
   const rows=await db.collection<any>(spec.collection).find(rootFilter(spec.collection,{...filters,['data.'+spec.relation]:{$in:batch}}),{projection:projection(spec.fields)}).toArray();
   return rows.map(decodeRow);

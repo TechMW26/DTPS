@@ -35,6 +35,22 @@ suite('native user workflow boundaries',()=>{
   }finally{queries.mockRestore();}
  });
 
+ it('search matches client details and purchase plan names, with the same statuses as the full list',async()=>{
+  const dt=await seed('users',{role:'dietitian',status:'active'});
+  const byPlan=await seed('users',{role:'client',status:'active',firstName:'Asha',lastName:'Search',assignedDietitian:dt.id});
+  const byName=await seed('users',{role:'client',status:'active',firstName:'Keto',lastName:'Search',assignedDietitian:dt.id});
+  const other=await seed('users',{role:'client',status:'active',firstName:'Ravi',lastName:'Search',assignedDietitian:dt.id});
+  await seed('unifiedpayments',{client:byPlan.id,planName:'Keto Reset',status:'paid',paymentStatus:'paid',expectedEndDate:new Date('2099-01-01')});
+  for(const client of [byName,other])await seed('unifiedpayments',{client:client.id,planName:'Weight Loss',status:'paid',paymentStatus:'paid',expectedEndDate:new Date('2099-01-01')});
+  const full=new Map((await nativeUserClientList(db,dt.id,new URLSearchParams({limit:'100'}))).clients.map((c:any)=>[c._id,c.clientStatus]));
+  const keto=await nativeUserClientList(db,dt.id,new URLSearchParams({search:'KETO'}));
+  expect(keto.clients.map((c:any)=>c._id).sort()).toEqual([byPlan.id,byName.id].sort());
+  for(const c of keto.clients as any[])expect(c.clientStatus).toBe(full.get(c._id));
+  const ravi=await nativeUserClientList(db,dt.id,new URLSearchParams({search:'ravi'}));
+  expect(ravi.clients.map((c:any)=>c._id)).toEqual([other.id]);expect((ravi.clients[0] as any).clientStatus).toBe(full.get(other.id));
+  expect((await nativeUserClientList(db,dt.id,new URLSearchParams({search:'weight'}))).pagination.total).toBe(2);
+ });
+
  it('preserves hold status and assignment-date filtering with the narrow candidate projection',async()=>{
   const dt=await seed('users',{role:'dietitian',status:'active'});
   const own=await seed('users',{role:'client',status:'active',firstName:'Held',lastName:'Client',assignedDietitian:dt.id,createdAt:new Date('2026-10-04T06:00:00Z'),holdStatus:{isOnHold:true,reason:'Synthetic hold'}});
