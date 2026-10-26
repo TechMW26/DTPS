@@ -18,6 +18,15 @@ suite('native manual payment approval',()=>{
   refs.push(payments.docs[0].ref,db.collection('_nativeOutbox').doc('payment-paid-'+payments.docs[0].id));
   await expect(deleteNativeOtherPayment(db,actor,a._id)).rejects.toMatchObject({status:409});
  });
+  it('approves an offline receipt even after its online payment link expired',async()=>{
+  const actor=id(),client=id(),link=id();await add('users',actor,{role:'admin',status:'active'});await add('users',client,{role:'client',status:'active'});
+  await add('paymentlinks',link,{client,status:'expired',finalAmount:2500,amount:3000,planName:'Weight Loss (Extension)',durationDays:30});
+  const payment=await createNativeOtherPayment(db,actor,{clientId:client,platform:'upi',transactionId:id(),amount:2500,paymentLinkId:link,durationDays:30});refs.push(db.collection('otherplatformpayments').doc(payment._id));
+  await expect(reviewNativeOtherPayment(db,actor,payment._id,{status:'approved'})).resolves.toMatchObject({status:'approved'});
+  expect((await db.collection('paymentlinks').doc(link).get()).get('status')).toBe('paid');
+  const granted=await db.collection('unifiedpayments').where('otherPlatformPayment','==',payment._id).get();expect(granted.size).toBe(1);expect(granted.docs[0].data()).toMatchObject({paymentStatus:'paid',durationDays:30});
+  refs.push(granted.docs[0].ref,db.collection('_nativeOutbox').doc('payment-paid-'+granted.docs[0].id));
+ });
  it('rejects tampered link price before granting any allocation',async()=>{
   const actor=id(),client=id(),link=id();await add('users',actor,{role:'admin',status:'active'});await add('users',client,{role:'client',status:'active'});await add('paymentlinks',link,{client,status:'pending',finalAmount:15000,durationDays:90});
   await expect(createNativeOtherPayment(db,actor,{clientId:client,platform:'upi',transactionId:id(),amount:1,paymentLinkId:link,durationDays:90})).rejects.toMatchObject({status:409});
