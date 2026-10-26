@@ -45,10 +45,13 @@ export async function nativeUserClientList(db:MongoDatabase,actorId:string,p:URL
   if(planName||search||duration||planStatus||shared){const ids=rows.map(d=>d._id);
    const nameOnly=!!(planName||search)&&!duration&&!planStatus&&!shared;
    const nameTerms=nameOnly?[...new Set([planName,search].filter(Boolean))]:[];
+   // Without a status filter, purchases are only needed for plan-name matching, so load
+   // just the ones whose name can match instead of every purchase of every candidate.
+   const paymentTerms=[...new Set([planName,search].filter(Boolean))],narrowPayments=paymentTerms.length>0&&!status&&process.env.DATABASE_PROVIDER==='mongodb';
    const [plans,payments]=await Promise.all([
     related(db,'clientmealplans','clientId',ids,['clientId','name','status','startDate','endDate','isDeleted'],undefined,undefined,nameTerms),
-    planName||search?related(db,'unifiedpayments','client',ids,['client','planName','status','paymentStatus','expectedEndDate','endDate']):Promise.resolve([]),
-   ]);if(!nameOnly)filteredPlans=plans;if(planName||search)loadedPayments=payments;
+    !paymentTerms.length?Promise.resolve([]):narrowPayments?indexedDashboardRows('directoryPayments',ids,false,true,paymentTerms):related(db,'unifiedpayments','client',ids,['client','planName','status','paymentStatus','expectedEndDate','endDate']),
+   ]);if(!nameOnly)filteredPlans=plans;if(paymentTerms.length&&!narrowPayments)loadedPayments=payments;
    const byClient=new Map<string,DocumentData[]>(),paymentNames=new Map<string,string[]>();
    for(const plan of plans)if(!plan.isDeleted){const group=byClient.get(plan.clientId)||[];group.push(plan);byClient.set(plan.clientId,group);}
    for(const payment of payments){const names=paymentNames.get(payment.client)||[];names.push(String(payment.planName||'').toLowerCase());paymentNames.set(payment.client,names);}
