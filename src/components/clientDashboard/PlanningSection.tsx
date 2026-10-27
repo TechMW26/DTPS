@@ -91,7 +91,7 @@ import {
   checkPhaseStartPolicy,
   getRequiredNextPhaseStart,
 } from "@/lib/meal-plan-phase-continuity";
-import { toISTDateKey } from "@/lib/utils/ist";
+import { toISTDateKey, todayIST } from "@/lib/utils/ist";
 import {
   readApiError,
   resilientFetch,
@@ -306,6 +306,14 @@ const isOnOrAfterToday = (value: string | Date): boolean => {
   today.setHours(0, 0, 0, 0);
   return toLocalDayStart(value).getTime() >= today.getTime();
 };
+
+// A plan's name can change while it is a draft, and after publishing until its start date
+// (India time). The server applies the same rule.
+function canRenamePlan(plan: any): boolean {
+  if (!plan || plan.status === "draft") return true;
+  const start = toISTDateKey(plan.startDate);
+  return ["active", "paused"].includes(plan.status) && !!start && start > todayIST();
+}
 
 export default function PlanningSection({
   client,
@@ -2334,7 +2342,7 @@ export default function PlanningSection({
         },
       };
 
-      if (editingPlan.status === "draft") {
+      if (canRenamePlan(editingPlan)) {
         payload.name = planTitle;
       }
       if (timelineChanged) {
@@ -5090,11 +5098,12 @@ export default function PlanningSection({
               {/* Plan Title */}
               <div>
                 <Label className="text-sm font-medium mb-2 block">
-                  Plan Title <span className="text-red-500">*</span>
+                  Plan Title <span className="text-red-500">*</span>{!canRenamePlan(editingPlan) && (<span className="ml-2 text-xs font-normal text-gray-500">(locked once the plan has started)</span>)}
                 </Label>
                 <Input
                   value={planTitle}
                   onChange={(e) => setPlanTitle(e.target.value)}
+                  disabled={!canRenamePlan(editingPlan)}
                   placeholder="e.g., Weight Loss Plan for January"
                   className="max-w-xl"
                 />
