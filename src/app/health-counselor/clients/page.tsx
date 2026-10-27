@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -314,26 +314,37 @@ export default function HealthCounselorClientsPage() {
     // While loading session, keep loading state true
   }, [status, session?.user?.id, currentPage, pageSize, debouncedSearch, viewAs]);
 
+  // Only the latest search/page request may update the list; older ones are cancelled.
+  const clientRequest = useRef<AbortController | null>(null);
+  const tagsLoaded = useRef(false);
   const fetchMyClients = async (page = 1, limit = 50, search = '') => {
+    clientRequest.current?.abort();
+    const controller = new AbortController();
+    clientRequest.current = controller;
     try {
       setLoading(true);
       // Fetch clients with pagination and server-side search
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search.trim()) params.set('search', search.trim());
       if (viewAs) params.set('viewAs', viewAs);
-      const response = await fetch(`/api/users/clients?${params.toString()}`);
+      const response = await fetch(`/api/users/clients?${params.toString()}`, { signal: controller.signal });
       if (response.ok) {
         const data = await response.json();
+        if (controller.signal.aborted) return;
         setClients(data.clients || []);
         setTotalClients(data.pagination?.total || 0);
         setTotalPages(data.pagination?.pages || 1);
-        // Also fetch available tags
-        fetchAvailableTags();
+        // Tags rarely change: load them once, not on every search keystroke.
+        if (!tagsLoaded.current) {
+          tagsLoaded.current = true;
+          fetchAvailableTags();
+        }
       }
     } catch (error) {
+      if (controller.signal.aborted) return;
       console.error('Error fetching clients:', error);
     } finally {
-      setLoading(false);
+      if (clientRequest.current === controller) setLoading(false);
     }
   };
 
@@ -592,13 +603,13 @@ export default function HealthCounselorClientsPage() {
         {/* Table */}
         <Card data-table-shell="true">
           <CardContent className="p-0">
-            {loading ? (
+            {loading && clients.length === 0 ? (
               <div className="flex items-center justify-center h-64">
                 <LoadingSpinner />
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                <div className={`overflow-x-auto transition-opacity${loading ? ' opacity-60' : ''}`}>
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-gray-50">
