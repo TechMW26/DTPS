@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Search, Send, CheckCheck, Loader2, Users, ChevronRight, Check } from 'lucide-react';
 import { ListSkeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,10 @@ interface BulkMessageModalProps {
 }
 
 const MAX_BULK_RECIPIENTS = 500;
+// Small batches keep every request far inside the server time limit.
+const SEND_BATCH_SIZE = 25;
+
+type BulkResults = { sent: number; failed: number; skipped: number; remaining?: string[] };
 
 export default function BulkMessageModal({ isOpen, onClose, currentUserId }: BulkMessageModalProps) {
   const [step, setStep] = useState<'select' | 'compose' | 'result'>('select');
@@ -32,7 +36,11 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [results, setResults] = useState<{ sent: number; failed: number; skipped: number } | null>(null);
+  const [results, setResults] = useState<BulkResults | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  // One key per broadcast. Retrying a batch with the same key never sends a message twice.
+  const broadcastKey = useRef('');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
@@ -43,11 +51,14 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
       setSelectedUsers([]);
       setMessage('');
       setResults(null);
+      setProgress({ done: 0, total: 0 });
+      broadcastKey.current = `bulk-${crypto.randomUUID()}`;
     }
   }, [isOpen]);
 
   const fetchUsers = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       // For bulk messages, only fetch clients (forBulkMessage=true)
       const response = await fetch('/api/users/available-for-chat?forBulkMessage=true&limit=500');
@@ -55,9 +66,12 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
         const data = await response.json();
         // All users returned should be clients only (server-side filtered)
         setUsers((data.users || []).filter((u: User) => u._id !== currentUserId));
+      } else {
+        setLoadError('Could not load your clients. Please close and open Broadcast again.');
       }
     } catch (error) {
       console.error('Error fetching users:', error);
+      setLoadError('Could not load your clients. Please check your internet and try again.');
     } finally {
       setLoading(false);
     }
@@ -90,41 +104,64 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
     }
 
     setSending(true);
+    const totals: BulkResults = { sent: 0, failed: 0, skipped: 0 };
+    const queue = [...selectedUsers];
+    setProgress({ done: 0, total: queue.length });
     try {
-      const response = await fetch('/api/messages/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipientIds: selectedUsers,
-          content: message.trim(),
-          type: 'text'
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setResults(data.results);
-        setStep('result');
-      } else {
-        const errData = await response.json();
-        const detailMessage = Array.isArray(errData?.details) && errData.details.length > 0
-          ? (errData.details[0]?.message || errData.details[0]?.path?.join('.'))
-          : '';
-        const errorText = detailMessage
-          ? `${errData.error || 'Failed to send bulk message'}: ${detailMessage}`
-          : (errData.error || 'Failed to send bulk message');
-        alert(errorText);
+      while (queue.length > 0) {
+        const batch = queue.splice(0, SEND_BATCH_SIZE);
+        let data: { results?: BulkResults } | null = null;
+        // Network drops and server errors are retried with the same key, so nobody gets it twice.
+        for (let attempt = 0; attempt < 3 && !data; attempt++) {
+          try {
+            const response = await fetch('/api/messages/bulk', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-idempotency-key': broadcastKey.current },
+              body: JSON.stringify({ recipientIds: batch, content: message.trim(), type: 'text' })
+            });
+            if (response.ok) {
+              data = await response.json();
+            } else if (response.status < 500) {
+              const errData = await response.json().catch(() => ({}));
+              const detailMessage = Array.isArray(errData?.details) && errData.details.length > 0
+                ? (errData.details[0]?.message || errData.details[0]?.path?.join('.'))
+                : '';
+              throw new Error(detailMessage
+                ? `${errData.error || 'Failed to send bulk message'}: ${detailMessage}`
+                : (errData.error || 'Failed to send bulk message'));
+            }
+          } catch (error) {
+            if (error instanceof Error && error.name !== 'TypeError') throw error;
+          }
+          if (!data && attempt < 2) await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
+        }
+        if (!data?.results) {
+          // This batch could not be confirmed; count it so the summary never overstates delivery.
+          totals.failed += batch.length;
+        } else {
+          totals.sent += data.results.sent || 0;
+          totals.failed += data.results.failed || 0;
+          totals.skipped += data.results.skipped || 0;
+          if (data.results.remaining?.length) queue.unshift(...data.results.remaining);
+        }
+        setProgress({ done: selectedUsers.length - queue.length, total: selectedUsers.length });
       }
+      setResults(totals);
+      setStep('result');
     } catch (error) {
       console.error('Error sending bulk message:', error);
-      alert('Failed to send bulk message');
+      if (totals.sent > 0) {
+        setResults({ ...totals, failed: totals.failed + selectedUsers.length - totals.sent - totals.failed - totals.skipped });
+        setStep('result');
+      }
+      alert(error instanceof Error ? error.message : 'Failed to send bulk message');
     } finally {
       setSending(false);
     }
   };
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = `${user.firstName} ${user.lastName} ${user.email || ''}`
+    const matchesSearch = `${user.firstName || ''} ${user.lastName || ''} ${user.email || ''}`
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
 
@@ -146,7 +183,7 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
               {step === 'select' ? 'Select Recipients' : step === 'compose' ? 'Compose Message' : 'Message Sent'}
             </h2>
           </div>
-          <button onClick={onClose} className="hover:bg-green-700 rounded-full p-1">
+          <button onClick={onClose} disabled={sending} className="hover:bg-green-700 rounded-full p-1 disabled:opacity-50">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -241,6 +278,8 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
             <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <ListSkeleton rows={6} />
+              ) : loadError ? (
+                <p className="text-center text-red-600 py-8 px-4">{loadError}</p>
               ) : filteredUsers.length === 0 ? (
                 <p className="text-center text-gray-500 py-8">No users found</p>
               ) : (
@@ -331,7 +370,7 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
             </div>
 
             <div className="p-3 border-t flex gap-2">
-              <Button variant="outline" onClick={() => setStep('select')} className="flex-1">
+              <Button variant="outline" onClick={() => setStep('select')} disabled={sending} className="flex-1">
                 Back
               </Button>
               <Button
@@ -342,7 +381,7 @@ export default function BulkMessageModal({ isOpen, onClose, currentUserId }: Bul
                 {sending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Sending...
+                    Sending {progress.done}/{progress.total}...
                   </>
                 ) : (
                   <>
