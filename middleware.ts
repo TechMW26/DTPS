@@ -20,6 +20,7 @@ const onboardingExemptRoutes = [
   '/api/client/onboarding',
   '/api/auth', // Auth routes must be exempt
   '/api/internal/meal-engagement',
+  '/api/internal/feedback-confirm',
 ];
 
 // Routes exempt from maintenance mode (always accessible)
@@ -30,6 +31,7 @@ const maintenanceExemptRoutes = [
   '/api/auth',
   '/api/media/resolve',
   '/api/internal/meal-engagement',
+  '/api/internal/feedback-confirm',
   '/api/audio-proxy',
   '/auth',
   '/_next',
@@ -262,6 +264,7 @@ export default withAuth(
           '/api/internal/meal-engagement', // Authenticated by CRON_SECRET in the route
           '/api/internal/notification-outbox', // Authenticated by CRON_SECRET in the route
           '/api/internal/realtime-cleanup', // Authenticated by CRON_SECRET in the route
+          '/api/internal/feedback-confirm', // Authenticated by FEEDBACK_CONFIRM_SECRET in the route
           '/api/user/forget-password',
           '/api/user/reset-password',
           '/client-login',
