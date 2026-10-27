@@ -62,7 +62,9 @@ test('runtime read cache expires and never retains failed checksums',async()=>{
  const ref=await store.store(bytes);await store.read(ref);
  const originalNow=Date.now;
  try{
-  const future=originalNow()+31000;Date.now=()=>future;
+  const soon=originalNow()+5*60_000;Date.now=()=>soon;
+  assert.deepEqual(await store.read(ref),bytes);assert.equal(reads.length,2);
+  const future=originalNow()+10*60_000+1000;Date.now=()=>future;
   files.set(ref.pathname,Buffer.from('bad'));
   await assert.rejects(store.read(ref),/checksum/);
   files.set(ref.pathname,bytes);assert.deepEqual(await store.read(ref),bytes);
