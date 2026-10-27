@@ -37,12 +37,20 @@ export async function nativeDirectoryStatuses(db:MongoDatabase,rows:DocumentData
  return rows.map(d=>d.role==='client'?{...d,clientStatus:computeClientStatusFromDocs(result.get(d._id)||[],!!d.holdStatus?.isOnHold)}:d);
 }
 /** Filter projections contain no passwords, tokens, documents or medical histories. Full profiles are never scanned. */
+// The "total / assigned / unassigned" cards read every client. They are only counts, so one
+// result is shared for 20 seconds instead of reading ~11k clients on every list, search or page.
+let summaryCache:{db:object;expires:number;value:Promise<{total:number;assigned:number}>}|undefined;
+function adminClientSummary(db:MongoDatabase){
+ const now=Date.now();if(summaryCache&&summaryCache.db===db&&summaryCache.expires>now)return summaryCache.value;
+ const value=db.collection('users').where('role','==','client').select('assignedDietitian','assignedDietitians').get().then(all=>({total:all.size,assigned:all.docs.reduce((n,d)=>n+Number(assigned(d.data())),0)}));
+ summaryCache={db,expires:now+20_000,value};value.catch(()=>{if(summaryCache?.value===value)summaryCache=undefined;});return value;
+}
 export async function listNativeAdminClients(db:MongoDatabase,params:URLSearchParams){
  const page=integer(params.get('page'),1,100000),limit=integer(params.get('limit'),20,100),search=(params.get('search')||'').trim().toLowerCase(),status=params.get('status')||'',assignment=params.get('assigned')||'',onboarding=params.get('onboarding')||'';
  const from=dateBoundary(params.get('dateFrom')),to=dateBoundary(params.get('dateTo'),true);if(from&&to&&from>to)throw new NativeDirectoryError('Start date must not exceed end date');
  const dt=params.get('dietitianId'),hc=params.get('healthCounselorId');for(const id of [dt,hc])if(id&&!/^[a-f0-9]{24}$/i.test(id))throw new NativeDirectoryError('Invalid staff ID');
  let query:MongoTypes.Query=db.collection('users').where('role','==','client');if(from)query=query.where('createdAt','>=',from);if(to)query=query.where('createdAt','<=',to);if(dt)query=query.where('assignedDietitian','==',dt);if(hc)query=query.where('assignedHealthCounselor','==',hc);if(onboarding==='done')query=query.where('onboardingCompleted','==',true);
- const all=await db.collection('users').where('role','==','client').select('assignedDietitian','assignedDietitians').get();const assignedCount=all.docs.reduce((n,d)=>n+Number(assigned(d.data())),0);
+ const summary=await adminClientSummary(db);
  let ids:string[],total:number;let pageProfiles:DocumentData[]|undefined;let filteredStatuses:Map<string,unknown>|undefined;
  if(!search&&!status&&!assignment&&onboarding!=='pending'){
   const [count,docs]=await Promise.all([query.count().get(),query.orderBy('createdAt','desc').offset((page-1)*limit).limit(limit).select(...directoryFields).get()]);total=count.data().count;ids=docs.docs.map(d=>d.id);pageProfiles=docs.docs.map(d=>nativeDirectoryProfile(d.id,d.data()));
@@ -55,5 +63,5 @@ export async function listNativeAdminClients(db:MongoDatabase,params:URLSearchPa
  const docs=!pageProfiles&&ids.length?await db.getAll(...ids.map(id=>db.collection('users').doc(id)),{fieldMask:[...directoryFields]}):[];
  const profiles=pageProfiles||docs.filter(d=>d.exists).map(d=>nativeDirectoryProfile(d.id,d.data()!));
  const clients=await populateNativeDirectory(db,filteredStatuses?profiles.map(d=>({...d,clientStatus:filteredStatuses!.get(d._id)})):await nativeDirectoryStatuses(db,profiles));
- return {clients,stats:{total:all.size,assigned:assignedCount,unassigned:all.size-assignedCount},pagination:{page,limit,total,pages:Math.ceil(total/limit),hasMore:page*limit<total}};
+ return {clients,stats:{total:summary.total,assigned:summary.assigned,unassigned:summary.total-summary.assigned},pagination:{page,limit,total,pages:Math.ceil(total/limit),hasMore:page*limit<total}};
 }
