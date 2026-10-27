@@ -19,6 +19,7 @@ import {
   LogOut,
   BookOpen,
   Package,
+  Star,
   Bell,
   Loader2,
   HelpCircle,
@@ -74,6 +75,7 @@ export default function UserSidebar({
         },
         { href: "/user/billing", label: "Billing", icon: CreditCard },
         { href: "/user/profile", label: "Profile", icon: User },
+        { href: "/user/feedback", label: "Feedback", icon: Star },
         { href: "/user/settings", label: "Settings", icon: Settings },
         {
           href: "/user/settings/help-center",

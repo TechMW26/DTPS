@@ -61,6 +61,9 @@ FIREBASE_PROJECT_ID=...
 FIREBASE_CLIENT_EMAIL=...
 FIREBASE_PRIVATE_KEY=...
 AISENSY_API_KEY=... # WhatsApp fallback only
+FEEDBACK_CONFIRM_SECRET=... # shared secret for the Google Apps Script feedback webhook
+FEEDBACK_TOKEN_SECRET=... # optional; signs feedback form tokens (falls back to NEXTAUTH_SECRET)
+DTPS_FEEDBACK_TOKEN_ENTRY_ID=... # Google Forms entry ID for the pretoken short-answer question
 ```
 
 Firebase Authentication must have the Phone provider enabled, `dtps.tech` and
@@ -68,6 +71,88 @@ Firebase Authentication must have the Phone provider enabled, `dtps.tech` and
 uses Firebase SMS first, verifies the Firebase ID token on the server, and uses
 the existing AISensy WhatsApp OTP only for eligible Firebase service failures.
 Realtime Database is not involved in SMS delivery.
+
+## Client feedback (Google Forms)
+
+Client feedback is collected through two Google Forms rather than an in-app form.
+Eligibility is evaluated server-side in `src/lib/feedback/eligibility.ts` and exposed
+at `GET /api/user/feedback/eligibility`.
+
+| Stage | Condition | Action |
+|---|---|---|
+| `waiting_initial` | `< 10 × 24h` since `users.createdAt` | Show remaining time |
+| `eligible_initial` | `>= 10 × 24h`, no first submission | Open Form 1 (once per account lifetime) |
+| `eligible_recurring` | Form 1 recorded, never submitted Form 2 or cooldown elapsed | Open Form 2 |
+| `cooldown` | `< 10 × 24h` since the last Form 2 submission | Show remaining time |
+
+### Why the form URL is generated on the server
+
+Clicking the form never marks feedback as submitted. Eligibility advances only when a
+verified response arrives. The form URL carries a signed, 24-hour token
+(`src/lib/feedback/token.ts`) naming the DTPS user. The token is HMAC-signed with
+`FEEDBACK_TOKEN_SECRET` (falling back to `NEXTAUTH_SECRET`), so a client cannot forge
+another user's ID. A prefilled user ID alone is never treated as identity.
+
+Submissions are written to the `user_feedback_submissions` collection, keyed by a
+fingerprint of the token so the same response cannot be credited twice.
+
+### Required manual Google setup
+
+The DTPS server cannot observe Google Forms directly, so each form needs a bound Apps
+Script that reports confirmed responses. Nothing works until this is configured.
+
+1. **Add the token question to both forms.** In each form open *⋮ → Get pre-filled
+   link*, or add a **Short answer** question named `dtps_feedback_token`. Note the
+   question's entry ID from the pre-filled URL (`entry.<ID>`). Set the same ID in
+   `DTPS_FEEDBACK_TOKEN_ENTRY_ID`. Make the question **required** so no response
+   arrives unsigned.
+2. **Link both forms to Google Sheets.** In each form open *Responses → Link to
+   Sheets → Create*. Use **one sheet per form** so the form type is unambiguous.
+3. **Create the Apps Script.** In each linked Sheet open *Extensions → Apps Script*,
+   then use the script below. Set the other form's URL in `DTPS_ENDPOINT` only after
+   deployment. Store the endpoint in *Script properties* rather than in source.
+4. **Install the trigger.** In the Apps Script editor run `installTrigger()` once and
+   approve the authorization prompt. This registers an `onFormSubmit` installable
+   trigger.
+5. **Set server configuration.** Add `FEEDBACK_CONFIRM_SECRET` (a long random value)
+   to the Vercel environment, and the same value as the `DTPS_SECRET` script property.
+
+```javascript
+// Google Apps Script — bind to the Sheet linked from ONE form.
+const DTPS_ENDPOINT = 'https://dtps.tech/api/internal/feedback-confirm';
+
+function installTrigger() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet();
+  ScriptApp.getProjectTriggers().forEach((t) => {
+    if (t.getHandlerFunction() === 'onFeedbackSubmit') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('onFeedbackSubmit').forSpreadsheet(sheet).onFormSubmit().create();
+}
+
+function onFeedbackSubmit(event) {
+  const values = event.namedValues || {};
+  const token = (values['dtps_feedback_token'] || [])
+    .map((v) => String(v).trim())
+    .filter((v) => v.length > 0)[0];
+  if (!token) return; // Unsigned response: nothing to verify against.
+
+  const email = (values['Email address'] || values['Email'] || [])[0] || undefined;
+  const date = (values['Timestamp'] || [])[0];
+
+  UrlFetchApp.fetch(DTPS_ENDPOINT, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + PropertiesService.getScriptProperties().getProperty('DTPS_SECRET') },
+    payload: JSON.stringify({ token: token, email: email, submittedAt: date }),
+    muteHttpExceptions: true,
+  });
+}
+```
+
+The endpoint rejects requests without the shared secret, rejects tokens that fail
+signature verification or have expired, and returns `duplicate` when the same response
+is delivered twice. A form must be opened and submitted **within the 24-hour token
+window**; otherwise the client must revisit *Feedback* to obtain a fresh link.
 
 ## Local acceptance and deployment
 
