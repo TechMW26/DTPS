@@ -2,14 +2,16 @@ import { createHash } from 'node:crypto';
 import * as vercelBlob from '@vercel/blob';
 
 // Runtime-only verified content cache; never cache access decisions or expose private bytes publicly.
-const READ_CACHE_BYTES=32*1024*1024,READ_CACHE_ITEM_BYTES=8*1024*1024,READ_CACHE_TTL=30_000;
+// Reads are keyed by the content hash and checked against it, so a cached copy can never be
+// stale: changed content always gets a new hash. Memory stays capped at READ_CACHE_BYTES.
+const READ_CACHE_BYTES=32*1024*1024,READ_CACHE_ITEM_BYTES=8*1024*1024,READ_CACHE_TTL=10*60_000,READ_CACHE_ITEMS=256;
 const verifiedReads=new Map(),pendingReads=new Map(),sdkIds=new WeakMap();
 let retainedBytes=0,nextSdkId=0;
 function removeCached(key){const entry=verifiedReads.get(key);if(entry){retainedBytes-=entry.bytes.length;verifiedReads.delete(key);}}
 function retain(key,bytes){
   for(const [existing,entry] of verifiedReads)if(entry.expiresAt<=Date.now())removeCached(existing);
   removeCached(key);
-  while(verifiedReads.size>=64||retainedBytes+bytes.length>READ_CACHE_BYTES)removeCached(verifiedReads.keys().next().value);
+  while(verifiedReads.size>=READ_CACHE_ITEMS||retainedBytes+bytes.length>READ_CACHE_BYTES)removeCached(verifiedReads.keys().next().value);
   verifiedReads.set(key,{bytes,expiresAt:Date.now()+READ_CACHE_TTL});retainedBytes+=bytes.length;
 }
 
