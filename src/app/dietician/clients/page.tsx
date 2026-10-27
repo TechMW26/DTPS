@@ -570,11 +570,12 @@ export default function DieticianClientsPage() {
         {/* Table */}
         <Card data-table-shell="true">
           <CardContent className="p-0">
-            {loading ? (
+            {loading && clients.length === 0 ? (
               <TableSkeleton rows={9} columns={7} />
             ) : (
               <>
-                <div className="dietitian-clients-table-wrap overflow-x-auto">
+                {/* While a new search/page loads, keep the current list visible (dimmed) instead of flashing a skeleton. */}
+                <div className={`dietitian-clients-table-wrap overflow-x-auto transition-opacity${loading ? ' opacity-60' : ''}`} aria-busy={loading}>
                   <Table className="dietitian-clients-table" aria-label="Client directory">
                     <caption className="sr-only">Client contact details, program dates and assigned care team. Scroll horizontally for all columns; profile actions stay visible.</caption>
                     <TableHeader>
