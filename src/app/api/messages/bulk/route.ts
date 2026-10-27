@@ -7,6 +7,7 @@ import {getNativeDatabase} from '@/lib/db/database';
 import {sendNativeClientMessage,assertNativeMessagePeer,NativeMessageError} from '@/lib/db/repository/native-messages';
 import {socketManager} from '@/lib/realtime/socket-manager';
 import {notifyMessageToRecipient} from '@/lib/notifications/staffPushService';
+const SEND_BUDGET_MS=20_000;
 export async function POST(request:NextRequest){
  const session=await getServerSession(authOptions);if(!session?.user?.id)return nativeResponseJson({error:'Unauthorized'},{status:401});
  if(!['admin','dietitian','health_counselor'].includes(session.user.role))return nativeResponseJson({error:'Bulk messaging is only available for staff'},{status:403});
@@ -15,19 +16,25 @@ export async function POST(request:NextRequest){
   if(!ids.length||ids.length>500||ids.some(id=>typeof id!=='string'||!/^[a-f0-9]{24}$/.test(id)))throw new NativeMessageError('Select between 1 and 500 recipients',400);
   const db=getNativeDatabase(),key=request.headers.get('x-idempotency-key')||randomUUID();
   if(!/^[a-zA-Z0-9._:-]{8,90}$/.test(key))throw new NativeMessageError('Invalid operation key',400);
-  const results={totalRecipients:ids.length,sent:0,failed:0,skipped:0};
-  for(let offset=0;offset<ids.length;offset+=10)await Promise.all(ids.slice(offset,offset+10).map(async recipientId=>{
+  const results={totalRecipients:ids.length,sent:0,failed:0,skipped:0},remaining:string[]=[],started=Date.now();
+  // One recipient at a time: every send locks the sender's profile inside its transaction, so
+  // parallel sends fought over that lock, retried, and pushed big lists past the 30s limit,
+  // which cut the broadcast off halfway. If time runs short the rest is returned as
+  // "remaining" so the caller can send it in the next request (same key, so no duplicates).
+  for(const recipientId of ids){
+   if(Date.now()-started>SEND_BUDGET_MS){remaining.push(recipientId);continue;}
    try{
     const {recipient}=await assertNativeMessagePeer(db,session.user.id,recipientId);
-    if(recipient.role!=='client'){results.skipped++;return;}
+    if(recipient.role!=='client'){results.skipped++;continue;}
     const result=await sendNativeClientMessage(db,session.user.id,{...body,recipientId},`${key}:${recipientId}`,true);
     if(result.created){
-     await socketManager.sendToUser(recipientId,'new_message',{message:result.message,conversationWith:session.user.id,timestamp:Date.now()});
+     // The live-update event is kept alive by after() inside sendToUser, so the next send need not wait for it.
+     void socketManager.sendToUser(recipientId,'new_message',{message:result.message,conversationWith:session.user.id,timestamp:Date.now()});
      if(process.env.NODE_ENV==='production')after(()=>notifyMessageToRecipient({recipientId,recipientRole:'client',senderName:`${session.user.firstName||''} ${session.user.lastName||''}`.trim(),senderRole:session.user.role,messagePreview:result.message.content,messageId:result.message._id,conversationWithUserId:session.user.id,clientId:recipientId}));
     }
     results.sent++;
    }catch(e){if(e instanceof NativeMessageError&&e.status===403)results.skipped++;else results.failed++;}
-  }));
-  return nativeResponseJson({success:results.failed===0,results},{status:201});
+  }
+  return nativeResponseJson({success:results.failed===0&&remaining.length===0,results:{...results,remaining}},{status:201});
  }catch(e){return nativeResponseJson({error:e instanceof NativeMessageError?e.message:'Bulk messaging failed'},{status:e instanceof NativeMessageError?e.status:503});}
 }
