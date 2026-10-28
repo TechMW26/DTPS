@@ -718,6 +718,11 @@ extension MainViewController: WKScriptMessageHandler {
             presentCamera()
         case "openGallery":
             presentPhotoPicker()
+        case "openExternal":
+            if let raw = body["url"] as? String, let url = URL(string: raw),
+               let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" {
+                UIApplication.shared.open(url)
+            }
         default:
             print("[DTPS] Unknown native action: \(action)")
         }
