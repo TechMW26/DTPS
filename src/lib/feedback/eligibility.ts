@@ -1,9 +1,8 @@
 import type {MongoDatabase, DocumentData} from '@/lib/db/mongo-types';
 import {createFeedbackToken, feedbackTokenFingerprint, type FeedbackFormType} from './token';
 
-/** 10 days measured in exact 24-hour periods, as required by the feedback policy. */
-export const FEEDBACK_INITIAL_WAIT_MS = 10 * 24 * 60 * 60 * 1000;
-export const FEEDBACK_COOLDOWN_MS = 10 * 24 * 60 * 60 * 1000;
+/** 30 days measured in exact 24-hour periods, as required by the feedback policy. */
+export const FEEDBACK_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const FEEDBACK_FORMS: Record<FeedbackFormType, string> = {
   initial: 'https://forms.gle/vh66XdtTQkky2eU7A',
@@ -16,11 +15,7 @@ export const FEEDBACK_TOKEN_FIELD = 'dtps_feedback_token';
 const USER_COLLECTION = 'users';
 const SUBMISSION_COLLECTION = 'user_feedback_submissions';
 
-export type FeedbackEligibilityStatus =
-  | 'waiting_initial'
-  | 'eligible_initial'
-  | 'eligible_recurring'
-  | 'cooldown';
+export type FeedbackEligibilityStatus = 'eligible_recurring' | 'cooldown';
 
 export type FeedbackEligibility = {
   status: FeedbackEligibilityStatus;
@@ -28,6 +23,14 @@ export type FeedbackEligibility = {
   formType: FeedbackFormType | null;
   remainingSeconds: number;
   nextEligibleAt: string | null;
+  formUrl: string | null;
+  formToken: string | null;
+};
+
+/** Eligibility for the once-per-lifetime onboarding feedback form. */
+export type OnboardingFeedbackEligibility = {
+  canSubmit: boolean;
+  formType: 'initial';
   formUrl: string | null;
   formToken: string | null;
 };
@@ -117,8 +120,9 @@ async function readRegistration(db: MongoDatabase, userId: string): Promise<{ema
 }
 
 /**
- * Priority order is fixed by the feedback policy: initial wait, then first form once,
- * then recurring form on a rolling 10-day cooldown. All inputs are server-side.
+ * Resolves eligibility for the recurring feedback form only. Every client is eligible
+ * from day 1; the form is gated by a rolling 30-day cooldown after each submission.
+ * All inputs are server-side.
  */
 export async function resolveFeedbackEligibility(
   db: MongoDatabase,
@@ -126,34 +130,7 @@ export async function resolveFeedbackEligibility(
   options: {now?: Date} = {}
 ): Promise<FeedbackEligibility> {
   const now = options.now ?? new Date();
-  const {joinedAt} = await readRegistration(db, userId);
-
-  const initialUnlockAt = new Date(joinedAt.getTime() + FEEDBACK_INITIAL_WAIT_MS);
-  if (now.getTime() < initialUnlockAt.getTime()) {
-    return {
-      status: 'waiting_initial',
-      canSubmit: false,
-      formType: null,
-      remainingSeconds: Math.ceil((initialUnlockAt.getTime() - now.getTime()) / 1000),
-      nextEligibleAt: initialUnlockAt.toISOString(),
-      formUrl: null,
-      formToken: null,
-    };
-  }
-
-  const firstSubmission = await latestSubmission(db, userId, 'initial');
-  if (!firstSubmission) {
-    const token = createFeedbackToken(userId, 'initial', {now: now.getTime()});
-    return {
-      status: 'eligible_initial',
-      canSubmit: true,
-      formType: 'initial',
-      remainingSeconds: 0,
-      nextEligibleAt: null,
-      formUrl: buildFeedbackFormUrl('initial', token),
-      formToken: token,
-    };
-  }
+  await readRegistration(db, userId);
 
   const recurring = await latestSubmission(db, userId, 'recurring');
   if (recurring) {
@@ -179,6 +156,38 @@ export async function resolveFeedbackEligibility(
     remainingSeconds: 0,
     nextEligibleAt: null,
     formUrl: buildFeedbackFormUrl('recurring', token),
+    formToken: token,
+  };
+}
+
+/**
+ * Resolves eligibility for the once-per-lifetime onboarding feedback form. Unlike
+ * recurring feedback it is not gated by a wait or cooldown: it is available from day 1
+ * and can only be completed once. All inputs are server-side.
+ */
+export async function resolveOnboardingFeedbackEligibility(
+  db: MongoDatabase,
+  userId: string,
+  options: {now?: Date} = {}
+): Promise<OnboardingFeedbackEligibility> {
+  const now = options.now ?? new Date();
+  await readRegistration(db, userId);
+
+  const firstSubmission = await latestSubmission(db, userId, 'initial');
+  if (firstSubmission) {
+    return {
+      canSubmit: false,
+      formType: 'initial',
+      formUrl: null,
+      formToken: null,
+    };
+  }
+
+  const token = createFeedbackToken(userId, 'initial', {now: now.getTime()});
+  return {
+    canSubmit: true,
+    formType: 'initial',
+    formUrl: buildFeedbackFormUrl('initial', token),
     formToken: token,
   };
 }

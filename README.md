@@ -80,10 +80,11 @@ at `GET /api/user/feedback/eligibility`.
 
 | Stage | Condition | Action |
 |---|---|---|
-| `waiting_initial` | `< 10 × 24h` since `users.createdAt` | Show remaining time |
-| `eligible_initial` | `>= 10 × 24h`, no first submission | Open Form 1 (once per account lifetime) |
-| `eligible_recurring` | Form 1 recorded, never submitted Form 2 or cooldown elapsed | Open Form 2 |
-| `cooldown` | `< 10 × 24h` since the last Form 2 submission | Show remaining time |
+| `eligible_recurring` | Always (from day 1), no Form 2 in cooldown | Open Form 2 (recurring feedback) |
+| `cooldown` | `< 30 × 24h` since the last Form 2 submission | Show remaining time |
+
+Onboarding feedback (Form 1) is available from day 1 and can be completed once per
+account lifetime, surfaced under **My Profile → Onboarding feedback**.
 
 ### Why the form URL is generated on the server
 

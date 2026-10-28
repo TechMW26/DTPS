@@ -1,0 +1,20 @@
+▲ Next.js 16.3.0 (Turbopack)
+- Local:         http://localhost:3002
+- Network:       http://192.168.29.181:3002
+- Environments: .env.local, .env
+✓ Ready in 2.3s
+✓ Running next.config.ts took 176ms
+[Instrumentation] Timezone set to Asia/Kolkata — current time: 28/10/2026, 10:37:44 am
+- Experiments (use with caution):
+  ✓ optimizeCss
+  · optimizePackageImports
+  · staleTimes
+
+ GET /user/onboarding-feedback 200 in 2.3s (next.js: 661ms, application-code: 1593ms)
+ GET /api/auth/session 200 in 2.7s (next.js: 2.3s, application-code: 424ms)
+ GET /api/auth/session 200 in 242ms (next.js: 122ms, application-code: 120ms)
+ GET /api/user/onboarding-feedback/eligibility 200 in 299ms (next.js: 79ms, application-code: 220ms)
+ GET /api/client/notifications/unread-count 200 in 427ms (next.js: 199ms, application-code: 228ms)
+ GET /api/user/feedback/eligibility 401 in 118ms (next.js: 89ms, application-code: 29ms)
+ GET /api/user/onboarding-feedback/eligibility 401 in 44ms (next.js: 7ms, application-code: 37ms)
+[?25h
