@@ -3,6 +3,7 @@ package com.dtps.dietary
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
@@ -152,8 +153,10 @@ class MainActivity : AppCompatActivity() {
                     return false
                 }
 
-                // Open external links in browser
-                return true
+                // Open external links in the system browser instead of dropping them.
+                // Returning true without launching the intent silently cancels navigation,
+                // which previously left clients with a started timer but no opened form.
+                return openInBrowser(url)
             }
         }
 
@@ -224,6 +227,21 @@ class MainActivity : AppCompatActivity() {
         offlineView.visibility = View.GONE
         webView.visibility = View.VISIBLE
         webView.loadUrl(APP_URL)
+    }
+
+    /**
+     * Hands an external URL to the system browser. Returning true from
+     * shouldOverrideUrlLoading claims the navigation; the launch must happen here,
+     * otherwise the link is silently dropped.
+     */
+    private fun openInBrowser(url: String): Boolean {
+        return try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "Unable to open external link: ${e.message}")
+            false
+        }
     }
 
     private fun showOfflineView() {
