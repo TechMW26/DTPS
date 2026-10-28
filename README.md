@@ -86,21 +86,32 @@ at `GET /api/user/feedback/eligibility`.
 Onboarding feedback (Form 1) is available from day 1 and can be completed once per
 account lifetime, surfaced under **My Profile → Onboarding feedback**.
 
+### How a submission is recorded
+
+The Google Forms are not modified, so the click on **"Open feedback form"** is the
+signal. Opening it starts a server-side 2-minute window
+(`FEEDBACK_OPEN_LOCK_DELAY_MS`) via `POST /api/user/feedback` (recurring) or
+`POST /api/user/onboarding-feedback` (onboarding). When the window elapses the server
+records the submission, which starts the 30-day cooldown (recurring) or hides the form
+permanently (onboarding). The lock is server-timed, so closing the tab does not cancel
+it, and a second submission is rejected server-side.
+
 ### Why the form URL is generated on the server
 
-Clicking the form never marks feedback as submitted. Eligibility advances only when a
-verified response arrives. The form URL carries a signed, 24-hour token
-(`src/lib/feedback/token.ts`) naming the DTPS user. The token is HMAC-signed with
-`FEEDBACK_TOKEN_SECRET` (falling back to `NEXTAUTH_SECRET`), so a client cannot forge
-another user's ID. A prefilled user ID alone is never treated as identity.
+Clicking the form never marks feedback as submitted. The form URL carries a signed,
+24-hour token (`src/lib/feedback/token.ts`) naming the DTPS user. The token is
+HMAC-signed with `FEEDBACK_TOKEN_SECRET` (falling back to `NEXTAUTH_SECRET`), so a
+client cannot forge another user's ID. A prefilled user ID alone is never treated as
+identity.
 
 Submissions are written to the `user_feedback_submissions` collection, keyed by a
-fingerprint of the token so the same response cannot be credited twice.
+fingerprint of the token so the same submission cannot be credited twice.
 
-### Required manual Google setup
+### Optional manual Google setup
 
-The DTPS server cannot observe Google Forms directly, so each form needs a bound Apps
-Script that reports confirmed responses. Nothing works until this is configured.
+The in-app "Submitted" button is the default, zero-setup path and needs no Google
+changes. The token/Apps Script bridge below is **optional**: use it only if you want
+submissions verified automatically instead of self-reported.
 
 1. **Add the token question to both forms.** In each form open *⋮ → Get pre-filled
    link*, or add a **Short answer** question named `dtps_feedback_token`. Note the

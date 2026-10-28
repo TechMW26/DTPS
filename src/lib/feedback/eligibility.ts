@@ -4,6 +4,13 @@ import {createFeedbackToken, feedbackTokenFingerprint, type FeedbackFormType} fr
 /** 30 days measured in exact 24-hour periods, as required by the feedback policy. */
 export const FEEDBACK_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * Delay between opening the form and locking feedback. The client gets this long to
+ * fill the form before the submission is recorded, so the lock starts server-side even
+ * if they close the tab.
+ */
+export const FEEDBACK_OPEN_LOCK_DELAY_MS = 2 * 60 * 1000;
+
 export const FEEDBACK_FORMS: Record<FeedbackFormType, string> = {
   initial: 'https://forms.gle/vh66XdtTQkky2eU7A',
   recurring: 'https://forms.gle/zXF8NyKib7T1uExG8',
@@ -14,8 +21,10 @@ export const FEEDBACK_TOKEN_FIELD = 'dtps_feedback_token';
 
 const USER_COLLECTION = 'users';
 const SUBMISSION_COLLECTION = 'user_feedback_submissions';
+/** One document per (user, form) holding the pending open→lock deadline. */
+const PENDING_COLLECTION = 'user_feedback_pending';
 
-export type FeedbackEligibilityStatus = 'eligible_recurring' | 'cooldown';
+export type FeedbackEligibilityStatus = 'eligible_recurring' | 'cooldown' | 'pending';
 
 export type FeedbackEligibility = {
   status: FeedbackEligibilityStatus;
@@ -29,8 +38,11 @@ export type FeedbackEligibility = {
 
 /** Eligibility for the once-per-lifetime onboarding feedback form. */
 export type OnboardingFeedbackEligibility = {
+  status: 'eligible_initial' | 'completed' | 'pending';
   canSubmit: boolean;
   formType: 'initial';
+  remainingSeconds: number;
+  nextEligibleAt: string | null;
   formUrl: string | null;
   formToken: string | null;
 };
@@ -119,6 +131,67 @@ async function readRegistration(db: MongoDatabase, userId: string): Promise<{ema
   return {email: typeof data?.email === 'string' ? data.email : undefined, joinedAt};
 }
 
+function pendingDocId(userId: string, formType: FeedbackFormType): string {
+  return `${userId}_${formType}`;
+}
+
+type PendingRecord = {userId: string; formType: FeedbackFormType; lockAt: Date};
+
+/**
+ * Reads the client's open→lock deadline for a form. Returns the pending record and, when
+ * the deadline has passed, also records the submission and clears the pending marker.
+ */
+async function resolvePending(
+  db: MongoDatabase,
+  userId: string,
+  formType: FeedbackFormType,
+  now: Date
+): Promise<{pending: PendingRecord | null; locked: boolean}> {
+  const ref = db.collection(PENDING_COLLECTION).doc(pendingDocId(userId, formType));
+  const doc = await ref.get();
+  if (!doc.exists) return {pending: null, locked: false};
+
+  const data = doc.data() as DocumentData | undefined;
+  const lockAt = toDate(data?.lockAt);
+  if (!lockAt) return {pending: null, locked: false};
+  if (data?.completedAt) return {pending: null, locked: true};
+
+  if (now.getTime() < lockAt.getTime()) {
+    return {pending: {userId, formType, lockAt}, locked: false};
+  }
+
+  // Deadline reached: record the submission once, then mark the window consumed.
+  await recordSelfReportedFeedback(db, userId, formType, {now: lockAt});
+  await ref.set({userId, formType, lockAt, lockAtIso: lockAt.toISOString(), completedAt: now.toISOString()});
+  return {pending: null, locked: true};
+}
+
+/**
+ * Starts the 2-minute open→lock window. Returns the deadline the client should count
+ * down to. If a window is already running, the original deadline is preserved.
+ */
+export async function startFeedbackOpenWindow(
+  db: MongoDatabase,
+  userId: string,
+  formType: FeedbackFormType,
+  options: {now?: Date} = {}
+): Promise<{lockAt: Date}> {
+  const now = options.now ?? new Date();
+  await readRegistration(db, userId);
+
+  const ref = db.collection(PENDING_COLLECTION).doc(pendingDocId(userId, formType));
+  const existing = await ref.get();
+  const existingData = existing.data() as DocumentData | undefined;
+  const existingLockAt = toDate(existingData?.lockAt);
+  if (existing.exists && existingLockAt && !existingData?.completedAt && existingLockAt.getTime() > now.getTime()) {
+    return {lockAt: existingLockAt};
+  }
+
+  const lockAt = new Date(now.getTime() + FEEDBACK_OPEN_LOCK_DELAY_MS);
+  await ref.set({userId, formType, lockAt});
+  return {lockAt};
+}
+
 /**
  * Resolves eligibility for the recurring feedback form only. Every client is eligible
  * from day 1; the form is gated by a rolling 30-day cooldown after each submission.
@@ -131,6 +204,8 @@ export async function resolveFeedbackEligibility(
 ): Promise<FeedbackEligibility> {
   const now = options.now ?? new Date();
   await readRegistration(db, userId);
+
+  const {pending} = await resolvePending(db, userId, 'recurring', now);
 
   const recurring = await latestSubmission(db, userId, 'recurring');
   if (recurring) {
@@ -146,6 +221,18 @@ export async function resolveFeedbackEligibility(
         formToken: null,
       };
     }
+  }
+
+  if (pending) {
+    return {
+      status: 'pending',
+      canSubmit: false,
+      formType: 'recurring',
+      remainingSeconds: Math.ceil((pending.lockAt.getTime() - now.getTime()) / 1000),
+      nextEligibleAt: pending.lockAt.toISOString(),
+      formUrl: null,
+      formToken: null,
+    };
   }
 
   const token = createFeedbackToken(userId, 'recurring', {now: now.getTime()});
@@ -173,11 +260,28 @@ export async function resolveOnboardingFeedbackEligibility(
   const now = options.now ?? new Date();
   await readRegistration(db, userId);
 
+  const {pending} = await resolvePending(db, userId, 'initial', now);
+
   const firstSubmission = await latestSubmission(db, userId, 'initial');
   if (firstSubmission) {
     return {
+      status: 'completed',
       canSubmit: false,
       formType: 'initial',
+      remainingSeconds: 0,
+      nextEligibleAt: null,
+      formUrl: null,
+      formToken: null,
+    };
+  }
+
+  if (pending) {
+    return {
+      status: 'pending',
+      canSubmit: false,
+      formType: 'initial',
+      remainingSeconds: Math.ceil((pending.lockAt.getTime() - now.getTime()) / 1000),
+      nextEligibleAt: pending.lockAt.toISOString(),
       formUrl: null,
       formToken: null,
     };
@@ -185,8 +289,11 @@ export async function resolveOnboardingFeedbackEligibility(
 
   const token = createFeedbackToken(userId, 'initial', {now: now.getTime()});
   return {
+    status: 'eligible_initial',
     canSubmit: true,
     formType: 'initial',
+    remainingSeconds: 0,
+    nextEligibleAt: null,
     formUrl: buildFeedbackFormUrl('initial', token),
     formToken: token,
   };
@@ -207,6 +314,28 @@ export type FeedbackSubmissionResult =
   | {status: 'recorded'; userId: string; formType: FeedbackFormType; submittedAt: Date}
   | {status: 'duplicate'; userId: string; formType: FeedbackFormType}
   | {status: 'ignored'; reason: 'already_completed_initial' | 'within_cooldown'};
+
+/**
+ * Records a submission the client self-reports from the in-app "Submitted" button.
+ * Google Forms cannot be modified without disrupting clients, so the client confirms
+ * completion and the same once-ever / cooldown rules apply. A server-side token is
+ * generated so the fingerprint stays unique per click without trusting the client.
+ */
+export async function recordSelfReportedFeedback(
+  db: MongoDatabase,
+  userId: string,
+  formType: FeedbackFormType,
+  options: {now?: Date} = {}
+): Promise<FeedbackSubmissionResult> {
+  const now = options.now ?? new Date();
+  const token = createFeedbackToken(userId, formType, {now: now.getTime()});
+
+  return recordFeedbackSubmission(
+    db,
+    {token, tokenUserId: userId, formType, submittedAt: now},
+    {now}
+  );
+}
 
 /**
  * Records a verified submission. The token is the identity source; the browser/user ID
