@@ -201,7 +201,7 @@ export default withAuth(
     }
 
     // If client is on onboarding page but has already completed onboarding, redirect to /user
-    if (pathname === '/user/onboarding' || pathname.startsWith('/user/onboarding')) {
+    if (pathname === '/user/onboarding' || pathname.startsWith('/user/onboarding/')) {
       if (userRole === 'client' && token?.onboardingCompleted === true) {
         console.log('Client onboarding already complete, redirecting to /user');
         return NextResponse.redirect(new URL('/user', req.url));

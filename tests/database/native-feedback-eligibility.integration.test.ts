@@ -3,9 +3,12 @@ import {
   resolveFeedbackEligibility,
   resolveOnboardingFeedbackEligibility,
   recordFeedbackSubmission,
+  recordSelfReportedFeedback,
+  startFeedbackOpenWindow,
   FeedbackEligibilityError,
   FEEDBACK_FORMS,
   FEEDBACK_COOLDOWN_MS,
+  FEEDBACK_OPEN_LOCK_DELAY_MS,
 } from '@/lib/feedback/eligibility';
 import type {MongoDatabase} from '@/lib/db/mongo-types';
 
@@ -220,6 +223,93 @@ describe('onboarding feedback eligibility', () => {
     const eligibility = await resolveOnboardingFeedbackEligibility(db, 'client');
     expect(eligibility.canSubmit).toBe(false);
     expect(eligibility.formUrl).toBeNull();
+  });
+});
+
+describe('self-reported feedback', () => {  it('locks recurring feedback for 30 days when the client taps Submitted', async () => {
+    const {db} = memoryDatabase();
+    await seedUser(db, 'client', 10);
+
+    const result = await recordSelfReportedFeedback(db, 'client', 'recurring');
+    expect(result.status).toBe('recorded');
+
+    const eligibility = await resolveFeedbackEligibility(db, 'client');
+    expect(eligibility.status).toBe('cooldown');
+    expect(eligibility.remainingSeconds).toBeGreaterThan(29 * DAY / 1000);
+  });
+
+  it('rejects a second self-report while in cooldown', async () => {
+    const {db} = memoryDatabase();
+    await seedUser(db, 'client', 10);
+
+    await recordSelfReportedFeedback(db, 'client', 'recurring');
+    const second = await recordSelfReportedFeedback(db, 'client', 'recurring');
+
+    expect(second).toMatchObject({status: 'ignored', reason: 'within_cooldown'});
+  });
+
+  it('records onboarding feedback once and then blocks it', async () => {
+    const {db} = memoryDatabase();
+    await seedUser(db, 'client', 0);
+
+    const first = await recordSelfReportedFeedback(db, 'client', 'initial');
+    expect(first.status).toBe('recorded');
+
+    const second = await recordSelfReportedFeedback(db, 'client', 'initial');
+    expect(second).toMatchObject({status: 'ignored', reason: 'already_completed_initial'});
+
+    const eligibility = await resolveOnboardingFeedbackEligibility(db, 'client');
+    expect(eligibility.canSubmit).toBe(false);
+  });
+});
+
+describe('open-form lock window', () => {
+  it('marks recurring feedback pending for 2 minutes after the form is opened', async () => {
+    const {db} = memoryDatabase();
+    await seedUser(db, 'client', 5);
+    const now = new Date();
+
+    const {lockAt} = await startFeedbackOpenWindow(db, 'client', 'recurring', {now});
+    expect(lockAt.getTime()).toBe(now.getTime() + FEEDBACK_OPEN_LOCK_DELAY_MS);
+
+    const pending = await resolveFeedbackEligibility(db, 'client', {now});
+    expect(pending.status).toBe('pending');
+    expect(pending.canSubmit).toBe(false);
+    expect(pending.remainingSeconds).toBe(Math.ceil(FEEDBACK_OPEN_LOCK_DELAY_MS / 1000));
+  });
+
+  it('locks for 30 days once the 2-minute window elapses', async () => {
+    const {db} = memoryDatabase();
+    await seedUser(db, 'client', 5);
+    const now = new Date();
+
+    const {lockAt} = await startFeedbackOpenWindow(db, 'client', 'recurring', {now});
+    const later = new Date(lockAt.getTime() + 1000);
+
+    const eligibility = await resolveFeedbackEligibility(db, 'client', {now: later});
+    expect(eligibility.status).toBe('cooldown');
+    expect(eligibility.remainingSeconds).toBeGreaterThan(29 * DAY / 1000);
+  });
+
+  it('keeps the original deadline when the form is opened twice', async () => {
+    const {db} = memoryDatabase();
+    await seedUser(db, 'client', 5);
+    const now = new Date();
+
+    const first = await startFeedbackOpenWindow(db, 'client', 'recurring', {now});
+    const second = await startFeedbackOpenWindow(db, 'client', 'recurring', {now: new Date(now.getTime() + 30_000)});
+
+    expect(second.lockAt.getTime()).toBe(first.lockAt.getTime());
+  });
+
+  it('does not start an onboarding window once onboarding feedback is completed', async () => {
+    const {db} = memoryDatabase();
+    await seedUser(db, 'client', 0);
+    await recordSelfReportedFeedback(db, 'client', 'initial');
+
+    const eligibility = await resolveOnboardingFeedbackEligibility(db, 'client');
+    expect(eligibility.status).toBe('completed');
+    expect(eligibility.canSubmit).toBe(false);
   });
 });
 

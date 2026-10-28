@@ -3,11 +3,14 @@
 import {useCallback, useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {useSession} from 'next-auth/react';
-import {ArrowLeft, CheckCircle2, ExternalLink, Loader2, MessageSquare, RefreshCw} from 'lucide-react';
+import {ArrowLeft, CheckCircle2, Clock, ExternalLink, Loader2, MessageSquare, RefreshCw} from 'lucide-react';
 
 type Eligibility = {
+  status: 'eligible_initial' | 'completed' | 'pending';
   canSubmit: boolean;
   formType: 'initial';
+  remainingSeconds: number;
+  nextEligibleAt: string | null;
   formUrl: string | null;
 };
 
@@ -18,6 +21,8 @@ export default function OnboardingFeedbackPage() {
   const [eligibility, setEligibility] = useState<Eligibility | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [opening, setOpening] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   const loadEligibility = useCallback(async () => {
     setLoading(true);
@@ -38,10 +43,14 @@ export default function OnboardingFeedbackPage() {
       }
 
       setEligibility({
+        status: data.status ?? (data.canSubmit ? 'eligible_initial' : 'completed'),
         canSubmit: Boolean(data.canSubmit),
-        formType: data.formType as 'initial',
+        formType: 'initial',
+        remainingSeconds: Number(data.remainingSeconds) || 0,
+        nextEligibleAt: data.nextEligibleAt ?? null,
         formUrl: data.formUrl ?? null,
       });
+      setNow(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load onboarding feedback.');
     } finally {
@@ -57,6 +66,58 @@ export default function OnboardingFeedbackPage() {
     }
   }, [authStatus, loadEligibility, router]);
 
+  const openForm = useCallback(async () => {
+    if (opening || !eligibility?.formUrl) return;
+    setOpening(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/user/onboarding-feedback', {method: 'POST', cache: 'no-store'});
+
+      if (response.status === 401) {
+        router.replace('/auth/signin');
+        return;
+      }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to start onboarding feedback.');
+      }
+
+      setEligibility({
+        status: data.status ?? (data.canSubmit ? 'eligible_initial' : 'completed'),
+        canSubmit: Boolean(data.canSubmit),
+        formType: 'initial',
+        remainingSeconds: Number(data.remainingSeconds) || 0,
+        nextEligibleAt: data.nextEligibleAt ?? null,
+        formUrl: data.formUrl ?? null,
+      });
+      setNow(Date.now());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to start onboarding feedback.');
+    } finally {
+      setOpening(false);
+    }
+  }, [opening, eligibility?.formUrl, router]);
+
+  useEffect(() => {
+    const nextEligibleAt = eligibility?.nextEligibleAt;
+    if (!nextEligibleAt) return;
+
+    const target = new Date(nextEligibleAt).getTime();
+    const interval = setInterval(() => {
+      if (Date.now() >= target) {
+        clearInterval(interval);
+        void loadEligibility();
+        return;
+      }
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [eligibility?.nextEligibleAt, loadEligibility]);
+
   if (authStatus === 'loading' || loading) {
     return (
       <main className="flex min-h-[70vh] items-center justify-center">
@@ -67,6 +128,11 @@ export default function OnboardingFeedbackPage() {
       </main>
     );
   }
+
+  const remaining = eligibility?.nextEligibleAt
+    ? Math.max(0, Math.ceil((new Date(eligibility.nextEligibleAt).getTime() - now) / 1000))
+    : 0;
+  const showPending = eligibility?.status === 'pending';
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-6 text-gray-900 dark:bg-gray-950 dark:text-gray-100 sm:px-6 lg:px-8">
@@ -107,6 +173,17 @@ export default function OnboardingFeedbackPage() {
                   Try again
                 </button>
               </div>
+            ) : showPending ? (
+              <div className="py-4 text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
+                  <Clock className="h-8 w-8" />
+                </div>
+                <h2 className="text-xl font-semibold">Form opened — finish it now</h2>
+                <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
+                  This form closes in {Math.floor(remaining / 60)}m {String(remaining % 60).padStart(2, '0')}s.
+                  Complete it before the timer ends.
+                </p>
+              </div>
             ) : eligibility?.canSubmit ? (
               <div className="py-4">
                 <div className="mb-5 flex items-start gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
@@ -116,13 +193,17 @@ export default function OnboardingFeedbackPage() {
 
                 <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
                   This onboarding form can be completed once during your entire account lifetime.
+                  You&rsquo;ll have 2 minutes to finish it after opening.
                 </p>
 
                 {eligibility.formUrl ? (
                   <a
                     href={eligibility.formUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void openForm();
+                      window.location.href = eligibility.formUrl!;
+                    }}
                     className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                   >
                     Open onboarding feedback form
