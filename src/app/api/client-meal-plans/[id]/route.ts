@@ -16,6 +16,7 @@ import { UserRole } from "@/types";
 import { grantDietPlanAccess } from "@/lib/auth/onboarding-access";
 import { checkPhaseStartPolicy } from "@/lib/meal-plan-phase-continuity";
 import { resolveEntitlementEndDate } from "@/lib/payments/entitlement-dates";
+import { todayIST, toISTDateKey } from "@/lib/utils/ist";
 
 const hasPublishableMealData = (meals: any[] | undefined | null): boolean => {
   if (!Array.isArray(meals) || meals.length === 0) return false;
@@ -673,12 +674,19 @@ export async function PUT(
       );
     }
 
-    // Block title edits on any non-draft plan (preserve published name).
+    // A published plan can still be renamed until its start date (India time).
+    // Once it has started, the name is locked so the client's history stays the same.
+    const existingStartKey = toISTDateKey(existingPlan.startDate);
+    const renameBeforeStart =
+      ["active", "paused"].includes(existingPlan.status) &&
+      !!existingStartKey &&
+      existingStartKey > todayIST();
     if (
       name !== undefined &&
       typeof name === "string" &&
       name.trim() !== (existingPlan.name || "").trim() &&
-      existingPlan.status !== "draft"
+      existingPlan.status !== "draft" &&
+      !renameBeforeStart
     ) {
       await appendLifecycleAudit(existingPlan._id, {
         action: "blocked_title_edit",
@@ -713,9 +721,9 @@ export async function PUT(
         {
           success: false,
           code: "TITLE_LOCKED_AFTER_PUBLISH",
-          error: "Title cannot be edited after publish",
+          error: "Title cannot be edited after the plan has started",
           message:
-            "Meal plan name is locked once the plan is published. Create a new plan for a new name.",
+            "Meal plan name is locked once the plan has started. Create a new plan for a new name.",
         },
         { status: 409 },
       );
