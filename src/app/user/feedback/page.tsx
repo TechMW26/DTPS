@@ -4,7 +4,6 @@ import {useCallback, useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {useSession} from 'next-auth/react';
 import {ArrowLeft, Clock, ExternalLink, Loader2, MessageSquare, RefreshCw, Star} from 'lucide-react';
-import {openExternalUrl} from '@/lib/native/open-external';
 
 type EligibilityStatus = 'eligible_recurring' | 'cooldown' | 'pending';
 
@@ -93,7 +92,7 @@ export default function FeedbackPage() {
   }, [authStatus, loadEligibility, router]);
 
   const openForm = useCallback(async () => {
-    if (opening || !eligibility?.formUrl) return;
+    if (opening) return;
     setOpening(true);
     setError('');
 
@@ -125,7 +124,7 @@ export default function FeedbackPage() {
     } finally {
       setOpening(false);
     }
-  }, [opening, eligibility?.formUrl, router]);
+  }, [opening, router]);
 
   useEffect(() => {
     const nextEligibleAt = eligibility?.nextEligibleAt;
@@ -160,7 +159,9 @@ export default function FeedbackPage() {
     : 0;
   const {days, hours, minutes, seconds} = breakdown(remaining);
   const showCooldown = eligibility?.status === 'cooldown';
-  const showPending = eligibility?.status === 'pending';
+  // During the open→lock window the client may still open the form, so it stays eligible.
+  const windowOpen = eligibility?.status === 'pending' && eligibility?.canSubmit;
+  const windowMinutes = Math.ceil(remaining / 60);
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-6 text-gray-900 dark:bg-gray-950 dark:text-gray-100 sm:px-6 lg:px-8">
@@ -199,35 +200,6 @@ export default function FeedbackPage() {
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   Try again
-                </button>
-              </div>
-            ) : showPending ? (
-              <div className="py-4 text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
-                  <Clock className="h-8 w-8" />
-                </div>
-                <h2 className="text-xl font-semibold">Form opened — finish it now</h2>
-                <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
-                  Feedback locks in {remainingLabel(remaining)}. Complete the form before the timer ends;
-                  you can then submit again after 30 days.
-                </p>
-                <div className="mx-auto mt-6 flex items-center justify-center gap-3">
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-6 py-4 dark:border-gray-800 dark:bg-gray-800">
-                    <div className="text-3xl font-bold tabular-nums">{String(minutes).padStart(2, '0')}</div>
-                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Minutes</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-6 py-4 dark:border-gray-800 dark:bg-gray-800">
-                    <div className="text-3xl font-bold tabular-nums">{String(seconds).padStart(2, '0')}</div>
-                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Seconds</div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void loadEligibility()}
-                  className="mt-5 inline-flex items-center gap-2 text-sm text-gray-600 transition hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh status
                 </button>
               </div>
             ) : showCooldown ? (
@@ -272,17 +244,24 @@ export default function FeedbackPage() {
                   2 minutes to finish it before feedback locks for 30 days.
                 </p>
 
+                {windowOpen && (
+                  <p className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                    <Clock className="mt-0.5 h-4 w-4 shrink-0" />
+                    Your feedback window is open — you can reopen the form for about{' '}
+                    {windowMinutes} minute{windowMinutes === 1 ? '' : 's'}.
+                  </p>
+                )}
+
                 {eligibility.formUrl ? (
                   <a
                     href={eligibility.formUrl}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      // Only start the 2-minute lock when the form actually opened.
-                      // An older Android build without the openExternal bridge cannot
-                      // open it, so those clients stay unlocked until they update.
-                      if (openExternalUrl(eligibility.formUrl!)) {
-                        void openForm();
-                      }
+                    onClick={() => {
+                      // Start the background lock window (idempotent server-side; re-opening
+                      // during the 2 minutes never extends the deadline). The href itself
+                      // performs the actual navigation, which the Android WebView routes to the
+                      // system browser and iOS routes to Safari via their navigation delegates —
+                      // no native bridge required, so it works on every APK/build.
+                      void openForm();
                     }}
                     className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                   >

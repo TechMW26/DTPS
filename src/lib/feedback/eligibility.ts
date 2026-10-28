@@ -138,8 +138,12 @@ function pendingDocId(userId: string, formType: FeedbackFormType): string {
 type PendingRecord = {userId: string; formType: FeedbackFormType; lockAt: Date};
 
 /**
- * Reads the client's open→lock deadline for a form. Returns the pending record and, when
- * the deadline has passed, also records the submission and clears the pending marker.
+ * Reads the client's open→lock deadline for a form.
+ *
+ * A submission is only ever recorded from a verified Google Forms response (the Apps
+ * Script confirm endpoint). When the 2-minute open→lock window elapses without such a
+ * submission, the stale window is simply cleared so the client reverts to eligible
+ * rather than being permanently locked out without having actually completed the form.
  */
 async function resolvePending(
   db: MongoDatabase,
@@ -160,10 +164,10 @@ async function resolvePending(
     return {pending: {userId, formType, lockAt}, locked: false};
   }
 
-  // Deadline reached: record the submission once, then mark the window consumed.
-  await recordSelfReportedFeedback(db, userId, formType, {now: lockAt});
-  await ref.set({userId, formType, lockAt, lockAtIso: lockAt.toISOString(), completedAt: now.toISOString()});
-  return {pending: null, locked: true};
+  // Deadline reached with no verified submission: drop the stale window so the client
+  // becomes eligible again. No submission is recorded here.
+  await ref.delete();
+  return {pending: null, locked: false};
 }
 
 /**
@@ -224,14 +228,18 @@ export async function resolveFeedbackEligibility(
   }
 
   if (pending) {
+    // While the 2-minute open→lock window is still running, the client stays able to
+    // (re-)open the form. The window continues in the background and only transitions
+    // to cooldown once `lockAt` elapses, so re-opening does not extend the deadline.
+    const token = createFeedbackToken(userId, 'recurring', {now: now.getTime()});
     return {
       status: 'pending',
-      canSubmit: false,
+      canSubmit: true,
       formType: 'recurring',
       remainingSeconds: Math.ceil((pending.lockAt.getTime() - now.getTime()) / 1000),
       nextEligibleAt: pending.lockAt.toISOString(),
-      formUrl: null,
-      formToken: null,
+      formUrl: buildFeedbackFormUrl('recurring', token),
+      formToken: token,
     };
   }
 
@@ -276,14 +284,18 @@ export async function resolveOnboardingFeedbackEligibility(
   }
 
   if (pending) {
+    // While the 2-minute open→lock window is still running, the client stays able to
+    // (re-)open the form. The window continues in the background and only transitions
+    // to completed once `lockAt` elapses, so re-opening does not extend the deadline.
+    const token = createFeedbackToken(userId, 'initial', {now: now.getTime()});
     return {
       status: 'pending',
-      canSubmit: false,
+      canSubmit: true,
       formType: 'initial',
       remainingSeconds: Math.ceil((pending.lockAt.getTime() - now.getTime()) / 1000),
       nextEligibleAt: pending.lockAt.toISOString(),
-      formUrl: null,
-      formToken: null,
+      formUrl: buildFeedbackFormUrl('initial', token),
+      formToken: token,
     };
   }
 

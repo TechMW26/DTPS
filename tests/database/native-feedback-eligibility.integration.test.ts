@@ -42,6 +42,9 @@ class MemoryRef {
     if (this.store.has(this.path)) throw new Error('ALREADY_EXISTS: document exists');
     this.store.set(this.path, {...data, _id: this.id});
   }
+  async delete() {
+    this.store.delete(this.path);
+  }
 }
 
 class MemoryQuery {
@@ -274,11 +277,12 @@ describe('open-form lock window', () => {
 
     const pending = await resolveFeedbackEligibility(db, 'client', {now});
     expect(pending.status).toBe('pending');
-    expect(pending.canSubmit).toBe(false);
+    expect(pending.canSubmit).toBe(true);
     expect(pending.remainingSeconds).toBe(Math.ceil(FEEDBACK_OPEN_LOCK_DELAY_MS / 1000));
+    expect(pending.formUrl).toBe(FEEDBACK_FORMS.recurring);
   });
 
-  it('locks for 30 days once the 2-minute window elapses', async () => {
+  it('re-enables recurring feedback once the 2-minute window elapses without a submission', async () => {
     const {db} = memoryDatabase();
     await seedUser(db, 'client', 5);
     const now = new Date();
@@ -286,9 +290,11 @@ describe('open-form lock window', () => {
     const {lockAt} = await startFeedbackOpenWindow(db, 'client', 'recurring', {now});
     const later = new Date(lockAt.getTime() + 1000);
 
+    // A timed-out window with no verified submission must NOT record feedback: the
+    // client reverts to eligible instead of being locked into a 30-day cooldown.
     const eligibility = await resolveFeedbackEligibility(db, 'client', {now: later});
-    expect(eligibility.status).toBe('cooldown');
-    expect(eligibility.remainingSeconds).toBeGreaterThan(29 * DAY / 1000);
+    expect(eligibility.status).toBe('eligible_recurring');
+    expect(eligibility.canSubmit).toBe(true);
   });
 
   it('keeps the original deadline when the form is opened twice', async () => {

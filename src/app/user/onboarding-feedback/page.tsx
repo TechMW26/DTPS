@@ -4,7 +4,6 @@ import {useCallback, useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {useSession} from 'next-auth/react';
 import {ArrowLeft, CheckCircle2, Clock, ExternalLink, Loader2, MessageSquare, RefreshCw} from 'lucide-react';
-import {openExternalUrl} from '@/lib/native/open-external';
 
 type Eligibility = {
   status: 'eligible_initial' | 'completed' | 'pending';
@@ -68,7 +67,7 @@ export default function OnboardingFeedbackPage() {
   }, [authStatus, loadEligibility, router]);
 
   const openForm = useCallback(async () => {
-    if (opening || !eligibility?.formUrl) return;
+    if (opening) return;
     setOpening(true);
     setError('');
 
@@ -100,7 +99,7 @@ export default function OnboardingFeedbackPage() {
     } finally {
       setOpening(false);
     }
-  }, [opening, eligibility?.formUrl, router]);
+  }, [opening, router]);
 
   useEffect(() => {
     const nextEligibleAt = eligibility?.nextEligibleAt;
@@ -133,7 +132,9 @@ export default function OnboardingFeedbackPage() {
   const remaining = eligibility?.nextEligibleAt
     ? Math.max(0, Math.ceil((new Date(eligibility.nextEligibleAt).getTime() - now) / 1000))
     : 0;
-  const showPending = eligibility?.status === 'pending';
+  // During the open→lock window the client may still open the form, so it stays eligible.
+  const windowOpen = eligibility?.status === 'pending' && eligibility?.canSubmit;
+  const windowMinutes = Math.ceil(remaining / 60);
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-6 text-gray-900 dark:bg-gray-950 dark:text-gray-100 sm:px-6 lg:px-8">
@@ -174,17 +175,6 @@ export default function OnboardingFeedbackPage() {
                   Try again
                 </button>
               </div>
-            ) : showPending ? (
-              <div className="py-4 text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
-                  <Clock className="h-8 w-8" />
-                </div>
-                <h2 className="text-xl font-semibold">Form opened — finish it now</h2>
-                <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
-                  This form closes in {Math.floor(remaining / 60)}m {String(remaining % 60).padStart(2, '0')}s.
-                  Complete it before the timer ends.
-                </p>
-              </div>
             ) : eligibility?.canSubmit ? (
               <div className="py-4">
                 <div className="mb-5 flex items-start gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
@@ -197,14 +187,24 @@ export default function OnboardingFeedbackPage() {
                   You&rsquo;ll have 2 minutes to finish it after opening.
                 </p>
 
+                {windowOpen && (
+                  <p className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                    <Clock className="mt-0.5 h-4 w-4 shrink-0" />
+                    Your feedback window is open — you can reopen the form for about{' '}
+                    {windowMinutes} minute{windowMinutes === 1 ? '' : 's'}.
+                  </p>
+                )}
+
                 {eligibility.formUrl ? (
                   <a
                     href={eligibility.formUrl}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      if (openExternalUrl(eligibility.formUrl!)) {
-                        void openForm();
-                      }
+                    onClick={() => {
+                      // Start the background lock window (idempotent server-side; re-opening
+                      // during the 2 minutes never extends the deadline). The href itself
+                      // performs the actual navigation, which the Android WebView routes to the
+                      // system browser and iOS routes to Safari via their navigation delegates —
+                      // no native bridge required, so it works on every APK/build.
+                      void openForm();
                     }}
                     className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                   >
