@@ -4,6 +4,7 @@ import {useCallback, useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {useSession} from 'next-auth/react';
 import {ArrowLeft, CheckCircle2, Clock, ExternalLink, Loader2, MessageSquare, RefreshCw} from 'lucide-react';
+import {openExternalUrl} from '@/lib/native/open-external';
 
 type Eligibility = {
   status: 'eligible_initial' | 'completed' | 'pending';
@@ -201,8 +202,9 @@ export default function OnboardingFeedbackPage() {
                     href={eligibility.formUrl}
                     onClick={(event) => {
                       event.preventDefault();
-                      void openForm();
-                      window.location.href = eligibility.formUrl!;
+                      if (openExternalUrl(eligibility.formUrl!)) {
+                        void openForm();
+                      }
                     }}
                     className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                   >

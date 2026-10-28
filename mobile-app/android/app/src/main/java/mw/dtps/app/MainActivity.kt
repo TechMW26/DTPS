@@ -322,7 +322,19 @@ class MainActivity : AppCompatActivity() {
         fun getDeviceType(): String {
             return "android"
         }
-        
+
+        /** Opens an external URL in the system browser/handler. */
+        @JavascriptInterface
+        fun openExternal(url: String) {
+            mainHandler.post {
+                val parsed = Uri.parse(url)
+                val scheme = parsed.scheme?.lowercase(Locale.ROOT)
+                if (scheme == "https" || scheme == "http") {
+                    openInBrowser(url)
+                }
+            }
+        }
+         
         @JavascriptInterface
         fun requestNotificationPermission() {
             mainHandler.post {

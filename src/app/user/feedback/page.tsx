@@ -4,6 +4,7 @@ import {useCallback, useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {useSession} from 'next-auth/react';
 import {ArrowLeft, Clock, ExternalLink, Loader2, MessageSquare, RefreshCw, Star} from 'lucide-react';
+import {openExternalUrl} from '@/lib/native/open-external';
 
 type EligibilityStatus = 'eligible_recurring' | 'cooldown' | 'pending';
 
@@ -276,11 +277,12 @@ export default function FeedbackPage() {
                     href={eligibility.formUrl}
                     onClick={(event) => {
                       event.preventDefault();
-                      void openForm();
-                      // Navigate in the same frame so the native shell intercepts the
-                      // external host and opens the system browser. target="_blank"
-                      // popups are dropped by the Android WebView.
-                      window.location.href = eligibility.formUrl!;
+                      // Only start the 2-minute lock when the form actually opened.
+                      // An older Android build without the openExternal bridge cannot
+                      // open it, so those clients stay unlocked until they update.
+                      if (openExternalUrl(eligibility.formUrl!)) {
+                        void openForm();
+                      }
                     }}
                     className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                   >
