@@ -3,14 +3,14 @@
 import {useCallback, useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {useSession} from 'next-auth/react';
-import {ArrowLeft, CheckCircle2, Clock, ExternalLink, Loader2, MessageSquare, RefreshCw, Star} from 'lucide-react';
+import {ArrowLeft, Clock, ExternalLink, Loader2, MessageSquare, RefreshCw, Star} from 'lucide-react';
 
-type EligibilityStatus = 'waiting_initial' | 'eligible_initial' | 'eligible_recurring' | 'cooldown';
+type EligibilityStatus = 'eligible_recurring' | 'cooldown';
 
 type Eligibility = {
   status: EligibilityStatus;
   canSubmit: boolean;
-  formType: 'initial' | 'recurring' | null;
+  formType: 'recurring' | null;
   remainingSeconds: number;
   nextEligibleAt: string | null;
   formUrl: string | null;
@@ -121,7 +121,7 @@ export default function FeedbackPage() {
     ? Math.max(0, Math.ceil((new Date(eligibility.nextEligibleAt).getTime() - now) / 1000))
     : 0;
   const {days, hours, minutes, seconds} = breakdown(remaining);
-  const showCountdown = eligibility?.status === 'waiting_initial' || eligibility?.status === 'cooldown';
+  const showCountdown = eligibility?.status === 'cooldown';
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-6 text-gray-900 dark:bg-gray-950 dark:text-gray-100 sm:px-6 lg:px-8">
@@ -168,14 +168,10 @@ export default function FeedbackPage() {
                   <Clock className="h-8 w-8" />
                 </div>
                 <h2 className="text-xl font-semibold">
-                  {eligibility?.status === 'waiting_initial'
-                    ? `Your feedback form unlocks in ${remainingLabel(remaining)}`
-                    : `You can respond again in ${remainingLabel(remaining)}`}
+                  You can respond again in {remainingLabel(remaining)}
                 </h2>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
-                  {eligibility?.status === 'waiting_initial'
-                    ? 'Feedback opens 10 days after you join DTPS so you have time to try the program first.'
-                    : 'Thank you for your last feedback. You can share feedback once every 10 days.'}
+                  Thank you for your last feedback. You can share feedback once every 30 days.
                 </p>
                 <div className="mt-6 grid grid-cols-4 gap-2 sm:gap-3">
                   {COUNTDOWN_UNITS.map((label, index) => (
@@ -198,23 +194,13 @@ export default function FeedbackPage() {
               </div>
             ) : eligibility?.canSubmit ? (
               <div className="py-4">
-                <div className="mb-6 flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300">
-                  {eligibility.formType === 'initial' ? (
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
-                  ) : (
-                    <Star className="mt-0.5 h-5 w-5 shrink-0" />
-                  )}
-                  <p>
-                    {eligibility.formType === 'initial'
-                      ? 'Thank you for your feedback! You can now share feedback again every 10 days.'
-                      : 'You\u2019re eligible to share your feedback!'}
-                  </p>
+                <div className="mb-5 flex items-start gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                  <Star className="mt-0.5 h-5 w-5 shrink-0" />
+                  <p>You&rsquo;re eligible to share your feedback!</p>
                 </div>
 
                 <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-                  {eligibility.formType === 'initial'
-                    ? 'This is your first feedback form. It can be completed once during your entire account lifetime.'
-                    : 'Open the form to share what is working well and what we can improve.'}
+                  Open the form to share what is working well and what we can improve.
                 </p>
 
                 {eligibility.formUrl ? (

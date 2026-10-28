@@ -635,16 +635,30 @@ extension MainViewController: WKNavigationDelegate {
 
 extension MainViewController: WKUIDelegate {
 
-    // Keep target="_blank" document/media links inside the DTPS WebView.
+    // target="_blank" links arrive here with no target frame. Document/media previews
+    // stay in the DTPS WebView, but any other external host must leave the app —
+    // loading it in-app would strand the user in a third-party page with no way back.
     func webView(
         _ webView: WKWebView,
         createWebViewWith configuration: WKWebViewConfiguration,
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
-            webView.load(URLRequest(url: url))
+        guard navigationAction.targetFrame == nil, let url = navigationAction.request.url else {
+            return nil
         }
+
+        if url.scheme == "http" || url.scheme == "https" {
+            let host = url.host?.lowercased() ?? ""
+
+            // Third-party destinations (Google Forms, partner sites) open in Safari.
+            if !isAllowedWebHost(host) {
+                UIApplication.shared.open(url)
+                return nil
+            }
+        }
+
+        webView.load(URLRequest(url: url))
         return nil
     }
 

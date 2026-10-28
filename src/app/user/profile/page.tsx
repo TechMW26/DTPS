@@ -36,7 +36,8 @@ import {
   Gift,
   Users,
   Eye,
-  UserCheck
+  UserCheck,
+  MessageSquare
 } from "lucide-react";
 import Link from "next/link";
 import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
@@ -726,6 +727,25 @@ export default function ProfilePage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Onboarding feedback */}
+        <div className="px-4 pt-2 pb-4">
+          <Link
+            href="/user/onboarding-feedback"
+            className={isDarkMode
+              ? "flex items-center justify-between w-full px-4 py-3.5 bg-gray-900/80 rounded-2xl border border-gray-800 hover:bg-gray-800/80 transition-colors"
+              : "flex items-center justify-between w-full px-4 py-3.5 bg-white/80 rounded-2xl border border-gray-100 hover:bg-gray-50 transition-colors"
+            }
+          >
+            <div className="flex items-center gap-3">
+              <div className={isDarkMode ? "w-9 h-9 rounded-xl bg-[#3AB1A0]/20 flex items-center justify-center" : "w-9 h-9 rounded-xl bg-[#3AB1A0]/10 flex items-center justify-center"}>
+                <MessageSquare className={isDarkMode ? "w-5 h-5 text-[#3AB1A0]" : "w-5 h-5 text-[#3AB1A0]"} />
+              </div>
+              <span className={isDarkMode ? "text-sm font-semibold text-gray-100" : "text-sm font-semibold text-gray-800"}>Onboarding feedback</span>
+            </div>
+            <ChevronRight className={isDarkMode ? "w-5 h-5 text-gray-500" : "w-5 h-5 text-gray-400"} />
+          </Link>
         </div>
 
       </div>

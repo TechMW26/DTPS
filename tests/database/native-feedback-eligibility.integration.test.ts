@@ -1,10 +1,10 @@
 import {createFeedbackToken, verifyFeedbackToken, FEEDBACK_TOKEN_TTL_MS, FeedbackTokenError} from '@/lib/feedback/token';
 import {
   resolveFeedbackEligibility,
+  resolveOnboardingFeedbackEligibility,
   recordFeedbackSubmission,
   FeedbackEligibilityError,
   FEEDBACK_FORMS,
-  FEEDBACK_INITIAL_WAIT_MS,
   FEEDBACK_COOLDOWN_MS,
 } from '@/lib/feedback/eligibility';
 import type {MongoDatabase} from '@/lib/db/mongo-types';
@@ -159,26 +159,14 @@ describe('feedback tokens', () => {
 });
 
 describe('feedback eligibility', () => {
-  it('waits for a client who joined 2 days ago', async () => {
+  it('is eligible for recurring feedback from day 1', async () => {
     const {db} = memoryDatabase();
-    await seedUser(db, 'new-client', 2);
+    await seedUser(db, 'new-client', 0);
 
     const eligibility = await resolveFeedbackEligibility(db, 'new-client');
-    expect(eligibility.status).toBe('waiting_initial');
-    expect(eligibility.canSubmit).toBe(false);
-    expect(eligibility.formUrl).toBeNull();
-    expect(eligibility.remainingSeconds).toBeGreaterThan(7 * DAY / 1000);
-    expect(eligibility.remainingSeconds).toBeLessThanOrEqual(8 * DAY / 1000);
-  });
-
-  it('unlocks the first form at exactly 10 days', async () => {
-    const {db} = memoryDatabase();
-    const joinedAt = new Date(Date.now() - FEEDBACK_INITIAL_WAIT_MS);
-    await db.collection('users').doc('exact').set({email: 'a@b.co', createdAt: joinedAt});
-
-    const eligibility = await resolveFeedbackEligibility(db, 'exact', {now: new Date(joinedAt.getTime() + FEEDBACK_INITIAL_WAIT_MS)});
-    expect(eligibility.status).toBe('eligible_initial');
-    expect(eligibility.formUrl).toBe(FEEDBACK_FORMS.initial);
+    expect(eligibility.status).toBe('eligible_recurring');
+    expect(eligibility.canSubmit).toBe(true);
+    expect(eligibility.formUrl).toBe(FEEDBACK_FORMS.recurring);
   });
 
   it('never grants eligibility when the registration timestamp is missing', async () => {
@@ -192,36 +180,46 @@ describe('feedback eligibility', () => {
     await expect(resolveFeedbackEligibility(db, 'ghost')).rejects.toMatchObject({code: 'user_not_found', status: 404});
   });
 
-  it('allows recurring feedback once the first form is recorded', async () => {
-    const {db} = memoryDatabase();
-    await seedUser(db, 'client', 20);
-    await submit(db, 'client', 'initial', new Date(Date.now() - 5 * DAY));
-
-    const eligibility = await resolveFeedbackEligibility(db, 'client');
-    expect(eligibility.status).toBe('eligible_recurring');
-    expect(eligibility.formUrl).toBe(FEEDBACK_FORMS.recurring);
-  });
-
-  it('applies the cooldown after a recurring submission', async () => {
+  it('applies the 30-day cooldown after a recurring submission', async () => {
     const {db} = memoryDatabase();
     await seedUser(db, 'client', 30);
-    await submit(db, 'client', 'initial', new Date(Date.now() - 20 * DAY));
     await submit(db, 'client', 'recurring', new Date(Date.now() - DAY));
 
     const eligibility = await resolveFeedbackEligibility(db, 'client');
     expect(eligibility.status).toBe('cooldown');
     expect(eligibility.canSubmit).toBe(false);
-    expect(eligibility.remainingSeconds).toBeGreaterThan(8 * DAY / 1000);
+    expect(eligibility.remainingSeconds).toBeGreaterThan(28 * DAY / 1000);
   });
 
   it('reopens recurring feedback once the cooldown expires', async () => {
     const {db} = memoryDatabase();
     await seedUser(db, 'client', 40);
-    await submit(db, 'client', 'initial', new Date(Date.now() - 30 * DAY));
     await submit(db, 'client', 'recurring', new Date(Date.now() - FEEDBACK_COOLDOWN_MS - 60_000));
 
     const eligibility = await resolveFeedbackEligibility(db, 'client');
     expect(eligibility.status).toBe('eligible_recurring');
+  });
+});
+
+describe('onboarding feedback eligibility', () => {
+  it('is eligible for onboarding feedback from day 1', async () => {
+    const {db} = memoryDatabase();
+    await seedUser(db, 'client', 0);
+
+    const eligibility = await resolveOnboardingFeedbackEligibility(db, 'client');
+    expect(eligibility.canSubmit).toBe(true);
+    expect(eligibility.formType).toBe('initial');
+    expect(eligibility.formUrl).toBe(FEEDBACK_FORMS.initial);
+  });
+
+  it('is no longer eligible once the onboarding form has been submitted', async () => {
+    const {db} = memoryDatabase();
+    await seedUser(db, 'client', 20);
+    await submit(db, 'client', 'initial', new Date(Date.now() - DAY));
+
+    const eligibility = await resolveOnboardingFeedbackEligibility(db, 'client');
+    expect(eligibility.canSubmit).toBe(false);
+    expect(eligibility.formUrl).toBeNull();
   });
 });
 
@@ -283,7 +281,7 @@ describe('feedback submission recording', () => {
     expect(before.formToken).toBeTruthy();
     const after = await resolveFeedbackEligibility(db, 'client');
 
-    expect(after.status).toBe('eligible_initial');
+    expect(after.status).toBe('eligible_recurring');
     expect(after.status).toBe(before.status);
   });
 });
