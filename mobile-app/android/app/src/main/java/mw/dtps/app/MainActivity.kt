@@ -468,7 +468,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Open external links in browser
-                return true
+                return openInBrowser(url)
             }
         }
 
@@ -617,6 +617,21 @@ class MainActivity : AppCompatActivity() {
         offlineView.visibility = View.GONE
         webView.visibility = View.VISIBLE
         webView.loadUrl(consumePendingNotificationUrl() ?: APP_URL)
+    }
+
+    /**
+     * Hands an external URL to the system browser. Returning true from
+     * shouldOverrideUrlLoading claims the navigation, so the launch must happen here;
+     * otherwise the link is silently dropped.
+     */
+    private fun openInBrowser(url: String): Boolean {
+        return try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to open external link: ${e.message}")
+            false
+        }
     }
 
     private fun resolveNotificationUrl(sourceIntent: Intent?): String? {
