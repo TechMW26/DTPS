@@ -1,6 +1,6 @@
 'use client';
 
-import {useState} from 'react';
+import {useRef, useState} from 'react';
 import {ExternalLink, Loader2, X} from 'lucide-react';
 
 /** Google's own embed mode for Forms; it hides the Google header and fits inside a frame. */
@@ -19,8 +19,35 @@ export function embeddedFormUrl(formUrl: string): string {
  * the page, so it works in every installed Android and iOS app version, even builds that
  * block or drop links to other websites.
  */
-export default function EmbeddedFeedbackForm({src, title, onClose}: {src: string; title: string; onClose: () => void}) {
+export default function EmbeddedFeedbackForm({
+  src,
+  title,
+  onClose,
+  onSubmitted,
+}: {
+  src: string;
+  title: string;
+  onClose: () => void;
+  onSubmitted?: () => void;
+}) {
   const [loaded, setLoaded] = useState(false);
+  const firstLoadAt = useRef(0);
+  const submitted = useRef(false);
+
+  // The form is a single page, so the frame only loads a second time when Google shows
+  // its "Your response has been recorded" page after Submit. A reload within a few
+  // seconds of opening is ignored so a quick double load is never taken as a submission.
+  const handleLoad = () => {
+    setLoaded(true);
+    if (!firstLoadAt.current) {
+      firstLoadAt.current = Date.now();
+      return;
+    }
+    if (!submitted.current && Date.now() - firstLoadAt.current > 3000) {
+      submitted.current = true;
+      onSubmitted?.();
+    }
+  };
 
   return (
     <div className="-mx-6 -my-7 sm:-mx-8">
@@ -45,7 +72,7 @@ export default function EmbeddedFeedbackForm({src, title, onClose}: {src: string
         <iframe
           src={src}
           title={title}
-          onLoad={() => setLoaded(true)}
+          onLoad={handleLoad}
           className="block h-[75vh] min-h-[480px] w-full border-0 bg-white"
         />
       </div>
