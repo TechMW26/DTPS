@@ -12,8 +12,8 @@ export const FEEDBACK_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
 export const FEEDBACK_OPEN_LOCK_DELAY_MS = 2 * 60 * 1000;
 
 export const FEEDBACK_FORMS: Record<FeedbackFormType, string> = {
-  initial: 'https://forms.gle/vh66XdtTQkky2eU7A',
-  recurring: 'https://forms.gle/zXF8NyKib7T1uExG8',
+  initial: 'https://docs.google.com/forms/d/e/1FAIpQLSfUWCbL3id4ioSbktJWfGe95ZqOi5Ka2HKJ5iZ6YJxWjRTsIw/viewform',
+  recurring: 'https://docs.google.com/forms/d/e/1FAIpQLSfxTtp0PR5xyJcjM-cojT-RGo7hHBRnHTK6JL7ruZthfc7dOQ/viewform',
 };
 
 /** Name of the Google Forms short-answer field that receives the signed token. */
