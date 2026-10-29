@@ -198,6 +198,15 @@ export default function FeedbackPage() {
                   setFormSrc(null);
                   void loadEligibility();
                 }}
+                onSubmitted={() => {
+                  // Save that this client filled the form, so it is not offered again.
+                  void fetch('/api/user/feedback/complete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({formType: 'recurring'}),
+                    cache: 'no-store',
+                  }).catch(() => undefined);
+                }}
               />
             ) : error ? (
               <div
