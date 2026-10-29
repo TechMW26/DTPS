@@ -4,6 +4,7 @@ import {useCallback, useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {useSession} from 'next-auth/react';
 import {ArrowLeft, CheckCircle2, Clock, ExternalLink, Loader2, MessageSquare, RefreshCw} from 'lucide-react';
+import EmbeddedFeedbackForm, {embeddedFormUrl} from '@/components/client/EmbeddedFeedbackForm';
 
 type Eligibility = {
   status: 'eligible_initial' | 'completed' | 'pending';
@@ -22,6 +23,7 @@ export default function OnboardingFeedbackPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
+  const [formSrc, setFormSrc] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const loadEligibility = useCallback(async () => {
@@ -118,7 +120,8 @@ export default function OnboardingFeedbackPage() {
     return () => clearInterval(interval);
   }, [eligibility?.nextEligibleAt, loadEligibility]);
 
-  if (authStatus === 'loading' || loading) {
+  // Keep an open form on screen while the status refreshes, so typed answers are not lost.
+  if (authStatus === 'loading' || (loading && !formSrc)) {
     return (
       <main className="flex min-h-[70vh] items-center justify-center">
         <div className="flex items-center gap-3 text-sm text-gray-500">
@@ -160,7 +163,16 @@ export default function OnboardingFeedbackPage() {
           </div>
 
           <div className="px-6 py-7 sm:px-8">
-            {error ? (
+            {formSrc ? (
+              <EmbeddedFeedbackForm
+                src={formSrc}
+                title="DTPS onboarding feedback form"
+                onClose={() => {
+                  setFormSrc(null);
+                  void loadEligibility();
+                }}
+              />
+            ) : error ? (
               <div
                 role="alert"
                 className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
@@ -196,21 +208,19 @@ export default function OnboardingFeedbackPage() {
                 )}
 
                 {eligibility.formUrl ? (
-                  <a
-                    href={eligibility.formUrl}
+                  <button
+                    type="button"
                     onClick={() => {
-                      // Start the background lock window (idempotent server-side; re-opening
-                      // during the 2 minutes never extends the deadline). The href itself
-                      // performs the actual navigation, which the Android WebView routes to the
-                      // system browser and iOS routes to Safari via their navigation delegates —
-                      // no native bridge required, so it works on every APK/build.
+                      // Show the form inside this page. Leaving the page for docs.google.com
+                      // or a browser fails on some installed app versions, a frame never does.
+                      setFormSrc(embeddedFormUrl(eligibility.formUrl!));
                       void openForm();
                     }}
                     className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                   >
                     Open onboarding feedback form
                     <ExternalLink className="h-4 w-4" />
-                  </a>
+                  </button>
                 ) : (
                   <p className="mt-7 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
                     The onboarding feedback form is not configured yet. Please contact support.
