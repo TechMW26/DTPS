@@ -233,7 +233,7 @@ function generateInvoiceHTML(data: {
   dietitianEmail?: string;
 }): string {
   // GST is included in the amount the client pays (18%), so it is shown inside the total, not added on top.
-  const amounts = buildGstInvoiceAmounts(data.amount, data.finalAmount);
+  const amounts = buildGstInvoiceAmounts(data.finalAmount, data.finalAmount);
   const isPaid = data.status === 'paid';
 
   return `
