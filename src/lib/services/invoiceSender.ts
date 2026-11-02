@@ -1,7 +1,8 @@
 import {getNativeDatabase} from '@/lib/db/database';
 import {nativeDates} from '@/lib/db/repository/native-plan-editor';
+import {nativeAssignInvoiceNumber} from '@/lib/db/repository/native-invoices';
 import {sendEmail} from '@/lib/services/email';
-import {generateEmailInvoiceHTML,buildInvoiceDataFromPayment} from '@/lib/services/invoiceTemplate';
+import {generateEmailInvoiceHTML,buildInvoiceDataFromPayment,financialYearLabel} from '@/lib/services/invoiceTemplate';
 
 /** Returns a provider acknowledgement; the outbox owns retry/uncertain delivery state. */
 export async function deliverNativePaymentInvoice(paymentId:string):Promise<'sent'|'skipped'|'disabled'> {
@@ -14,7 +15,8 @@ export async function deliverNativePaymentInvoice(paymentId:string):Promise<'sen
  const client=await db.collection('users').doc(payment.client).get();
  const person=client.exists?Object.fromEntries(['firstName','lastName','email','phone'].filter(key=>client.get(key)!==undefined).map(key=>[key,client.get(key)])):null;
  const recipient=person?.email||payment.payerEmail;if(!recipient)return 'skipped';
- const template=generateEmailInvoiceHTML(buildInvoiceDataFromPayment({...payment,_id:row.id,client:person}));
+ const invoiceNumber=await nativeAssignInvoiceNumber(db,paymentId,financialYearLabel(new Date()));
+ const template=generateEmailInvoiceHTML(buildInvoiceDataFromPayment({...payment,invoiceNumber,_id:row.id,client:person}));
  if(!await sendEmail({to:recipient,subject:template.subject,html:template.html,text:template.text}))throw new Error('Invoice provider did not confirm delivery');
  return 'sent';
 }
