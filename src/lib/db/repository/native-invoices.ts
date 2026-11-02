@@ -27,3 +27,30 @@ export async function nativePublicPaymentLink(db:MongoDatabase,id:string):Promis
  const name=(id:string)=>{const user=people.find(row=>row.id===id);return user?.exists?{firstName:user.get('firstName')||'',lastName:user.get('lastName')||''}:undefined;};
  return {...Object.fromEntries(['amount','tax','discount','finalAmount','currency','planName','planCategory','duration','status','expireDate','paidAt','razorpayPaymentLinkUrl','razorpayPaymentLinkShortUrl','createdAt'].filter(key=>data[key]!==undefined).map(key=>[key,data[key]])),_id:row.id,client:name(data.client),dietitian:name(data.dietitian)};
 }
+
+/**
+ * Gives a paid payment its invoice number once, from a per-financial-year counter.
+ * The number is saved on the payment, so later downloads show the same number and
+ * the counter never hands out the same number twice.
+ */
+export async function nativeAssignInvoiceNumber(db:MongoDatabase,paymentId:string,financialYear:string):Promise<string>{
+ if(!/^[a-f0-9]{24}$/i.test(paymentId))throw new NativeInvoiceError('Invalid payment ID',400);
+ if(!/^\d{2}-\d{2}$/.test(financialYear))throw new NativeInvoiceError('Invalid financial year',400);
+ return db.runTransaction(async tx=>{
+  const paymentRef=db.collection('unifiedpayments').doc(paymentId);
+  const payment=await tx.get(paymentRef);
+  if(!payment.exists)throw new NativeInvoiceError('Payment not found',404);
+  const existing=payment.get('invoiceNumber');
+  if(typeof existing==='string'&&existing)return existing;
+  const counterRef=db.collection('invoiceCounters').doc(`FY${financialYear}`);
+  const counter=await tx.get(counterRef);
+  const next=counter.exists?Number(counter.get('next')||1):1;
+  if(!Number.isInteger(next)||next<1)throw new NativeInvoiceError('Invoice counter requires reconciliation',409);
+  const number=`INV/${financialYear}/1/${String(next).padStart(5,'0')}`;
+  const now=new Date();
+  if(counter.exists)tx.update(counterRef,{next:next+1,updatedAt:now});
+  else tx.create(counterRef,{next:next+1,updatedAt:now});
+  tx.update(paymentRef,{invoiceNumber:number,invoiceNumberAssignedAt:now});
+  return number;
+ });
+}

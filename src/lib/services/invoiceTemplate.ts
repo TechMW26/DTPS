@@ -19,6 +19,14 @@ const DTPS_IOS_APP_URL = 'https://apps.apple.com/in/app/dtps-nutrition/id6759550
 const GST_MENTION_PERCENT = 18;
 
 const DTPS_ADDRESS = 'Lalghati, Bhopal, Madhya Pradesh, India - 462001';
+const DTPS_GSTIN = '23AAKCD1304K1ZZ';
+const DIETITIAN_NAME = 'Dietitian Poonam Sagar';
+const DIETITIAN_COMPANY = 'Dt Poonam Sagar Health & Nutrition Pvt Ltd';
+const DIETITIAN_ADDRESS = 'Lalghati, Bhopal, Madhya Pradesh, India, 462001';
+const DIETITIAN_EMAIL = 'dtpoonamsagar@mushroomworldbpl.com';
+const DIETITIAN_PHONE = '+91 9893027688';
+// Set to the logo image URL once the logo is hosted. Until then the header shows text only.
+const DIETITIAN_LOGO_URL: string | null = null;
 
 export interface InvoiceData {
     // Invoice meta
@@ -60,6 +68,18 @@ export function generateInvoiceNumber(paymentId: string, createdAt: Date): strin
     const month = String(createdAt.getMonth() + 1).padStart(2, '0');
     const shortId = paymentId.toString().slice(-6).toUpperCase();
     return `INV-${year}${month}-${shortId}`;
+}
+
+/** Indian financial year label (April to March), e.g. 26-27 for November 2026. */
+export function financialYearLabel(date: Date): string {
+    const ist = new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
+    const startYear = ist.getUTCMonth() >= 3 ? ist.getUTCFullYear() : ist.getUTCFullYear() - 1;
+    return `${String(startYear).slice(-2)}-${String(startYear + 1).slice(-2)}`;
+}
+
+/** Invoice number in the DTPS series, e.g. INV/26-27/1/00001. */
+export function formatInvoiceSeriesNumber(financialYear: string, sequence: number): string {
+    return `INV/${financialYear}/1/${String(sequence).padStart(5, '0')}`;
 }
 
 /**
@@ -368,27 +388,24 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
 </head>
 <body>
     <div class="container">
-        <!-- DTPS Branding -->
-        <div class="brand-section">
-            <img src="${DTPS_LOGO_URL}" alt="${DTPS_NAME}" class="brand-logo" />
-            <div>
-                <div class="brand-label">${DTPS_TAGLINE}</div>
-                <div class="brand-name">${DTPS_NAME}</div>
+        <div class="details-row">
+            <div class="invoice-details">
+                <div><span>GST:</span> ${DTPS_GSTIN}</div>
+                <div><span>Invoice Number:</span> ${data.invoiceNumber}</div>
+                <div><span>Date:</span> ${data.invoiceDate}</div>
+                <div><span>Email:</span> ${DIETITIAN_EMAIL}</div>
+                <div><span>Phone:</span> ${DIETITIAN_PHONE}</div>
             </div>
-        </div>
-
-        <!-- Invoice Details and Contact Info -->
-        <div class="invoice-details">
-            <div><span>Invoice Number:</span> ${data.invoiceNumber}</div>
-            <div><span>Date:</span> ${data.invoiceDate}</div>
-            <div><span>Email:</span> ${DTPS_SUPPORT_EMAIL}</div>
-            <div><span>Phone:</span> ${DTPS_SUPPORT_PHONE}</div>
-            <div><span>Address:</span> ${DTPS_ADDRESS}</div>
+            <div class="client-info">
+                ${DIETITIAN_LOGO_URL ? `<img src="${DIETITIAN_LOGO_URL}" alt="${DIETITIAN_NAME}" class="brand-logo" />` : ''}
+                <div class="brand-label">${DIETITIAN_NAME}</div>
+                <div class="client-name">${DIETITIAN_COMPANY}</div>
+                <div class="client-details">${DIETITIAN_ADDRESS}</div>
+            </div>
         </div>
 
         <div class="divider"></div>
 
-        <!-- Client Details -->
         <div class="client-name-section">
             <div class="client-name">${data.clientName}</div>
             ${data.clientPhone ? `<div class="client-details">Phone: ${data.clientPhone}</div>` : ''}
@@ -398,14 +415,13 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
             ${data.transactionId ? `<div class="client-details">Transaction ID: ${data.transactionId}</div>` : ''}
         </div>
 
-        <!-- Items Table -->
         <table>
             <thead>
                 <tr>
                     <th>S.No</th>
                     <th>Date</th>
                     <th>Description of Service</th>
-                    <th>Duration</th>
+                    <th>Quantity</th>
                     <th class="text-right">Amount</th>
                 </tr>
             </thead>
@@ -413,41 +429,38 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
                 <tr>
                     <td>1</td>
                     <td>${data.serviceDate}</td>
-                    <td>${data.planName}${data.planCategory ? ` - ${data.planCategory}` : ''}</td>
-                    <td>${data.duration || '-'}</td>
+                    <td>${data.planName}${data.duration ? ` - ${data.duration}` : ''}</td>
+                    <td>1</td>
                     <td class="text-right">${formatINR(data.baseAmount)}</td>
                 </tr>
             </tbody>
         </table>
 
-        <!-- Totals -->
         <div class="totals-section">
             <div class="totals-content">
                 <div class="totals-row">
                     <span>Amount:</span>
                     <span>${formatINR(data.baseAmount)}</span>
                 </div>
-
                 <div class="totals-row">
                     <span>Taxable Amount:</span>
                     <span>${formatINR(taxableAmount)}</span>
                 </div>
                 <div class="totals-row">
-                  <span>GST (${gstDisplayPercent}%):</span>
-                  <span>${formatINR(data.taxAmount || 0)}</span>
+                    <span>Sub Total:</span>
+                    <span>${formatINR(taxableAmount)}</span>
+                </div>
+                <div class="totals-row">
+                    <span>GST (${gstDisplayPercent}.0%):</span>
+                    <span>${formatINR(data.taxAmount || 0)}</span>
                 </div>
                 <div class="totals-total">
                     <span>Total Payable:</span>
                     <span>${formatINR(data.finalAmount)}</span>
                 </div>
-                <div class="totals-row" style="margin-top: 8px; font-size: 11px; color: #6b7280;">
-                  <span>GST Rate Mention:</span>
-                  <span>${GST_MENTION_PERCENT}%</span>
-                </div>
             </div>
         </div>
 
-        <!-- Footer -->
         <div class="footer">
             <div>This is a computer-generated invoice and doesn't require a signature.</div>
             <div>Powered by DTPS</div>
@@ -481,76 +494,50 @@ export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; 
     <tr>
       <td style="padding: 32px 16px;">
         <table role="presentation" style="max-width: 650px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);">
-          
-          <!-- Header with DTPS brand gradient -->
           <tr>
-            <td style="background: linear-gradient(135deg, #3AB1A0 0%, #2A9A8B 100%); padding: 28px 32px;">
-              <table role="presentation" style="width: 100%;">
-                <tr>
-                  <td style="vertical-align: middle;">
-                    <table role="presentation">
-                      <tr>
-                        <td style="vertical-align: middle; padding-right: 14px;">
-                          <img src="${DTPS_LOGO_URL}" alt="${DTPS_NAME}" style="width: 48px; height: 48px; border-radius: 10px; border: 2px solid rgba(255,255,255,0.3);" />
-                        </td>
-                        <td style="vertical-align: middle;">
-                          <div style="color: rgba(255,255,255,0.8); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">${DTPS_TAGLINE}</div>
-                          <div style="color: #ffffff; font-size: 22px; font-weight: 700;">${DTPS_NAME}</div>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                  <td style="text-align: right; vertical-align: middle;">
-                    <div style="color: #ffffff; font-size: 24px; font-weight: 300; letter-spacing: 2px;">INVOICE</div>
-                    <div style="color: rgba(255,255,255,0.85); font-size: 12px; margin-top: 4px;">#${data.invoiceNumber}</div>
-                  </td>
-                </tr>
-              </table>
+            <td style="padding: 28px 32px;">
+              <div style="color: #1f2937; font-size: 20px; font-weight: 700;">${DIETITIAN_NAME}</div>
+              <div style="color: #4b5563; font-size: 13px; margin-top: 4px;">${DIETITIAN_COMPANY}</div>
+              <div style="color: #6b7280; font-size: 12px; margin-top: 2px;">${DIETITIAN_ADDRESS}</div>
             </td>
           </tr>
-
-          <!-- Invoice Details Row -->
           <tr>
-            <td style="padding: 28px 32px 0 32px;">
-              <table role="presentation" style="width: 100%;">
-                <tr>
-                  <td style="vertical-align: top; width: 100%;">
-                    <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #9ca3af; margin-bottom: 8px;">Invoice Details</div>
-                    <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>Invoice No:</strong> ${data.invoiceNumber}</div>
-                    <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>Date:</strong> ${data.invoiceDate}</div>
-                    <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>Email:</strong> ${DTPS_SUPPORT_EMAIL}</div>
-                    <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>Phone:</strong> ${DTPS_SUPPORT_PHONE}</div>
-                    <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>Address:</strong> ${DTPS_ADDRESS}</div>
-                  </td>
-                </tr>
-              </table>
+            <td style="padding: 0 32px 16px 32px;">
+              <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>GST:</strong> ${DTPS_GSTIN}</div>
+              <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>Invoice Number:</strong> ${data.invoiceNumber}</div>
+              <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>Date:</strong> ${data.invoiceDate}</div>
+              <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>Email:</strong> ${DIETITIAN_EMAIL}</div>
+              <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;"><strong>Phone:</strong> ${DIETITIAN_PHONE}</div>
             </td>
           </tr>
-
-          <!-- Services Table -->
           <tr>
-            <td style="padding: 24px 32px;">
+            <td style="padding: 8px 32px 16px 32px; font-size: 12px; color: #4b5563;">
+              <strong>Bill To:</strong> ${data.clientName}<br>
+              ${data.clientEmail ? `Email: ${data.clientEmail}<br>` : ''}
+              ${data.clientPhone ? `Phone: ${data.clientPhone}<br>` : ''}
+              <strong>Payment:</strong> ${isPaid ? 'Fully Paid' : 'Pending'}${data.paymentMethod ? ` &nbsp; <strong>Mode of Payment:</strong> ${data.paymentMethod}` : ''}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 32px 24px 32px;">
               <table role="presentation" style="width: 100%; border-collapse: collapse;">
                 <tr style="background-color: #f8fafc;">
-                  <th style="text-align: left; padding: 10px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 2px solid #e5e7eb;">S.No</th>
-                  <th style="text-align: left; padding: 10px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 2px solid #e5e7eb;">Description</th>
-                  <th style="text-align: left; padding: 10px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 2px solid #e5e7eb;">Duration</th>
-                  <th style="text-align: right; padding: 10px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 2px solid #e5e7eb;">Amount</th>
+                  <th style="text-align: left; padding: 10px 12px; font-size: 10px; text-transform: uppercase; color: #6b7280; border-bottom: 2px solid #e5e7eb;">S.No</th>
+                  <th style="text-align: left; padding: 10px 12px; font-size: 10px; text-transform: uppercase; color: #6b7280; border-bottom: 2px solid #e5e7eb;">Date</th>
+                  <th style="text-align: left; padding: 10px 12px; font-size: 10px; text-transform: uppercase; color: #6b7280; border-bottom: 2px solid #e5e7eb;">Description of Service</th>
+                  <th style="text-align: left; padding: 10px 12px; font-size: 10px; text-transform: uppercase; color: #6b7280; border-bottom: 2px solid #e5e7eb;">Quantity</th>
+                  <th style="text-align: right; padding: 10px 12px; font-size: 10px; text-transform: uppercase; color: #6b7280; border-bottom: 2px solid #e5e7eb;">Amount</th>
                 </tr>
                 <tr>
                   <td style="padding: 14px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #374151;">1</td>
-                  <td style="padding: 14px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #374151;">
-                    <strong>${data.planName}</strong>
-                    ${data.planCategory ? `<br><span style="font-size: 11px; color: #9ca3af;">${data.planCategory}</span>` : ''}
-                  </td>
-                  <td style="padding: 14px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #374151;">${data.duration || '-'}</td>
+                  <td style="padding: 14px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #374151;">${data.serviceDate}</td>
+                  <td style="padding: 14px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #374151;">${data.planName}${data.duration ? ` - ${data.duration}` : ''}</td>
+                  <td style="padding: 14px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #374151;">1</td>
                   <td style="padding: 14px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #374151; text-align: right;">${formatINR(data.baseAmount)}</td>
                 </tr>
               </table>
             </td>
           </tr>
-
-          <!-- Totals -->
           <tr>
             <td style="padding: 0 32px 24px 32px;">
               <table role="presentation" style="width: 300px; margin-left: auto;">
@@ -558,13 +545,16 @@ export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; 
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">Amount:</td>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(data.baseAmount)}</td>
                 </tr>
-
                 <tr>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">Taxable Amount:</td>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(taxableAmount)}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">GST (${gstDisplayPercent}%):</td>
+                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">Sub Total:</td>
+                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(taxableAmount)}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">GST (${gstDisplayPercent}.0%):</td>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(data.taxAmount || 0)}</td>
                 </tr>
                 <tr>
@@ -574,52 +564,15 @@ export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; 
                   <td style="padding: 4px 0; font-size: 14px; font-weight: 700; color: #1f2937;">Total Payable:</td>
                   <td style="padding: 4px 0; font-size: 14px; font-weight: 700; color: #1f2937; text-align: right;">${formatINR(data.finalAmount)}</td>
                 </tr>
-                <tr>
-                  <td style="padding: 8px 0 0 0; font-size: 11px; color: #6b7280;">GST Rate Mention:</td>
-                  <td style="padding: 8px 0 0 0; font-size: 11px; color: #6b7280; text-align: right;">${GST_MENTION_PERCENT}%</td>
-                </tr>
               </table>
             </td>
           </tr>
-
-          <!-- Payment Status -->
-          <tr>
-            <td style="padding: 16px 32px 24px 32px;">
-              <table role="presentation" style="width: 100%;">
-                <tr>
-                  <td style="font-size: 12px; color: #4b5563;">
-                    <strong>Payment:</strong> ${isPaid ? 'Fully Paid' : 'Pending'}
-                  </td>
-                  ${data.paymentMethod ? `<td style="font-size: 12px; color: #4b5563; text-align: right;"><strong>Mode of Payment:</strong> ${data.paymentMethod}</td>` : ''}
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="padding: 0 32px 20px 32px;">
-              <div style="padding: 14px 16px; border: 1px solid #dbeafe; border-radius: 10px; background-color: #f8fbff;">
-                <div style="font-size: 12px; font-weight: 600; color: #1f2937; margin-bottom: 8px;">Install DTPS App</div>
-                <div style="font-size: 12px; color: #374151; line-height: 1.7;">
-                  Android DTPS app link: <a href="${DTPS_ANDROID_APP_URL}" style="color: #2563eb; text-decoration: none;">${DTPS_ANDROID_APP_URL}</a><br>
-                  iOS DTPS app link: <a href="${DTPS_IOS_APP_URL}" style="color: #2563eb; text-decoration: none;">${DTPS_IOS_APP_URL}</a>
-                </div>
-              </div>
-            </td>
-          </tr>
-
           <tr>
             <td style="background-color: #f8fafc; padding: 20px 32px; border-top: 1px solid #e5e7eb;">
-              <table role="presentation" style="width: 100%;">
-                <tr>
-                  <td style="font-size: 10px; color: #9ca3af;">This is a computer-generated invoice and doesn't require a signature.</td>
-                  <td style="font-size: 10px; color: #9ca3af; text-align: right;">Powered by DTPS</td>
-                </tr>
-              </table>
+              <div style="font-size: 10px; color: #9ca3af;">This is a computer-generated invoice and doesn't require a signature.</div>
+              <div style="font-size: 10px; color: #9ca3af; margin-top: 6px;">Install DTPS app: Android ${DTPS_ANDROID_APP_URL} | iOS ${DTPS_IOS_APP_URL}</div>
             </td>
           </tr>
-
         </table>
       </td>
     </tr>
@@ -629,7 +582,9 @@ export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; 
 
     const text = `
 INVOICE #${data.invoiceNumber}
-${DTPS_NAME} - ${DTPS_TAGLINE}
+${DIETITIAN_NAME} - ${DIETITIAN_COMPANY}
+${DIETITIAN_ADDRESS}
+GST: ${DTPS_GSTIN}
 Date: ${data.invoiceDate}
 
 Bill To: ${data.clientName}
@@ -639,25 +594,19 @@ ${data.clientPhone ? `Phone: ${data.clientPhone}` : ''}
 Payment: ${isPaid ? 'Fully Paid' : 'Pending'}
 ${data.paymentMethod ? `Mode of Payment: ${data.paymentMethod}` : ''}
 
-Service: ${data.planName}${data.planCategory ? ` - ${data.planCategory}` : ''}
-${data.duration ? `Duration: ${data.duration}` : ''}
+Service: ${data.planName}${data.duration ? ` - ${data.duration}` : ''}
 
 Amount: ${formatINR(data.baseAmount)}
-${data.discountAmount > 0 ? `Discount (${data.discountPercent}%): -${formatINR(data.discountAmount)}` : ''}
 Taxable Amount: ${formatINR(taxableAmount)}
-GST (${gstDisplayPercent}%): ${formatINR(data.taxAmount || 0)}
-GST Rate Mention: ${GST_MENTION_PERCENT}%
+Sub Total: ${formatINR(taxableAmount)}
+GST (${gstDisplayPercent}.0%): ${formatINR(data.taxAmount || 0)}
 Total Payable: ${formatINR(data.finalAmount)}
 
 ${data.transactionId ? `Transaction ID: ${data.transactionId}` : ''}
 
-Android DTPS app link: ${DTPS_ANDROID_APP_URL}
-iOS DTPS app link: ${DTPS_IOS_APP_URL}
-
-For support: ${DTPS_SUPPORT_EMAIL} | ${DTPS_SUPPORT_PHONE}
-Address: ${DTPS_ADDRESS}
+For support: ${DIETITIAN_EMAIL} | ${DIETITIAN_PHONE}
 Thank you!
-© ${new Date().getFullYear()} ${DTPS_NAME} - ${DTPS_TAGLINE}
+© ${new Date().getFullYear()} ${DIETITIAN_NAME}
   `.trim();
 
     return { subject, html, text };
@@ -712,7 +661,7 @@ export function buildInvoiceDataFromPayment(payment: any): InvoiceData {
     const amounts = buildGstInvoiceAmounts(finalTotal, finalTotal);
 
     return {
-        invoiceNumber: generateInvoiceNumber(payment._id.toString(), new Date(payment.createdAt)),
+        invoiceNumber: payment.invoiceNumber || generateInvoiceNumber(payment._id.toString(), new Date(payment.createdAt)),
         invoiceDate,
         clientName,
         clientEmail: payment.client?.email || payment.payerEmail,
