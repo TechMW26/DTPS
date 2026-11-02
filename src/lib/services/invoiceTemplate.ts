@@ -427,17 +427,7 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
                     <span>Amount:</span>
                     <span>${formatINR(data.baseAmount)}</span>
                 </div>
-                ${data.discountAmount > 0 ? `
-                <div class="totals-row" style="color: #10b981;">
-                    <span>Discount (${data.discountPercent}%):</span>
-                    <span>- ${formatINR(data.discountAmount)}</span>
-                </div>
-                ` : `
-                <div class="totals-row">
-                    <span>Discount:</span>
-                    <span>${formatINR(0)}</span>
-                </div>
-                `}
+
                 <div class="totals-row">
                     <span>Taxable Amount:</span>
                     <span>${formatINR(taxableAmount)}</span>
@@ -568,10 +558,7 @@ export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; 
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">Amount:</td>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(data.baseAmount)}</td>
                 </tr>
-                <tr>
-                  <td style="padding: 4px 0; font-size: 12px; color: ${data.discountAmount > 0 ? '#10b981' : '#4b5563'};">Discount${data.discountPercent > 0 ? ` (${data.discountPercent}%)` : ''}:</td>
-                  <td style="padding: 4px 0; font-size: 12px; color: ${data.discountAmount > 0 ? '#10b981' : '#4b5563'}; text-align: right;">${data.discountAmount > 0 ? `- ${formatINR(data.discountAmount)}` : formatINR(0)}</td>
-                </tr>
+
                 <tr>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">Taxable Amount:</td>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(taxableAmount)}</td>
@@ -720,7 +707,9 @@ export function buildInvoiceDataFromPayment(payment: any): InvoiceData {
     const paidAt = payment.paidAt ? formatInvoiceDate(payment.paidAt) : undefined;
 
     const finalTotal = payment.finalAmount || payment.amount || 0;
-    const amounts = buildGstInvoiceAmounts(payment.baseAmount || payment.amount || finalTotal, finalTotal);
+    // The payment link amount is the final price (discount already applied, GST included).
+    // Invoices show no discount line; GST is calculated inside this amount.
+    const amounts = buildGstInvoiceAmounts(finalTotal, finalTotal);
 
     return {
         invoiceNumber: generateInvoiceNumber(payment._id.toString(), new Date(payment.createdAt)),
