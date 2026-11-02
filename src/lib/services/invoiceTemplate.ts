@@ -677,6 +677,37 @@ Thank you!
 }
 
 /**
+ * Splits an amount that already includes GST (the amount the client pays) into the
+ * taxable value and the GST part. Example: 5000 at 18% -> taxable 4237.29, GST 762.71.
+ * Display-only: stored payment amounts are never changed by this.
+ */
+export function splitGstInclusiveAmount(total: number, ratePercent: number = GST_MENTION_PERCENT) {
+    const safeTotal = Math.round(total * 100) / 100;
+    const taxable = Math.round((safeTotal / (1 + ratePercent / 100)) * 100) / 100;
+    const gst = Math.round((safeTotal - taxable) * 100) / 100;
+    return { taxable, gst };
+}
+
+/**
+ * Invoice amounts for a GST-inclusive payment.
+ * grossAmount: amount before discount (GST-inclusive). total: amount the client pays (GST-inclusive).
+ */
+export function buildGstInvoiceAmounts(grossAmount: number, total: number) {
+    const paid = splitGstInclusiveAmount(total);
+    const discountGross = Math.max(0, Math.round((grossAmount - total) * 100) / 100);
+    const discountEx = splitGstInclusiveAmount(discountGross).taxable;
+    const amountEx = Math.round((paid.taxable + discountEx) * 100) / 100;
+    return {
+        amountEx,
+        discountGross,
+        discountEx,
+        taxable: paid.taxable,
+        gst: paid.gst,
+        total: Math.round(total * 100) / 100,
+    };
+}
+
+/**
  * Build InvoiceData from a UnifiedPayment document (populated with client)
  */
 export function buildInvoiceDataFromPayment(payment: any): InvoiceData {
@@ -688,6 +719,9 @@ export function buildInvoiceDataFromPayment(payment: any): InvoiceData {
     const serviceDate = formatInvoiceDate(payment.startDate || payment.paidAt || payment.purchaseDate || payment.createdAt);
     const paidAt = payment.paidAt ? formatInvoiceDate(payment.paidAt) : undefined;
 
+    const finalTotal = payment.finalAmount || payment.amount || 0;
+    const amounts = buildGstInvoiceAmounts(payment.baseAmount || payment.amount || finalTotal, finalTotal);
+
     return {
         invoiceNumber: generateInvoiceNumber(payment._id.toString(), new Date(payment.createdAt)),
         invoiceDate,
@@ -698,12 +732,12 @@ export function buildInvoiceDataFromPayment(payment: any): InvoiceData {
         planCategory: payment.planCategory,
         duration: payment.durationLabel || (payment.durationDays ? `${payment.durationDays} Days` : undefined),
         serviceDate,
-        baseAmount: payment.baseAmount || payment.amount || 0,
+        baseAmount: amounts.amountEx,
         discountPercent: payment.discountPercent || 0,
-        discountAmount: payment.discountAmount || 0,
-        taxPercent: payment.taxPercent || 0,
-        taxAmount: payment.taxAmount || 0,
-        finalAmount: payment.finalAmount || payment.amount || 0,
+        discountAmount: amounts.discountEx,
+        taxPercent: GST_MENTION_PERCENT,
+        taxAmount: amounts.gst,
+        finalAmount: amounts.total,
         currency: payment.currency || 'INR',
         status: payment.status || payment.paymentStatus || 'pending',
         paymentMethod: payment.paymentMethod,

@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth/config';
 import { sendEmail, getInvoiceEmailTemplate } from '@/lib/services/email';
+import { buildGstInvoiceAmounts } from '@/lib/services/invoiceTemplate';
 
 // Generate invoice number
 function generateInvoiceNumber(paymentLinkId: string, createdAt: Date): string {
@@ -231,8 +232,8 @@ function generateInvoiceHTML(data: {
   dietitianName?: string;
   dietitianEmail?: string;
 }): string {
-  const taxAmount = (data.amount * data.tax) / 100;
-  const discountAmount = (data.amount * data.discount) / 100;
+  // GST is included in the amount the client pays (18%), so it is shown inside the total, not added on top.
+  const amounts = buildGstInvoiceAmounts(data.amount, data.finalAmount);
   const isPaid = data.status === 'paid';
 
   return `
@@ -519,23 +520,25 @@ function generateInvoiceHTML(data: {
               ${data.planCategory ? `<div class="item-desc">Category: ${data.planCategory}</div>` : ''}
               ${data.duration ? `<div class="item-desc">Duration: ${data.duration}</div>` : ''}
             </td>
-            <td>₹${data.amount.toLocaleString('en-IN')}</td>
+            <td>₹${amounts.amountEx.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           </tr>
-          ${data.tax > 0 ? `
-          <tr class="subtotal-row">
-            <td style="text-align: right;">Tax (${data.tax}%)</td>
-            <td>+₹${taxAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-          </tr>
-          ` : ''}
-          ${data.discount > 0 ? `
+          ${amounts.discountGross > 0 ? `
           <tr class="subtotal-row discount-row">
             <td style="text-align: right;">Discount (${data.discount}%)</td>
-            <td>-₹${discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td>-₹${amounts.discountEx.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           </tr>
           ` : ''}
+          <tr class="subtotal-row">
+            <td style="text-align: right;">Sub Total</td>
+            <td>₹${amounts.taxable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          </tr>
+          <tr class="subtotal-row">
+            <td style="text-align: right;">GST (18%)</td>
+            <td>₹${amounts.gst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          </tr>
           <tr class="total-row">
             <td style="text-align: right;">${isPaid ? 'Total Paid' : 'Total Due'}</td>
-            <td>₹${data.finalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td>₹${amounts.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           </tr>
         </tbody>
       </table>
