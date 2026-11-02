@@ -352,7 +352,7 @@ export function getInvoiceEmailTemplate(data: {
                 <tr>
                   <td style="padding: 10px 12px; text-align: right; font-size: 14px; color: #10b981;">Discount (${data.discount}%)</td>
                   <td style="padding: 10px 12px; text-align: right; font-size: 14px; color: #10b981;">
-                    -₹${((data.amount * data.discount) / 100).toLocaleString('en-IN')}
+                    -₹${((data.amount * (1 + (data.tax || 0) / 100) * data.discount) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                   </td>
                 </tr>
                 ` : ''}
@@ -428,7 +428,7 @@ ${data.duration ? `Duration: ${data.duration}` : ''}
 
 Amount: ₹${data.amount.toLocaleString('en-IN')}
 ${data.tax > 0 ? `Tax (${data.tax}%): +₹${((data.amount * data.tax) / 100).toLocaleString('en-IN')}` : ''}
-${data.discount > 0 ? `Discount (${data.discount}%): -₹${((data.amount * data.discount) / 100).toLocaleString('en-IN')}` : ''}
+${data.discount > 0 ? `Discount (${data.discount}%): -₹${((data.amount * (1 + (data.tax || 0) / 100) * data.discount) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : ''}
 
 Total Paid: ₹${data.finalAmount.toLocaleString('en-IN')}
 

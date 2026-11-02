@@ -2,6 +2,7 @@ import type * as MongoTypes from '@/lib/db/mongo-types';
 import type {MongoDatabase,DocumentData} from '@/lib/db/mongo-types';
 import {nativeDates} from './native-plan-editor';
 import {hydrateNativeDocument} from '@/lib/storage/native-document';
+import {planPriceWithTax} from '@/lib/services/invoiceTemplate';
 export class NativeInvoiceError extends Error{constructor(message:string,public status:number){super(message);}}
 export async function nativeInvoicePayment(db:MongoDatabase,paymentId:string,actorId:string,send=false){
  if(!/^[a-f0-9]{24}$/i.test(paymentId))throw new NativeInvoiceError('Invalid payment ID',400);
@@ -14,6 +15,19 @@ export async function nativeInvoicePayment(db:MongoDatabase,paymentId:string,act
  if(role!=='admin'&&!(role==='client'&&!send&&actorId===clientId)&&!assigned.includes(actorId))throw new NativeInvoiceError('Forbidden',403);
  const person=client.exists?{_id:clientId,...Object.fromEntries(['firstName','lastName','email','phone'].filter(key=>client.get(key)!==undefined).map(key=>[key,client.get(key)]))}:null;
  return {...nativeDates(await hydrateNativeDocument(payment.data()!)),_id:payment.id,client:person};
+}
+/** Plan price with GST before discount, from the payment link the HC created (read only). */
+export async function nativeInvoiceListAmount(db:MongoDatabase,payment:DocumentData):Promise<number|undefined>{
+ const linkId=payment.paymentLink;
+ let link:MongoTypes.DocumentSnapshot|undefined;
+ if(typeof linkId==='string'&&/^[a-f0-9]{24}$/i.test(linkId))link=await db.collection('paymentlinks').doc(linkId).get();
+ if(!link?.exists&&typeof payment.razorpayPaymentLinkId==='string'&&/^plink_[a-zA-Z0-9]+$/.test(payment.razorpayPaymentLinkId)){
+  const rows=await db.collection('paymentlinks').where('razorpayPaymentLinkId','==',payment.razorpayPaymentLinkId).limit(2).get();
+  if(rows.size===1)link=rows.docs[0];
+ }
+ if(link?.exists)return planPriceWithTax(link.get('amount'),link.get('tax'));
+ if(payment.taxPercent!==undefined)return planPriceWithTax(payment.baseAmount,payment.taxPercent);
+ return undefined;
 }
 export async function nativePublicPaymentLink(db:MongoDatabase,id:string):Promise<DocumentData|null>{
  if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw new NativeInvoiceError('Invalid payment link ID',400);
