@@ -240,7 +240,8 @@ export default function PaymentsSection({
     const effectiveDiscount = Math.min(d, maxDiscount);
 
     const taxed = amt + (amt * t) / 100;
-    const finalVal = Math.max(0, taxed - (amt * effectiveDiscount) / 100);
+    // Discount % is taken on the price with GST (e.g. 10% of 5000 = 500)
+    const finalVal = Math.max(0, taxed - (taxed * effectiveDiscount) / 100);
     const roundedFinal = Math.round(finalVal * 100) / 100;
     setFinalAmount(String(roundedFinal));
   }, [amount, tax, discount, maxDiscount, isEditingFinalAmount]);
@@ -283,7 +284,7 @@ export default function PaymentsSection({
     let val = Math.max(0, parsedVal); // No negative
 
     // Calculate minimum final amount based on max discount
-    const minFinalAmount = taxedAmount - (amt * maxDiscount) / 100;
+    const minFinalAmount = taxedAmount - (taxedAmount * maxDiscount) / 100;
 
     let wasAdjusted = false;
     if (val < minFinalAmount && amt > 0) {
@@ -312,7 +313,7 @@ export default function PaymentsSection({
     // Now calculate the actual discount percentage
     if (amt > 0) {
       const discountAmount = taxedAmount - finalVal;
-      const calculatedDiscount = (discountAmount * 100) / amt;
+      const calculatedDiscount = (discountAmount * 100) / taxedAmount;
       setDiscount(String(Math.round(Math.max(0, calculatedDiscount) * 100) / 100));
     }
 

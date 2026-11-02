@@ -26,7 +26,7 @@ const DIETITIAN_ADDRESS = 'Lalghati, Bhopal, Madhya Pradesh, India, 462001';
 const DIETITIAN_EMAIL = 'dtpoonamsagar@mushroomworldbpl.com';
 const DIETITIAN_PHONE = '+91 9893027688';
 // Set to the logo image URL once the logo is hosted. Until then the header shows text only.
-const DIETITIAN_LOGO_URL: string | null = null;
+const DIETITIAN_LOGO_URL: string | null = 'https://dtps.tech/icons/icon-512x512.png';
 
 export interface InvoiceData {
     // Invoice meta
@@ -85,14 +85,13 @@ export function formatInvoiceSeriesNumber(financialYear: string, sequence: numbe
 /**
  * Format date for invoice display
  */
+const INVOICE_MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
+
+/** Date in the previous invoice style, e.g. Jan. 20, 2026 (Indian time). */
 export function formatInvoiceDate(date: Date | string): string {
     const d = new Date(date);
-    return d.toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'Asia/Kolkata',
-    });
+    const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+    return `${INVOICE_MONTHS[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${ist.getUTCFullYear()}`;
 }
 
 /**
@@ -100,6 +99,28 @@ export function formatInvoiceDate(date: Date | string): string {
  */
 function formatINR(amount: number): string {
     return `INR ${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** 16.67 -> "16.67%", 10 -> "10%" */
+function formatPercent(value: number): string {
+    return `${Number((Math.round(value * 100) / 100).toFixed(2))}%`;
+}
+
+/**
+ * Plan price the client was offered, GST included: the link amount plus the tax % on it.
+ * The HC's discount % is taken on this price.
+ */
+export function planPriceWithTax(amount: unknown, taxPercent: unknown): number | undefined {
+    const base = Number(amount);
+    const tax = Number(taxPercent ?? 0);
+    if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(tax) || tax < 0) return undefined;
+    return Math.round(base * (1 + tax / 100) * 100) / 100;
+}
+
+/** Discount % on the GST-inclusive plan price, e.g. 3000 -> 2500 gives 16.67. */
+export function invoiceDiscountPercent(planPrice: number, total: number): number {
+    if (!(planPrice > total) || planPrice <= 0) return 0;
+    return Math.round(((planPrice - total) / planPrice) * 10000) / 100;
 }
 
 /**
@@ -398,7 +419,7 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
             </div>
             <div class="client-info">
                 ${DIETITIAN_LOGO_URL ? `<img src="${DIETITIAN_LOGO_URL}" alt="${DIETITIAN_NAME}" class="brand-logo" />` : ''}
-                <div class="brand-label">${DIETITIAN_NAME}</div>
+                <div style="color: #f97316; font-size: 13px; margin-bottom: 2px;">Dtpoonamsagar</div>
                 <div class="client-name">${DIETITIAN_COMPANY}</div>
                 <div class="client-details">${DIETITIAN_ADDRESS}</div>
             </div>
@@ -442,6 +463,10 @@ export function generatePrintableInvoiceHTML(data: InvoiceData): string {
                     <span>Amount:</span>
                     <span>${formatINR(data.baseAmount)}</span>
                 </div>
+                ${data.discountAmount > 0 ? `<div class="totals-row">
+                    <span>Discount (${formatPercent(data.discountPercent)}):</span>
+                    <span>- ${formatINR(data.discountAmount)}</span>
+                </div>` : ''}
                 <div class="totals-row">
                     <span>Taxable Amount:</span>
                     <span>${formatINR(taxableAmount)}</span>
@@ -545,6 +570,10 @@ export function generateEmailInvoiceHTML(data: InvoiceData): { subject: string; 
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">Amount:</td>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(data.baseAmount)}</td>
                 </tr>
+                ${data.discountAmount > 0 ? `<tr>
+                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">Discount (${formatPercent(data.discountPercent)}):</td>
+                  <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">- ${formatINR(data.discountAmount)}</td>
+                </tr>` : ''}
                 <tr>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563;">Taxable Amount:</td>
                   <td style="padding: 4px 0; font-size: 12px; color: #4b5563; text-align: right;">${formatINR(taxableAmount)}</td>
@@ -597,6 +626,7 @@ ${data.paymentMethod ? `Mode of Payment: ${data.paymentMethod}` : ''}
 Service: ${data.planName}${data.duration ? ` - ${data.duration}` : ''}
 
 Amount: ${formatINR(data.baseAmount)}
+${data.discountAmount > 0 ? `Discount (${formatPercent(data.discountPercent)}): - ${formatINR(data.discountAmount)}` : ''}
 Taxable Amount: ${formatINR(taxableAmount)}
 Sub Total: ${formatINR(taxableAmount)}
 GST (${gstDisplayPercent}.0%): ${formatINR(data.taxAmount || 0)}
@@ -656,9 +686,12 @@ export function buildInvoiceDataFromPayment(payment: any): InvoiceData {
     const paidAt = payment.paidAt ? formatInvoiceDate(payment.paidAt) : undefined;
 
     const finalTotal = payment.finalAmount || payment.amount || 0;
-    // The payment link amount is the final price (discount already applied, GST included).
-    // Invoices show no discount line; GST is calculated inside this amount.
-    const amounts = buildGstInvoiceAmounts(finalTotal, finalTotal);
+    // The amount paid already has the discount applied and GST included.
+    // invoiceListAmount is the plan price with GST (before discount); when it is higher
+    // than the amount paid, the invoice shows the HC's discount line.
+    const listAmount = Number(payment.invoiceListAmount);
+    const planPrice = Number.isFinite(listAmount) && listAmount > finalTotal ? Math.round(listAmount * 100) / 100 : finalTotal;
+    const amounts = buildGstInvoiceAmounts(planPrice, finalTotal);
 
     return {
         invoiceNumber: payment.invoiceNumber || generateInvoiceNumber(payment._id.toString(), new Date(payment.createdAt)),
@@ -671,7 +704,7 @@ export function buildInvoiceDataFromPayment(payment: any): InvoiceData {
         duration: payment.durationLabel || (payment.durationDays ? `${payment.durationDays} Days` : undefined),
         serviceDate,
         baseAmount: amounts.amountEx,
-        discountPercent: payment.discountPercent || 0,
+        discountPercent: invoiceDiscountPercent(planPrice, finalTotal),
         discountAmount: amounts.discountEx,
         taxPercent: GST_MENTION_PERCENT,
         taxAmount: amounts.gst,

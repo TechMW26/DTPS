@@ -16,11 +16,13 @@ export async function createNativeStaffPaymentLink(db:MongoDatabase,actorId:stri
  const parsed=schema.safeParse(input);if(!parsed.success)throw new NativeCheckoutError('Invalid payment link fields',400);const data=parsed.data;const expiry=data.expireDate?(data.expireDate.length===10?new Date(nativeHabitDay(data.expireDate).end.getTime()-1):new Date(data.expireDate)):undefined;
  const actor=await nativeFinanceActor(db,actorId),client=await nativeFinanceClient(db,actor,data.clientId,true);
  if(expiry&&expiry.getTime()<=Date.now())throw new NativeCheckoutError('Expiry must be in the future',400);
- const expected=Math.round(data.amount*(1+(data.tax-data.discount)/100)*100),actual=Math.round(data.finalAmount*100);
+ // Discount % is taken on the price with GST (amount + tax), e.g. 10% of 5000 = 500.
+ const taxed=data.amount*(1+data.tax/100);
+ const expected=Math.round(taxed*(1-data.discount/100)*100),actual=Math.round(data.finalAmount*100);
  // The editable final amount is in paise; its displayed percentage is rounded to
  // two decimals. Reconcile only that rounding interval, then enforce the exact
  // effective discount against the plan limit below (never the rounded display).
- const effectiveDiscount=(data.amount*(1+data.tax/100)-actual/100)*100/data.amount;
+ const effectiveDiscount=(taxed-actual/100)*100/taxed;
  if(Math.abs(expected-actual)>1&&Math.abs(effectiveDiscount-data.discount)>0.005+1e-9)throw new NativeCheckoutError('Final amount does not match tax and discount',400);
  if(actual>Math.round(data.amount*(1+data.tax/100)*100)||actual<Math.round(data.amount*data.tax))throw new NativeCheckoutError('Invalid final amount',400);
  data.discount=Math.max(0,Math.min(100,effectiveDiscount));
@@ -37,7 +39,7 @@ export async function createNativeStaffPaymentLink(db:MongoDatabase,actorId:stri
    if(!plan.exists||!plan.get('isActive')||!tier?.isActive)throw new NativeCheckoutError('This plan or duration is unavailable. Close and reopen Generate Link to refresh plans.',409);
    if(Math.round(tier.amount*100)!==Math.round(data.amount*100)||tier.durationDays!==data.durationDays)throw new NativeCheckoutError('Plan price or duration changed. Close and reopen Generate Link to load current pricing.',409);
    const maxDiscount=Number(tier.maxDiscount??plan.get('maxDiscountPercent')??0);
-   if(actual<Math.round(data.amount*(1+(data.tax-maxDiscount)/100)*100))throw new NativeCheckoutError(`Maximum discount for this duration is ${maxDiscount}%. Please adjust the final amount.`,409);
+   if(actual<Math.round(taxed*(1-maxDiscount/100)*100))throw new NativeCheckoutError(`Maximum discount for this duration is ${maxDiscount}%. Please adjust the final amount.`,409);
   }
   if(current.exists){if(current.get('_nativeRequestIdentity')!==identity)throw new NativeCheckoutError('Payment link retry conflict',409);return {created:false,data:nativeDates(current.data()!)};}
   const now=new Date(),{clientId,...rest}=data,row=clean({...rest,_id:id,client:clientId,dietitian:actorId,currency:'INR',status:'pending',expireDate:expiry,createdAt:now,updatedAt:now,_nativeRequestIdentity:identity,_nativeProviderState:'creating'});tx.create(ref,row);return {created:true,data:row};

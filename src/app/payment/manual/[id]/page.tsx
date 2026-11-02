@@ -192,7 +192,7 @@ export default function ManualPaymentPage() {
               {paymentLink.discount > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span>Discount ({paymentLink.discount}%)</span>
-                  <span>-₹{((paymentLink.amount * paymentLink.discount) / 100).toLocaleString('en-IN')}</span>
+                  <span>-₹{((paymentLink.amount * (1 + (paymentLink.tax || 0) / 100) * paymentLink.discount) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
                 </div>
               )}
 
