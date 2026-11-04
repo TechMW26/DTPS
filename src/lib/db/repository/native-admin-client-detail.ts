@@ -4,6 +4,7 @@ import {NativePlanEditor,nativeDates} from './native-plan-editor';
 import {nativeClientAccess,updateNativeClientProfile} from './native-admin-client-profile';
 import {nativeDirectoryProfile,populateNativeDirectory,NativeDirectoryError} from './native-client-directory';
 import {computeClientStatusFromDocs} from '@/lib/status/computeClientStatus';
+import {readNativeContactLocks,releaseNativeContactLocks} from './native-contact-locks';
 export async function readNativeAdminClientDetail(db:MongoDatabase,actorId:string,clientId:string){
  const editor=new NativePlanEditor(db);const {client}=await nativeClientAccess(editor,actorId,clientId);const data=await editor.hydrate(client);
  const [plans,purchases]=await Promise.all([db.collection('clientmealplans').where('clientId','==',clientId).orderBy('createdAt','desc').limit(20).get(),db.collection('unifiedpayments').where('client','==',clientId).orderBy('createdAt','desc').get()]);
@@ -18,8 +19,9 @@ export async function readNativeAdminClientDetail(db:MongoDatabase,actorId:strin
 export async function removeNativeAdminClient(db:MongoDatabase,actorId:string,clientId:string,permanent=false){
  return db.runTransaction(async tx=>{
   const [actor,client]=await tx.getAll(db.collection('users').doc(actorId),db.collection('users').doc(clientId));if(actor.get('role')!=='admin'||actor.get('status')!=='active')throw new NativeDirectoryError('Admin access required',403);if(!client.exists||client.get('role')!=='client')throw new NativeDirectoryError('Client not found',404);
+  const locks=permanent?await readNativeContactLocks(db,tx,client.data()):[];
   const now=new Date(),id=randomBytes(12).toString('hex');
-  if(permanent){tx.create(db.collection('_nativeDeletedUsers').doc(id),{sourceId:clientId,deletedBy:actorId,deletedAt:now,original:client.data()});tx.delete(client.ref);}else tx.update(client.ref,{status:'inactive',logoutOtherSessionsAt:now,keepCurrentSessionId:'',updatedAt:now});
+  if(permanent){tx.create(db.collection('_nativeDeletedUsers').doc(id),{sourceId:clientId,deletedBy:actorId,deletedAt:now,original:client.data()});tx.delete(client.ref);releaseNativeContactLocks(tx,locks,clientId);}else tx.update(client.ref,{status:'inactive',logoutOtherSessionsAt:now,keepCurrentSessionId:'',updatedAt:now});
   tx.create(db.collection('activitylogs').doc(id),{_id:id,userId:actorId,userRole:'admin',targetUserId:clientId,action:permanent?'Deleted Client':'Deactivated Client',actionType:permanent?'delete':'update',category:'profile',description:permanent?'Client account removed; related records retained for reconciliation':'Client account deactivated',createdAt:now,updatedAt:now});
   return permanent?{success:true,message:'Client deleted permanently'}:{client:nativeDirectoryProfile(clientId,{...client.data(),status:'inactive'}),message:'Client deactivated successfully'};
  });
