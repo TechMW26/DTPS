@@ -2057,7 +2057,9 @@ export default function ClientDetailPage() {
               "Failed to save dietary recall entries:",
               recallError,
             );
-            failedSections.push("Recall");
+            failedSections.push(
+              recallError?.error ? `Recall (${recallError.error})` : "Recall",
+            );
           }
         } else {
           console.error(
