@@ -15,6 +15,7 @@ import { UnreadCountProvider, useUnreadCountsSafe } from '@/contexts/UnreadCount
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { useScrollRestoration } from '@/hooks/useScrollRestoration';
 import { NotificationPermissionBanner } from '@/components/notifications/NotificationPermissionBanner';
+import { FeedbackPopup } from '@/components/client/FeedbackPrompts';
 
 interface UserLayoutClientProps {
   children: ReactNode;
@@ -124,6 +125,7 @@ function UserLayoutContent({
   return (
     <div className={`relative flex min-h-screen w-full flex-col overflow-x-clip transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       <NotificationPermissionBanner allowedRoles={['client']} />
+      <FeedbackPopup />
 
       {/* Sidebar — self-contained overlay (handles its own backdrop + positioning) */}
       <UserSidebar
