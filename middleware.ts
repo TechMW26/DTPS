@@ -264,6 +264,8 @@ export default withAuth(
           '/api/internal/meal-engagement', // Authenticated by CRON_SECRET in the route
           '/api/internal/notification-outbox', // Authenticated by CRON_SECRET in the route
           '/api/internal/realtime-cleanup', // Authenticated by CRON_SECRET in the route
+          '/api/internal/diwali-greeting', // Authenticated by CRON_SECRET in the route
+          '/api/festive/diwali-banner', // Public picture that phones download for the Diwali notification
           '/api/internal/feedback-confirm', // Authenticated by FEEDBACK_CONFIRM_SECRET in the route
           '/api/user/forget-password',
           '/api/user/reset-password',
