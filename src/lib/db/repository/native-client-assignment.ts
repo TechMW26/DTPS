@@ -18,7 +18,19 @@ export async function assignNativeClient(db:MongoDatabase,actorId:string,clientI
   if(action==='primary_secondary'){if(hasDt){patch.assignedDietitian=b.primaryDietitianId||null;patch.assignedDietitians=[...new Set(b.secondaryDietitianIds??client.assignedDietitians??[])].filter(v=>v!==patch.assignedDietitian);}if(hasHc){patch.assignedHealthCounselor=b.primaryHealthCounselorId||null;patch.assignedHealthCounselors=[...new Set(b.secondaryHealthCounselorIds??client.assignedHealthCounselors??[])].filter(v=>v!==patch.assignedHealthCounselor);}}
   else{if(b.dietitianId!==undefined||b.dietitianIds!==undefined)assign('assignedDietitian','assignedDietitians',b.dietitianIds||(b.dietitianId?[b.dietitianId]:[]),action);if(b.healthCounselorIds!==undefined||b.healthCounselorId!==undefined){const hc=b.healthCounselorId;assign('assignedHealthCounselor','assignedHealthCounselors',b.healthCounselorIds||(typeof hc==='object'&&hc?[hc.id]:hc?[hc as string]:[]),typeof hc==='object'&&hc?hc.action:action);}}
   if(!Object.keys(patch).length)throw new NativeDirectoryError('No assignment fields supplied');
-  for(const [primary,secondary,role] of [['assignedDietitian','assignedDietitians','dietitian'],['assignedHealthCounselor','assignedHealthCounselors','health_counselor']]){for(const id of [...new Set([patch[primary],...(patch[secondary]||[])].filter(Boolean))]){const staff=await editor.document('users',id);if(!staff||staff.role!==role||staff.status!=='active')throw new NativeDirectoryError('Assigned professional must have an active matching staff role');}}
+  // Someone newly picked must be active staff of the right role. Someone who was already on the
+  // client and has since left (inactive / deleted / role changed) is dropped instead of blocking the save,
+  // because the UI no longer lists them and they could never be unticked.
+  for(const [primary,secondary,role] of [['assignedDietitian','assignedDietitians','dietitian'],['assignedHealthCounselor','assignedHealthCounselors','health_counselor']]){
+   if(!Object.hasOwn(patch,primary)&&!Object.hasOwn(patch,secondary))continue;
+   const before=new Set([client[primary],...(Array.isArray(client[secondary])?client[secondary]:[])].filter((v:unknown)=>typeof v==='string'));
+   for(const id of [...new Set([patch[primary],...(patch[secondary]||[])].filter(Boolean))] as string[]){
+    const staff=await editor.document('users',id);if(staff&&staff.role===role&&staff.status==='active')continue;
+    if(!before.has(id)){const name=staff?`${String(staff.firstName||'').trim()} ${String(staff.lastName||'').trim()}`.trim():'';throw new NativeDirectoryError(`${name||'Selected professional'} is not an active ${role==='dietitian'?'dietitian':'health counselor'}`);}
+    if(patch[primary]===id)patch[primary]=null;
+    if(Array.isArray(patch[secondary]))patch[secondary]=patch[secondary].filter((v:string)=>v!==id);
+   }
+  }
   const mutations:Array<{collection:string;id:string;patch:DocumentData}>=[{collection:'users',id:clientId,patch}];
   if(patch.assignedDietitian!==undefined){const payments=await editor.query('unifiedpayments',[['client','==',clientId]]);for(const p of payments)if(['active','pending','on_hold','paid'].includes(p.status))mutations.push({collection:'unifiedpayments',id:p._id,patch:{dietitian:patch.assignedDietitian}});}
   const eventId=randomBytes(12).toString('hex'),now=new Date();const event={_id:eventId,userId:actorId,userRole:actor.role,action:'Updated Client Assignment',actionType:'assign',category:'client_assignment',targetUserId:clientId,description:action,createdAt:now,updatedAt:now};
