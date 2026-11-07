@@ -10,7 +10,6 @@ suite('Diwali push batch',()=>{
   await db.collection('users').doc('dw-b').set({role:'client',status:'inactive',fcmTokens:['tok-b']});
   await db.collection('users').doc('dw-none').set({role:'client',status:'active',fcmTokens:[]});
   await db.collection('users').doc('dw-staff').set({role:'dietitian',status:'active',fcmTokens:['tok-s']});
-  await db.collection('users').doc('dw-left').set({role:'health_counselor',status:'inactive',fcmTokens:['tok-l']});
  });
  afterAll(async()=>{for(const c of ['users','festive_push_log']){const docs=await db.collection(c).get();for(const d of docs.docs)await d.ref.delete();}await db.terminate();});
  it('does nothing before 12 AM on 8 Nov',async()=>{
@@ -18,7 +17,7 @@ suite('Diwali push batch',()=>{
   expect(await sendDiwaliGreetingBatch(db,send,{now:new Date('2026-11-07T23:59:00+05:30')})).toEqual({skipped:'outside_window'});
   expect(send).not.toHaveBeenCalled();
  });
- it('sends once to every client and active staff member with notifications on, retries failures, never twice',async()=>{
+ it('sends once to every client with notifications on, retries failures, never twice',async()=>{
   let fail=true;
   const send=jest.fn(async(userId:string,payload:{image?:string;title:string})=>{
    expect(payload.image).toContain('/api/festive/diwali-banner');
@@ -26,13 +25,13 @@ suite('Diwali push batch',()=>{
    return {successCount:1,failureCount:0,invalidTokens:[],responses:[]};
   });
   const first=await sendDiwaliGreetingBatch(db,send,{now:night});
-  expect(first).toMatchObject({reachable:3,sent:2,failed:1});
-  expect(send.mock.calls.map(c=>c[0]).sort()).toEqual(['dw-a','dw-b','dw-staff']);
+  expect(first).toMatchObject({reachable:2,sent:1,failed:1});
+  expect(send.mock.calls.map(c=>c[0]).sort()).toEqual(['dw-a','dw-b']);
   const second=await sendDiwaliGreetingBatch(db,send,{now:night});
   expect(second).toMatchObject({pending:1,sent:1});
   const third=await sendDiwaliGreetingBatch(db,send,{now:night});
   expect(third).toMatchObject({pending:0,sent:0});
-  expect(send).toHaveBeenCalledTimes(4);
+  expect(send).toHaveBeenCalledTimes(3);
  });
  it('does not send to the same person from two runs at the same time',async()=>{
   await db.collection('users').doc('dw-c').set({role:'client',status:'active',fcmTokens:['tok-c']});
