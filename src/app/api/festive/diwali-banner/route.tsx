@@ -79,7 +79,7 @@ export function GET() {
         <img src={ART_URL} width={W} height={H} alt="" style={{position: 'absolute', top: 0, left: 0}} />
         <div style={{position: 'absolute', top: 150, left: 0, width: W, display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
           <div style={{fontSize: 96, color: '#f6c453', letterSpacing: -1, textShadow: '0 0 24px rgba(255,190,80,0.6)'}}>Happy Diwali</div>
-          <div style={{fontSize: 26, color: '#ffe7c2', marginTop: 10}}>Light up your home and your health journey</div>
+          <div style={{fontSize: 26, color: '#ffe7c2', marginTop: 10}}>This Diwali, Let Health Shine Brighter!</div>
           <div style={{fontSize: 16, color: '#f6c453', letterSpacing: 6, marginTop: 12}}>FROM TEAM DTPS</div>
         </div>
       </div>
