@@ -13,9 +13,9 @@ export const DIWALI_PUSH_START = new Date('2026-11-08T00:00:00+05:30');
 export const DIWALI_PUSH_END = new Date('2026-11-09T00:00:00+05:30');
 
 export const DIWALI_CAMPAIGN = 'diwali-2026';
-// Emoji written as codes so the file stays plain ASCII: \u{1FA94} = diya, \u2728 = sparkles, \u{1F386} = fireworks.
-export const DIWALI_PUSH_TITLE = '\u{1FA94} Happy Diwali from Team DTPS! \u2728';
-export const DIWALI_PUSH_BODY = "May this festival of lights fill your home with joy and your plate with goodness. Here's to a healthier, happier you \u{1F386}";
+// Emoji written as codes so the file stays plain ASCII: \u{1FA94} = diya, \u2728 = sparkles.
+export const DIWALI_PUSH_TITLE = '\u{1FA94} This Diwali, Let Health Shine Brighter! \u{1FA94}';
+export const DIWALI_PUSH_BODY = 'May this festival of lights bring happiness to your home, positivity to your life and good health to your family. Wishing you a sparkling, healthy and joyful Diwali! \u2728';
 /** Picture shown in the expanded notification (public https URL, drawn by /api/festive/diwali-banner). */
 export const DIWALI_PUSH_IMAGE = 'https://dtps.tech/api/festive/diwali-banner';
 

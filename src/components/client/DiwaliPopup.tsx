@@ -72,23 +72,23 @@ function toran() {
   return out;
 }
 
-function rangoli(cx: number, cy: number) {
+function rangoli(cx: number, cy: number, k: number) {
   const colors = ['#e63946', '#f4a261', '#2a9d8f', '#e9c46a', '#b5179e', '#ff9f1c'];
   let out = '<g class="dw-spin" style="transform-origin:' + cx + 'px ' + cy + 'px">';
   for (let ring = 0; ring < 3; ring++) {
-    const n = [16, 12, 8][ring], R = [104, 82, 62][ring], r = [16, 18, 20][ring];
+    const n = [16, 12, 8][ring], R = [104, 82, 62][ring] * k, r = [16, 18, 20][ring] * k;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + (ring % 2 ? Math.PI / n : 0);
       const x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R;
-      out += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${r}" ry="${(r * 0.45).toFixed(1)}" transform="rotate(${((a * 180) / Math.PI).toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="${colors[(i + ring) % colors.length]}" opacity="0.92"/>`;
+      out += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * 0.45).toFixed(1)}" transform="rotate(${((a * 180) / Math.PI).toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="${colors[(i + ring) % colors.length]}" opacity="0.92"/>`;
     }
   }
   for (let i = 0; i < 24; i++) {
     const a = (i / 24) * Math.PI * 2;
-    out += `<circle cx="${(cx + Math.cos(a) * 120).toFixed(1)}" cy="${(cy + Math.sin(a) * 120).toFixed(1)}" r="2.6" fill="#ffe08a"/>`;
+    out += `<circle cx="${(cx + Math.cos(a) * 120 * k).toFixed(1)}" cy="${(cy + Math.sin(a) * 120 * k).toFixed(1)}" r="2.4" fill="#ffe08a"/>`;
   }
   out += '</g>';
-  return out + `<circle cx="${cx}" cy="${cy}" r="52" fill="#fff8e7"/><circle cx="${cx}" cy="${cy}" r="52" fill="none" stroke="#f6c453" stroke-width="3"/>`;
+  return out + `<circle cx="${cx}" cy="${cy}" r="${52 * k}" fill="#fff8e7"/><circle cx="${cx}" cy="${cy}" r="${52 * k}" fill="none" stroke="#f6c453" stroke-width="3"/>`;
 }
 
 function stars() {
@@ -110,7 +110,7 @@ export const DIWALI_ART = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H
   ${stars()}
   ${burst(70, 120, 34, '#ffcf4d', 14, 0)}${burst(300, 140, 28, '#ff6fb5', 12, 1.1)}
   ${kandeel(34, 95, 0.42, '#e63946', '#f4a261', 95)}${kandeel(324, 110, 0.42, '#2a9d8f', '#e9c46a', 110)}
-  ${rangoli(W / 2, 225)}${swastik(W / 2, 225, 0.62)}
+  ${rangoli(W / 2, 165, 0.72)}${swastik(W / 2, 165, 0.45)}
   ${toran()}
   ${diya(40, H - 28, 0.5, 0)}${diya(110, H - 24, 0.55, 0.4)}${diya(W / 2, H - 20, 0.62, 0.15)}${diya(W - 110, H - 24, 0.55, 0.6)}${diya(W - 40, H - 28, 0.5, 0.3)}
 </svg>`;
@@ -171,17 +171,22 @@ export function DiwaliPopup() {
         >
           <X className="h-5 w-5" />
         </button>
-        <div className="absolute inset-x-5 bottom-[14%] z-10 text-center">
-          <div className="text-[11px] font-bold tracking-[5px] text-[#f6c453]">SHUBH DEEPAVALI</div>
+        <div className="absolute inset-x-0 bottom-[13%] z-10 max-h-[66%] overflow-y-auto bg-gradient-to-t from-[#120a2b]/90 via-[#120a2b]/85 to-transparent px-5 pb-2 pt-8 text-center">
+          <div className="text-[11px] font-bold tracking-[5px] text-[#f6c453]">HAPPY DIWALI</div>
           <h2
             id="diwali-title"
-            className="mt-1 bg-gradient-to-b from-[#fff4c2] via-[#f6c453] to-[#d9962b] bg-clip-text font-serif text-[42px] font-bold italic leading-tight text-transparent drop-shadow-[0_0_12px_rgba(255,190,80,0.5)]"
+            className="mt-1 bg-gradient-to-b from-[#fff4c2] via-[#f6c453] to-[#d9962b] bg-clip-text font-serif text-[26px] font-bold [@media(max-height:700px)]:text-[21px] italic leading-tight text-transparent drop-shadow-[0_0_12px_rgba(255,190,80,0.5)]"
           >
-            Happy Diwali
+            This Diwali, Let Health Shine Brighter!
           </h2>
-          <p className="mt-2 text-[13.5px] leading-relaxed text-purple-50">
-            May the diyas light up your home, and every healthy choice light up your life. Enjoy the sweets mindfully, savour every moment, and shine bright!
-          </p>
+          <div className="mt-2 space-y-1.5 text-[13px] leading-snug text-purple-50 [@media(max-height:700px)]:space-y-1 [@media(max-height:700px)]:text-[12px]">
+            <p>Dear Valued Client,</p>
+            <p>May this festival of lights bring happiness to your home, positivity to your life and good health to your family.</p>
+            <p className="font-semibold text-white">
+              Celebrate with your favourite treats, cherish every moment and remember, <span className="italic">a healthy life is the brightest gift you can give yourself!</span>
+            </p>
+            <p>Wishing you a sparkling, healthy and joyful Diwali!</p>
+          </div>
           <p className="mt-2 text-xs font-semibold text-[#f6c453]">With love, Dt. Poonam Sagar &amp; Team DTPS</p>
           <button
             type="button"
