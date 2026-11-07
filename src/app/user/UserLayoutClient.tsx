@@ -16,7 +16,6 @@ import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { useScrollRestoration } from '@/hooks/useScrollRestoration';
 import { NotificationPermissionBanner } from '@/components/notifications/NotificationPermissionBanner';
 import { FeedbackPopup } from '@/components/client/FeedbackPrompts';
-import { DiwaliPopup } from '@/components/client/DiwaliPopup';
 
 interface UserLayoutClientProps {
   children: ReactNode;
@@ -127,7 +126,6 @@ function UserLayoutContent({
     <div className={`relative flex min-h-screen w-full flex-col overflow-x-clip transition-colors duration-300 ${isDarkMode ? 'bg-gray-950' : 'bg-gray-50'}`}>
       <NotificationPermissionBanner allowedRoles={['client']} />
       <FeedbackPopup />
-      <DiwaliPopup />
 
       {/* Sidebar — self-contained overlay (handles its own backdrop + positioning) */}
       <UserSidebar

@@ -7,6 +7,8 @@ const MAX_ATTEMPTS = 3;
 /** A send that started but never finished (crash/timeout) can be retried after this long. */
 const STUCK_MS = 10 * 60 * 1000;
 const BATCH = 10;
+/** Where tapping the notification opens, per role. */
+const OPEN_URL: Record<string, string> = {client: '/user', dietitian: '/dashboard/dietitian', health_counselor: '/dashboard/health-counselor', admin: '/admin'};
 
 type Sender = (userId: string, notification: FCMNotificationPayload) => Promise<SendNotificationResult>;
 
@@ -33,7 +35,7 @@ function canRetry(log: {status?: unknown; attempts?: unknown; updatedAt?: unknow
 }
 
 /**
- * Sends the Diwali push to every client with the app's notifications turned on, once each.
+ * Sends the Diwali push to everyone with notifications turned on (clients and active staff), once each.
  * Safe to call every minute: a per-client log makes sure nobody gets it twice, and the work
  * stops before the time budget so the next run picks up the rest.
  */
@@ -43,8 +45,20 @@ export async function sendDiwaliGreetingBatch(db: MongoDatabase, send: Sender, o
   const budgetMs = options.budgetMs ?? 45_000;
   const started = Date.now();
 
-  const clients = await db.collection('users').where('role', '==', 'client').select('fcmTokens').get();
-  const reachable = clients.docs.filter((doc) => hasToken(doc.get('fcmTokens'))).map((doc) => doc.id);
+  // Everyone with notifications on: all clients, and staff who are still active.
+  const users = await db.collection('users').select('fcmTokens', 'role', 'status').get();
+  const roleOf = new Map<string, string>();
+  const reachable = users.docs
+    .filter((doc) => {
+      const role = String(doc.get('role') || '');
+      if (!(role in OPEN_URL)) return false;
+      if (role !== 'client' && doc.get('status') !== 'active') return false;
+      return hasToken(doc.get('fcmTokens'));
+    })
+    .map((doc) => {
+      roleOf.set(doc.id, String(doc.get('role')));
+      return doc.id;
+    });
   const logs = await db.collection(LOG).where('campaign', '==', DIWALI_CAMPAIGN).get();
   const byUser = new Map(logs.docs.map((doc) => [String(doc.get('userId')), doc.data()]));
   const todo = reachable.filter((id) => canRetry(byUser.get(id), now));
@@ -71,8 +85,8 @@ export async function sendDiwaliGreetingBatch(db: MongoDatabase, send: Sender, o
           title: DIWALI_PUSH_TITLE,
           body: DIWALI_PUSH_BODY,
           image: DIWALI_PUSH_IMAGE,
-          clickAction: '/user',
-          data: {type: 'festive', url: '/user', campaign: DIWALI_CAMPAIGN},
+          clickAction: OPEN_URL[roleOf.get(userId) || 'client'],
+          data: {type: 'festive', url: OPEN_URL[roleOf.get(userId) || 'client'], campaign: DIWALI_CAMPAIGN},
         });
       } catch {
         result = {successCount: 0, failureCount: 1, invalidTokens: [], responses: []};
