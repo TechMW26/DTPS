@@ -138,6 +138,8 @@ export function DiwaliPopup() {
 
   // Runs once per app open / refresh. Navigating inside the app does not bring it back.
   useEffect(() => {
+    // Never inside an embedded frame (document viewers etc.), only on the real page.
+    if (window.self !== window.top) return;
     // On localhost only, add ?diwali-preview to the URL to see it before 8 Nov.
     const preview = process.env.NODE_ENV !== 'production' && new URLSearchParams(window.location.search).has('diwali-preview');
     if (isDiwaliPopupTime() || preview) setOpen(true);
