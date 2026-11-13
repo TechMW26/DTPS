@@ -19,10 +19,6 @@
     {
       "path": "/api/internal/realtime-cleanup",
       "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/internal/diwali-greeting",
-      "schedule": "* * * * *"
     }
   ],
   "functions": {
@@ -45,9 +41,6 @@
       "maxDuration": 60
     },
     "src/app/api/internal/realtime-cleanup/route.ts": {
-      "maxDuration": 60
-    },
-    "src/app/api/internal/diwali-greeting/route.ts": {
       "maxDuration": 60
     }
   },
