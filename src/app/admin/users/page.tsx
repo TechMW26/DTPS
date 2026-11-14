@@ -258,7 +258,7 @@ export default function AdminUsersPage() {
     const onFocus = () => {
       if (document.visibilityState === 'visible' && navigator.onLine !== false && !userRequest.current) fetchUsers(false);
     };
-    const interval = setInterval(onFocus, 15000);
+    const interval = setInterval(onFocus, 60_000);
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
     return () => {

@@ -1,4 +1,6 @@
 "use client";
+import { startRealtimeFallbackPolling } from "@/lib/browser/foreground-polling";
+import { socketClient } from "@/lib/realtime/socket-client";
 
 import { useConversationRequests } from "@/hooks/useConversationRequests";
 
@@ -431,12 +433,13 @@ function ClientMessagesUI() {
       if (selectedChat) void fetchMessages(selectedChat);
     };
 
-    const interval = window.setInterval(refreshVisibleMessages, 30_000);
+    // Realtime delivers new messages; poll fast only when it is disconnected.
+    const stopPolling = startRealtimeFallbackPolling(refreshVisibleMessages, 30_000, 120_000, () => socketClient.connected);
     window.addEventListener("focus", refreshVisibleMessages);
     document.addEventListener("visibilitychange", refreshVisibleMessages);
 
     return () => {
-      window.clearInterval(interval);
+      stopPolling();
       window.removeEventListener("focus", refreshVisibleMessages);
       document.removeEventListener("visibilitychange", refreshVisibleMessages);
     };

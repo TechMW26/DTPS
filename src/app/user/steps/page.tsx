@@ -22,6 +22,7 @@ import {
 import { toast } from 'sonner';
 import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { useBodyScrollLock } from '@/hooks';
+import { startForegroundPolling } from '@/lib/browser/foreground-polling';
 
 interface StepsEntry {
     _id: string;
@@ -132,11 +133,8 @@ export default function StepsPage() {
         if (session?.user) {
             fetchStepsData(true, false);
 
-            const interval = setInterval(() => {
-                fetchRef.current(false, true);
-            }, 10000);
-
-            return () => clearInterval(interval);
+            // Background sync only while the page is visible, once a minute.
+            return startForegroundPolling(() => fetchRef.current(false, true), 60_000);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session, selectedDate]);

@@ -22,6 +22,7 @@ import {
 import { toast } from 'sonner';
 import { ClientScreenSkeleton } from '@/components/client/ClientScreenSkeleton';
 import { useBodyScrollLock } from '@/hooks';
+import { startForegroundPolling } from '@/lib/browser/foreground-polling';
 
 interface WaterEntry {
   _id: string;
@@ -133,12 +134,8 @@ export default function HydrationPage() {
     if (session?.user) {
       fetchHydrationData(true, false);
 
-      // Lightweight background sync every 10s; only re-renders if data changed
-      const interval = setInterval(() => {
-        fetchRef.current(false, true);
-      }, 10000);
-
-      return () => clearInterval(interval);
+      // Background sync only while the page is visible, once a minute.
+      return startForegroundPolling(() => fetchRef.current(false, true), 60_000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, selectedDate]);
