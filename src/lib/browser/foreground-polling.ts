@@ -1,3 +1,12 @@
+/** Chat fallback: poll every intervalMs while realtime is down, only every slowMs while it is up. */
+export function startRealtimeFallbackPolling(refresh:()=>void,intervalMs:number,slowMs:number,isRealtimeUp:()=>boolean){
+ let last=Date.now();
+ const timer=window.setInterval(()=>{
+  if(isRealtimeUp()&&Date.now()-last<slowMs)return;
+  last=Date.now();refresh();
+ },intervalMs);
+ return ()=>window.clearInterval(timer);
+}
 /** Fallback refreshes only: explicit user actions and realtime events remain separate. */
 export function startForegroundPolling(refresh:()=>void|Promise<unknown>,intervalMs:number){
  let stopped=false,pending=false,lastStarted=-Infinity;
