@@ -337,6 +337,17 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
+      // A client whose login token still says "enrollment not done" is re-checked, so a token
+      // issued before enrollment was completed does not keep sending them to the enrollment screen.
+      if (!user && trigger !== 'update' && token.sub && token.role === UserRole.CLIENT &&
+        !token.isWooCommerceClient && token.onboardingCompleted === false) {
+        try {
+          token.onboardingCompleted = await nativeOnboardingStatus(getNativeDatabase(), token.sub);
+        } catch (error) {
+          console.error('Onboarding status re-check failed:', error);
+        }
+      }
+
       // Handle session update - allows refreshing onboardingCompleted after onboarding completion
       if (trigger === 'update' && session) {
         // Session updates are untrusted client input. Refresh permitted fields from storage.
