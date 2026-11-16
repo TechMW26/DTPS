@@ -600,6 +600,14 @@ export default function ClientDetailPage() {
   });
 
   const [recallEntries, setRecallEntries] = useState<RecallEntry[]>([]);
+  // Recall protection: a background refresh must not replace what the dietitian is typing,
+  // and the empty placeholder rows must never be saved over a recall that has not loaded.
+  const recallDirtyRef = useRef(false);
+  const recallLoadedRef = useRef(false);
+  const editRecallEntries = (entries: RecallEntry[]) => {
+    if (entries.some((e) => String(e.food || "").trim())) recallDirtyRef.current = true;
+    setRecallEntries(entries);
+  };
 
   // Backend-computed client status (lead / active / inactive)
   const [clientComputedStatus, setClientComputedStatus] = useState<
@@ -1753,8 +1761,10 @@ export default function ClientDetailPage() {
           const recallData = await recallResponse.json();
           // Use entries from API response (already formatted with id)
           const loadedEntries = recallData?.entries || [];
-          if (loadedEntries.length > 0) {
+          recallLoadedRef.current = true;
+          if (loadedEntries.length > 0 && !(silent && recallDirtyRef.current)) {
             setRecallEntries(loadedEntries);
+            recallDirtyRef.current = false;
           }
         } else {
           // Fallback to embedded data if API fails (for backward compatibility)
@@ -1955,7 +1965,12 @@ export default function ClientDetailPage() {
       );
 
       // 4. Save dietary recall entries separately
-      if (recallEntries && recallEntries.length > 0) {
+      if (
+        recallEntries &&
+        recallEntries.length > 0 &&
+        recallLoadedRef.current &&
+        recallEntries.some((e) => String(e.food || "").trim())
+      ) {
         // Map entries to meals format for API
         const mealsToSave = recallEntries.map((entry) => ({
           mealType: entry.mealType,
@@ -2176,6 +2191,8 @@ export default function ClientDetailPage() {
         setFirstWeightKg(updatedBaselineWeight);
       }
 
+      // Saved: let the refresh load the stored recall again.
+      recallDirtyRef.current = false;
       // Refresh data first, then emit so other components see consistent state
       await fetchClientDetails(true);
       emitDataChange(DataEventTypes.FORM_DATA_UPDATED, {
@@ -2231,6 +2248,7 @@ export default function ClientDetailPage() {
         });
 
         toast.success("Dietary recall entry saved successfully");
+        recallDirtyRef.current = false;
         fetchClientDetails();
       } else {
         toast.error("Failed to save entry");
@@ -3352,7 +3370,7 @@ export default function ClientDetailPage() {
                 setBasicInfo={setBasicInfo}
                 setMedicalData={setMedicalData}
                 setLifestyleData={setLifestyleData}
-                setRecallEntries={setRecallEntries}
+                setRecallEntries={editRecallEntries}
                 handleSave={handleSave}
                 handleSaveRecallEntry={handleSaveRecallEntry}
                 handleDeleteRecallEntry={handleDeleteRecallEntry}
