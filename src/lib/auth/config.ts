@@ -337,6 +337,17 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
+      // A client whose login token still says "enrollment not done" is re-checked, so a token
+      // issued before enrollment was completed does not keep sending them to the enrollment screen.
+      if (!user && trigger !== 'update' && token.sub && token.role === UserRole.CLIENT &&
+        !token.isWooCommerceClient && token.onboardingCompleted === false) {
+        try {
+          token.onboardingCompleted = await nativeOnboardingStatus(getNativeDatabase(), token.sub);
+        } catch (error) {
+          console.error('Onboarding status re-check failed:', error);
+        }
+      }
+
       // Handle session update - allows refreshing onboardingCompleted after onboarding completion
       if (trigger === 'update' && session) {
         // Session updates are untrusted client input. Refresh permitted fields from storage.
@@ -416,8 +427,10 @@ export const authOptions: NextAuthOptions = {
                 (!token.sessionStartedAt || Number(token.sessionStartedAt)<=user.logoutOtherSessionsAt.getTime())) {
                 return {user:{},expires:new Date(0).toISOString()} as any;
               }
-            }catch {
-              return {user:{},expires:new Date(0).toISOString()} as any;
+            }catch (error) {
+              // A temporary database error must not log the user out. The status check runs again on the next request.
+              console.error('Session status check failed:', error);
+              return session;
             }
           }
         }
