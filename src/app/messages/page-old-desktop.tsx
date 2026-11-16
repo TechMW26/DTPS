@@ -961,7 +961,7 @@ function MessagesContent() {
     };
 
     // Realtime delivers new messages; poll fast only when it is disconnected.
-    const stopPolling = startRealtimeFallbackPolling(refreshVisibleMessages, 30_000, 120_000, () => socketClient.connected);
+    const stopPolling = startRealtimeFallbackPolling(refreshVisibleMessages, 30_000, 60_000, () => socketClient.connected);
     window.addEventListener("focus", refreshVisibleMessages);
     document.addEventListener("visibilitychange", refreshVisibleMessages);
 
