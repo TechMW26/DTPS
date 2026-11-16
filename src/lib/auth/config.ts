@@ -416,8 +416,10 @@ export const authOptions: NextAuthOptions = {
                 (!token.sessionStartedAt || Number(token.sessionStartedAt)<=user.logoutOtherSessionsAt.getTime())) {
                 return {user:{},expires:new Date(0).toISOString()} as any;
               }
-            }catch {
-              return {user:{},expires:new Date(0).toISOString()} as any;
+            }catch (error) {
+              // A temporary database error must not log the user out. The status check runs again on the next request.
+              console.error('Session status check failed:', error);
+              return session;
             }
           }
         }

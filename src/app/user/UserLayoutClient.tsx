@@ -25,6 +25,19 @@ interface UserLayoutClientProps {
 // Pages that should NOT show the navigation (like onboarding)
 const PAGES_WITHOUT_NAV = ['/user/onboarding'];
 
+// A failed session request (common when iPhone Safari wakes up and the network is not ready yet)
+// also shows as "unauthenticated". Ask the server directly before sending the client to the login page.
+async function checkServerSession(): Promise<'signed-in' | 'signed-out' | 'unknown'> {
+  try {
+    const res = await fetch('/api/auth/session', { cache: 'no-store', credentials: 'same-origin' });
+    if (!res.ok) return 'unknown';
+    const data = await res.json();
+    return data?.user?.id ? 'signed-in' : 'signed-out';
+  } catch {
+    return 'unknown';
+  }
+}
+
 /**
  * UserLayoutClient - Client-side layout wrapper for user pages
  * 
@@ -36,7 +49,7 @@ const PAGES_WITHOUT_NAV = ['/user/onboarding'];
  * - Bottom navigation for mobile
  */
 export default function UserLayoutClient({ children }: UserLayoutClientProps) {
-  const { status } = useSession();
+  const { status, update } = useSession();
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -56,9 +69,23 @@ export default function UserLayoutClient({ children }: UserLayoutClientProps) {
     if (status !== 'unauthenticated') return;
     if (redirectingRef.current) return;
 
-    redirectingRef.current = true;
-    router.replace('/client-auth/signin');
-  }, [mounted, status, router]);
+    let cancelled = false;
+    (async () => {
+      for (let attempt = 0; !cancelled; attempt++) {
+        const verdict = await checkServerSession();
+        if (cancelled) return;
+        if (verdict === 'signed-out') {
+          redirectingRef.current = true;
+          router.replace('/client-auth/signin');
+          return;
+        }
+        // Still signed in on the server: reload the session instead of logging the client out.
+        if (verdict === 'signed-in' && await update()) return;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(2000 * (attempt + 1), 10000)));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mounted, status, router, update]);
 
   // Close the drawer after navigation. Route-level loading files handle slow
   // transitions without dimming content that is already interactive.
