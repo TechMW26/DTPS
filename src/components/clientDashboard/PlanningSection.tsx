@@ -1139,8 +1139,8 @@ export default function PlanningSection({
         limit: TEMPLATES_PER_PAGE.toString(),
         skip: ((page - 1) * TEMPLATES_PER_PAGE).toString(),
         ...(search && { search }),
-        // Only filter by primaryGoal for diet templates, show ALL plan templates
-        ...(type === "diet" && primaryGoal && { primaryGoal }),
+        // Show every template the dietitian made. Filtering by the plan's goal hid templates
+        // whose category differed (the goal defaults to weight-loss for a new plan).
       });
 
       // In dietitian workflow, load only the current dietitian's diet templates.

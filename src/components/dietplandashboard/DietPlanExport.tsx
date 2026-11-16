@@ -86,6 +86,8 @@ export function DietPlanExport({
     return () => { if (preparedPdf) URL.revokeObjectURL(preparedPdf.url); };
   }, [preparedPdf]);
   useEffect(() => { if (!open) setPreparedPdf(null); }, [open]);
+  // Load the PDF library as soon as the dialog opens, so a slow or stale load shows up before the click.
+  useEffect(() => { if (open) void import("jspdf").catch(() => {}); }, [open]);
 
   // Helper function to format date properly
   const formatDateProper = (dateStr: string): string => {
@@ -911,16 +913,23 @@ export function DietPlanExport({
       const blobUrl = URL.createObjectURL(blob);
       setPreparedPdf({ url: blobUrl, filename });
       if (fileHandle) {
-        const writable = await fileHandle.createWritable();
         try {
-          await writable.write(blob);
-          await writable.close();
+          const writable = await fileHandle.createWritable();
+          try {
+            await writable.write(blob);
+            await writable.close();
+          } catch (error) {
+            await writable.abort().catch(() => {});
+            throw error;
+          }
+          toast.success("PDF saved successfully.");
+          return;
         } catch (error) {
-          await writable.abort().catch(() => {});
-          throw error;
+          // The chosen file could not be written (often because it is open in another app).
+          // Fall back to a normal download instead of failing.
+          console.warn("Save to chosen file failed, downloading instead:", error);
+          toast.info("Could not save to that file (it may be open in another app). Downloading the PDF instead.");
         }
-        toast.success("PDF saved successfully.");
-        return;
       }
       if (!pickerWindow.showSaveFilePicker) {
         toast.info("This browser uses its download settings to choose where files are saved. You can also open the PDF and use Save as.");
@@ -935,8 +944,15 @@ export function DietPlanExport({
       toast.success("PDF ready. Your download has started.");
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") return;
+      const message = error instanceof Error ? `${error.name} ${error.message}` : String(error);
+      if (/ChunkLoadError|Loading chunk|dynamically imported module|Importing a module script failed/i.test(message)) {
+        // DTPS was redeployed while this tab was open, so the PDF library file has moved.
+        toast.error("DTPS was just updated. Reloading the page, please download the PDF again.");
+        window.setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
       console.error("PDF export failed:", error);
-      toast.error("Could not save the PDF. Please try again or use the download link if available.");
+      toast.error(`Could not save the PDF. Please try again or use the download link if available. (${message.slice(0, 80)})`);
     } finally {
       setIsExporting(false);
     }
