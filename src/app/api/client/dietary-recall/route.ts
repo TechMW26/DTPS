@@ -9,6 +9,9 @@ import { clearCacheByTag } from '@/lib/cache/memoryCache';
 import { logActivity } from '@/lib/utils/activityLogger';
 import { MEAL_TYPES, MEAL_TYPE_KEYS } from '@/lib/mealConfig';
 import { notifyClientDataUpdate } from '@/lib/notifications/staffPushService';
+import { formatInTimeZone } from "date-fns-tz";
+import { TASK_TIME_ZONE } from "@/lib/task-schedule";
+import { nativeHabitDay } from "@/lib/db/repository/native-habits";
 
 const VALID_MEAL_TYPES = MEAL_TYPE_KEYS.map((key) => MEAL_TYPES[key].label);
 
@@ -86,9 +89,12 @@ export async function POST(request: Request) {
       return nativeResponseJson({ error: "One or more meal types are invalid" }, { status: 400 });
     }
 
-    // If date is provided, use it, otherwise use today
-    const date = data.date ? new Date(data.date) : new Date();
-    date.setHours(0, 0, 0, 0);
+    // Use the start of the day in India time, the same day the dietitian side uses.
+    // (setHours on the server gave UTC midnight, which created a second recall for the same day
+    // and made the dietitian's entries disappear.)
+    const requested = data.date ? new Date(data.date) : new Date();
+    if(!Number.isFinite(requested.getTime()))return nativeResponseJson({error:'Invalid date'},{status:400});
+    const date = nativeHabitDay(formatInTimeZone(requested, TASK_TIME_ZONE, 'yyyy-MM-dd')).start;
 
     if(!Number.isFinite(date.getTime()))return nativeResponseJson({error:'Invalid date'},{status:400});
     const dietaryRecall=await writeNativeClientForm(getNativeDatabase(),'dietaryrecalls',session.user.id,{meals:validMeals},date);
