@@ -324,6 +324,8 @@ export default function HealthCounselorClientDetailPage() {
   });
 
   const [recallEntries, setRecallEntries] = useState<RecallEntry[]>([]);
+  // Never save the empty placeholder rows over a recall that has not loaded yet.
+  const recallLoadedRef = useRef(false);
 
   useEffect(() => {
     if (params.clientId) {
@@ -868,6 +870,7 @@ export default function HealthCounselorClientDetailPage() {
           { cache: "no-store" },
         );
         if (recallResponse.ok) {
+          recallLoadedRef.current = true;
           const recallData = await recallResponse.json();
           const loadedEntries = Array.isArray(recallData?.entries)
             ? recallData.entries
@@ -1029,6 +1032,10 @@ export default function HealthCounselorClientDetailPage() {
       const updatedEntries = recallEntries.map((e) =>
         e.id === entry.id ? entry : e,
       );
+      if (!recallLoadedRef.current) {
+        toast.error("Recall is still loading. Please refresh the page and try again.");
+        return;
+      }
 
       const mealsToSave = updatedEntries.map((e) => ({
         mealType: e.mealType,
