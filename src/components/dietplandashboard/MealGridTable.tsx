@@ -282,6 +282,9 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
   const [replaceRecipeId, setReplaceRecipeId] = useState('');
   const [replaceRecipeNutrition, setReplaceRecipeNutrition] = useState<{ cal: string; protein: string; carbs: string; fats: string; unit: string } | null>(null);
   const [replaceAction, setReplaceAction] = useState<'replace' | 'delete'>('replace');
+  // Meal note handling on replace: old notes usually describe the old food, so they are removed by default.
+  const [replaceNoteValue, setReplaceNoteValue] = useState('');
+  const [replaceClearOldNote, setReplaceClearOldNote] = useState(true);
   // Search filter for dropdowns
   const [findSearchFilter, setFindSearchFilter] = useState('');
   const [replaceSearchFilter, setReplaceSearchFilter] = useState('');
@@ -1523,6 +1526,13 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
       };
     };
 
+    // A replaced option gets the new note if one was typed, otherwise its old note is removed (unless kept).
+    const withReplacedNote = (option: FoodOption): FoodOption => {
+      const newNote = replaceNoteValue.trim();
+      if (newNote) return { ...option, note: newNote };
+      return replaceClearOldNote ? { ...option, note: '' } : option;
+    };
+
     const newWeekPlan = cloneWeekPlan(weekPlan);
     newWeekPlan.forEach((day, idx) => {
       // Skip frozen days
@@ -1566,15 +1576,15 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
               });
 
               if (replacedAny) {
-                return recalculateOptionFromFoods({ ...opt, foods: nextFoods });
+                return withReplacedNote(recalculateOptionFromFoods({ ...opt, foods: nextFoods }));
               }
 
               // Legacy fallback: if option-level match but no per-item match, replace whole option.
               if (isOptionMatch(opt)) {
                 if (resolvedReplaceNutrition) {
-                  return recalculateOptionFromFoods({ ...opt, foods: [buildReplacedFoodItem()] });
+                  return withReplacedNote(recalculateOptionFromFoods({ ...opt, foods: [buildReplacedFoodItem()] }));
                 }
-                return {
+                return withReplacedNote({
                   ...opt,
                   food: replaceValue,
                   cal: '0',
@@ -1585,7 +1595,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                   recipeId: undefined,
                   recipeUuid: undefined,
                   foods: undefined
-                };
+                });
               }
 
               return opt;
@@ -1594,7 +1604,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
             if (!isOptionMatch(opt)) return opt;
 
             if (resolvedReplaceNutrition) {
-              return {
+              return withReplacedNote({
                 ...opt,
                 food: replaceValue,
                 recipeId: replaceRecipeId || undefined,
@@ -1605,11 +1615,11 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                 fats: resolvedReplaceNutrition.fats,
                 unit: resolvedReplaceNutrition.unit,
                 foods: [buildReplacedFoodItem()]
-              };
+              });
             }
 
             // If replacing by plain text only, clear stale nutrition values.
-            return {
+            return withReplacedNote({
               ...opt,
               food: replaceValue,
               cal: '0',
@@ -1620,7 +1630,7 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
               recipeId: undefined,
               recipeUuid: undefined,
               foods: undefined
-            };
+            });
           });
         }
       });
@@ -1642,6 +1652,8 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
     setReplaceRecipeId('');
     setReplaceRecipeNutrition(null);
     setReplaceAction('replace');
+    setReplaceNoteValue('');
+    setReplaceClearOldNote(true);
     setFindSearchFilter('');
     setReplaceSearchFilter('');
     setFindRecipeResults([]);
@@ -3816,6 +3828,31 @@ export function MealGridTable({ weekPlan, mealTypes, mealTypeConfigs = [], onUpd
                       </button>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Meal note for the replaced food */}
+              {replaceAction === 'replace' && (
+                <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
+                  <label htmlFor="replace-meal-note" className="text-sm font-medium">
+                    Meal note for the new food (optional)
+                  </label>
+                  <textarea
+                    id="replace-meal-note"
+                    value={replaceNoteValue}
+                    onChange={(e) => setReplaceNoteValue(e.target.value)}
+                    rows={2}
+                    placeholder="Type a new note, or leave empty"
+                    className="w-full rounded-md border border-gray-300 p-2 text-sm"
+                  />
+                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={replaceClearOldNote}
+                      onChange={(e) => setReplaceClearOldNote(e.target.checked)}
+                    />
+                    Remove the old note from replaced items
+                  </label>
                 </div>
               )}
 
