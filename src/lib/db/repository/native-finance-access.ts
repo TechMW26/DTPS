@@ -18,6 +18,8 @@ export async function nativeFinanceClientIds(db:MongoDatabase,actor:{id:string;r
 }
 export async function nativeFinancePeople(db:MongoDatabase,records:DocumentData[]):Promise<DocumentData[]>{
  const ids=[...new Set<string>(records.flatMap(row=>[row.client,row.dietitian]).filter(value=>typeof value==='string'&&/^[a-f0-9]{24}$/i.test(value)))],people=new Map<string,DocumentData>();
- for(let i=0;i<ids.length;i+=100){const rows=await db.getAll(...ids.slice(i,i+100).map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName','email','phone','avatar']});for(const row of rows)if(row.exists)people.set(row.id,{...row.data(),_id:row.id});}
+ // Read name batches 6 at a time instead of one after another; the result is identical.
+ const batches:string[][]=[];for(let i=0;i<ids.length;i+=100)batches.push(ids.slice(i,i+100));
+ for(let i=0;i<batches.length;i+=6){const groups=await Promise.all(batches.slice(i,i+6).map(batch=>db.getAll(...batch.map(id=>db.collection('users').doc(id)),{fieldMask:['firstName','lastName','email','phone','avatar']})));for(const rows of groups)for(const row of rows)if(row.exists)people.set(row.id,{...row.data(),_id:row.id});}
  return records.map(row=>({...row,client:people.get(row.client)||null,dietitian:people.get(row.dietitian)||null}));
 }
