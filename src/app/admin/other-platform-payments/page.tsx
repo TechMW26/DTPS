@@ -129,6 +129,9 @@ const platformIcons: Record<string, React.ReactNode> = {
   other: <Wallet className="h-4 w-4" />,
 };
 
+// Draw at most this many rows at once; search, tabs and counts still use every payment.
+const PAGE_SIZE = 50;
+
 export default function OtherPlatformPaymentsPage() {
   const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
@@ -137,6 +140,7 @@ export default function OtherPlatformPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  const [page, setPage] = useState(1);
   const [selectedPayment, setSelectedPayment] = useState<OtherPlatformPayment | null>(null);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
@@ -214,6 +218,15 @@ export default function OtherPlatformPaymentsPage() {
 
     setFilteredPayments(filtered);
   }, [payments, activeTab, searchTerm]);
+
+  // Go back to the first page when the tab or search changes.
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchTerm]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPayments.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagePayments = filteredPayments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const handleAction = async () => {
     if (!selectedPayment) return;
@@ -407,6 +420,7 @@ export default function OtherPlatformPaymentsPage() {
                     <p>No payments found</p>
                   </div>
                 ) : (
+                  <>
                   <div data-table-shell="true" className="rounded-md border overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -423,7 +437,7 @@ export default function OtherPlatformPaymentsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredPayments.map((payment) => (
+                        {pagePayments.map((payment) => (
                           <TableRow key={payment._id}>
                             <TableCell>
                               <div className="flex items-center gap-2">
@@ -533,6 +547,23 @@ export default function OtherPlatformPaymentsPage() {
                       </TableBody>
                     </Table>
                   </div>
+                  {totalPages > 1 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-4 text-sm text-muted-foreground">
+                      <span>
+                        Showing {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, filteredPayments.length)} of {filteredPayments.length}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>
+                          Previous
+                        </Button>
+                        <span>Page {currentPage} of {totalPages}</span>
+                        <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  </>
                 )}
               </TabsContent>
             </Tabs>
