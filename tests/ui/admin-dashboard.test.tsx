@@ -116,13 +116,39 @@ test('refresh-all-sessions asks first, then sends the same request', async () =>
   await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith(expect.stringContaining('Refresh sent to 7 connected users')));
 });
 
-test('shows 12 months of billed vs collected and the pending amount', async () => {
+test('shows 12 months of collected money, no billed figure, and the pending amount', async () => {
   await loaded();
-  await waitFor(() => expect(screen.getAllByText('\u20B928,37,639')).toHaveLength(2)); // KPI card + chart summary
+  await waitFor(() => expect(screen.getByText('\u20B959,40,000')).toBeInTheDocument()); // collected, last 12 months
+  expect(screen.getAllByText('\u20B928,37,639')).toHaveLength(1); // only on the Pending KPI card
   expect(screen.getByText(/1,183 live links/)).toBeInTheDocument();
-  expect(screen.getByText('90%')).toBeInTheDocument();
+  expect(screen.queryByText(/Billed/i)).not.toBeInTheDocument();
+  expect(screen.queryByText('\u20B966,00,000')).not.toBeInTheDocument();
+  expect(screen.getByText('Best month')).toBeInTheDocument();
+  expect(screen.getByText('Nov \u201926')).toBeInTheDocument(); // Nov has the highest collection in the mock
+  expect(screen.getByText('\u20B99.9L')).toBeInTheDocument();
+  expect(screen.getByText('66 payments')).toBeInTheDocument();
+  expect(screen.getByText('Average payment').parentElement).toHaveTextContent('\u20B990,000'); // 59,40,000 / 66 payments
   for (const month of ['Dec', 'Jun', 'Nov']) expect(screen.getAllByText(month).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole('tooltip', { hidden: true })).toHaveLength(12);
   expect(fetchMock.mock.calls.map(call => call[0])).toContain('/api/admin/revenue-collection');
+});
+
+test('top dietitians card shows five dietitians, their 30-day activity and the team size', async () => {
+  const many = [...dietitians, { id: 'd3', name: 'Anukrati Chiroliya', email: 'a@x.com', clients: 90, recentActivity: 12 },
+    { id: 'd4', name: 'Fourth Person', email: 'f@x.com', clients: 50 }, { id: 'd5', name: 'Fifth Person', email: 'e@x.com', clients: 40 }, { id: 'd6', name: 'Sixth Person', email: 's@x.com', clients: 10 }];
+  fetchMock.mockImplementation(async (url: string) => {
+    const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+    if (url === '/api/dashboard/admin-stats') return ok(stats);
+    if (url === '/api/admin/top-dietitians') return ok({ topDietitians: many, totalDietitians: 42 });
+    if (url === '/api/admin/revenue-collection') return ok(revenueCollection);
+    return ok({ activities: [], alerts: [] });
+  });
+  await loaded();
+  await waitFor(() => expect(screen.getByText('Fifth Person')).toBeInTheDocument());
+  expect(screen.queryByText('Sixth Person')).not.toBeInTheDocument();
+  expect(screen.getByText('12 active in 30 days')).toBeInTheDocument();
+  expect(screen.getByText('Top Dietitians')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /All 42/ })).toHaveAttribute('href', '/admin/dietitians/list');
 });
 
 test('the rest of the dashboard still works when the revenue chart fails', async () => {
