@@ -238,7 +238,7 @@ export default function Sidebar({ className, isDarkMode = false }: SidebarProps)
             description: 'System overview'
           },
           {
-            href: '/users',
+            href: '/admin/users',
             label: 'Users',
             icon: Users,
             description: 'Manage all users'
