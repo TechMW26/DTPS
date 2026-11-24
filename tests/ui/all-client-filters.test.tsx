@@ -6,7 +6,7 @@ import AdminAllClientsPage from '@/app/admin/allclients/page';
 
 jest.mock('next-auth/react', () => ({ useSession: () => ({status:'authenticated'}) }));
 jest.mock('@/components/admin/ProfessionalGrid', () => ({ProfessionalSection: () => null}));
-jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }), useSearchParams: () => new URLSearchParams() }));
 jest.mock('@/components/layout/DashboardLayout', () => ({ __esModule: true, default: ({children}: any) => <main>{children}</main> }));
 const staff = [{_id:'d1', firstName:'Sample', lastName:'Dietitian'}];
 function Fixture({initial = EMPTY_ALL_CLIENT_FILTERS}: {initial?: AllClientFilterValues}) {
