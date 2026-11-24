@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -72,6 +72,32 @@ interface PaymentStats {
   failedPayments: number;
 }
 
+// Payments load from the server 10 at a time. Search looks through the latest matching payments.
+const PAGE_SIZE = 10;
+const SEARCH_WINDOW = 200;
+const EXPORT_BATCH = 200;
+const EMPTY_STATS: PaymentStats = { totalPayments: 0, totalRevenue: 0, completedPayments: 0, pendingPayments: 0, failedPayments: 0 };
+
+const sinceFor = (dateFilter: string) => {
+  const now = new Date();
+  if (dateFilter === 'today') { const start = new Date(now); start.setHours(0, 0, 0, 0); return start.toISOString(); }
+  if (dateFilter === 'week') return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  if (dateFilter === 'month') return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  return null;
+};
+
+const matchesSearchTerm = (payment: Payment, term: string) => {
+  const searchLower = term.trim().toLowerCase();
+  return Boolean(
+    payment.client?.firstName?.toLowerCase().includes(searchLower) ||
+    payment.client?.lastName?.toLowerCase().includes(searchLower) ||
+    payment.client?.email?.toLowerCase().includes(searchLower) ||
+    payment.planName?.toLowerCase().includes(searchLower) ||
+    payment.razorpayPaymentId?.toLowerCase().includes(searchLower) ||
+    payment.transactionId?.toLowerCase().includes(searchLower)
+  );
+};
+
 export default function AdminPaymentsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -91,6 +117,55 @@ export default function AdminPaymentsPage() {
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalMatching, setTotalMatching] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [tableLoading, setTableLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const loadedOnce = useRef(false);
+  const requestId = useRef(0);
+
+  const paymentsUrl = useCallback((skip: number, limit: number) => {
+    const params = new URLSearchParams({ limit: String(limit), skip: String(skip) });
+    if (statusFilter !== 'all') params.set('status', statusFilter);
+    if (typeFilter !== 'all') params.set('type', typeFilter);
+    const since = sinceFor(dateFilter);
+    if (since) params.set('since', since);
+    return `/api/admin/payments?${params.toString()}`;
+  }, [statusFilter, typeFilter, dateFilter]);
+
+  const loadPayments = useCallback(async (quiet = false) => {
+    const searching = searchQuery.trim() !== '';
+    const id = ++requestId.current;
+    try {
+      if (!quiet) {
+        if (loadedOnce.current) setTableLoading(true);
+        else setLoading(true);
+      }
+      const response = await fetch(searching ? paymentsUrl(0, SEARCH_WINDOW) : paymentsUrl((page - 1) * PAGE_SIZE, PAGE_SIZE));
+      if (id !== requestId.current) return; // a newer request replaced this one
+      if (!response.ok) {
+        if (!quiet) toast.error('Failed to fetch payments');
+        return;
+      }
+      const data: any = await response.json();
+      if (id !== requestId.current) return;
+      setPayments(data.payments || []);
+      setTotalMatching(Number(data.pagination?.total ?? (data.payments || []).length));
+      setStats(data.stats || EMPTY_STATS);
+    } catch (error) {
+      if (!quiet) {
+        console.error('Error fetching payments:', error);
+        toast.error('Error loading payments');
+      }
+    } finally {
+      if (!quiet && id === requestId.current) {
+        setLoading(false);
+        setTableLoading(false);
+        loadedOnce.current = true;
+      }
+    }
+  }, [page, paymentsUrl, searchQuery]);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -98,26 +173,25 @@ export default function AdminPaymentsPage() {
       router.push('/auth/signin');
       return;
     }
-    fetchPayments();
-  }, [session, status, router]);
+    loadPayments();
+  }, [session, status, router, loadPayments]);
 
-  const fetchPaymentsQuiet = useCallback(async () => {
-    try {
-      const response = await fetch('/api/admin/payments');
-      if (!response.ok) return;
-      const data: any = await response.json();
-      setPayments(data.payments || []);
-      setStats(data.stats || {
-        totalPayments: 0,
-        totalRevenue: 0,
-        completedPayments: 0,
-        pendingPayments: 0,
-        failedPayments: 0,
-      });
-    } catch {
-      // ignore
-    }
-  }, []);
+  // Search once typing pauses.
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchTerm), 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // A new filter or search starts from the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, typeFilter, dateFilter, searchQuery]);
+
+  const latestLoad = useRef(loadPayments);
+  useEffect(() => {
+    latestLoad.current = loadPayments;
+  }, [loadPayments]);
+  const fetchPaymentsQuiet = useCallback(() => latestLoad.current(true), []);
 
   useRealtime({
     onMessage: (event) => {
@@ -127,30 +201,7 @@ export default function AdminPaymentsPage() {
     },
   });
 
-  const fetchPayments = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch('/api/admin/payments');
-      if (response.ok) {
-        const data: any = await response.json();
-        setPayments(data.payments || []);
-        setStats(data.stats || {
-          totalPayments: 0,
-          totalRevenue: 0,
-          completedPayments: 0,
-          pendingPayments: 0,
-          failedPayments: 0
-        });
-      } else {
-        toast.error('Failed to fetch payments');
-      }
-    } catch (error) {
-      console.error('Error fetching payments:', error);
-      toast.error('Error loading payments');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchPayments = () => loadPayments();
 
   const syncWithRazorpay = async () => {
     try {
@@ -222,47 +273,37 @@ export default function AdminPaymentsPage() {
     return labels[type] || type;
   };
 
-  const filteredPayments = payments.filter(payment => {
-    // Search filter
-    const searchLower = searchTerm.toLowerCase();
-    const matchesSearch =
-      payment.client?.firstName?.toLowerCase().includes(searchLower) ||
-      payment.client?.lastName?.toLowerCase().includes(searchLower) ||
-      payment.client?.email?.toLowerCase().includes(searchLower) ||
-      payment.planName?.toLowerCase().includes(searchLower) ||
-      payment.razorpayPaymentId?.toLowerCase().includes(searchLower) ||
-      payment.transactionId?.toLowerCase().includes(searchLower);
+  // Status, type and date are filtered on the server; search runs over the latest matching payments.
+  const searching = searchQuery.trim() !== '';
+  const filteredPayments = searching ? payments.filter(payment => matchesSearchTerm(payment, searchQuery)) : payments;
+  const totalRows = searching ? filteredPayments.length : totalMatching;
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const visiblePayments = searching ? filteredPayments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : filteredPayments;
+  const firstRow = totalRows === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const lastRow = Math.min(page * PAGE_SIZE, totalRows);
 
-    // Status filter
-    const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
-
-    // Type filter
-    const matchesType = typeFilter === 'all' || payment.type === typeFilter;
-
-    // Date filter
-    let matchesDate = true;
-    if (dateFilter !== 'all') {
-      const paymentDate = new Date(payment.createdAt);
-      const now = new Date();
-      switch (dateFilter) {
-        case 'today':
-          matchesDate = paymentDate.toDateString() === now.toDateString();
-          break;
-        case 'week':
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          matchesDate = paymentDate >= weekAgo;
-          break;
-        case 'month':
-          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          matchesDate = paymentDate >= monthAgo;
-          break;
+  const exportToCSV = async () => {
+    if (exporting) return;
+    setExporting(true);
+    // Export every payment that matches the filters, not only the page on screen.
+    let exportRows: Payment[] = [];
+    try {
+      for (let skip = 0; skip < 20000; skip += EXPORT_BATCH) {
+        const response = await fetch(paymentsUrl(skip, EXPORT_BATCH));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data: any = await response.json();
+        const batch: Payment[] = data.payments || [];
+        exportRows.push(...batch);
+        if (batch.length < EXPORT_BATCH) break;
       }
+      if (searching) exportRows = exportRows.filter(payment => matchesSearchTerm(payment, searchQuery));
+    } catch (error) {
+      console.error('Error exporting payments:', error);
+      toast.error('Could not export payments');
+      setExporting(false);
+      return;
     }
 
-    return matchesSearch && matchesStatus && matchesType && matchesDate;
-  });
-
-  const exportToCSV = () => {
     // Define clean field mappings for CSV export
     const fieldMappings = [
       { field: 'createdAt', header: 'Date', formatter: (v: any) => v ? format(new Date(v), 'dd/MM/yyyy HH:mm') : '' },
@@ -279,7 +320,7 @@ export default function AdminPaymentsPage() {
 
     // Build CSV with proper headers
     const headers = fieldMappings.map(f => f.header);
-    const rows = filteredPayments.map(p => {
+    const rows = exportRows.map(p => {
       return fieldMappings.map(mapping => {
         const keys = mapping.field.split('.');
         let value: any = p;
@@ -310,6 +351,8 @@ export default function AdminPaymentsPage() {
     a.download = `payments-${format(new Date(), 'yyyy-MM-dd')}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
+    setExporting(false);
+    toast.success(`Exported ${exportRows.length} payments`);
   };
 
   if (status === 'loading' || loading) {
@@ -347,10 +390,11 @@ export default function AdminPaymentsPage() {
                 </button>
                 <button
                   onClick={exportToCSV}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  disabled={exporting}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
-                  Export
+                  {exporting ? 'Exporting\u2026' : 'Export'}
                 </button>
               </div>
             </div>
@@ -487,7 +531,7 @@ export default function AdminPaymentsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredPayments.length === 0 ? (
+                  {visiblePayments.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-6 py-12 text-center">
                         <div className="flex flex-col items-center">
@@ -498,7 +542,7 @@ export default function AdminPaymentsPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredPayments.map((payment) => (
+                    visiblePayments.map((payment) => (
                       <tr key={payment._id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -567,6 +611,31 @@ export default function AdminPaymentsPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-col gap-3 border-t px-6 py-4 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                {tableLoading ? 'Loading\u2026' : `Showing ${firstRow}-${lastRow} of ${totalRows.toLocaleString('en-IN')}`}
+                {searching && <span className="ml-2 text-xs text-gray-400">(search looks through the latest {SEARCH_WINDOW} matching payments)</span>}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage(current => Math.max(1, current - 1))}
+                  disabled={page <= 1 || tableLoading}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 transition-colors hover:bg-gray-50 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <span>Page {page} of {totalPages}</span>
+                <button
+                  type="button"
+                  onClick={() => setPage(current => Math.min(totalPages, current + 1))}
+                  disabled={page >= totalPages || tableLoading}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 transition-colors hover:bg-gray-50 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         </div>
