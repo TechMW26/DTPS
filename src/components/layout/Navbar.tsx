@@ -86,7 +86,7 @@ export default function Navbar({ isDarkMode = false }: NavbarProps) {
       case UserRole.ADMIN:
         return [
           ...baseItems,
-          { href: '/users', label: 'Users', icon: Users },
+          { href: '/admin/users', label: 'Users', icon: Users },
           { href: '/analytics', label: 'Analytics', icon: BarChart3 },
         ];
       default:

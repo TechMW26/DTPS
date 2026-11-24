@@ -1,6 +1,7 @@
 import { withAuth } from 'next-auth/middleware';
 import { NextResponse, NextRequest } from 'next/server';
 import { UserRole } from '@/types';
+import { isClientUserPath } from '@/lib/routing/client-paths';
 
 // App version for cache busting
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || process.env.npm_package_version || '1.0.0';
@@ -92,7 +93,7 @@ export default withAuth(
     // If no token and accessing client-facing routes, redirect to /client-auth/signin
     // This prevents NextAuth from sending mobile/client users to the staff /auth/signin page
     if (!token) {
-      const isClientRoute = pathname.startsWith('/user') ||
+      const isClientRoute = isClientUserPath(pathname) ||
         pathname.startsWith('/dashboard/client') ||
         pathname.startsWith('/client-dashboard') ||
         pathname.startsWith('/my-plan') ||
@@ -171,7 +172,7 @@ export default withAuth(
 
     // Client/User routes - only for clients (NOT for admin or dietitian)
     // Public user routes are already handled above, so we can safely check all /user routes here
-    if (pathname.startsWith('/user') || pathname.startsWith('/dashboard/client') || pathname.startsWith('/client-dashboard')) {
+    if (isClientUserPath(pathname) || pathname.startsWith('/dashboard/client') || pathname.startsWith('/client-dashboard')) {
       if (userRole !== 'client') {
         console.log('Client access denied. Role:', token?.role);
         // Redirect to appropriate dashboard
@@ -180,7 +181,7 @@ export default withAuth(
           : userRole === 'health_counselor'
             ? '/health-counselor/clients'
             : userRole === 'admin'
-              ? '/admin'
+              ? '/dashboard/admin'
               : '/client-auth/signin';
         return NextResponse.redirect(new URL(redirectPath, req.url));
       }
@@ -295,7 +296,7 @@ export default withAuth(
         // For client-facing routes, return true even without token so the
         // middleware function can redirect to /client-auth/signin instead of
         // NextAuth's default /auth/signin (which is the staff login page).
-        const isClientRoute = pathname.startsWith('/user') ||
+        const isClientRoute = isClientUserPath(pathname) ||
           pathname.startsWith('/dashboard/client') ||
           pathname.startsWith('/client-dashboard') ||
           pathname.startsWith('/my-plan') ||
