@@ -119,7 +119,7 @@ test('refresh-all-sessions asks first, then sends the same request', async () =>
 test('shows 12 months of billed vs collected and the pending amount', async () => {
   await loaded();
   await waitFor(() => expect(screen.getAllByText('\u20B928,37,639')).toHaveLength(2)); // KPI card + chart summary
-  expect(screen.getByText(/1,183 unpaid/)).toBeInTheDocument();
+  expect(screen.getByText(/1,183 live links/)).toBeInTheDocument();
   expect(screen.getByText('90%')).toBeInTheDocument();
   for (const month of ['Dec', 'Jun', 'Nov']) expect(screen.getAllByText(month).length).toBeGreaterThan(0);
   expect(fetchMock.mock.calls.map(call => call[0])).toContain('/api/admin/revenue-collection');

@@ -91,7 +91,7 @@ interface RevenueMonth {
 
 interface RevenueCollection {
   months: RevenueMonth[];
-  totals: { billed: number; collected: number; pending: number; pendingCount: number; collectionRate: number };
+  totals: { billed: number; collected: number; pending: number; pendingCount: number; expired?: number; expiredCount?: number; collectionRate: number };
 }
 
 const RUPEE = '\u20B9';
@@ -586,7 +586,7 @@ export default function AdminDashboard() {
               note="Collected this month" icon={<TrendingUp className="h-4.5 w-4.5" />} />
             <KpiCard tone="amber" title="Pending Collection"
               value={revenue ? formatRupees(revenue.totals.pending) : DASH}
-              note={revenue ? `${formatNumber(revenue.totals.pendingCount)} unpaid ${'\u00B7'} last 12 months` : revenueFailed ? 'Unavailable right now' : 'Loading\u2026'}
+              note={revenue ? `${formatNumber(revenue.totals.pendingCount)} live links ${'\u00B7'} expired links not counted` : revenueFailed ? 'Unavailable right now' : 'Loading\u2026'}
               icon={<Hourglass className="h-4.5 w-4.5" />} />
           </div>
 
