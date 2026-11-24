@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -137,14 +137,19 @@ interface HealthCounselor {
   clientCount: number;
 }
 
-export default function AdminAllClientsPage() {
+function AdminAllClientsContent() {
   const { status } = useSession();
   const router = useRouter();
   const [clients, setClients] = useState<Client[]>([]);
   const [dietitians, setDietitians] = useState<Dietitian[]>([]);
   const [healthCounselors, setHealthCounselors] = useState<HealthCounselor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<AllClientFilterValues>({ ...EMPTY_ALL_CLIENT_FILTERS });
+  const searchParams = useSearchParams();
+  // Links such as the dashboard's "Need Assignment" open the list already filtered (?assigned=false).
+  const [filters, setFilters] = useState<AllClientFilterValues>(() => {
+    const assigned = searchParams?.get('assigned');
+    return { ...EMPTY_ALL_CLIENT_FILTERS, ...(assigned === 'true' || assigned === 'false' ? { assignment: assigned } : {}) };
+  });
   const { search: searchTerm, status: filterStatus, assignment: filterAssigned, dateFrom: filterDateFrom, dateTo: filterDateTo, dietitian: filterDietitianId, healthCounselor: filterHealthCounselorId, onboarding: filterOnboarding } = filters;
   const [loadError, setLoadError] = useState(false);
   const clientRequest = useRef<AbortController | null>(null);
@@ -1996,5 +2001,13 @@ export default function AdminAllClientsPage() {
         </Dialog>
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function AdminAllClientsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminAllClientsContent />
+    </Suspense>
   );
 }

@@ -54,3 +54,10 @@ export async function listNativeSystemAlerts(db:MongoDatabase,params:URLSearchPa
  for(const row of summary.docs){if(row.get('isRead')===false)stats.unreadCount++;if(row.get('priority')==='critical'&&row.get('status')==='new')stats.criticalCount++;if((row.get('createdAt')?.toMillis?.()||0)>=today)stats.todayCount++;}
  return {alerts:await Promise.all(selected.map(row=>nativeSystemAlertView(db,{...row.data(),_id:row.id}))),pagination:{page,limit,total,totalPages:Math.ceil(total/limit)},stats};
 }
+/** Dashboard shows saved alerts from the last few days only; old logs and resolved or ignored alerts stay on the alerts page. */
+export const DASHBOARD_ALERT_DAYS=7;
+export async function nativeDashboardSavedAlerts(db:MongoDatabase,now=new Date()){
+ const since=new Date(now.getTime()-DASHBOARD_ALERT_DAYS*86400000);
+ const rows=await db.collection('systemalerts').where('createdAt','>=',since).orderBy('createdAt','desc').limit(50).get();
+ return rows.docs.filter(row=>!['resolved','ignored'].includes(String(row.get('status')||'')));
+}

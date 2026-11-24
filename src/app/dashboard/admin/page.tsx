@@ -75,6 +75,7 @@ interface TopDietitian {
   completedAppointments?: number;
   totalAppointments?: number;
   completionRate?: number;
+  recentActivity?: number;
 }
 
 interface RevenueMonth {
@@ -87,11 +88,13 @@ interface RevenueMonth {
   billedCount: number;
   collectedCount: number;
   pendingCount: number;
+  revenue?: number;
+  revenueCount?: number;
 }
 
 interface RevenueCollection {
   months: RevenueMonth[];
-  totals: { billed: number; collected: number; pending: number; pendingCount: number; collectionRate: number };
+  totals: { billed: number; collected: number; pending: number; pendingCount: number; expired?: number; expiredCount?: number; collectionRate: number; revenue?: number; revenueCollectionRate?: number };
 }
 
 const RUPEE = '\u20B9';
@@ -167,28 +170,37 @@ function Panel({ title, description, action, children, className = '' }: {
 function RevenueCollectionChart({ data, failed }: { data: RevenueCollection | null; failed: boolean }) {
   if (failed) return <p className="flex h-64 items-center justify-center text-sm text-gray-500">Revenue data is unavailable right now</p>;
   if (!data) return <div className="h-64 animate-pulse rounded-xl bg-gray-100" aria-label="Loading revenue chart" />;
-  const max = niceMax(Math.max(...data.months.map(month => month.billed), 0));
+  const months = data.months;
+  // Revenue = everything asked for (expired links included); older API responses fall back to billed.
+  const revenueOf = (month: RevenueMonth) => month.revenue ?? month.billed;
+  const totalRevenue = data.totals.revenue ?? data.totals.billed;
+  const max = niceMax(Math.max(...months.map(month => Math.max(revenueOf(month), month.collected)), 0));
   const gridlines = [1, 0.75, 0.5, 0.25, 0];
+  const monthLabel = (month: RevenueMonth) => `${month.month} \u2019${String(month.year).slice(2)}`;
+  const best = months.reduce((top, month) => (month.collected > top.collected ? month : top), months[0]);
+  const rate = totalRevenue > 0 ? Math.round((data.totals.collected / totalRevenue) * 1000) / 10 : 0;
+  const stats = [
+    { label: 'Revenue', hint: 'all payment links', value: formatRupees(totalRevenue), dot: 'bg-[#b7d7c4]' },
+    { label: 'Collected', hint: 'money received', value: formatRupees(data.totals.collected), dot: 'bg-emerald-600' },
+    { label: 'Collection rate', hint: `${formatCompactRupees(Math.max(0, totalRevenue - data.totals.collected))} not collected`, value: `${rate}%`, dot: '' },
+    { label: 'Best month', hint: best && best.collected > 0 ? monthLabel(best) : DASH, value: best && best.collected > 0 ? formatCompactRupees(best.collected) : DASH, dot: '' },
+  ];
   return (
     <div>
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: 'Billed', value: formatRupees(data.totals.billed), dot: 'bg-[#c6ddd0]' },
-          { label: 'Collected', value: formatRupees(data.totals.collected), dot: 'bg-emerald-700' },
-          { label: 'Pending', value: formatRupees(data.totals.pending), dot: 'bg-amber-400' },
-          { label: 'Collection rate', value: `${data.totals.collectionRate}%`, dot: '' },
-        ].map(stat => (
+        {stats.map(stat => (
           <div key={stat.label} className="rounded-xl bg-gray-50 px-3 py-2.5">
             <p className="flex items-center gap-1.5 text-xs text-gray-500">
               {stat.dot && <span className={`h-2 w-2 rounded-full ${stat.dot}`} />}{stat.label}
             </p>
             <p className="mt-0.5 text-sm font-semibold text-gray-900 sm:text-base">{stat.value}</p>
+            <p className="text-[11px] text-gray-400">{stat.hint}</p>
           </div>
         ))}
       </div>
 
       <div className="flex gap-2">
-        <div className="relative h-56 w-12 shrink-0 text-right text-[11px] text-gray-400">
+        <div className="relative h-60 w-12 shrink-0 text-right text-[11px] text-gray-400">
           {gridlines.map(line => (
             <span key={line} className="absolute right-0 -translate-y-1/2" style={{ top: `${(1 - line) * 100}%` }}>
               {formatCompactRupees(max * line)}
@@ -196,27 +208,29 @@ function RevenueCollectionChart({ data, failed }: { data: RevenueCollection | nu
           ))}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="relative h-56">
+          <div className="relative h-60">
             {gridlines.map(line => (
               <div key={line} className={`absolute inset-x-0 border-t ${line === 0 ? 'border-gray-300' : 'border-dashed border-gray-200'}`} style={{ top: `${(1 - line) * 100}%` }} />
             ))}
-            <div className="absolute inset-0 flex items-end gap-1 sm:gap-2">
-              {data.months.map(month => (
-                <div key={month.key} className="group relative flex h-full flex-1 items-end justify-center gap-0.5 sm:gap-1">
-                  <div className="w-full max-w-4 rounded-t bg-[#c6ddd0] transition group-hover:bg-[#adcdbb]" style={{ height: `${(month.billed / max) * 100}%` }} />
-                  <div className="w-full max-w-4 rounded-t bg-emerald-700 transition group-hover:bg-emerald-800" style={{ height: `${(month.collected / max) * 100}%` }} />
-                  <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden w-44 -translate-x-1/2 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
-                    <p className="mb-1 font-semibold">{month.month} {month.year}</p>
-                    <p className="flex justify-between"><span className="text-gray-300">Billed</span>{formatRupees(month.billed)}</p>
-                    <p className="flex justify-between"><span className="text-gray-300">Collected</span>{formatRupees(month.collected)}</p>
-                    <p className="flex justify-between"><span className="text-gray-300">Pending</span>{formatRupees(month.pending)}</p>
+            <div className="absolute inset-0 flex items-end gap-1.5 sm:gap-3">
+              {months.map((month, index) => {
+                const align = index < 2 ? 'left-0' : index > months.length - 3 ? 'right-0' : 'left-1/2 -translate-x-1/2';
+                return (
+                  <div key={month.key} className="group relative flex h-full flex-1 items-end justify-center gap-0.5 sm:gap-1">
+                    <div className="w-full max-w-5 rounded-t-md bg-[#b7d7c4] transition group-hover:bg-[#9ccab0]" style={{ height: `${(revenueOf(month) / max) * 100}%` }} />
+                    <div className="w-full max-w-5 rounded-t-md bg-emerald-600 transition group-hover:bg-emerald-700" style={{ height: `${(month.collected / max) * 100}%` }} />
+                    <div role="tooltip" className={`pointer-events-none absolute z-10 hidden whitespace-nowrap rounded-md bg-gray-900 px-2.5 py-1.5 text-[11px] leading-4 text-white shadow-md group-hover:block ${align}`}
+                      style={{ bottom: `calc(${(Math.max(revenueOf(month), month.collected) / max) * 100}% + 6px)` }}>
+                      <p className="font-semibold">{month.month} {month.year}</p>
+                      <p className="text-gray-300">Revenue <span className="font-medium text-white">{formatRupees(revenueOf(month))}</span> {'\u00B7'} Collected <span className="font-medium text-white">{formatRupees(month.collected)}</span></p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
-          <div className="mt-2 flex gap-1 sm:gap-2">
-            {data.months.map(month => (
+          <div className="mt-2 flex gap-1.5 sm:gap-3">
+            {months.map(month => (
               <span key={month.key} className="flex-1 text-center text-[10px] text-gray-500 sm:text-[11px]">
                 {month.month}{month.month === 'Jan' && <span className="hidden sm:inline"> {`\u2019${String(month.year).slice(2)}`}</span>}
               </span>
@@ -224,10 +238,10 @@ function RevenueCollectionChart({ data, failed }: { data: RevenueCollection | nu
           </div>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-600">
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#c6ddd0]" />Billed</span>
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-700" />Collected</span>
-        <span className="hidden text-gray-400 sm:inline">Hover a month for details</span>
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-600">
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#b7d7c4]" />Revenue</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-600" />Collected</span>
+        <span className="hidden text-gray-400 sm:inline">Hover a month for exact amounts</span>
       </div>
     </div>
   );
@@ -238,41 +252,51 @@ function ClientOverview({ total, active, appointments, completedAppointments }: 
 }) {
   const radius = 40, circumference = 2 * Math.PI * radius;
   const share = total > 0 ? Math.min(1, active / total) : 0;
+  const tiles = [
+    { label: 'Active', value: active, dot: 'bg-emerald-700' },
+    { label: 'Inactive', value: Math.max(0, total - active), dot: 'bg-emerald-100 ring-1 ring-emerald-200' },
+    { label: 'Total', value: total, dot: '' },
+  ];
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-5">
-        <div className="relative h-28 w-28 shrink-0">
-          <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden="true">
-            <circle cx="50" cy="50" r={radius} fill="none" stroke="#e5efe9" strokeWidth="11" />
-            <circle cx="50" cy="50" r={radius} fill="none" stroke="#1f6f4a" strokeWidth="11" strokeLinecap="round"
-              strokeDasharray={`${share * circumference} ${circumference}`} />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xl font-semibold text-gray-900">{Math.round(share * 100)}%</span>
-            <span className="text-[11px] text-gray-500">active</span>
-          </div>
-        </div>
-        <div className="flex-1 space-y-2 text-sm">
-          <p className="flex items-center justify-between"><span className="flex items-center gap-2 text-gray-600"><span className="h-2 w-2 rounded-full bg-emerald-700" />Active</span><span className="font-semibold text-gray-900">{formatNumber(active)}</span></p>
-          <p className="flex items-center justify-between"><span className="flex items-center gap-2 text-gray-600"><span className="h-2 w-2 rounded-full bg-emerald-100" />Inactive</span><span className="font-semibold text-gray-900">{formatNumber(Math.max(0, total - active))}</span></p>
-          <p className="flex items-center justify-between border-t border-gray-100 pt-2"><span className="text-gray-600">Total</span><span className="font-semibold text-gray-900">{formatNumber(total)}</span></p>
+      <div className="relative mx-auto h-32 w-32">
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden="true">
+          <circle cx="50" cy="50" r={radius} fill="none" stroke="#e5efe9" strokeWidth="10" />
+          <circle cx="50" cy="50" r={radius} fill="none" stroke="#1f6f4a" strokeWidth="10" strokeLinecap="round"
+            strokeDasharray={`${share * circumference} ${circumference}`} />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-semibold text-gray-900">{Math.round(share * 100)}%</span>
+          <span className="text-xs text-gray-500">active</span>
         </div>
       </div>
 
+      <div className="mt-5 grid grid-cols-3 gap-2">
+        {tiles.map(tile => (
+          <div key={tile.label} className="rounded-xl bg-gray-50 px-3 py-2.5 text-center">
+            <p className="flex items-center justify-center gap-1.5 text-xs text-gray-500">
+              {tile.dot && <span className={`h-2 w-2 rounded-full ${tile.dot}`} />}{tile.label}
+            </p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-900 sm:text-base">{formatNumber(tile.value)}</p>
+          </div>
+        ))}
+      </div>
+
       <Link href="/admin/allclients?assigned=false"
-        className="group mt-5 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 transition hover:border-amber-300">
+        className="group mt-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 transition hover:border-amber-300">
         <span className="flex items-center gap-2.5 text-sm font-medium text-amber-800">
           <AlertTriangle className="h-4 w-4" />Need Assignment
         </span>
         <span className="flex items-center gap-1 text-sm text-amber-700">View clients <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" /></span>
       </Link>
 
-      <div className="mt-3 flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 text-sm">
+      <div className="mt-2.5 flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3 text-sm">
         <span className="flex items-center gap-2.5 text-gray-600"><Calendar className="h-4 w-4 text-gray-400" />Appointments</span>
         <span className="text-gray-900"><span className="font-semibold">{formatNumber(appointments)}</span> <span className="text-gray-500">{'\u00B7'} {formatNumber(completedAppointments)} completed</span></span>
       </div>
 
-      <Button asChild className="mt-auto w-full bg-[#1f6f4a] hover:bg-[#185a3c]">
+      <div className="min-h-4 flex-1" />
+      <Button asChild className="w-full bg-[#1f6f4a] hover:bg-[#185a3c]">
         <Link href="/admin/allclients">View All Clients</Link>
       </Button>
     </div>
@@ -307,6 +331,7 @@ export default function AdminDashboard() {
   const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
   const [systemAlerts, setSystemAlerts] = useState<SystemAlert[]>([]);
   const [topDietitians, setTopDietitians] = useState<TopDietitian[]>([]);
+  const [dietitianCount, setDietitianCount] = useState<number | null>(null);
   const [revenue, setRevenue] = useState<RevenueCollection | null>(null);
   const [revenueFailed, setRevenueFailed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -428,13 +453,14 @@ export default function AdminDashboard() {
       if (response.ok) {
         const data = await response.json();
         setTopDietitians(data.topDietitians);
+        if (typeof data.totalDietitians === 'number') setDietitianCount(data.totalDietitians);
       }
     } catch (error) {
       console.error('Error fetching top dietitians:', error);
     }
   };
 
-  // Fetch 12 months of billed vs collected payments (loads on its own; the page never waits for it)
+  // Fetch 12 months of revenue vs collection (loads on its own; the page never waits for it)
   const fetchRevenueCollection = async () => {
     try {
       const response = await fetch('/api/admin/revenue-collection');
@@ -500,7 +526,6 @@ export default function AdminDashboard() {
   const activities = recentActivity || [];
   const alerts = systemAlerts || [];
   const dietitians = (topDietitians || []).slice(0, 5);
-  const topClientCount = Math.max(1, ...dietitians.map(dietitian => Number(dietitian.clients || 0)));
   const adminName = session?.user?.firstName || session?.user?.name?.split(' ')[0] || 'Admin';
   const now = new Date();
 
@@ -586,14 +611,14 @@ export default function AdminDashboard() {
               note="Collected this month" icon={<TrendingUp className="h-4.5 w-4.5" />} />
             <KpiCard tone="amber" title="Pending Collection"
               value={revenue ? formatRupees(revenue.totals.pending) : DASH}
-              note={revenue ? `${formatNumber(revenue.totals.pendingCount)} unpaid ${'\u00B7'} last 12 months` : revenueFailed ? 'Unavailable right now' : 'Loading\u2026'}
+              note={revenue ? `${formatNumber(revenue.totals.pendingCount)} live links ${'\u00B7'} last 7 days` : revenueFailed ? 'Unavailable right now' : 'Loading\u2026'}
               icon={<Hourglass className="h-4.5 w-4.5" />} />
           </div>
 
           {/* Revenue vs collection + client overview */}
           <div className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-12">
             <div className="xl:col-span-8">
-              <Panel title="Revenue & Collection" description="Billed vs collected, last 12 months">
+              <Panel title="Revenue & Collection" description="Payment links raised vs money received, last 12 months">
                 <RevenueCollectionChart data={revenue} failed={revenueFailed} />
               </Panel>
             </div>
@@ -605,15 +630,15 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Dietitians + quick actions */}
+          {/* Top dietitians + quick actions */}
           <div className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-12">
-            <div className="xl:col-span-8">
+            <div className="xl:col-span-4">
               <Panel
                 title="Top Dietitians"
-                description="By number of assigned clients"
+                description="By assigned clients"
                 action={
                   <Link href="/admin/dietitians/list" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm font-medium text-emerald-700 hover:underline">
-                    View All Dietitians <ArrowRight className="h-4 w-4" />
+                    {dietitianCount ? `All ${formatNumber(dietitianCount)}` : 'View all'} <ArrowRight className="h-4 w-4" />
                   </Link>
                 }
               >
@@ -622,36 +647,33 @@ export default function AdminDashboard() {
                 ) : (
                   <ul className="divide-y divide-gray-100">
                     {dietitians.map((dietitian, index) => (
-                      <li key={dietitian.id} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-                        <span className="w-4 text-sm font-medium text-gray-400">{index + 1}</span>
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-semibold text-emerald-700">
+                      <li key={dietitian.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${index === 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>
                           {initialsOf(dietitian.name)}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-baseline justify-between gap-3">
-                            <p className="truncate text-sm font-medium text-gray-900">{dietitian.name}</p>
-                            <p className="shrink-0 text-sm text-gray-600"><span className="font-semibold text-gray-900">{formatNumber(dietitian.clients)}</span> clients</p>
-                          </div>
-                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
-                            <div className="h-full rounded-full bg-emerald-600" style={{ width: `${(Number(dietitian.clients || 0) / topClientCount) * 100}%` }} />
-                          </div>
+                          <p className="truncate text-sm font-medium text-gray-900">{dietitian.name}</p>
+                          {typeof dietitian.recentActivity === 'number' && (
+                            <p className="text-xs text-gray-500">{formatNumber(dietitian.recentActivity)} active in 30 days</p>
+                          )}
                         </div>
+                        <p className="shrink-0 text-xs text-gray-500"><span className="text-sm font-semibold text-gray-900">{formatNumber(dietitian.clients)}</span> clients</p>
                       </li>
                     ))}
                   </ul>
                 )}
               </Panel>
             </div>
-            <div className="xl:col-span-4">
+            <div className="xl:col-span-8">
               <Panel title="Quick Actions" description="Common administrative tasks">
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid h-full auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-4">
                   {quickActions.map(action => {
                     const Icon = action.icon;
                     return (
                       <Link key={action.href} href={action.href}
-                        className="flex items-center gap-2.5 rounded-xl border border-gray-200/70 px-3 py-3 text-sm font-medium text-gray-800 transition hover:border-emerald-200 hover:bg-emerald-50/60">
-                        <Icon className="h-4.5 w-4.5 shrink-0 text-emerald-700" />
-                        <span className="truncate">{action.label}</span>
+                        className="flex flex-col items-center justify-center gap-2 rounded-xl border border-gray-200/70 px-2 py-4 text-center text-sm font-medium text-gray-800 transition hover:border-emerald-200 hover:bg-emerald-50/60">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><Icon className="h-5 w-5" /></span>
+                        <span className="leading-tight">{action.label}</span>
                       </Link>
                     );
                   })}

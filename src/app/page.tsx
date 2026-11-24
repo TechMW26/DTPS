@@ -14,7 +14,7 @@ export default async function Home() {
 
   switch (role) {
     case 'admin':
-      redirect('/admin');
+      redirect('/dashboard/admin');
     case 'dietitian':
       redirect('/dashboard/dietitian');
     case 'health_counselor':
