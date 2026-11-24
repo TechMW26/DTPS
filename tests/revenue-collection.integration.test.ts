@@ -36,7 +36,8 @@ test('splits the last 12 IST months into billed, collected and pending', async (
  const nov = result.months[11], oct = result.months[10];
  expect(nov).toMatchObject({month: 'Nov', collected: 5000, pending: 5500, billed: 10500, collectedCount: 2, pendingCount: 1, billedCount: 3});
  expect(oct).toMatchObject({month: 'Oct', collected: 1200, pending: 0, billed: 1200});
- expect(result.totals).toEqual({billed: 11700, collected: 6200, pending: 5500, pendingCount: 1, expired: 0, expiredCount: 0, collectionRate: 53});
+ expect(nov).toMatchObject({revenue: 10500, revenueCount: 3}); // cancelled payment is not revenue
+ expect(result.totals).toEqual({billed: 11700, collected: 6200, pending: 5500, pendingCount: 1, revenue: 11700, expired: 0, expiredCount: 0, collectionRate: 53, revenueCollectionRate: 53});
  expect(calls).toContainEqual(['collection', 'unifiedpayments']);
  expect(calls).toContainEqual(['where', 'createdAt', '>=', ist('2025-12-01T00:00:00')]);
 });
@@ -66,5 +67,7 @@ test('leaves expired payment links out of pending and billed', async () => {
  const result = await nativeRevenueCollection(db, now);
  expect(result.months[11]).toMatchObject({pending: 11000, pendingCount: 3, collected: 1000, billed: 12000});
  expect(result.months.find(month => month.key === '2026-06')).toMatchObject({pending: 0, billed: 0});
- expect(result.totals).toEqual({billed: 12000, collected: 1000, pending: 11000, pendingCount: 3, expired: 16000, expiredCount: 3, collectionRate: 8.3});
+ expect(result.months[11]).toMatchObject({revenue: 23000, revenueCount: 6}); // expired links still count as revenue
+ expect(result.months.find(month => month.key === '2026-06')).toMatchObject({revenue: 5000, collected: 0});
+ expect(result.totals).toEqual({billed: 12000, collected: 1000, pending: 11000, pendingCount: 3, revenue: 28000, expired: 16000, expiredCount: 3, collectionRate: 8.3, revenueCollectionRate: 3.6});
 });

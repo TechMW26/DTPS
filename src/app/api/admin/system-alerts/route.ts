@@ -4,6 +4,7 @@ import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth/config';
 import {getNativeDatabase} from '@/lib/db/database';
 import {createNativeAudit} from '@/lib/db/repository/native-audit';
+import {nativeDashboardSavedAlerts} from '@/lib/db/repository/native-system-alerts';
 import {nativeDates} from '@/lib/db/repository/native-plan-editor';
 import {z} from 'zod';
 const schema=z.object({type:z.enum(['info','warning','error','success','critical']).default('info'),message:z.string().trim().min(1).max(1000),priority:z.enum(['low','medium','high','critical']).default('low'),category:z.enum(['database_error','api_error','auth_failure','payment_failure','email_failure','validation_error','performance','security','maintenance','other']).default('other')});
@@ -12,8 +13,8 @@ function timeAgo(value:Date){const minutes=Math.max(0,Math.floor((Date.now()-val
 function view(id:string,data:Record<string,any>){return {id,type:data.type,message:data.message,priority:data.priority||'low',category:data.category||'other',createdAt:data.createdAt,time:timeAgo(data.createdAt)};}
 export async function GET(){try{
  if(!await admin())return nativeResponseJson({error:'Admin access required'},{status:403});const db=getNativeDatabase(),now=new Date();
- const [saved,recent,pending,inactive]=await Promise.all([db.collection('systemalerts').orderBy('createdAt','desc').limit(50).get(),db.collection('users').where('createdAt','>=',new Date(now.getTime()-86400000)).count().get(),db.collection('appointments').where('status','==','pending').where('date','>=',now).count().get(),db.collection('users').where('role','in',['dietitian','health_counselor']).where('lastLoginAt','<',new Date(now.getTime()-7*86400000)).count().get()]);
- const alerts=saved.docs.map(row=>view(row.id,nativeDates(row.data())));
+ const [saved,recent,pending,inactive]=await Promise.all([nativeDashboardSavedAlerts(db,now),db.collection('users').where('createdAt','>=',new Date(now.getTime()-86400000)).count().get(),db.collection('appointments').where('status','==','pending').where('date','>=',now).count().get(),db.collection('users').where('role','in',['dietitian','health_counselor']).where('lastLoginAt','<',new Date(now.getTime()-7*86400000)).count().get()]);
+ const alerts=saved.map(row=>view(row.id,nativeDates(row.data())));
  if(recent.data().count>10)alerts.push(view('high_user_growth',{type:'info',message:`High user registration activity: ${recent.data().count} new users in the last 24 hours`,priority:'medium',category:'growth',createdAt:now}));
  if(pending.data().count>5)alerts.push(view('pending_appointments',{type:'warning',message:`${pending.data().count} appointments pending confirmation`,priority:'high',category:'appointments',createdAt:now}));
  if(inactive.data().count>0)alerts.push(view('inactive_dietitians',{type:'warning',message:`${inactive.data().count} staff members haven't logged in for over a week`,priority:'medium',category:'staff',createdAt:now}));

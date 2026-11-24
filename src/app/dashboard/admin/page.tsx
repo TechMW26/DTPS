@@ -88,11 +88,13 @@ interface RevenueMonth {
   billedCount: number;
   collectedCount: number;
   pendingCount: number;
+  revenue?: number;
+  revenueCount?: number;
 }
 
 interface RevenueCollection {
   months: RevenueMonth[];
-  totals: { billed: number; collected: number; pending: number; pendingCount: number; expired?: number; expiredCount?: number; collectionRate: number };
+  totals: { billed: number; collected: number; pending: number; pendingCount: number; expired?: number; expiredCount?: number; collectionRate: number; revenue?: number; revenueCollectionRate?: number };
 }
 
 const RUPEE = '\u20B9';
@@ -169,24 +171,28 @@ function RevenueCollectionChart({ data, failed }: { data: RevenueCollection | nu
   if (failed) return <p className="flex h-64 items-center justify-center text-sm text-gray-500">Revenue data is unavailable right now</p>;
   if (!data) return <div className="h-64 animate-pulse rounded-xl bg-gray-100" aria-label="Loading revenue chart" />;
   const months = data.months;
-  const max = niceMax(Math.max(...months.map(month => month.collected), 0));
+  // Revenue = everything asked for (expired links included); older API responses fall back to billed.
+  const revenueOf = (month: RevenueMonth) => month.revenue ?? month.billed;
+  const totalRevenue = data.totals.revenue ?? data.totals.billed;
+  const max = niceMax(Math.max(...months.map(month => Math.max(revenueOf(month), month.collected)), 0));
   const gridlines = [1, 0.75, 0.5, 0.25, 0];
   const monthLabel = (month: RevenueMonth) => `${month.month} \u2019${String(month.year).slice(2)}`;
   const best = months.reduce((top, month) => (month.collected > top.collected ? month : top), months[0]);
-  const earning = months.filter(month => month.collected > 0);
-  const payments = months.reduce((sum, month) => sum + month.collectedCount, 0);
+  const rate = totalRevenue > 0 ? Math.round((data.totals.collected / totalRevenue) * 1000) / 10 : 0;
   const stats = [
-    { label: 'Collected', hint: 'last 12 months', value: formatRupees(data.totals.collected) },
-    { label: 'Best month', hint: best && best.collected > 0 ? monthLabel(best) : DASH, value: best && best.collected > 0 ? formatCompactRupees(best.collected) : DASH },
-    { label: 'Monthly average', hint: `${earning.length} active months`, value: earning.length ? formatCompactRupees(data.totals.collected / earning.length) : DASH },
-    { label: 'Average payment', hint: `${formatNumber(payments)} payments`, value: payments ? formatRupees(data.totals.collected / payments) : DASH },
+    { label: 'Revenue', hint: 'all payment links', value: formatRupees(totalRevenue), dot: 'bg-[#b7d7c4]' },
+    { label: 'Collected', hint: 'money received', value: formatRupees(data.totals.collected), dot: 'bg-emerald-600' },
+    { label: 'Collection rate', hint: `${formatCompactRupees(Math.max(0, totalRevenue - data.totals.collected))} not collected`, value: `${rate}%`, dot: '' },
+    { label: 'Best month', hint: best && best.collected > 0 ? monthLabel(best) : DASH, value: best && best.collected > 0 ? formatCompactRupees(best.collected) : DASH, dot: '' },
   ];
   return (
     <div>
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {stats.map(stat => (
           <div key={stat.label} className="rounded-xl bg-gray-50 px-3 py-2.5">
-            <p className="text-xs text-gray-500">{stat.label}</p>
+            <p className="flex items-center gap-1.5 text-xs text-gray-500">
+              {stat.dot && <span className={`h-2 w-2 rounded-full ${stat.dot}`} />}{stat.label}
+            </p>
             <p className="mt-0.5 text-sm font-semibold text-gray-900 sm:text-base">{stat.value}</p>
             <p className="text-[11px] text-gray-400">{stat.hint}</p>
           </div>
@@ -210,12 +216,13 @@ function RevenueCollectionChart({ data, failed }: { data: RevenueCollection | nu
               {months.map((month, index) => {
                 const align = index < 2 ? 'left-0' : index > months.length - 3 ? 'right-0' : 'left-1/2 -translate-x-1/2';
                 return (
-                  <div key={month.key} className="group flex h-full flex-1 items-end justify-center">
-                    <div className="relative w-full max-w-9 rounded-t-md bg-emerald-600 transition group-hover:bg-emerald-700" style={{ height: `${(month.collected / max) * 100}%` }}>
-                      <div role="tooltip" className={`pointer-events-none absolute bottom-full z-10 mb-1.5 hidden whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[11px] leading-4 text-white shadow-md group-hover:block ${align}`}>
-                        <span className="font-semibold">{formatRupees(month.collected)}</span>
-                        <span className="text-gray-300"> {'\u00B7'} {month.month} {month.year} {'\u00B7'} {formatNumber(month.collectedCount)} payments</span>
-                      </div>
+                  <div key={month.key} className="group relative flex h-full flex-1 items-end justify-center gap-0.5 sm:gap-1">
+                    <div className="w-full max-w-5 rounded-t-md bg-[#b7d7c4] transition group-hover:bg-[#9ccab0]" style={{ height: `${(revenueOf(month) / max) * 100}%` }} />
+                    <div className="w-full max-w-5 rounded-t-md bg-emerald-600 transition group-hover:bg-emerald-700" style={{ height: `${(month.collected / max) * 100}%` }} />
+                    <div role="tooltip" className={`pointer-events-none absolute z-10 hidden whitespace-nowrap rounded-md bg-gray-900 px-2.5 py-1.5 text-[11px] leading-4 text-white shadow-md group-hover:block ${align}`}
+                      style={{ bottom: `calc(${(Math.max(revenueOf(month), month.collected) / max) * 100}% + 6px)` }}>
+                      <p className="font-semibold">{month.month} {month.year}</p>
+                      <p className="text-gray-300">Revenue <span className="font-medium text-white">{formatRupees(revenueOf(month))}</span> {'\u00B7'} Collected <span className="font-medium text-white">{formatRupees(month.collected)}</span></p>
                     </div>
                   </div>
                 );
@@ -231,7 +238,11 @@ function RevenueCollectionChart({ data, failed }: { data: RevenueCollection | nu
           </div>
         </div>
       </div>
-      <p className="mt-3 hidden text-center text-xs text-gray-400 sm:block">Hover a bar for the exact amount</p>
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-xs text-gray-600">
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#b7d7c4]" />Revenue</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-600" />Collected</span>
+        <span className="hidden text-gray-400 sm:inline">Hover a month for exact amounts</span>
+      </div>
     </div>
   );
 }
@@ -449,7 +460,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // Fetch 12 months of collected payments (loads on its own; the page never waits for it)
+  // Fetch 12 months of revenue vs collection (loads on its own; the page never waits for it)
   const fetchRevenueCollection = async () => {
     try {
       const response = await fetch('/api/admin/revenue-collection');
@@ -607,7 +618,7 @@ export default function AdminDashboard() {
           {/* Revenue vs collection + client overview */}
           <div className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-12">
             <div className="xl:col-span-8">
-              <Panel title="Revenue Collected" description="Money received each month, last 12 months">
+              <Panel title="Revenue & Collection" description="Payment links raised vs money received, last 12 months">
                 <RevenueCollectionChart data={revenue} failed={revenueFailed} />
               </Panel>
             </div>

@@ -29,14 +29,16 @@ export interface RevenueCollectionMonth {
  key: string; month: string; year: number;
  billed: number; collected: number; pending: number;
  billedCount: number; collectedCount: number; pendingCount: number;
+ /** Every payment asked for in the month, paid or not (expired links included). */
+ revenue: number; revenueCount: number;
 }
 
-/** Last 12 IST months, from the month a payment was created: billed (paid + still-collectable pending), collected (paid), pending. Expired links are counted separately and never billed. Read-only. */
+/** Last 12 IST months, from the month a payment was created: revenue (everything asked for, expired links included), billed (paid + still-collectable pending), collected (paid), pending (still collectable). Read-only. */
 export async function nativeRevenueCollection(db: MongoDatabase, now = new Date()) {
  const [year, month] = IST_MONTH.format(now).split('-').map(Number);
  const months: RevenueCollectionMonth[] = Array.from({length: 12}, (_, index) => {
   const offset = year * 12 + (month - 1) - (11 - index), y = Math.floor(offset / 12), m = offset % 12;
-  return {key: `${y}-${String(m + 1).padStart(2, '0')}`, month: MONTH_NAMES[m], year: y, billed: 0, collected: 0, pending: 0, billedCount: 0, collectedCount: 0, pendingCount: 0};
+  return {key: `${y}-${String(m + 1).padStart(2, '0')}`, month: MONTH_NAMES[m], year: y, billed: 0, collected: 0, pending: 0, billedCount: 0, collectedCount: 0, pendingCount: 0, revenue: 0, revenueCount: 0};
  });
  const byKey = new Map(months.map(row => [row.key, row]));
  const since = new Date(`${months[0].key}-01T00:00:00+05:30`);
@@ -48,6 +50,7 @@ export async function nativeRevenueCollection(db: MongoDatabase, now = new Date(
   const target = created ? byKey.get(IST_MONTH.format(created)) : undefined;
   if (!target) continue;
   const amount = amountOf(row);
+  if (isPaid(row) || isPending(row)) { target.revenue += amount; target.revenueCount++; }
   if (isPaid(row)) { target.collected += amount; target.collectedCount++; }
   else if (isPending(row)) {
    if (!created || !isStillCollectable(row, created, now)) { expired += amount; expiredCount++; continue; } // link expired: not billed, not pending
@@ -56,10 +59,12 @@ export async function nativeRevenueCollection(db: MongoDatabase, now = new Date(
   else continue; // cancelled, failed or refunded payments are not billed
   target.billed += amount; target.billedCount++;
  }
- for (const row of months) { row.billed = Math.round(row.billed); row.collected = Math.round(row.collected); row.pending = Math.round(row.pending); }
+ for (const row of months) { row.revenue = Math.round(row.revenue); row.billed = Math.round(row.billed); row.collected = Math.round(row.collected); row.pending = Math.round(row.pending); }
  const totals = months.reduce((sum, row) => ({
   billed: sum.billed + row.billed, collected: sum.collected + row.collected,
-  pending: sum.pending + row.pending, pendingCount: sum.pendingCount + row.pendingCount,
- }), {billed: 0, collected: 0, pending: 0, pendingCount: 0});
- return {months, totals: {...totals, expired: Math.round(expired), expiredCount, collectionRate: totals.billed > 0 ? Math.round((totals.collected / totals.billed) * 1000) / 10 : 0}};
+  pending: sum.pending + row.pending, pendingCount: sum.pendingCount + row.pendingCount, revenue: sum.revenue + row.revenue,
+ }), {billed: 0, collected: 0, pending: 0, pendingCount: 0, revenue: 0});
+ return {months, totals: {...totals, expired: Math.round(expired), expiredCount,
+  collectionRate: totals.billed > 0 ? Math.round((totals.collected / totals.billed) * 1000) / 10 : 0,
+  revenueCollectionRate: totals.revenue > 0 ? Math.round((totals.collected / totals.revenue) * 1000) / 10 : 0}};
 }

@@ -31,9 +31,9 @@ const dietitians = [
 
 const revenueMonths = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'].map((month, i) => ({
   key: `${i === 0 ? 2025 : 2026}-${String(i === 0 ? 12 : i).padStart(2, '0')}`, month, year: i === 0 ? 2025 : 2026,
-  billed: i * 100000, collected: i * 90000, pending: i * 10000, billedCount: i, collectedCount: i, pendingCount: i,
+  billed: i * 100000, collected: i * 90000, pending: i * 10000, billedCount: i, collectedCount: i, pendingCount: i, revenue: i * 110000, revenueCount: i,
 }));
-const revenueCollection = { months: revenueMonths, totals: { billed: 6600000, collected: 5940000, pending: 2837639, pendingCount: 1183, collectionRate: 90 } };
+const revenueCollection = { months: revenueMonths, totals: { billed: 6600000, collected: 5940000, pending: 2837639, pendingCount: 1183, collectionRate: 90, revenue: 7260000, revenueCollectionRate: 81.8 } };
 let revenueStatus = 200;
 
 let fetchMock: jest.Mock;
@@ -116,21 +116,36 @@ test('refresh-all-sessions asks first, then sends the same request', async () =>
   await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith(expect.stringContaining('Refresh sent to 7 connected users')));
 });
 
-test('shows 12 months of collected money, no billed figure, and the pending amount', async () => {
+test('shows 12 months of revenue vs collected, no billed figure, and the pending amount', async () => {
   await loaded();
-  await waitFor(() => expect(screen.getByText('\u20B959,40,000')).toBeInTheDocument()); // collected, last 12 months
+  await waitFor(() => expect(screen.getByText('\u20B972,60,000')).toBeInTheDocument()); // revenue, all links
+  expect(screen.getByText('\u20B959,40,000')).toBeInTheDocument(); // collected
+  expect(screen.getByText('81.8%')).toBeInTheDocument();
+  expect(screen.getByText('\u20B913.2L not collected')).toBeInTheDocument();
   expect(screen.getAllByText('\u20B928,37,639')).toHaveLength(1); // only on the Pending KPI card
   expect(screen.getByText(/1,183 live links/)).toBeInTheDocument();
   expect(screen.queryByText(/Billed/i)).not.toBeInTheDocument();
   expect(screen.queryByText('\u20B966,00,000')).not.toBeInTheDocument();
-  expect(screen.getByText('Best month')).toBeInTheDocument();
-  expect(screen.getByText('Nov \u201926')).toBeInTheDocument(); // Nov has the highest collection in the mock
+  expect(screen.getByText('Nov \u201926')).toBeInTheDocument(); // best collection month in the mock
   expect(screen.getByText('\u20B99.9L')).toBeInTheDocument();
-  expect(screen.getByText('66 payments')).toBeInTheDocument();
-  expect(screen.getByText('Average payment').parentElement).toHaveTextContent('\u20B990,000'); // 59,40,000 / 66 payments
+  const tooltips = screen.getAllByRole('tooltip', { hidden: true });
+  expect(tooltips).toHaveLength(12);
+  expect(tooltips[11]).toHaveTextContent('Nov 2026Revenue \u20B912,10,000 \u00B7 Collected \u20B99,90,000');
   for (const month of ['Dec', 'Jun', 'Nov']) expect(screen.getAllByText(month).length).toBeGreaterThan(0);
-  expect(screen.getAllByRole('tooltip', { hidden: true })).toHaveLength(12);
   expect(fetchMock.mock.calls.map(call => call[0])).toContain('/api/admin/revenue-collection');
+});
+
+test('older revenue responses without a revenue field fall back to billed', async () => {
+  const legacy = { months: revenueMonths.map(month => { const copy: Record<string, unknown> = { ...month }; delete copy.revenue; delete copy.revenueCount; return copy; }), totals: { billed: 6600000, collected: 5940000, pending: 0, pendingCount: 0, collectionRate: 90 } };
+  fetchMock.mockImplementation(async (url: string) => {
+    const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+    if (url === '/api/dashboard/admin-stats') return ok(stats);
+    if (url === '/api/admin/revenue-collection') return ok(legacy);
+    return ok({ activities: [], alerts: [], topDietitians: [] });
+  });
+  await loaded();
+  await waitFor(() => expect(screen.getByText('\u20B966,00,000')).toBeInTheDocument());
+  expect(screen.getByText('90%')).toBeInTheDocument();
 });
 
 test('top dietitians card shows five dietitians, their 30-day activity and the team size', async () => {
