@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { SYSTEM_REFRESH_BROWSER_EVENT } from '@/lib/system-refresh';
-import { DashboardContentSkeleton } from '@/components/ui/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // Helper function to check if an alert can be deleted
 const isAlertDeletable = (alertId: string) => {
@@ -135,8 +135,8 @@ const toneClasses = {
   amber: 'bg-amber-50 text-amber-700 ring-amber-100',
 } as const;
 
-function KpiCard({ title, value, note, icon, tone }: {
-  title: string; value: string; note: string; icon: React.ReactNode; tone: keyof typeof toneClasses;
+function KpiCard({ title, value, note, icon, tone, loading = false }: {
+  title: string; value: string; note: string; icon: React.ReactNode; tone: keyof typeof toneClasses; loading?: boolean;
 }) {
   return (
     <div className="flex h-full flex-col rounded-2xl border border-gray-200/70 bg-white p-5 shadow-sm">
@@ -144,8 +144,17 @@ function KpiCard({ title, value, note, icon, tone }: {
         <p className="text-sm font-medium text-gray-500">{title}</p>
         <span className={`flex h-9 w-9 items-center justify-center rounded-xl ring-1 ${toneClasses[tone]}`}>{icon}</span>
       </div>
-      <p className="mt-3 text-[1.65rem] font-semibold leading-tight tracking-tight text-gray-900">{value}</p>
-      <p className="mt-1 text-sm text-gray-500">{note}</p>
+      {loading ? (
+        <div role="status" aria-label={`Loading ${title}`}>
+          <Skeleton className="mt-3.5 h-8 w-36" />
+          <Skeleton className="mt-2.5 h-4 w-28" />
+        </div>
+      ) : (
+        <>
+          <p className="mt-3 text-[1.65rem] font-semibold leading-tight tracking-tight text-gray-900">{value}</p>
+          <p className="mt-1 text-sm text-gray-500">{note}</p>
+        </>
+      )}
     </div>
   );
 }
@@ -167,9 +176,123 @@ function Panel({ title, description, action, children, className = '' }: {
   );
 }
 
+/* Loading placeholders shaped like the real sections, so nothing jumps when data arrives. */
+const SKELETON_BARS = [18, 30, 46, 92, 52, 50, 56, 60, 44, 30, 34, 26];
+
+function RevenueChartSkeleton() {
+  return (
+    <div role="status" aria-label="Loading revenue chart">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="rounded-xl bg-gray-50 px-3 py-2.5">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-2 h-5 w-24" />
+            <Skeleton className="mt-1.5 h-2.5 w-20" />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <div className="flex h-60 w-12 shrink-0 flex-col items-end justify-between">
+          {Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-2.5 w-8" />)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex h-60 items-end gap-1.5 border-b border-gray-200 sm:gap-3">
+            {SKELETON_BARS.map((height, index) => (
+              <div key={index} className="flex h-full flex-1 items-end justify-center gap-0.5 sm:gap-1">
+                <Skeleton className="w-full max-w-5 rounded-b-none rounded-t-md" style={{ height: `${height}%` }} />
+                <Skeleton className="w-full max-w-5 rounded-b-none rounded-t-md bg-gray-300/70" style={{ height: `${Math.max(8, height - 6)}%` }} />
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex gap-1.5 sm:gap-3">
+            {SKELETON_BARS.map((_, index) => (
+              <div key={index} className="flex flex-1 justify-center"><Skeleton className="h-2.5 w-6" /></div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex justify-center gap-4">
+        <Skeleton className="h-3 w-16" />
+        <Skeleton className="h-3 w-16" />
+      </div>
+    </div>
+  );
+}
+
+function ClientOverviewSkeleton() {
+  return (
+    <div className="flex h-full flex-col" role="status" aria-label="Loading client overview">
+      <div className="mx-auto h-32 w-32 animate-pulse rounded-full border-10 border-gray-200/85 motion-reduce:animate-none" aria-hidden="true" />
+      <div className="mt-5 grid grid-cols-3 gap-2">
+        {Array.from({ length: 3 }, (_, index) => (
+          <div key={index} className="flex flex-col items-center rounded-xl bg-gray-50 px-3 py-2.5">
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="mt-2 h-5 w-14" />
+          </div>
+        ))}
+      </div>
+      <Skeleton className="mt-4 h-11 w-full rounded-xl" />
+      <Skeleton className="mt-2.5 h-11 w-full rounded-xl" />
+      <div className="min-h-4 flex-1" />
+      <Skeleton className="h-10 w-full rounded-lg" />
+    </div>
+  );
+}
+
+function DietitianListSkeleton() {
+  return (
+    <ul className="divide-y divide-gray-100" role="status" aria-label="Loading top dietitians">
+      {Array.from({ length: 5 }, (_, index) => (
+        <li key={index} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+          <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-3.5 w-32" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <Skeleton className="h-4 w-16 shrink-0" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ActivityListSkeleton() {
+  return (
+    <ul className="divide-y divide-gray-100" role="status" aria-label="Loading recent activity">
+      {Array.from({ length: 5 }, (_, index) => (
+        <li key={index} className="flex items-center gap-3 py-3 first:pt-0">
+          <Skeleton className="h-9 w-9 shrink-0 rounded-xl" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className={`h-3.5 ${index % 2 ? 'w-1/2' : 'w-2/3'}`} />
+            <Skeleton className="h-3 w-20" />
+          </div>
+          <Skeleton className="h-5 w-16 shrink-0 rounded-full" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function AlertListSkeleton() {
+  return (
+    <ul className="space-y-2.5" role="status" aria-label="Loading system alerts">
+      {Array.from({ length: 3 }, (_, index) => (
+        <li key={index} className="flex items-start justify-between gap-2 rounded-xl border border-gray-100 px-3.5 py-3">
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3.5 w-2/3" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+          <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function RevenueCollectionChart({ data, failed }: { data: RevenueCollection | null; failed: boolean }) {
   if (failed) return <p className="flex h-64 items-center justify-center text-sm text-gray-500">Revenue data is unavailable right now</p>;
-  if (!data) return <div className="h-64 animate-pulse rounded-xl bg-gray-100" aria-label="Loading revenue chart" />;
+  if (!data) return <RevenueChartSkeleton />;
   const months = data.months;
   // Revenue = everything asked for (expired links included); older API responses fall back to billed.
   const revenueOf = (month: RevenueMonth) => month.revenue ?? month.billed;
@@ -335,6 +458,9 @@ export default function AdminDashboard() {
   const [revenue, setRevenue] = useState<RevenueCollection | null>(null);
   const [revenueFailed, setRevenueFailed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+  const [dietitiansLoading, setDietitiansLoading] = useState(true);
   const [refreshingAllSessions, setRefreshingAllSessions] = useState(false);
 
   const handleSystemRefresh = async () => {
@@ -430,6 +556,8 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error('Error fetching recent activity:', error);
+    } finally {
+      setActivityLoading(false);
     }
   };
 
@@ -443,6 +571,8 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error('Error fetching system alerts:', error);
+    } finally {
+      setAlertsLoading(false);
     }
   };
 
@@ -457,6 +587,8 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error('Error fetching top dietitians:', error);
+    } finally {
+      setDietitiansLoading(false);
     }
   };
 
@@ -514,14 +646,6 @@ export default function AdminDashboard() {
         return 'border-sky-200 bg-sky-50/70';
     }
   };
-
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <DashboardContentSkeleton />
-      </DashboardLayout>
-    );
-  }
 
   const activities = recentActivity || [];
   const alerts = systemAlerts || [];
@@ -603,15 +727,15 @@ export default function AdminDashboard() {
 
           {/* KPI cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <KpiCard tone="emerald" title="Total Clients" value={formatNumber(stats.totalClients)}
+            <KpiCard tone="emerald" title="Total Clients" value={formatNumber(stats.totalClients)} loading={loading}
               note={`${formatNumber(stats.activeClients)} active`} icon={<Users className="h-4.5 w-4.5" />} />
-            <KpiCard tone="sky" title="Total Revenue" value={formatRupees(stats.totalRevenue)}
+            <KpiCard tone="sky" title="Total Revenue" value={formatRupees(stats.totalRevenue)} loading={loading}
               note="All-time collected" icon={<IndianRupee className="h-4.5 w-4.5" />} />
-            <KpiCard tone="violet" title="Monthly Revenue" value={formatRupees(stats.monthlyRevenue)}
+            <KpiCard tone="violet" title="Monthly Revenue" value={formatRupees(stats.monthlyRevenue)} loading={loading}
               note="Collected this month" icon={<TrendingUp className="h-4.5 w-4.5" />} />
-            <KpiCard tone="amber" title="Pending Collection"
+            <KpiCard tone="amber" title="Pending Collection" loading={!revenue && !revenueFailed}
               value={revenue ? formatRupees(revenue.totals.pending) : DASH}
-              note={revenue ? `${formatNumber(revenue.totals.pendingCount)} live links ${'\u00B7'} last 7 days` : revenueFailed ? 'Unavailable right now' : 'Loading\u2026'}
+              note={revenue ? `${formatNumber(revenue.totals.pendingCount)} live links ${'\u00B7'} last 7 days` : 'Unavailable right now'}
               icon={<Hourglass className="h-4.5 w-4.5" />} />
           </div>
 
@@ -624,8 +748,10 @@ export default function AdminDashboard() {
             </div>
             <div className="xl:col-span-4">
               <Panel title="Client Overview" description="Manage all clients and assign dietitians">
-                <ClientOverview total={stats.totalClients} active={stats.activeClients}
-                  appointments={stats.totalAppointments} completedAppointments={stats.completedAppointments} />
+                {loading ? <ClientOverviewSkeleton /> : (
+                  <ClientOverview total={stats.totalClients} active={stats.activeClients}
+                    appointments={stats.totalAppointments} completedAppointments={stats.completedAppointments} />
+                )}
               </Panel>
             </div>
           </div>
@@ -642,7 +768,7 @@ export default function AdminDashboard() {
                   </Link>
                 }
               >
-                {dietitians.length === 0 ? (
+                {dietitiansLoading ? <DietitianListSkeleton /> : dietitians.length === 0 ? (
                   <p className="py-8 text-center text-sm text-gray-500">No dietitian data yet</p>
                 ) : (
                   <ul className="divide-y divide-gray-100">
@@ -694,7 +820,7 @@ export default function AdminDashboard() {
                   </Link>
                 }
               >
-                {activities.length === 0 ? (
+                {activityLoading ? <ActivityListSkeleton /> : activities.length === 0 ? (
                   <p className="py-8 text-center text-sm text-gray-500">No recent activity</p>
                 ) : (
                   <ul className="max-h-96 divide-y divide-gray-100 overflow-y-auto pr-1">
@@ -720,13 +846,13 @@ export default function AdminDashboard() {
               <Panel
                 title="System Alerts"
                 description="Notifications that need attention"
-                action={alerts.length > 0 ? (
+                action={!alertsLoading && alerts.length > 0 ? (
                   <span className="flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 ring-1 ring-red-100">
                     <Bell className="h-3 w-3" />{alerts.length}
                   </span>
                 ) : undefined}
               >
-                {alerts.length === 0 ? (
+                {alertsLoading ? <AlertListSkeleton /> : alerts.length === 0 ? (
                   <p className="py-8 text-center text-sm text-gray-500">No alerts right now</p>
                 ) : (
                   <ul className="max-h-96 space-y-2.5 overflow-y-auto pr-1">
