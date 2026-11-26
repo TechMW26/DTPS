@@ -174,3 +174,55 @@ test('the rest of the dashboard still works when the revenue chart fails', async
   expect(screen.getAllByText('11,498').length).toBeGreaterThan(0);
   expect(screen.getAllByText('Vajeda Rehman').length).toBeGreaterThan(0);
 });
+
+test('every section shows its own skeleton while loading, then the real data', async () => {
+  const waiting = new Map<string, (value: unknown) => void>();
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+  fetchMock.mockImplementation((url: string) => new Promise(resolve => waiting.set(url, resolve)));
+  render(<AdminDashboard />);
+
+  // Header and section titles show at once; numbers and lists are placeholders.
+  expect(screen.getByText(/Krishna/)).toBeInTheDocument();
+  expect(screen.getByText('Quick Actions')).toBeInTheDocument();
+  for (const label of ['Loading Total Clients', 'Loading Total Revenue', 'Loading Monthly Revenue', 'Loading Pending Collection',
+    'Loading revenue chart', 'Loading client overview', 'Loading top dietitians', 'Loading recent activity', 'Loading system alerts']) {
+    expect(screen.getByRole('status', { name: label })).toBeInTheDocument();
+  }
+  // No misleading empty messages while data is still on its way.
+  for (const text of ['No recent activity', 'No alerts right now', 'No dietitian data yet', 'Loading\u2026']) {
+    expect(screen.queryByText(text)).not.toBeInTheDocument();
+  }
+
+  // Sections fill in independently as each API answers.
+  await waitFor(() => expect(waiting.size).toBe(5));
+  waiting.get('/api/admin/top-dietitians')!(ok({ topDietitians: dietitians }));
+  await waitFor(() => expect(screen.getByText('Vajeda Rehman')).toBeInTheDocument());
+  expect(screen.queryByRole('status', { name: 'Loading top dietitians' })).not.toBeInTheDocument();
+  expect(screen.getByRole('status', { name: 'Loading Total Clients' })).toBeInTheDocument();
+
+  waiting.get('/api/dashboard/admin-stats')!(ok(stats));
+  waiting.get('/api/admin/recent-activity')!(ok({ activities }));
+  waiting.get('/api/admin/system-alerts')!(ok({ alerts }));
+  waiting.get('/api/admin/revenue-collection')!(ok(revenueCollection));
+  await waitFor(() => expect(screen.queryAllByRole('status')).toHaveLength(0));
+  expect(screen.getAllByText('11,498').length).toBeGreaterThan(0);
+  expect(screen.getByText('Payment received from Riya')).toBeInTheDocument();
+  expect(screen.getByText('Manual alert: check payment link')).toBeInTheDocument();
+  expect(screen.getByText('\u20B972,60,000')).toBeInTheDocument();
+});
+
+test('a failed section shows its empty or unavailable message instead of a skeleton forever', async () => {
+  revenueStatus = 503;
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url === '/api/dashboard/admin-stats') return { ok: true, status: 200, json: async () => stats };
+    if (url === '/api/admin/revenue-collection') return { ok: false, status: 503, json: async () => ({}) };
+    throw new Error('network down');
+  });
+  await loaded();
+  await waitFor(() => expect(screen.queryAllByRole('status')).toHaveLength(0));
+  expect(screen.getByText('No recent activity')).toBeInTheDocument();
+  expect(screen.getByText('No alerts right now')).toBeInTheDocument();
+  expect(screen.getByText('No dietitian data yet')).toBeInTheDocument();
+  expect(screen.getByText('Unavailable right now')).toBeInTheDocument();
+  expect(screen.getByText('Revenue data is unavailable right now')).toBeInTheDocument();
+});
